@@ -102,15 +102,9 @@ impl Validator {
         if root >= self.definitions.len() {
             return Err(graph::Error::Reference { definition: root });
         }
-        Ok(Self {
-            root,
-            definitions: Arc::clone(&self.definitions),
-        })
+        Ok(Self { root, definitions: Arc::clone(&self.definitions) })
     }
-    pub fn construction_memory_bytes(
-        schema: &graph::Schema,
-        settings: &SchemaSettings,
-    ) -> Result<usize, graph::Error> {
+    pub fn construction_memory_bytes(schema: &graph::Schema, settings: &SchemaSettings) -> Result<usize, graph::Error> {
         schema
             .preparation(settings)?
             .bytes
@@ -134,9 +128,7 @@ impl Validator {
     }
 
     pub fn visit<'schema, 'payload, E>(
-        &'schema self,
-        bytes: &'payload [u8],
-        mut visitor: impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), E>,
+        &'schema self, bytes: &'payload [u8], mut visitor: impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), E>,
     ) -> Result<(), VisitError<E>> {
         let mut input = PostcardReader::new(bytes);
         let mut path = Vec::new();
@@ -154,10 +146,7 @@ impl Validator {
         input.finish().map_err(PayloadError::from)?;
         Ok(())
     }
-    pub fn from_schema(
-        schema: &graph::Schema,
-        settings: &SchemaSettings,
-    ) -> Result<Self, graph::Error> {
+    pub fn from_schema(schema: &graph::Schema, settings: &SchemaSettings) -> Result<Self, graph::Error> {
         schema.prepare(settings)?;
         if Self::construction_memory_bytes(schema, settings)? > settings.preparation_bytes.get() {
             return Err(graph::Error::Budget);
@@ -188,35 +177,21 @@ impl Validator {
                     .collect::<Box<[_]>>()
             })
             .collect::<Box<[_]>>();
-        Ok(Self {
-            root: schema.root,
-            definitions: definitions.into(),
-        })
+        Ok(Self { root: schema.root, definitions: definitions.into() })
     }
     fn read<'schema, 'payload>(
-        &'schema self,
-        definition: usize,
-        input: &mut PostcardReader<'payload>,
-        path: &mut Vec<PathElement<'schema>>,
+        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         input.nested(|input| {
             visitor(path, Event::BeginMessage)?;
-            if self.definitions[definition]
-                .first()
-                .is_some_and(|field| field.cardinality == Cardinality::Variant)
-            {
+            if self.definitions[definition].first().is_some_and(|field| field.cardinality == Cardinality::Variant) {
                 let index: u32 = input.value()?;
                 let field = self.definitions[definition]
                     .get(index as usize)
                     .ok_or_else(|| MessageError::borrowed("unknown Postcard enum variant"))?;
-                let Wire::Message(payload) = &field.kind else {
-                    unreachable!("validated enum schema")
-                };
-                path.push(PathElement::Field {
-                    name: &field.name,
-                    tag: field.tag,
-                });
+                let Wire::Message(payload) = &field.kind else { unreachable!("validated enum schema") };
+                path.push(PathElement::Field { name: &field.name, tag: field.tag });
                 visitor(path, Event::Variant { index })?;
                 visitor(path, Event::BeginMessage)?;
                 self.read_fields(*payload, input, path, visitor)?;
@@ -229,21 +204,13 @@ impl Validator {
         })
     }
     fn read_fields<'schema, 'payload>(
-        &'schema self,
-        definition: usize,
-        input: &mut PostcardReader<'payload>,
-        path: &mut Vec<PathElement<'schema>>,
+        &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         for field in &self.definitions[definition] {
-            path.push(PathElement::Field {
-                name: &field.name,
-                tag: field.tag,
-            });
+            path.push(PathElement::Field { name: &field.name, tag: field.tag });
             match field.cardinality {
-                Cardinality::Required | Cardinality::Variant => {
-                    field.kind.read(self, input, path, visitor)?
-                }
+                Cardinality::Required | Cardinality::Variant => field.kind.read(self, input, path, visitor)?,
                 Cardinality::Optional => input.nested(|input| {
                     let present = input.value::<bool>()?;
                     visitor(path, Event::Optional { present })?;
@@ -271,10 +238,7 @@ impl Validator {
 }
 impl Wire {
     fn read<'schema, 'payload>(
-        &'schema self,
-        schema: &'schema Validator,
-        input: &mut PostcardReader<'payload>,
-        path: &mut Vec<PathElement<'schema>>,
+        &'schema self, schema: &'schema Validator, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,
         visitor: &mut impl FnMut(&[PathElement<'schema>], Event<'payload>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         let scalar = match self {
@@ -299,14 +263,9 @@ impl crate::MemorySize for Validator {
     fn memory_size(&self) -> usize {
         let mut bytes = std::mem::size_of::<Self>()
             .saturating_add(2 * std::mem::size_of::<usize>())
-            .saturating_add(
-                self.definitions
-                    .len()
-                    .saturating_mul(std::mem::size_of::<Box<[Checked]>>()),
-            );
+            .saturating_add(self.definitions.len().saturating_mul(std::mem::size_of::<Box<[Checked]>>()));
         for fields in self.definitions.iter() {
-            bytes =
-                bytes.saturating_add(fields.len().saturating_mul(std::mem::size_of::<Checked>()));
+            bytes = bytes.saturating_add(fields.len().saturating_mul(std::mem::size_of::<Checked>()));
             for field in fields {
                 bytes = bytes.saturating_add(field.name.len());
             }
@@ -319,27 +278,14 @@ impl crate::MemorySize for Validator {
 /* === Private Functions === */
 fn graph_compilation_bytes(schema: &graph::Schema) -> Result<usize, graph::Error> {
     let mut bytes = std::mem::size_of::<Validator>()
-        .checked_add(
-            schema
-                .definitions
-                .len()
-                .checked_mul(std::mem::size_of::<Box<[Checked]>>())
-                .ok_or(graph::Error::Budget)?,
-        )
+        .checked_add(schema.definitions.len().checked_mul(std::mem::size_of::<Box<[Checked]>>()).ok_or(graph::Error::Budget)?)
         .ok_or(graph::Error::Budget)?;
     for fields in &schema.definitions {
         bytes = bytes
-            .checked_add(
-                fields
-                    .len()
-                    .checked_mul(std::mem::size_of::<Checked>())
-                    .ok_or(graph::Error::Budget)?,
-            )
+            .checked_add(fields.len().checked_mul(std::mem::size_of::<Checked>()).ok_or(graph::Error::Budget)?)
             .ok_or(graph::Error::Budget)?;
         for field in fields {
-            bytes = bytes
-                .checked_add(field.name.len())
-                .ok_or(graph::Error::Budget)?;
+            bytes = bytes.checked_add(field.name.len()).ok_or(graph::Error::Budget)?;
         }
     }
     Ok(bytes)

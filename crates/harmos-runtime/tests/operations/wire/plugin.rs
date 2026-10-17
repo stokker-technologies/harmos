@@ -136,12 +136,10 @@ struct Running {
     invocation: harmos_runtime::operations::OperationInstance<Compute>,
 }
 
-
 /* === Enums === */
 /* === Traits === */
 
 /* === Implementations === */
-
 
 super::in_process!(Shared);
 
@@ -195,7 +193,8 @@ impl PluginLifecycle for SelectedHost {
         Ok(())
     }
     async fn start(
-        &mut self, definition: &PluginDefinition, router: &Router, _: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>, backend: &mut Backends,
+        &mut self, definition: &PluginDefinition, router: &Router, _: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>,
+        backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         resources.endpoint = Some(router.enter(&definition.id).unwrap());
@@ -250,10 +249,6 @@ impl harmos_runtime::operations::Operation for SharedCall {
         result.map(::core::convert::Into::into)
     }
 }
-
-
-
-
 
 #[harmos_runtime::catalog]
 enum CleaningOperations {
@@ -433,8 +428,7 @@ impl Running {
         manager.initialize(&mut host).await.unwrap();
         let opened = Arc::new(tokio::sync::Notify::new());
         let gate = Arc::new(tokio::sync::Notify::new());
-        let invocation =
-            runtime.operations.submit(super::Request { gate: Some((opened.clone(), gate.clone())), ..request() }).unwrap();
+        let invocation = runtime.operations.submit(super::Request { gate: Some((opened.clone(), gate.clone())), ..request() }).unwrap();
         opened.notified().await;
         Self { runtime, manager, host, gate, invocation }
     }
@@ -542,4 +536,3 @@ fn candidate_with_cleanup() -> PluginDefinitions {
 }
 
 /* === Tests === */
-

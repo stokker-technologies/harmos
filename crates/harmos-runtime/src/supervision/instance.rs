@@ -213,10 +213,7 @@ impl Instance {
                 return;
             }
             if status.cancellation_requested
-                && matches!(
-                    phase,
-                    Phase::Initializing | Phase::Running | Phase::RetryWaiting | Phase::Restarting
-                )
+                && matches!(phase, Phase::Initializing | Phase::Running | Phase::RetryWaiting | Phase::Restarting)
             {
                 return;
             }
@@ -267,12 +264,7 @@ impl Instance {
 
     pub(crate) fn finished(&self) {
         self.finished.call_once(|| {
-            let providers = std::mem::take(
-                &mut *self
-                    .providers
-                    .lock()
-                    .expect("instance providers are healthy"),
-            );
+            let providers = std::mem::take(&mut *self.providers.lock().expect("instance providers are healthy"));
             drop(providers);
             if let Some(notify) = &self.on_settled {
                 notify();
@@ -306,10 +298,7 @@ impl Instance {
     }
 
     pub(crate) fn track(&self, child: &Arc<Self>) {
-        let mut children = self
-            .children
-            .lock()
-            .expect("instance child lock is healthy");
+        let mut children = self.children.lock().expect("instance child lock is healthy");
         children.retain(|child| child.upgrade().is_some_and(|child| !child.is_settled()));
         children.push(Arc::downgrade(child));
         drop(children);
@@ -319,25 +308,12 @@ impl Instance {
     }
 
     #[cfg(any(feature = "plugin-sidecar", test))]
-    pub(crate) fn depend_on(
-        self: &Arc<Self>,
-        provider: &Arc<Self>,
-        retirement: bool,
-    ) -> crate::Result<()> {
+    pub(crate) fn depend_on(self: &Arc<Self>, provider: &Arc<Self>, retirement: bool) -> crate::Result<()> {
         if Arc::ptr_eq(self, provider) {
-            return Err(Error::InvalidInput {
-                field: "physical provider",
-                reason: "an instance cannot retain itself",
-            });
+            return Err(Error::InvalidInput { field: "physical provider", reason: "an instance cannot retain itself" });
         }
-        let mut providers = self
-            .providers
-            .lock()
-            .expect("instance providers are healthy");
-        if providers
-            .iter()
-            .any(|held| Arc::ptr_eq(&held.provider, provider))
-        {
+        let mut providers = self.providers.lock().expect("instance providers are healthy");
+        if providers.iter().any(|held| Arc::ptr_eq(&held.provider, provider)) {
             return Ok(());
         }
         let mut admitted = false;
@@ -365,13 +341,9 @@ impl Instance {
             return Ok(());
         }
         if !admitted {
-            return Err(Error::Closing {
-                domain: "physical provider",
-            });
+            return Err(Error::Closing { domain: "physical provider" });
         }
-        providers.push(Dependency {
-            provider: provider.clone(),
-        });
+        providers.push(Dependency { provider: provider.clone() });
         drop(providers);
         if !retirement {
             provider.track(self);
@@ -380,14 +352,8 @@ impl Instance {
     }
 
     pub(crate) fn retain<R: Resource>(&self, resource: R, failure: Arc<Error>) {
-        let mut retained = self
-            .retained
-            .lock()
-            .expect("instance cleanup lock is healthy");
-        assert!(
-            retained.is_none(),
-            "one instance has one physical cleanup owner"
-        );
+        let mut retained = self.retained.lock().expect("instance cleanup lock is healthy");
+        assert!(retained.is_none(), "one instance has one physical cleanup owner");
         *retained = Some(Arc::new(Cleanup::new(resource)));
         self.status.send_modify(|status| {
             if status.phase != Phase::Stopping {
@@ -400,16 +366,8 @@ impl Instance {
 
     pub(crate) fn settle_dependents(&self) -> Finalize<'_> {
         Box::pin(async move {
-            let children: Vec<_> = self
-                .children
-                .lock()
-                .expect("instance child lock is healthy")
-                .iter()
-                .filter_map(Weak::upgrade)
-                .collect();
-            let pending = children
-                .into_iter()
-                .map(|child| async move { child.settle().await });
+            let children: Vec<_> = self.children.lock().expect("instance child lock is healthy").iter().filter_map(Weak::upgrade).collect();
+            let pending = children.into_iter().map(|child| async move { child.settle().await });
             super::settle_all(pending).await
         })
     }
@@ -420,11 +378,7 @@ impl Instance {
             loop {
                 changed.borrow_and_update();
                 self.settle_dependents().await?;
-                let retained = self
-                    .retained
-                    .lock()
-                    .expect("instance cleanup lock is healthy")
-                    .clone();
+                let retained = self.retained.lock().expect("instance cleanup lock is healthy").clone();
                 if let Some(retained) = retained {
                     if let Err(failure) = retained.settle().await {
                         let mut previous = None;
@@ -447,9 +401,7 @@ impl Instance {
                     return Err(failure);
                 }
                 if changed.changed().await.is_err() {
-                    return Err(Arc::new(Error::Closing {
-                        domain: "instance settlement",
-                    }));
+                    return Err(Arc::new(Error::Closing { domain: "instance settlement" }));
                 }
             }
         })
@@ -470,13 +422,7 @@ impl Instance {
         if interrupt {
             self.cancellation.send_replace(true);
         }
-        let children: Vec<_> = self
-            .children
-            .lock()
-            .expect("instance child lock is healthy")
-            .iter()
-            .filter_map(Weak::upgrade)
-            .collect();
+        let children: Vec<_> = self.children.lock().expect("instance child lock is healthy").iter().filter_map(Weak::upgrade).collect();
         for child in children {
             child.cancel();
         }
@@ -493,10 +439,7 @@ impl Drop for Dependency {
     fn drop(&mut self) {
         let mut interrupt = false;
         self.provider.status.send_modify(|status| {
-            status.dependents = status
-                .dependents
-                .checked_sub(1)
-                .expect("each provider hold releases once");
+            status.dependents = status.dependents.checked_sub(1).expect("each provider hold releases once");
             interrupt = status.cancellation_requested && status.dependents == 0;
         });
         if interrupt {

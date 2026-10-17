@@ -41,11 +41,7 @@ use crate::storage::query::transform::FieldPathExecution;
 pub trait DownsampleExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
@@ -55,62 +51,38 @@ impl DownsampleExecution for Downsample {
             return Err(invalid("downsample max_rows must be positive"));
         }
         if !matches!(self.algorithm, Algorithm::Decimate) {
-            let field = self
-                .value
-                .as_ref()
-                .ok_or_else(|| invalid("downsampling algorithm requires value field"))?
-                .field(input)?;
+            let field = self.value.as_ref().ok_or_else(|| invalid("downsampling algorithm requires value field"))?.field(input)?;
             if !numeric_type(field.data_type()) {
                 return Err(invalid("downsampling requires numeric values"));
             }
-            let minimum = if matches!(self.algorithm, Algorithm::Extrema) {
-                2
-            } else {
-                3
-            };
+            let minimum = if matches!(self.algorithm, Algorithm::Extrema) { 2 } else { 3 };
             if self.max_rows < minimum {
-                return Err(invalid(
-                    "downsampling output bound is below algorithm minimum",
-                ));
+                return Err(invalid("downsampling output bound is below algorithm minimum"));
             }
         }
         if matches!(self.algorithm, Algorithm::LttbLog) && self.axis.is_none() {
-            return Err(invalid(
-                "logarithmic LTTB requires an explicit positive numeric axis",
-            ));
+            return Err(invalid("logarithmic LTTB requires an explicit positive numeric axis"));
         }
         if let Some(axis) = &self.axis {
             let field = axis.field(input)?;
             if matches!(self.algorithm, Algorithm::LttbLog) && !numeric_type(field.data_type()) {
                 return Err(invalid("logarithmic LTTB requires a numeric axis"));
             }
-            if !numeric_type(field.data_type())
-                && !matches!(
-                    field.data_type(),
-                    DataType::Timestamp(TimeUnit::Nanosecond, _)
-                )
-            {
+            if !numeric_type(field.data_type()) && !matches!(field.data_type(), DataType::Timestamp(TimeUnit::Nanosecond, _)) {
                 return Err(invalid("downsample axis must be numeric or a timestamp"));
             }
         }
         Ok(input.clone())
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         if input.num_rows() <= self.max_rows {
             return Ok(input.clone());
         }
         let indices = match self.algorithm {
             Algorithm::Decimate => crate::signal::decimate(input.num_rows(), self.max_rows),
             Algorithm::Extrema => {
-                let field = self
-                    .value
-                    .as_ref()
-                    .ok_or_else(|| invalid("missing extrema value field"))?;
+                let field = self.value.as_ref().ok_or_else(|| invalid("missing extrema value field"))?;
                 let mut values = Vec::with_capacity(input.num_rows());
                 for row in 0..input.num_rows() {
                     check()?;
@@ -123,10 +95,7 @@ impl DownsampleExecution for Downsample {
                 crate::signal::extrema(&values, self.max_rows / 2)
             }
             Algorithm::Lttb | Algorithm::LttbLog => {
-                let field = self
-                    .value
-                    .as_ref()
-                    .ok_or_else(|| invalid("missing LTTB value field"))?;
+                let field = self.value.as_ref().ok_or_else(|| invalid("missing LTTB value field"))?;
                 let mut x = Vec::with_capacity(input.num_rows());
                 let mut y = Vec::with_capacity(input.num_rows());
                 let mut first_time = None;
@@ -138,10 +107,7 @@ impl DownsampleExecution for Downsample {
                         Some(axis) => match axis.value(input, row)? {
                             ScalarValue::Datetime(value) => {
                                 let first = *first_time.get_or_insert(value);
-                                value
-                                    .checked_sub(first)
-                                    .ok_or_else(|| invalid("LTTB timestamp difference overflow"))?
-                                    as f64
+                                value.checked_sub(first).ok_or_else(|| invalid("LTTB timestamp difference overflow"))? as f64
                             }
                             value => number(&value)?,
                         },
@@ -149,12 +115,8 @@ impl DownsampleExecution for Downsample {
                     if !axis.is_finite() || !value.is_finite() {
                         return Err(invalid("LTTB requires finite non-null coordinates"));
                     }
-                    if matches!(self.algorithm, Algorithm::LttbLog)
-                        && (axis <= 0.0 || x.last().is_some_and(|previous| *previous > axis))
-                    {
-                        return Err(invalid(
-                            "logarithmic LTTB requires positive ordered coordinates",
-                        ));
+                    if matches!(self.algorithm, Algorithm::LttbLog) && (axis <= 0.0 || x.last().is_some_and(|previous| *previous > axis)) {
+                        return Err(invalid("logarithmic LTTB requires positive ordered coordinates"));
                     }
                     x.push(axis);
                     y.push(value);
@@ -168,10 +130,7 @@ impl DownsampleExecution for Downsample {
                 selected
             }
         };
-        take(
-            input,
-            indices.into_iter().map(|index| index as u64).collect(),
-        )
+        take(input, indices.into_iter().map(|index| index as u64).collect())
     }
 }
 

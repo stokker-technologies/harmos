@@ -74,11 +74,7 @@ enum Failure {
 /* === Implementations === */
 impl<C> StorageManager<C> {
     /// Open a live subscription for one entry kind after `after`.
-    pub async fn follow<T: Entry>(
-        &self,
-        after: Option<&StorageCursor>,
-        selection: T::Selection,
-    ) -> Result<Follower<T>> {
+    pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {
         if let Some(after) = after {
             self.inner.primary.history().check(&after.history)?;
         }
@@ -93,30 +89,13 @@ impl<C> StorageManager<C> {
             let saved = state.status.saved.clone();
             let accepted = state.status.accepted.clone();
             if requested > accepted.sequence {
-                return Err(Error::InvalidInput {
-                    field: "storage follow",
-                    reason: "start exceeds accepted boundary",
-                });
+                return Err(Error::InvalidInput { field: "storage follow", reason: "start exceeds accepted boundary" });
             }
-            state.followers.insert(
-                id,
-                Following {
-                    after: saved.sequence.max(after),
-                    failure: None,
-                },
-            );
+            state.followers.insert(id, Following { after: saved.sequence.max(after), failure: None });
             (saved, accepted)
         };
-        let mut follower = Follower {
-            inner: Arc::clone(&self.inner),
-            id,
-            held: Held::default(),
-            selection,
-            history: None,
-            after,
-            saved,
-            accepted,
-        };
+        let mut follower =
+            Follower { inner: Arc::clone(&self.inner), id, held: Held::default(), selection, history: None, after, saved, accepted };
         if after < follower.saved.sequence {
             follower.history = Some(self.snapshot(&follower.saved).await?);
         }
@@ -127,31 +106,16 @@ impl<C> StorageManager<C> {
 impl<C> StorageManager<C> {
     /// One page of durable entries after storage position `after`, read at the
     /// saved frontier; its entries stay charged until the page drops.
-    pub async fn page<T: Entry>(
-        &self,
-        selection: &T::Selection,
-        after: u64,
-        limits: ReadLimits,
-    ) -> Result<FollowPage<T>> {
+    pub async fn page<T: Entry>(&self, selection: &T::Selection, after: u64, limits: ReadLimits) -> Result<FollowPage<T>> {
         let held = Held::default();
         let rows = limits.rows.min(SCAN_ROWS);
         let bytes = limits.bytes.min(self.inner.settings.scan_bytes());
-        let charge = rows
-            .get()
-            .saturating_mul(ENTRY_OVERHEAD)
-            .saturating_add(bytes.get());
-        let mut reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None)
-            .await
-            .map_err(Refusal::into_error)?;
+        let charge = rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get());
+        let mut reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?;
         let snapshot = self.snapshot(&self.cursor_saved()).await?;
-        let (entries, encoded) = snapshot
-            .scan::<T>(selection, ScanPage { after, rows, bytes })
-            .await?;
+        let (entries, encoded) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }).await?;
         reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
-        Ok(FollowPage {
-            entries,
-            _charge: reservation,
-        })
+        Ok(FollowPage { entries, _charge: reservation })
     }
 }
 
@@ -182,20 +146,9 @@ impl<T: Entry> Follower<T> {
             return Ok(None);
         };
         let bytes = self.inner.settings.scan_bytes();
-        let mut reservation = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &self.held,
-            page_charge(bytes),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?;
-        let page = ScanPage {
-            after: self.after,
-            rows: SCAN_ROWS,
-            bytes,
-        };
+        let mut reservation =
+            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?;
+        let page = ScanPage { after: self.after, rows: SCAN_ROWS, bytes };
         let (entries, encoded) = snapshot.scan::<T>(&self.selection, page).await?;
         let Some(last) = entries.last() else {
             self.history = None;
@@ -204,10 +157,7 @@ impl<T: Entry> Follower<T> {
         };
         self.after = last.position().sequence;
         reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
-        Ok(Some(FollowPage {
-            entries,
-            _charge: reservation,
-        }))
+        Ok(Some(FollowPage { entries, _charge: reservation }))
     }
 
     // Accepted Entries From The Queue; Waits Without Allocating While None Match.
@@ -225,15 +175,8 @@ impl<T: Entry> Follower<T> {
 
         // Charge The Page Before Copying Entries Out Of The Queue.
         let bytes = self.inner.settings.scan_bytes();
-        let mut reservation = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &self.held,
-            page_charge(bytes),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?;
+        let mut reservation =
+            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?;
         let (entries, encoded) = {
             let mut state = self.inner.state.lock().unwrap();
             copy::<T>(&mut state, self.id, &self.selection, bytes)?
@@ -243,10 +186,7 @@ impl<T: Entry> Follower<T> {
         };
         self.after = last.position().sequence;
         reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
-        Ok(Some(FollowPage {
-            entries,
-            _charge: reservation,
-        }))
+        Ok(Some(FollowPage { entries, _charge: reservation }))
     }
 }
 
@@ -274,13 +214,7 @@ impl Following {
 
     fn check(&self) -> Result<()> {
         match self.failure {
-            Some(Failure::Gap {
-                requested,
-                available,
-            }) => Err(Error::Gap {
-                requested,
-                available,
-            }),
+            Some(Failure::Gap { requested, available }) => Err(Error::Gap { requested, available }),
             Some(Failure::Closed) => Err(Error::Closing { domain: "storage" }),
             None => Ok(()),
         }
@@ -297,13 +231,8 @@ impl State {
     }
 
     pub(super) fn retire_data(&mut self) {
-        let through = self
-            .followers
-            .values()
-            .filter(|following| following.retains())
-            .map(|following| following.after)
-            .min()
-            .unwrap_or(u64::MAX);
+        let through =
+            self.followers.values().filter(|following| following.retains()).map(|following| following.after).min().unwrap_or(u64::MAX);
         self.queue.retire_data(self.data_flushed, through);
     }
 
@@ -312,9 +241,7 @@ impl State {
         let Some(through) = self
             .queue
             .iter()
-            .filter(|entry| {
-                entry.operation.domain() == Domain::Data && entry.index <= self.data_flushed
-            })
+            .filter(|entry| entry.operation.domain() == Domain::Data && entry.index <= self.data_flushed)
             .map(|entry| entry.operation.sequence())
             .max()
         else {
@@ -323,10 +250,8 @@ impl State {
         let mut changed = false;
         for following in self.followers.values_mut() {
             if following.retains() && following.after < through {
-                following.failure = Some(Failure::Gap {
-                    requested: following.after.saturating_add(1),
-                    available: through.saturating_add(1),
-                });
+                following.failure =
+                    Some(Failure::Gap { requested: following.after.saturating_add(1), available: through.saturating_add(1) });
                 changed = true;
             }
         }
@@ -343,36 +268,24 @@ impl State {
 /* === Private Functions === */
 
 fn page_charge(bytes: NonZeroUsize) -> usize {
-    SCAN_ROWS
-        .get()
-        .saturating_mul(ENTRY_OVERHEAD)
-        .saturating_add(bytes.get())
+    SCAN_ROWS.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get())
 }
 
 // Whether A Matching Queued Entry Follows The Subscription Cursor. Queue
 // Entries Without A Match Advance The Cursor So They Can Be Retired.
 fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Result<bool> {
     super::capacity::admitting(state, Pool::Read)?;
-    let following = state.followers.get(&id).ok_or(Error::Closing {
-        domain: "storage follow",
-    })?;
+    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
     following.check()?;
     let mut cursor = following.after;
     let mut found = false;
-    for pending in state
-        .queue
-        .iter()
-        .filter(|entry| entry.operation.domain() == Domain::Data)
-    {
+    for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
         if pending.operation.sequence() <= cursor {
             continue;
         }
         let entries = T::pending(Queued::new(&pending.operation));
         let start = entries.partition_point(|entry| entry.position().sequence <= cursor);
-        if entries[start..]
-            .iter()
-            .any(|entry| entry.matches(selection))
-        {
+        if entries[start..].iter().any(|entry| entry.matches(selection)) {
             found = true;
             break;
         }
@@ -388,24 +301,13 @@ fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Resul
 }
 
 // Copy Matching Queued Entries After The Cursor Within The Page Bounds.
-fn copy<T: Entry>(
-    state: &mut State,
-    id: u64,
-    selection: &T::Selection,
-    bytes: NonZeroUsize,
-) -> Result<(Vec<T>, usize)> {
-    let following = state.followers.get(&id).ok_or(Error::Closing {
-        domain: "storage follow",
-    })?;
+fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<(Vec<T>, usize)> {
+    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
     following.check()?;
     let mut cursor = following.after;
     let mut entries = Vec::new();
     let mut encoded = 0usize;
-    'queue: for pending in state
-        .queue
-        .iter()
-        .filter(|entry| entry.operation.domain() == Domain::Data)
-    {
+    'queue: for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
         if pending.operation.sequence() <= cursor {
             continue;
         }

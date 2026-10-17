@@ -34,10 +34,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos_domain::catalog::Projection;
-use harmos_storage::query::{
-    FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection,
-    StreamSelection,
-};
+use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use harmos_storage::state::*;
 use harmos_storage::*;
 use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
@@ -47,10 +44,7 @@ use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
-type AcceptedRead = (
-    tokio::sync::oneshot::Sender<()>,
-    tokio::sync::oneshot::Receiver<()>,
-);
+type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Receiver<()>);
 
 /* === Structs === */
 #[derive(Default)]
@@ -230,11 +224,7 @@ impl Control {
         if self.permanent.load(Ordering::SeqCst) {
             return Err(failure(BackendFailure::Permanent));
         }
-        if self
-            .failures
-            .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-            .is_ok()
-        {
+        if self.failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
             return Err(failure(BackendFailure::Transient));
         }
         Ok(())
@@ -294,10 +284,7 @@ impl<C: ObjectCatalog> Data<C> {
             saved: AtomicUsize::new(0),
         }
     }
-    #[allow(
-        dead_code,
-        reason = "Shared fixture: only journal-backed story binaries use this constructor"
-    )]
+    #[allow(dead_code, reason = "Shared fixture: only journal-backed story binaries use this constructor")]
     pub fn journaled(root: &std::path::Path, history: StoreHistory) -> Result<Self> {
         let mut data = Self::with_catalog(history);
         data.journal = Some(journal::Journal::new(root)?);
@@ -306,30 +293,20 @@ impl<C: ObjectCatalog> Data<C> {
     }
 
     fn at(&self, sequence: u64) -> StorageCursor {
-        StorageCursor {
-            history: self.history.clone(),
-            sequence,
-        }
+        StorageCursor { history: self.history.clone(), sequence }
     }
 }
 
 impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn release_object_history<'a>(
-        &'a self,
-        schema: &'a SchemaKey,
-        item: &'a ObjectKey,
-        through: &'a StorageCursor,
+        &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.history.check(&through.history)?;
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
                 return Err(failure(BackendFailure::Conflict));
             }
-            let release = Release {
-                schema: schema.clone(),
-                item: item.clone(),
-                through: through.clone(),
-            };
+            let release = Release { schema: schema.clone(), item: item.clone(), through: through.clone() };
             if let Some(journal) = &self.journal {
                 journal.release(&release)?;
             }
@@ -364,50 +341,22 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn write<'a>(&'a self, batch: StorageBatch<'a>) -> StorageFuture<'a, StorageCursor> {
         Box::pin(async move {
             self.history.check(&batch.first().history)?;
-            self.control
-                .write_bytes
-                .lock()
-                .unwrap()
-                .push(batch.encoded_bytes());
-            self.control
-                .write(batch.entries().map(|entry| entry.position().sequence))
-                .await?;
+            self.control.write_bytes.lock().unwrap().push(batch.encoded_bytes());
+            self.control.write(batch.entries().map(|entry| entry.position().sequence)).await?;
             // Validate The Entire Atomic Batch Before Publishing Any Entry.
             for entry in batch.entries() {
                 let position = entry.position().sequence;
                 let conflict = match entry {
-                    StorageEntry::Schema(value) => self
-                        .schemas
-                        .lock()
-                        .unwrap()
-                        .get(&position)
-                        .is_some_and(|prior| prior != value),
+                    StorageEntry::Schema(value) => self.schemas.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
                     StorageEntry::Object(value) => {
                         C::validate_value(&value.value, NonZeroUsize::MAX)?;
-                        self.objects
-                            .lock()
-                            .unwrap()
-                            .get(&position)
-                            .is_some_and(|prior| prior != value)
+                        self.objects.lock().unwrap().get(&position).is_some_and(|prior| prior != value)
                     }
-                    StorageEntry::Record(value) => self
-                        .records
-                        .lock()
-                        .unwrap()
-                        .get(&position)
-                        .is_some_and(|prior| prior != value),
-                    StorageEntry::Row(value) => self
-                        .rows
-                        .lock()
-                        .unwrap()
-                        .get(&position)
-                        .is_some_and(|prior| prior != value),
-                    StorageEntry::File(value) => !self
-                        .blobs
-                        .lock()
-                        .unwrap()
-                        .get(value.metadata.id.as_str())
-                        .is_some_and(|(prior, _)| prior == value),
+                    StorageEntry::Record(value) => self.records.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
+                    StorageEntry::Row(value) => self.rows.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
+                    StorageEntry::File(value) => {
+                        !self.blobs.lock().unwrap().get(value.metadata.id.as_str()).is_some_and(|(prior, _)| prior == value)
+                    }
                 };
                 if conflict {
                     return Err(failure(BackendFailure::Conflict));
@@ -421,10 +370,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 match entry {
                     StorageEntry::Schema(schema) => {
                         let mut stored = self.schemas.lock().unwrap();
-                        if stored
-                            .get(&position)
-                            .is_some_and(|previous| previous != schema)
-                        {
+                        if stored.get(&position).is_some_and(|previous| previous != schema) {
                             return Err(failure(BackendFailure::Conflict));
                         }
                         stored.insert(position, schema.clone());
@@ -432,59 +378,39 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     StorageEntry::Object(object) => {
                         C::validate_value(&object.value, NonZeroUsize::MAX)?;
                         let mut stored = self.objects.lock().unwrap();
-                        if stored
-                            .get(&position)
-                            .is_some_and(|previous| previous != object)
-                        {
+                        if stored.get(&position).is_some_and(|previous| previous != object) {
                             return Err(failure(BackendFailure::Conflict));
                         }
                         let definition = C::definitions()
-                            .try_for_each(|definition| {
-                                if definition.schema().unwrap() == object.value.schema {
-                                    Err(*definition)
-                                } else {
-                                    Ok(())
-                                }
-                            })
+                            .try_for_each(
+                                |definition| {
+                                    if definition.schema().unwrap() == object.value.schema { Err(*definition) } else { Ok(()) }
+                                },
+                            )
                             .err()
                             .unwrap();
                         self.object_schemas.lock().unwrap().insert(
-                            (
-                                object.value.schema.id.to_string(),
-                                object.value.schema.version.get(),
-                            ),
+                            (object.value.schema.id.to_string(), object.value.schema.version.get()),
                             (definition.declaration().fields)().to_vec(),
                         );
                         stored.insert(position, object.clone());
                     }
                     StorageEntry::Record(record) => {
                         let mut stored = self.records.lock().unwrap();
-                        if stored
-                            .get(&position)
-                            .is_some_and(|previous| previous != record)
-                        {
+                        if stored.get(&position).is_some_and(|previous| previous != record) {
                             return Err(failure(BackendFailure::Conflict));
                         }
                         stored.insert(position, record.clone());
                     }
                     StorageEntry::Row(row) => {
                         let mut stored = self.rows.lock().unwrap();
-                        if stored
-                            .get(&position)
-                            .is_some_and(|previous| previous != row)
-                        {
+                        if stored.get(&position).is_some_and(|previous| previous != row) {
                             return Err(failure(BackendFailure::Conflict));
                         }
                         stored.insert(position, row.clone());
                     }
                     StorageEntry::File(file) => {
-                        if !self
-                            .blobs
-                            .lock()
-                            .unwrap()
-                            .get(file.metadata.id.as_str())
-                            .is_some_and(|(finished, _)| finished == file)
-                        {
+                        if !self.blobs.lock().unwrap().get(file.metadata.id.as_str()).is_some_and(|(finished, _)| finished == file) {
                             return Err(failure(BackendFailure::Corrupt));
                         }
                         self.files.lock().unwrap().insert(position, file.clone());
@@ -511,30 +437,17 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 .max(self.saved.load(Ordering::SeqCst) as u64)
                 .max(self.control.flush_advance.load(Ordering::SeqCst) as u64);
             self.saved.store(sequence as usize, Ordering::SeqCst);
-            if self
-                .control
-                .flush_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
-            {
+            if self.control.flush_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));
             }
             Ok(self.at(sequence))
         })
     }
-    fn prune_objects<'a>(
-        &'a self,
-        through: &'a StorageCursor,
-        max_entries: NonZeroUsize,
-    ) -> StorageFuture<'a, bool> {
+    fn prune_objects<'a>(&'a self, through: &'a StorageCursor, max_entries: NonZeroUsize) -> StorageFuture<'a, bool> {
         Box::pin(async move {
             self.history.check(&through.history)?;
             assert!(through.sequence <= self.saved.load(Ordering::SeqCst) as u64);
-            self.control
-                .prune_calls
-                .lock()
-                .unwrap()
-                .push((through.sequence, max_entries.get()));
+            self.control.prune_calls.lock().unwrap().push((through.sequence, max_entries.get()));
             if self.control.block_prune.load(Ordering::SeqCst) {
                 self.control.prune_entered.notify_one();
                 self.control.prune_release.notified().await;
@@ -548,13 +461,11 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
                     let retention = definitions
-                        .try_for_each(|definition| {
-                            if definition.schema().unwrap().id == object.value.schema.id {
-                                Err(*definition)
-                            } else {
-                                Ok(())
-                            }
-                        })
+                        .try_for_each(
+                            |definition| {
+                                if definition.schema().unwrap().id == object.value.schema.id { Err(*definition) } else { Ok(()) }
+                            },
+                        )
                         .err()
                         .unwrap()
                         .retention();
@@ -569,14 +480,8 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     }
                     let keep = retention.versions().get();
                     let newer = objects
-                        .range((
-                            std::ops::Bound::Excluded(position),
-                            std::ops::Bound::Included(through.sequence),
-                        ))
-                        .filter(|(_, other)| {
-                            other.value.schema.id == object.value.schema.id
-                                && other.value.item == object.value.item
-                        })
+                        .range((std::ops::Bound::Excluded(position), std::ops::Bound::Included(through.sequence)))
+                        .filter(|(_, other)| other.value.schema.id == object.value.schema.id && other.value.item == object.value.item)
                         .take(keep)
                         .count();
                     if newer == keep {
@@ -595,21 +500,10 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 }
                 // Images Before This Cut May Have Needed A Reclaimed Revision.
                 if !remove.is_empty() {
-                    self.control
-                        .lost_objects_through
-                        .fetch_max(through.sequence as usize, Ordering::SeqCst);
+                    self.control.lost_objects_through.fetch_max(through.sequence as usize, Ordering::SeqCst);
                 }
-                self.control
-                    .prune_removed
-                    .lock()
-                    .unwrap()
-                    .push(remove.len());
-                if self
-                    .control
-                    .prune_failures
-                    .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                    .is_ok()
-                {
+                self.control.prune_removed.lock().unwrap().push(remove.len());
+                if self.control.prune_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
                     return Err(failure(BackendFailure::Transient));
                 }
                 done
@@ -632,50 +526,31 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         self.fixture_release_snapshot(snapshot)
     }
     fn read_schemas<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a SchemaSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         self.fixture_read_schemas(snapshot, selection, page)
     }
     fn read_objects<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a ObjectSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         self.fixture_read_objects(snapshot, selection, page)
     }
     fn read_records<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a RecordSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         self.fixture_read_records(snapshot, selection, page)
     }
     fn read_stream<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a StreamSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         self.fixture_read_stream(snapshot, selection, page)
     }
     fn read_files<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a FileSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         self.fixture_read_files(snapshot, selection, page)
     }
-    fn read_object<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        query: &'a ObjectPoint,
-    ) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
         self.fixture_read_object(snapshot, query)
     }
     fn supports_file_sessions(&self) -> bool {
@@ -690,18 +565,10 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         self.fixture_recover_mutations(limits)
     }
-    fn create_production<'a>(
-        &'a self,
-        metadata: &'a FileMetadata,
-    ) -> StorageFuture<'a, StagedFile> {
+    fn create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         self.fixture_create_production(metadata)
     }
-    fn fence_production<'a>(
-        &'a self,
-        file: &'a StagedFile,
-        expected: u64,
-        next: u64,
-    ) -> StorageFuture<'a, ()> {
+    fn fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
         self.fixture_fence_production(file, expected, next)
     }
     fn save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
@@ -713,12 +580,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         self.fixture_file_progress(file)
     }
-    fn read_production<'a>(
-        &'a self,
-        file: &'a StagedFile,
-        offset: u64,
-        max_bytes: NonZeroUsize,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_production(file, offset, max_bytes)
     }
 
@@ -735,20 +597,11 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         self.fixture_create_file(metadata)
     }
-    fn write_file<'a>(
-        &'a self,
-        staging: &'a StagedFile,
-        offset: u64,
-        bytes: &'a [u8],
-    ) -> StorageFuture<'a, ()> {
+    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: &'a [u8]) -> StorageFuture<'a, ()> {
         self.fixture_write_file(staging, offset, bytes)
     }
     fn finish_file<'a>(
-        &'a self,
-        staging: &'a StagedFile,
-        position: &'a StorageCursor,
-        length: u64,
-        sha256: [u8; 32],
+        &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
         self.fixture_finish_file(staging, position, length, sha256)
     }
@@ -756,11 +609,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         self.fixture_abort_file(staging)
     }
     fn read_file<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        file: &'a FileReference,
-        offset: u64,
-        max_bytes: NonZeroUsize,
+        &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_file(snapshot, file, offset, max_bytes)
     }
@@ -768,14 +617,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
 
 impl<C: ObjectCatalog> Data<C> {
     fn image(&self, snapshot: &BackendSnapshot) -> Result<Snapshot> {
-        self.snapshots
-            .lock()
-            .unwrap()
-            .get(&snapshot.token)
-            .cloned()
-            .ok_or(Error::Closing {
-                domain: "test snapshot",
-            })
+        self.snapshots.lock().unwrap().get(&snapshot.token).cloned().ok_or(Error::Closing { domain: "test snapshot" })
     }
 }
 
@@ -791,10 +633,7 @@ impl Recovery {
         }
     }
     fn at(&self, sequence: u64) -> RecoveryPosition {
-        RecoveryPosition {
-            history: self.history.clone(),
-            sequence,
-        }
+        RecoveryPosition { history: self.history.clone(), sequence }
     }
 }
 
@@ -817,9 +656,7 @@ impl StateBackend for Recovery {
     }
     fn write_entries<'a>(&'a self, entries: &'a [RecoveryEntry]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
-            self.control
-                .write(entries.iter().map(|e| e.position.sequence))
-                .await?;
+            self.control.write(entries.iter().map(|e| e.position.sequence)).await?;
             let mut stored = self.entries.lock().unwrap();
             for entry in entries {
                 stored.insert(entry.position.sequence, entry.clone());
@@ -845,10 +682,7 @@ impl StateBackend for Recovery {
         })
     }
     fn read_entries<'a>(
-        &'a self,
-        after: &'a RecoveryPosition,
-        through: &'a RecoveryPosition,
-        limits: ReadLimits,
+        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             if self.control.block_read.load(Ordering::SeqCst) {
@@ -866,33 +700,19 @@ impl StateBackend for Recovery {
                 bytes += size;
                 entries.push(entry.clone());
             }
-            let last = entries
-                .last()
-                .map_or(after.sequence, |e| e.position.sequence);
-            Ok(RecoveryPage {
-                entries,
-                next: (last < through.sequence).then(|| self.at(last)),
-            })
+            let last = entries.last().map_or(after.sequence, |e| e.position.sequence);
+            Ok(RecoveryPage { entries, next: (last < through.sequence).then(|| self.at(last)) })
         })
     }
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
         Box::pin(async move {
             self.control.flush(through.sequence).await?;
-            self.saved
-                .store(through.sequence as usize, Ordering::SeqCst);
+            self.saved.store(through.sequence as usize, Ordering::SeqCst);
             let mut pending = self.pending_snapshot.lock().unwrap();
-            if pending
-                .as_ref()
-                .is_some_and(|snapshot| snapshot.through.sequence <= through.sequence)
-            {
+            if pending.as_ref().is_some_and(|snapshot| snapshot.through.sequence <= through.sequence) {
                 *self.snapshot.lock().unwrap() = pending.take();
             }
-            if self
-                .control
-                .flush_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
-            {
+            if self.control.flush_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));
             }
             Ok(through.clone())
@@ -905,39 +725,21 @@ impl StateBackend for Recovery {
 
 /* === Public Functions === */
 pub fn history() -> StoreHistory {
-    StoreHistory {
-        store: Identifier::new("test-store").unwrap(),
-        epoch: Identifier::new("test-epoch").unwrap(),
-    }
+    StoreHistory { store: Identifier::new("test-store").unwrap(), epoch: Identifier::new("test-epoch").unwrap() }
 }
 
 /* === Private Functions === */
 fn failure(kind: BackendFailure) -> Error {
-    Error::backend(
-        "test backend",
-        kind,
-        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected failure"),
-    )
+    Error::backend("test backend", kind, std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected failure"))
 }
 
-fn record_matches(
-    row: &StoredRecord,
-    schema: &SchemaKey,
-    scope: &Option<Identifier>,
-    item: &Option<Identifier>,
-) -> bool {
+fn record_matches(row: &StoredRecord, schema: &SchemaKey, scope: &Option<Identifier>, item: &Option<Identifier>) -> bool {
     &row.schema == schema
         && item.as_ref().is_none_or(|id| id == &row.item)
-        && scope
-            .as_ref()
-            .is_none_or(|scope| Some(scope) == row.scope.as_ref())
+        && scope.as_ref().is_none_or(|scope| Some(scope) == row.scope.as_ref())
 }
 
-fn window(
-    start: Option<std::time::SystemTime>,
-    end: Option<std::time::SystemTime>,
-    time: Option<std::time::SystemTime>,
-) -> bool {
+fn window(start: Option<std::time::SystemTime>, end: Option<std::time::SystemTime>, time: Option<std::time::SystemTime>) -> bool {
     match (start, end) {
         (Some(start), Some(end)) => time.is_some_and(|time| time >= start && time < end),
         _ => true,
@@ -946,10 +748,7 @@ fn window(
 
 // Ascending Entries In (page.after, snapshot.at]; At Least One While Any Remain.
 fn scan<'a, T: Clone + serde::Serialize + 'a>(
-    entries: impl Iterator<Item = &'a T>,
-    snapshot: &BackendSnapshot,
-    page: ScanPage,
-    position: impl Fn(&T) -> &StorageCursor,
+    entries: impl Iterator<Item = &'a T>, snapshot: &BackendSnapshot, page: ScanPage, position: impl Fn(&T) -> &StorageCursor,
     matches: impl Fn(&T) -> bool,
 ) -> Result<Vec<T>> {
     let mut output = Vec::new();
@@ -960,9 +759,7 @@ fn scan<'a, T: Clone + serde::Serialize + 'a>(
             continue;
         }
         let size = serde_json::to_vec(entry).unwrap().len();
-        if output.len() == page.rows.get()
-            || (!output.is_empty() && bytes + size > page.bytes.get())
-        {
+        if output.len() == page.rows.get() || (!output.is_empty() && bytes + size > page.bytes.get()) {
             break;
         }
         bytes += size;
@@ -972,10 +769,7 @@ fn scan<'a, T: Clone + serde::Serialize + 'a>(
 }
 
 fn upsert_release(releases: &mut Vec<Release>, release: Release) {
-    if let Some(prior) = releases
-        .iter_mut()
-        .find(|prior| prior.schema == release.schema && prior.item == release.item)
-    {
+    if let Some(prior) = releases.iter_mut().find(|prior| prior.schema == release.schema && prior.item == release.item) {
         if prior.through.sequence < release.through.sequence {
             *prior = release;
         }

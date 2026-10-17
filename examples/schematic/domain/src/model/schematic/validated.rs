@@ -51,8 +51,7 @@ impl harmos_domain::Identified for ValidatedSchematic {
 
 impl harmos_domain::model::storage::catalog::StoredObject for ValidatedSchematic {
     type Key = str;
-    const RETENTION: harmos_domain::model::storage::ObjectRetention =
-        harmos_domain::model::storage::ObjectRetention::Latest;
+    const RETENTION: harmos_domain::model::storage::ObjectRetention = harmos_domain::model::storage::ObjectRetention::Latest;
     fn key(&self) -> &str {
         &self.id
     }

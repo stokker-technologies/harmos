@@ -96,12 +96,7 @@ struct Provider<C>(std::marker::PhantomData<fn() -> C>);
 
 /* === Public Functions === */
 // Serve The Storage Operations Over One Storage Manager.
-pub fn register<C: 'static>(
-    operations: &OperationManager,
-    owner: &str,
-    lane: impl Lane,
-    storage: Arc<StorageManager<C>>,
-) -> Result<()> {
+pub fn register<C: 'static>(operations: &OperationManager, owner: &str, lane: impl Lane, storage: Arc<StorageManager<C>>) -> Result<()> {
     operations.register_wire_operations::<Provider<C>, _>(owner, lane, storage)
 }
 
@@ -110,10 +105,7 @@ fn output_timeout() -> crate::Error {
     crate::Error::backend(
         "storage output",
         crate::BackendFailure::Transient,
-        std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "consumer delivery deadline exceeded",
-        ),
+        std::io::Error::new(std::io::ErrorKind::TimedOut, "consumer delivery deadline exceeded"),
     )
 }
 
@@ -123,10 +115,7 @@ fn classify(error: &crate::Error) -> crate::operations::FailureKind {
         cause = source;
     }
     match cause {
-        crate::Error::Backend {
-            kind: crate::BackendFailure::Transient,
-            ..
-        } => crate::operations::FailureKind::Transient,
+        crate::Error::Backend { kind: crate::BackendFailure::Transient, .. } => crate::operations::FailureKind::Transient,
         _ => crate::operations::FailureKind::Permanent,
     }
 }

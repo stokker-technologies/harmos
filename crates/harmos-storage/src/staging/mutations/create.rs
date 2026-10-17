@@ -34,11 +34,7 @@ use super::*;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn create_file_once(
-        &self,
-        mutation: &MutationId,
-        metadata: &FileMetadata,
-    ) -> Result<FileProducer> {
+    pub async fn create_file_once(&self, mutation: &MutationId, metadata: &FileMetadata) -> Result<FileProducer> {
         let mut hash = Sha256::new();
         hash_part(&mut hash, b"storage.create_file:v1");
         hash_part(&mut hash, metadata.id.as_str().as_bytes());
@@ -64,59 +60,26 @@ impl<C> StorageManager<C> {
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
-            if state
-                .files
-                .values()
-                .any(|file| file.metadata.id == metadata.id)
-                || state.deleting(&metadata.id)
-            {
-                return Err(Error::AlreadyRegistered {
-                    domain: "storage file",
-                    name: metadata.id.to_string(),
-                });
+            if state.files.values().any(|file| file.metadata.id == metadata.id) || state.deleting(&metadata.id) {
+                return Err(Error::AlreadyRegistered { domain: "storage file", name: metadata.id.to_string() });
             }
             if state.files.len() >= crate::storage::config::MAX_FILES.get() {
-                return Err(Error::ResourceExhausted {
-                    resource: "file producers",
-                });
+                return Err(Error::ResourceExhausted { resource: "file producers" });
             }
             let outcome_bytes = std::mem::size_of::<MutationValue>()
                 .saturating_add(self.inner.primary.history().memory_size())
                 .saturating_add(metadata.id.memory_size());
-            let id = NEXT_FILE
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| size_error())?;
-            reserve(
-                state,
-                mutation,
-                fingerprint,
-                outcome_bytes,
-                base_bytes.checked_add(1).ok_or_else(size_error)?,
-                &self.inner.settings,
-            )?;
+            let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
+            reserve(state, mutation, fingerprint, outcome_bytes, base_bytes.checked_add(1).ok_or_else(size_error)?, &self.inner.settings)?;
             state.files.insert(
                 id,
                 FileState {
                     metadata: Arc::new(metadata.clone()),
-                    staging: StagedFile {
-                        history: self.inner.primary.history().clone(),
-                        id: metadata.id.clone(),
-                    },
-                    session: Some(Session::token(
-                        crate::storage::config::FILE_SESSION_TIMEOUT,
-                        self.inner.execution,
-                    )),
-                    mutation: Some(Mutation {
-                        id: mutation.clone(),
-                        kind: Kind::Create,
-                    }),
+                    staging: StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() },
+                    session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),
+                    mutation: Some(Mutation { id: mutation.clone(), kind: Kind::Create }),
                     extra: None,
-                    progress: Arc::new(Mutex::new(Progress {
-                        generation: 1,
-                        ..Progress::default()
-                    })),
+                    progress: Arc::new(Mutex::new(Progress { generation: 1, ..Progress::default() })),
                     hash: Sha256::new(),
                     length: 0,
                     ticket: 0,

@@ -44,39 +44,14 @@ async fn admission_durability_distinct() {
     let f = Fixture::new(config()).await;
     let key = schema();
     assert_eq!(
-        f.storage
-            .write_schema(
-                &key,
-                &harmos_runtime::schema::graph::Schema {
-                    root: 0,
-                    definitions: vec![vec![]]
-                }
-            )
-            .await
-            .unwrap()
-            .sequence,
+        f.storage.write_schema(&key, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap().sequence,
         1
     );
     let item = Identifier::new("sample").unwrap();
     let stream = Identifier::new("voltage").unwrap();
+    assert_eq!(f.storage.write_records(&[record(&key, &item, &[3])]).await.unwrap().sequence, 2);
     assert_eq!(
-        f.storage
-            .write_records(&[record(&key, &item, &[3])])
-            .await
-            .unwrap()
-            .sequence,
-        2
-    );
-    assert_eq!(
-        f.storage
-            .write_stream(&[StreamWrite {
-                stream: &stream,
-                sequence: 99,
-                record: record(&key, &item, &[4])
-            }])
-            .await
-            .unwrap()
-            .sequence,
+        f.storage.write_stream(&[StreamWrite { stream: &stream, sequence: 99, record: record(&key, &item, &[4]) }]).await.unwrap().sequence,
         3
     );
     let recovery = f.storage.write_recovery(&[b"one", b"two"]).await.unwrap();
@@ -112,14 +87,7 @@ async fn recovery_share_backpressure() {
     assert_eq!(f.storage.status().saved.sequence, 0);
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
-    assert_eq!(
-        f.storage
-            .write_recovery(&[b"state"])
-            .await
-            .unwrap()
-            .sequence,
-        1
-    );
+    assert_eq!(f.storage.write_recovery(&[b"state"]).await.unwrap().sequence, 1);
     f.finish().await;
 }
 
@@ -129,16 +97,8 @@ async fn close_retains_writes() {
     f.data.control.permanent.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
     let error = f.storage.close().await.unwrap_err();
-    let Error::Persistence { source } = error else {
-        panic!("expected preserved persistence cause")
-    };
-    assert!(matches!(
-        source.as_ref(),
-        Error::Backend {
-            kind: BackendFailure::Permanent,
-            ..
-        }
-    ));
+    let Error::Persistence { source } = error else { panic!("expected preserved persistence cause") };
+    assert!(matches!(source.as_ref(), Error::Backend { kind: BackendFailure::Permanent, .. }));
     assert!(f.storage.status().pending_bytes > 0);
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
@@ -153,15 +113,7 @@ async fn close_retains_writes() {
     f.data.control.permanent.store(false, Ordering::SeqCst);
     f.storage.close().await.unwrap();
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
-    assert!(
-        f.data
-            .control
-            .writes
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|at| *at == 1)
-    );
+    assert!(f.data.control.writes.lock().unwrap().iter().all(|at| *at == 1));
     assert_eq!(f.storage.status().saved.sequence, 1);
     f.runtime.stop().await.unwrap();
 }
@@ -202,22 +154,12 @@ async fn backend_close_failure() {
 
 #[tokio::test]
 async fn partial_open_remains() {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap();
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     recovery.control.fail_open.store(true, Ordering::SeqCst);
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: recovery.clone(),
-        },
-        config(),
-    )
-    .unwrap();
+    let storage: StorageManager =
+        StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config()).unwrap();
     assert!(storage.start(&runtime).await.is_err());
     assert!(data.control.open.load(Ordering::SeqCst));
     storage.close().await.unwrap();
@@ -251,10 +193,7 @@ async fn cancelled_close_retains() {
         tokio::pin!(close);
         tokio::select! { biased; _ = &mut close => panic!("flush is blocked"), _ = f.data.control.flush_entered.notified() => {} }
     }
-    assert!(matches!(
-        producer.await,
-        Err(harmos_storage::Error::Closing { domain: "storage" })
-    ));
+    assert!(matches!(producer.await, Err(harmos_storage::Error::Closing { domain: "storage" })));
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
     f.storage.close().await.unwrap();
@@ -267,38 +206,15 @@ async fn snapshots_require_flush() {
     let f = Fixture::new(config()).await;
     let through = f.storage.write_recovery(&[b"one", b"two"]).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
-    let snapshot = RecoverySnapshot {
-        required_data: f.storage.cursor_saved(),
-        through: through.clone(),
-        payload: vec![5],
-    };
+    let snapshot = RecoverySnapshot { required_data: f.storage.cursor_saved(), through: through.clone(), payload: vec![5] };
     f.storage.write_snapshot(&snapshot).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
-    assert_eq!(
-        f.recovery.control.flushes.lock().unwrap().as_slice(),
-        &[2, 2]
-    );
-    assert_eq!(
-        f.storage
-            .read_snapshot(NonZeroUsize::new(1024).unwrap())
-            .await
-            .unwrap(),
-        Some(snapshot)
-    );
-    let after = RecoveryPosition {
-        sequence: 0,
-        ..through.clone()
-    };
+    assert_eq!(f.recovery.control.flushes.lock().unwrap().as_slice(), &[2, 2]);
+    assert_eq!(f.storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap(), Some(snapshot));
+    let after = RecoveryPosition { sequence: 0, ..through.clone() };
     let page = f
         .storage
-        .read_recovery(
-            &after,
-            &through,
-            ReadLimits {
-                rows: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(1024).unwrap(),
-            },
-        )
+        .read_recovery(&after, &through, ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1024).unwrap() })
         .await
         .unwrap();
     assert_eq!(page.entries.len(), 1);
@@ -339,29 +255,18 @@ async fn close_seals_admission() {
     let f = Fixture::new(config()).await;
     f.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = f.storage.clone();
-    let reader = tokio::spawn(async move {
-        storage
-            .read_snapshot(NonZeroUsize::new(1024).unwrap())
-            .await
-    });
+    let reader = tokio::spawn(async move { storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await });
     f.recovery.control.read_entered.notified().await;
 
     let storage = f.storage.clone();
     let close = storage.close();
     tokio::pin!(close);
-    assert!(
-        crate::storage::pending(close.as_mut()).await,
-        "read holds the lifecycle lock"
-    );
+    assert!(crate::storage::pending(close.as_mut()).await, "read holds the lifecycle lock");
     assert!(f.storage.status().closing);
-    assert!(matches!(
-        f.storage.write_recovery(&[b"late"]).await,
-        Err(harmos_storage::Error::Closing { domain: "storage" })
-    ));
+    assert!(matches!(f.storage.write_recovery(&[b"late"]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
 
     f.recovery.control.read_release.notify_one();
     assert!(reader.await.unwrap().unwrap().is_none());
     close.await.unwrap();
     f.finish().await;
 }
-

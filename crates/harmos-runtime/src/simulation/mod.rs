@@ -26,12 +26,10 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 // Local Imports
 use crate::{
-    Application, Builder, DefinitionId, Error, Identified, Runtime, evidence::Vault,
-    runtime::Catalog, runtime::Incompatible, runtime::Registration, services::Fault,
-    services::Resident, services::Service, state::At, state::Entry, state::Envelope, state::Focus,
-    state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded,
-    state::Transaction, storage::Cursor, storage::JournalConsumer, storage::Payload,
-    storage::Recovery, storage::Source, streams::Stream,
+    Application, Builder, DefinitionId, Error, Identified, Runtime, evidence::Vault, runtime::Catalog, runtime::Incompatible,
+    runtime::Registration, services::Fault, services::Resident, services::Service, state::At, state::Entry, state::Envelope, state::Focus,
+    state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded, state::Transaction, storage::Cursor,
+    storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Stream,
 };
 
 /* === Constants === */
@@ -39,15 +37,9 @@ use crate::{
 /* === Macros === */
 
 /* === Type Aliases === */
-type Inverting<A> = fn(
-    &<A as Application>::Transaction,
-    &<A as Application>::State,
-) -> Option<<A as Application>::Transaction>;
+type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
 type BuildStep<A> = Arc<dyn Fn(Builder<A>) -> Builder<A> + Send + Sync>;
-type UndoResult<A> = Result<
-    Receipt,
-    Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>,
->;
+type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
 
 /* === Structs === */
 pub struct SimulatedRuntime<A>
@@ -152,63 +144,40 @@ impl<S: fmt::Debug> fmt::Display for Divergence<S> {
 
 impl ServiceProbe {
     pub fn restarts(&self) -> usize {
-        self.control
-            .attempts
-            .load(Ordering::Acquire)
-            .saturating_sub(1)
+        self.control.attempts.load(Ordering::Acquire).saturating_sub(1)
     }
 
     pub fn exits(&self) -> Vec<String> {
-        self.control
-            .exits
-            .lock()
-            .expect("simulation service trace lock is healthy")
-            .clone()
+        self.control.exits.lock().expect("simulation service trace lock is healthy").clone()
     }
 }
 
 impl<A: Application> Configuration<A> {
     pub(crate) fn new() -> Self {
-        Self {
-            assembly: Assembly::new(),
-            services: BTreeMap::new(),
-            inverses: None,
-            entropy_seed: 0,
-        }
+        Self { assembly: Assembly::new(), services: BTreeMap::new(), inverses: None, entropy_seed: 0 }
     }
 
     pub(crate) fn register<C>(&mut self, catalog: C)
     where
         C: Registration<A> + 'static,
     {
-        if let Catalog::Transactions {
-            inverses: Some(inverses),
-            ..
-        } = catalog.clone().register()
-        {
+        if let Catalog::Transactions { inverses: Some(inverses), .. } = catalog.clone().register() {
             self.inverses = Some(inverses);
         }
         let catalog = std::sync::Mutex::new(catalog);
-        self.assembly
-            .push(move |builder| builder.register(catalog.lock().unwrap().clone()));
+        self.assembly.push(move |builder| builder.register(catalog.lock().unwrap().clone()));
     }
 
-    pub(crate) fn operation_middleware(
-        &mut self,
-        middleware: Arc<dyn crate::operations::middleware::Middleware>,
-    ) {
-        self.assembly
-            .push(move |builder| builder.operation_middleware(middleware.clone()));
+    pub(crate) fn operation_middleware(&mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) {
+        self.assembly.push(move |builder| builder.operation_middleware(middleware.clone()));
     }
 
     pub(crate) fn operation_settings(&mut self, settings: crate::operations::Settings) {
-        self.assembly
-            .push(move |builder| builder.operation_settings(settings));
+        self.assembly.push(move |builder| builder.operation_settings(settings));
     }
 
     pub(crate) fn operations(&mut self, binding: crate::operations::CatalogBinding) {
-        self.assembly
-            .push(move |builder| builder.bind_operations(binding.clone()));
+        self.assembly.push(move |builder| builder.bind_operations(binding.clone()));
     }
 
     pub(crate) fn initialize<F, Fut, E>(&mut self, timeout: std::time::Duration, initialize: F)
@@ -217,18 +186,12 @@ impl<A: Application> Configuration<A> {
         Fut: Future<Output = std::result::Result<(), E>> + Send + 'static,
         E: std::error::Error + Send + Sync + 'static,
     {
-        self.assembly
-            .push(move |builder| builder.initialize(timeout, initialize.clone()));
+        self.assembly.push(move |builder| builder.initialize(timeout, initialize.clone()));
     }
 
-    pub(crate) fn evidence(
-        &mut self,
-        vault: impl Vault + Clone,
-        kinds: impl IntoIterator<Item = (DefinitionId, u32)>,
-    ) {
+    pub(crate) fn evidence(&mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) {
         let kinds: Vec<_> = kinds.into_iter().collect();
-        self.assembly
-            .push(move |builder| builder.evidence(vault.clone(), kinds.clone()));
+        self.assembly.push(move |builder| builder.evidence(vault.clone(), kinds.clone()));
     }
 
     pub(crate) fn service<R>(&mut self, name: impl Into<String>, resident: R)
@@ -238,12 +201,8 @@ impl<A: Application> Configuration<A> {
         self.service_with(name, crate::services::POLICY, resident);
     }
 
-    pub(crate) fn service_with<R>(
-        &mut self,
-        name: impl Into<String>,
-        policy: crate::operations::OperationPolicy,
-        resident: R,
-    ) where
+    pub(crate) fn service_with<R>(&mut self, name: impl Into<String>, policy: crate::operations::OperationPolicy, resident: R)
+    where
         R: Resident<A> + Clone,
     {
         let name = name.into();
@@ -255,10 +214,7 @@ impl<A: Application> Configuration<A> {
             builder.service_with(
                 name.clone(),
                 policy,
-                ScriptedResident {
-                    control: Arc::clone(&control),
-                    resident: resident.lock().unwrap().clone(),
-                },
+                ScriptedResident { control: Arc::clone(&control), resident: resident.lock().unwrap().clone() },
             )
         });
     }
@@ -267,11 +223,7 @@ impl<A: Application> Configuration<A> {
         self.entropy_seed = seed;
     }
 
-    pub(crate) fn simulate(
-        self,
-        origin: Origin<A::State>,
-        resources: Arc<A::Resources>,
-    ) -> Result<SimulatedRuntime<A>, Incompatible>
+    pub(crate) fn simulate(self, origin: Origin<A::State>, resources: Arc<A::Resources>) -> Result<SimulatedRuntime<A>, Incompatible>
     where
         A::State: Clone + fmt::Debug + PartialEq,
         A::Transaction: Clone + fmt::Debug,
@@ -301,27 +253,16 @@ where
     A::Transaction: Clone + fmt::Debug,
     A::Record: Clone + fmt::Debug,
 {
-    pub fn commit<T>(
-        &mut self,
-        principal: PrincipalId,
-        transaction: T,
-    ) -> Result<Receipt, Error<T::Error>>
+    pub fn commit<T>(&mut self, principal: PrincipalId, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
         T: Identified + Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<<A::Transaction as Transaction<A::State>>::Error>,
     {
         let identity = T::definition();
-        let journal = self
-            .runtime
-            .as_ref()
-            .ok_or(Error::Unavailable)?
-            .state
-            .as_principal(principal);
+        let journal = self.runtime.as_ref().ok_or(Error::Unavailable)?.state.as_principal(principal);
         let receipt = self.executor.block_on(journal.commit(transaction))?;
-        self.memory
-            .identify(receipt.position, identity, self.executor.elapsed_ms());
-        self.executor
-            .block_on(journal.wait_until_stored(receipt.frontier));
+        self.memory.identify(receipt.position, identity, self.executor.elapsed_ms());
+        self.executor.block_on(journal.wait_until_stored(receipt.frontier));
         self.executor.drive();
         Ok(receipt)
     }
@@ -331,19 +272,10 @@ where
         R: Identified + Into<A::Record>,
     {
         let identity = R::definition();
-        let journal = self
-            .runtime
-            .as_ref()
-            .ok_or(Error::Unavailable)?
-            .state
-            .as_principal(principal);
-        let receipt = self
-            .executor
-            .block_on(crate::records::RecordManager::new(journal.clone()).publish(record))?;
-        self.memory
-            .identify(receipt.position, identity, self.executor.elapsed_ms());
-        self.executor
-            .block_on(journal.wait_until_stored(receipt.frontier));
+        let journal = self.runtime.as_ref().ok_or(Error::Unavailable)?.state.as_principal(principal);
+        let receipt = self.executor.block_on(crate::records::RecordManager::new(journal.clone()).publish(record))?;
+        self.memory.identify(receipt.position, identity, self.executor.elapsed_ms());
+        self.executor.block_on(journal.wait_until_stored(receipt.frontier));
         self.executor.drive();
         Ok(receipt)
     }
@@ -358,23 +290,17 @@ where
     }
 
     pub fn submit<O: crate::operations::OperationDeclaration>(
-        &mut self,
-        request: O,
+        &mut self, request: O,
     ) -> crate::Result<crate::operations::OperationInstance<O>> {
-        let runtime = self.runtime.as_ref().ok_or(Error::Closing {
-            domain: "simulated runtime",
-        })?;
+        let runtime = self.runtime.as_ref().ok_or(Error::Closing { domain: "simulated runtime" })?;
         let operations = runtime.operations.clone();
-        let handle = self
-            .executor
-            .block_on(async move { operations.submit(request) });
+        let handle = self.executor.block_on(async move { operations.submit(request) });
         self.executor.drive();
         handle
     }
 
     pub fn settle<O: crate::operations::OperationDeclaration>(
-        &mut self,
-        invocation: crate::operations::OperationInstance<O>,
+        &mut self, invocation: crate::operations::OperationInstance<O>,
     ) -> crate::Result<crate::operations::Response<O::Response>> {
         self.executor.block_on(invocation)
     }
@@ -383,24 +309,14 @@ where
         self.executor.advance_ms(milliseconds);
     }
 
-    pub fn fault<E: fmt::Display>(
-        &mut self,
-        name: impl AsRef<str>,
-        fault: Fault<E>,
-    ) -> Result<(), SimError> {
+    pub fn fault<E: fmt::Display>(&mut self, name: impl AsRef<str>, fault: Fault<E>) -> Result<(), SimError> {
         let name = name.as_ref();
-        let control = self
-            .services
-            .get(name)
-            .ok_or_else(|| SimError::UnknownService(name.to_owned()))?;
+        let control = self.services.get(name).ok_or_else(|| SimError::UnknownService(name.to_owned()))?;
         let fault = match fault {
             Fault::Environmental(error) => Fault::Environmental(error.to_string()),
             Fault::Application(error) => Fault::Application(error.to_string()),
         };
-        control
-            .faults
-            .send(fault)
-            .map_err(|_| SimError::ServiceStopped(name.to_owned()))?;
+        control.faults.send(fault).map_err(|_| SimError::ServiceStopped(name.to_owned()))?;
         self.executor.drive();
         Ok(())
     }
@@ -421,10 +337,7 @@ where
 
     pub fn state(&self) -> Result<At<A::State>, SimError> {
         let runtime = self.runtime.as_ref().ok_or(SimError::NotRunning)?;
-        Ok(self
-            .executor
-            .block_on(runtime.state.state().read(Clone::clone))
-            .expect("a running simulated journal remains readable"))
+        Ok(self.executor.block_on(runtime.state.state().read(Clone::clone)).expect("a running simulated journal remains readable"))
     }
 
     pub fn undo(&mut self, principal: PrincipalId, focus: Focus<A>) -> UndoResult<A> {
@@ -434,11 +347,7 @@ where
 
     pub fn service(&self, name: impl AsRef<str>) -> ServiceProbe {
         ServiceProbe {
-            control: Arc::clone(
-                self.services
-                    .get(name.as_ref())
-                    .unwrap_or_else(|| panic!("service `{}` is not declared", name.as_ref())),
-            ),
+            control: Arc::clone(self.services.get(name.as_ref()).unwrap_or_else(|| panic!("service `{}` is not declared", name.as_ref()))),
         }
     }
 
@@ -449,10 +358,7 @@ where
             trace.push_str(&format!(
                 "service:{name}:{}:{:?}\n",
                 control.attempts.load(Ordering::Acquire),
-                control
-                    .exits
-                    .lock()
-                    .expect("simulation service trace lock is healthy")
+                control.exits.lock().expect("simulation service trace lock is healthy")
             ));
         }
         trace.push_str(&format!("entropy:{:?}\n", self.executor.entropy_trace()));
@@ -460,32 +366,19 @@ where
     }
 
     pub fn assert_replay_equivalent(&self) {
-        let runtime = self
-            .runtime
-            .as_ref()
-            .expect("replay equivalence requires a running simulation");
+        let runtime = self.runtime.as_ref().expect("replay equivalence requires a running simulation");
         let through = runtime.state.applied();
-        self.executor
-            .block_on(runtime.state.wait_until_stored(through));
+        self.executor.block_on(runtime.state.wait_until_stored(through));
         self.executor.drive();
-        let live = self
-            .executor
-            .block_on(runtime.state.state().read(Clone::clone))
-            .expect("the live simulated state remains readable");
+        let live = self.executor.block_on(runtime.state.state().read(Clone::clone)).expect("the live simulated state remains readable");
         let origin = Origin::at(self.origin.value.clone(), self.origin.position);
         let inspector = self
             .executor
             .block_on(Runtime::<A>::inspect(origin, self.memory.source(false)))
             .expect("the simulation's own retained history is recoverable");
-        let replayed = self
-            .executor
-            .block_on(inspector.state.read(Clone::clone))
-            .expect("the independently recovered state is readable");
+        let replayed = self.executor.block_on(inspector.state.read(Clone::clone)).expect("the independently recovered state is readable");
 
-        assert_eq!(
-            live, replayed,
-            "simulated recovery diverged from live state"
-        );
+        assert_eq!(live, replayed, "simulated recovery diverged from live state");
     }
 
     pub fn assert_inverses_restore(&self) {
@@ -500,13 +393,9 @@ where
             // law has no subject.
             return Ok(());
         };
-        let runtime = self
-            .runtime
-            .as_ref()
-            .expect("the round-trip oracle requires a running simulation");
+        let runtime = self.runtime.as_ref().expect("the round-trip oracle requires a running simulation");
         let through = runtime.state.applied();
-        self.executor
-            .block_on(runtime.state.wait_until_stored(through));
+        self.executor.block_on(runtime.state.wait_until_stored(through));
         self.executor.drive();
 
         let mut state = self.origin.value.clone();
@@ -522,11 +411,7 @@ where
             Transaction::apply(&inverse, &mut restored);
 
             if restored != before {
-                return Err(Divergence {
-                    at,
-                    before,
-                    restored,
-                });
+                return Err(Divergence { at, before, restored });
             }
         }
 
@@ -542,11 +427,7 @@ where
         // The same resources on every boot, exactly as the same in-memory copy
         // is recovered from: a reboot is a recovery of one runtime, not the
         // assembly of a second one.
-        let builder = self
-            .assembly
-            .build(origin, Arc::clone(&self.resources))
-            .tail(usize::MAX)
-            .recover(self.memory.source(true));
+        let builder = self.assembly.build(origin, Arc::clone(&self.resources)).tail(usize::MAX).recover(self.memory.source(true));
         let runtime = self.executor.block_on(builder.runtime())?;
         self.runtime = Some(runtime);
         self.executor.drive();
@@ -579,28 +460,17 @@ impl<A: Application> Assembly<A> {
     }
 
     fn build(&self, origin: Origin<A::State>, resources: Arc<A::Resources>) -> Builder<A> {
-        self.steps
-            .iter()
-            .fold(Runtime::<A>::builder(origin, resources), |builder, step| {
-                step(builder)
-            })
+        self.steps.iter().fold(Runtime::<A>::builder(origin, resources), |builder, step| step(builder))
     }
 }
 
 impl ServiceControl {
     fn new() -> Self {
-        Self {
-            faults: broadcast::channel(32).0,
-            attempts: AtomicUsize::new(0),
-            exits: Mutex::new(Vec::new()),
-        }
+        Self { faults: broadcast::channel(32).0, attempts: AtomicUsize::new(0), exits: Mutex::new(Vec::new()) }
     }
 
     fn exited(&self, exit: String) {
-        self.exits
-            .lock()
-            .expect("simulation service trace lock is healthy")
-            .push(exit);
+        self.exits.lock().expect("simulation service trace lock is healthy").push(exit);
     }
 }
 
@@ -632,36 +502,21 @@ where
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
-        self.resident
-            .stop()
-            .await
-            .map_err(|error| error.to_string())
+        self.resident.stop().await.map_err(|error| error.to_string())
     }
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.resident
-            .cleanup()
-            .await
-            .map_err(|error| error.to_string())
+        self.resident.cleanup().await.map_err(|error| error.to_string())
     }
 }
 
 impl<A: Application> Memory<A> {
     fn new() -> Self {
-        Self {
-            shared: Arc::new(MemoryState {
-                entries: Mutex::new(Vec::new()),
-                identities: Mutex::new(BTreeMap::new()),
-            }),
-        }
+        Self { shared: Arc::new(MemoryState { entries: Mutex::new(Vec::new()), identities: Mutex::new(BTreeMap::new()) }) }
     }
 
     fn source(&self, strict: bool) -> MemorySource<A> {
-        MemorySource {
-            shared: Arc::clone(&self.shared),
-            resume: Position::ORIGIN,
-            strict,
-        }
+        MemorySource { shared: Arc::clone(&self.shared), resume: Position::ORIGIN, strict }
     }
 
     fn applied(&self, anchor: Position) -> Vec<(Position, Arc<A::Transaction>)> {
@@ -679,18 +534,7 @@ impl<A: Application> Memory<A> {
     }
 
     fn identify(&self, position: Position, (id, version): (DefinitionId, u32), elapsed_ms: u64) {
-        self.shared
-            .identities
-            .lock()
-            .expect("simulation identity lock is healthy")
-            .insert(
-                position,
-                Stamp {
-                    id,
-                    version,
-                    elapsed_ms,
-                },
-            );
+        self.shared.identities.lock().expect("simulation identity lock is healthy").insert(position, Stamp { id, version, elapsed_ms });
     }
 }
 
@@ -701,11 +545,7 @@ where
     A::Record: fmt::Debug,
 {
     fn trace(&self) -> String {
-        let identities = self
-            .shared
-            .identities
-            .lock()
-            .expect("simulation identity lock is healthy");
+        let identities = self.shared.identities.lock().expect("simulation identity lock is healthy");
         self.shared
             .entries
             .lock()
@@ -728,11 +568,7 @@ where
                     entry.metadata.principal.as_ref().map(PrincipalId::as_str),
                     entry.metadata.correlation.0.0,
                     entry.metadata.causation,
-                    entry
-                        .metadata
-                        .request
-                        .as_ref()
-                        .map(crate::state::RequestKey::as_str),
+                    entry.metadata.request.as_ref().map(crate::state::RequestKey::as_str),
                     entry.metadata.link,
                 )
             })
@@ -750,16 +586,8 @@ where
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        _applied: Position,
-    ) -> Position {
-        let mut held = self
-            .shared
-            .entries
-            .lock()
-            .expect("simulation history lock is healthy");
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, _applied: Position) -> Position {
+        let mut held = self.shared.entries.lock().expect("simulation history lock is healthy");
         for entry in entries {
             self.resume = entry.position;
             held.push(entry);
@@ -775,11 +603,7 @@ where
     A::Record: Clone,
 {
     async fn load(&mut self) -> Result<Recovery<A>, Incompatible> {
-        let identities = self
-            .shared
-            .identities
-            .lock()
-            .expect("simulation identity lock is healthy");
+        let identities = self.shared.identities.lock().expect("simulation identity lock is healthy");
         let entries = self
             .shared
             .entries
@@ -788,26 +612,15 @@ where
             .iter()
             .map(|entry| stored(entry, &identities, self.strict))
             .collect::<Result<Vec<_>, _>>()?;
-        self.resume = entries
-            .last()
-            .map_or(Position::ORIGIN, |entry| entry.position);
-        Ok(Recovery {
-            commits: Vec::new(),
-            frontier: self.resume,
-            entries,
-            encoded: Vec::new(),
-        })
+        self.resume = entries.last().map_or(Position::ORIGIN, |entry| entry.position);
+        Ok(Recovery { commits: Vec::new(), frontier: self.resume, entries, encoded: Vec::new() })
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn stored<A>(
-    entry: &Entry<Recorded<A>>,
-    identities: &BTreeMap<Position, Stamp>,
-    strict: bool,
-) -> Result<Envelope<Payload<A>>, Incompatible>
+fn stored<A>(entry: &Entry<Recorded<A>>, identities: &BTreeMap<Position, Stamp>, strict: bool) -> Result<Envelope<Payload<A>>, Incompatible>
 where
     A: Application,
     A::Transaction: Clone,
@@ -823,17 +636,12 @@ where
                 .map(|stamp| (stamp.id.clone(), stamp.version))
                 .or_else(|| (!strict).then(|| (DefinitionId::new("sim.unidentified"), 1)))
                 .ok_or_else(|| {
-                    Incompatible::unreadable(format!(
-                        "simulated entry {} bypassed an identified script verb",
-                        entry.position
-                    ))
+                    Incompatible::unreadable(format!("simulated entry {} bypassed an identified script verb", entry.position))
                 })?,
         }
     };
     let value = match &entry.value {
-        Recorded::Transaction(transaction) => {
-            Recorded::Transaction(Arc::new((**transaction).clone()))
-        }
+        Recorded::Transaction(transaction) => Recorded::Transaction(Arc::new((**transaction).clone())),
         Recorded::Record(record) => Recorded::Record(record.clone()),
         Recorded::System(fact) => Recorded::System(fact.clone()),
     };
@@ -844,13 +652,7 @@ where
         id: id.clone(),
         version,
         metadata: entry.metadata.clone(),
-        payload: Payload {
-            prepared: entry.prepared.clone(),
-            id,
-            version,
-            value,
-            apply: None,
-        },
+        payload: Payload { prepared: entry.prepared.clone(), id, version, value, apply: None },
     })
 }
 

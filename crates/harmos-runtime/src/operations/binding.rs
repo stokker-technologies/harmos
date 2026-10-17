@@ -61,30 +61,18 @@ pub(super) struct Typed<O: OperationDeclaration, P = ()> {
 /* === Implementations === */
 impl<T> From<T> for Request<T> {
     fn from(value: T) -> Self {
-        Self {
-            value,
-            retention: None,
-            context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
-        }
+        Self { value, retention: None, context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) }
     }
 }
 impl<T> Request<T> {
     pub(super) fn charged(item: super::StreamItem<T>) -> Result<Self> {
         let (value, claims) = item.into_request()?;
-        Ok(Self {
-            value,
-            retention: Some(claims),
-            context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
-        })
+        Ok(Self { value, retention: Some(claims), context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) })
     }
 }
 
 /* === Public Functions === */
-pub(super) fn prepared<O>(
-    entry: &Entry,
-    id: OperationInstanceId,
-    body: Box<dyn Body<O>>,
-) -> Prepared<O> {
+pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn Body<O>>) -> Prepared<O> {
     Prepared {
         body,
         policy: entry.declared().policy,
@@ -96,19 +84,13 @@ pub(super) fn prepared<O>(
     }
 }
 
-pub(super) fn classify<E: std::error::Error + Send + Sync + 'static>(
-    error: &Error,
-    classify: fn(&E) -> FailureKind,
-) -> FailureKind {
+pub(super) fn classify<E: std::error::Error + Send + Sync + 'static>(error: &Error, classify: fn(&E) -> FailureKind) -> FailureKind {
     let Error::OperationFailed { source, .. } = error else {
         return FailureKind::Permanent;
     };
-    source
-        .downcast_ref::<E>()
-        .map_or(FailureKind::Permanent, |error| {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| classify(error)))
-                .unwrap_or(FailureKind::Permanent)
-        })
+    source.downcast_ref::<E>().map_or(FailureKind::Permanent, |error| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| classify(error))).unwrap_or(FailureKind::Permanent)
+    })
 }
 
 /* === Private Functions === */

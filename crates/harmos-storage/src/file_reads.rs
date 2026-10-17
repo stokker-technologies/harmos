@@ -72,9 +72,7 @@ impl<C> StorageManager<C> {
                 return Err(invalid("file has not been admitted"));
             }
             let pending = state.queue.iter().find_map(|entry| match &entry.operation {
-                Operation::File(actual) if actual.position == file.position => {
-                    Some(actual == &file)
-                }
+                Operation::File(actual) if actual.position == file.position => Some(actual == &file),
                 _ => None,
             });
             (state.status.saved.clone(), pending)
@@ -83,25 +81,15 @@ impl<C> StorageManager<C> {
             return Err(invalid("immutable metadata does not match a finished file"));
         }
         let held = Held::default();
-        let metadata = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &held,
-            encoded_size(&file)?
-                .saturating_mul(2)
-                .saturating_add(ENTRY_OVERHEAD),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?;
+        let metadata =
+            Reservation::wait(&self.inner, Pool::Read, &held, encoded_size(&file)?.saturating_mul(2).saturating_add(ENTRY_OVERHEAD), None)
+                .await
+                .map_err(Refusal::into_error)?;
         let snapshot = self.snapshot(&saved).await?;
 
         // Saved References Must Be Visible In The Pinned Image.
         if pending.is_none() {
-            let selection = FileSelection {
-                scope: file.metadata.scope.clone(),
-                item: Some(file.metadata.id.clone()),
-            };
+            let selection = FileSelection { scope: file.metadata.scope.clone(), item: Some(file.metadata.id.clone()) };
             let page = ScanPage {
                 after: file.position.sequence.saturating_sub(1),
                 rows: NonZeroUsize::MIN,
@@ -143,10 +131,7 @@ impl FileReader {
         };
         if self.offset == self.end {
             // An Empty Whole File Still Proves Its Digest.
-            if self.verify
-                && self.end == 0
-                && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256
-            {
+            if self.verify && self.end == 0 && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256 {
                 return Err(corrupt("file digest mismatch"));
             }
             self.snapshot = None;
@@ -161,33 +146,18 @@ impl FileReader {
             .checked_sub(overhead)
             .map(|bytes| bytes.min(remaining))
             .and_then(NonZeroUsize::new)
-            .ok_or(Error::ResourceExhausted {
-                resource: "file response batch bytes",
-            })?;
-        let charge = maximum
-            .get()
-            .saturating_mul(2)
-            .saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
-        let _transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None)
-            .await
-            .map_err(Refusal::into_error)?;
+            .ok_or(Error::ResourceExhausted { resource: "file response batch bytes" })?;
+        let charge = maximum.get().saturating_mul(2).saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
+        let _transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
         let bytes = snapshot.read_file(&self.file, self.offset, maximum).await?;
-        if bytes.is_empty()
-            || bytes.len() > maximum.get()
-            || bytes.len() as u64 > self.end - self.offset
-        {
-            return Err(corrupt(
-                "file batch is empty or outside the immutable length",
-            ));
+        if bytes.is_empty() || bytes.len() > maximum.get() || bytes.len() as u64 > self.end - self.offset {
+            return Err(corrupt("file batch is empty or outside the immutable length"));
         }
         // Verify The Whole-File Digest Before Delivering Its Final Batch.
         let mut hash = self.hash.clone();
         hash.update(&bytes);
         let next = self.offset + bytes.len() as u64;
-        if self.verify
-            && next == self.end
-            && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256
-        {
+        if self.verify && next == self.end && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256 {
             return Err(corrupt("file digest mismatch"));
         }
         let offset = self.offset;
@@ -199,9 +169,7 @@ impl FileReader {
 
     pub fn completion(&self) -> Result<FileCompletion> {
         if self.offset != self.end || self.snapshot.is_some() {
-            return Err(Error::NotReady {
-                domain: "file read completion",
-            });
+            return Err(Error::NotReady { domain: "file read completion" });
         }
         Ok(FileCompletion { bytes: self.bytes })
     }
@@ -220,18 +188,11 @@ fn varint_bytes(mut value: u64) -> usize {
 }
 
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "file reference",
-        reason,
-    }
+    Error::InvalidInput { field: "file reference", reason }
 }
 
 fn corrupt(reason: &'static str) -> Error {
-    Error::backend(
-        "file read",
-        BackendFailure::Corrupt,
-        io::Error::new(io::ErrorKind::InvalidData, reason),
-    )
+    Error::backend("file read", BackendFailure::Corrupt, io::Error::new(io::ErrorKind::InvalidData, reason))
 }
 
 /* === Tests === */

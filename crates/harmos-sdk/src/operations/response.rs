@@ -57,14 +57,7 @@ impl<T: Send + Sync + 'static> Response<T> {
     }
 
     pub fn from_owner<U: Borrow<T> + Send + Sync + 'static>(owner: Arc<U>) -> Self {
-        Self {
-            erased: ErasedResponse {
-                owner,
-                projection: project::<T, U>,
-                payload: TypeId::of::<T>(),
-            },
-            payload: PhantomData,
-        }
+        Self { erased: ErasedResponse { owner, projection: project::<T, U>, payload: TypeId::of::<T>() }, payload: PhantomData }
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
@@ -88,8 +81,7 @@ impl<T: Send + Sync + 'static> Response<T> {
     where
         T: Clone,
     {
-        self.try_unwrap()
-            .unwrap_or_else(|response| (*response).clone())
+        self.try_unwrap().unwrap_or_else(|response| (*response).clone())
     }
 
     pub fn into_erased(self) -> ErasedResponse {
@@ -111,10 +103,7 @@ impl<T: Send + Sync + 'static> From<Arc<T>> for Response<T> {
 
 impl<T: Send + Sync + 'static> Clone for Response<T> {
     fn clone(&self) -> Self {
-        Self {
-            erased: self.erased.clone(),
-            payload: PhantomData,
-        }
+        Self { erased: self.erased.clone(), payload: PhantomData }
     }
 }
 
@@ -122,9 +111,7 @@ impl<T: Send + Sync + 'static> Deref for Response<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.erased
-            .value::<T>()
-            .expect("response retains its declared payload")
+        self.erased.value::<T>().expect("response retains its declared payload")
     }
 }
 
@@ -166,10 +153,7 @@ impl ErasedResponse {
         if self.payload != TypeId::of::<T>() {
             return None;
         }
-        Some(Response {
-            erased: self,
-            payload: PhantomData,
-        })
+        Some(Response { erased: self, payload: PhantomData })
     }
 
     pub(super) fn value<T: Send + Sync + 'static>(&self) -> Option<&T> {
@@ -183,9 +167,7 @@ impl ErasedResponse {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn project<T: Send + Sync + 'static, U: Borrow<T> + Send + Sync + 'static>(
-    owner: &dyn Any,
-) -> Option<&dyn Any> {
+fn project<T: Send + Sync + 'static, U: Borrow<T> + Send + Sync + 'static>(owner: &dyn Any) -> Option<&dyn Any> {
     let owner = owner.downcast_ref::<U>()?;
     Some(owner.borrow())
 }

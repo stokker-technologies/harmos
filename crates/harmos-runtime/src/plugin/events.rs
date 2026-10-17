@@ -44,16 +44,8 @@ pub enum PluginEventKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PluginEvent {
-    Changed {
-        id: String,
-        generation: Option<PluginGeneration>,
-        state: PluginState,
-        revision: u64,
-        kind: PluginEventKind,
-    },
-    Lagged {
-        missed: u64,
-    },
+    Changed { id: String, generation: Option<PluginGeneration>, state: PluginState, revision: u64, kind: PluginEventKind },
+    Lagged { missed: u64 },
 }
 
 /* === Traits === */
@@ -63,9 +55,7 @@ impl PluginEvents {
     pub async fn next(&mut self) -> Option<PluginEvent> {
         match self.receiver.recv().await {
             Ok(event) => Some(event),
-            Err(broadcast::error::RecvError::Lagged(missed)) => {
-                Some(PluginEvent::Lagged { missed })
-            }
+            Err(broadcast::error::RecvError::Lagged(missed)) => Some(PluginEvent::Lagged { missed }),
             Err(broadcast::error::RecvError::Closed) => None,
         }
     }

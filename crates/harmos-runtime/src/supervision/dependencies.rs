@@ -57,45 +57,29 @@ pub(crate) enum Invalid<K> {
 impl<K: Clone + Ord> Graph<K> {
     pub(crate) fn new(dependencies: BTreeMap<K, BTreeSet<K>>) -> Result<Self, Invalid<K>> {
         let mut graph = DiGraph::<K, ()>::new();
-        let nodes: BTreeMap<_, _> = dependencies
-            .keys()
-            .map(|id| (id.clone(), graph.add_node(id.clone())))
-            .collect();
+        let nodes: BTreeMap<_, _> = dependencies.keys().map(|id| (id.clone(), graph.add_node(id.clone()))).collect();
         let mut dependents = BTreeMap::<K, BTreeSet<K>>::new();
         for (owner, prerequisites) in &dependencies {
             for dependency in prerequisites {
                 let Some(provider) = nodes.get(dependency) else {
-                    return Err(Invalid::Missing {
-                        owner: owner.clone(),
-                        dependency: dependency.clone(),
-                    });
+                    return Err(Invalid::Missing { owner: owner.clone(), dependency: dependency.clone() });
                 };
                 graph.add_edge(*provider, nodes[owner], ());
-                dependents
-                    .entry(dependency.clone())
-                    .or_default()
-                    .insert(owner.clone());
+                dependents.entry(dependency.clone()).or_default().insert(owner.clone());
             }
         }
         // Sorted Node And Edge Insertion Makes Independent Ordering Reproducible.
         let ordered = toposort(&graph, None)
-            .map_err(|cycle| Invalid::Cycle {
-                owner: graph[cycle.node_id()].clone(),
-            })?
+            .map_err(|cycle| Invalid::Cycle { owner: graph[cycle.node_id()].clone() })?
             .into_iter()
             .map(|node| graph[node].clone())
             .collect();
-        Ok(Self {
-            dependencies,
-            dependents,
-            ordered,
-        })
+        Ok(Self { dependencies, dependents, ordered })
     }
 
     pub(crate) fn retirement(&self, selected: BTreeSet<K>) -> Retirement<K> {
         let mut dependencies = BTreeMap::new();
-        let mut remaining: BTreeMap<_, usize> =
-            selected.iter().cloned().map(|id| (id, 0)).collect();
+        let mut remaining: BTreeMap<_, usize> = selected.iter().cloned().map(|id| (id, 0)).collect();
         for owner in &selected {
             let providers: BTreeSet<_> = self
                 .dependencies
@@ -109,17 +93,8 @@ impl<K: Clone + Ord> Graph<K> {
             }
             dependencies.insert(owner.clone(), providers);
         }
-        let ready = remaining
-            .iter()
-            .filter(|(_, count)| **count == 0)
-            .map(|(owner, _)| owner.clone())
-            .collect();
-        Retirement {
-            dependencies,
-            remaining,
-            ready,
-            running: BTreeSet::new(),
-        }
+        let ready = remaining.iter().filter(|(_, count)| **count == 0).map(|(owner, _)| owner.clone()).collect();
+        Retirement { dependencies, remaining, ready, running: BTreeSet::new() }
     }
 
     pub(crate) fn ordered(&self) -> &[K] {
@@ -155,19 +130,13 @@ impl<K: Clone + Ord> Retirement<K> {
     }
 
     pub(crate) fn complete(&mut self, owner: &K, settled: bool) {
-        assert!(
-            self.running.remove(owner),
-            "only dispatched cleanup can complete"
-        );
+        assert!(self.running.remove(owner), "only dispatched cleanup can complete");
         self.remaining.remove(owner);
         if !settled {
             return;
         }
         for provider in &self.dependencies[owner] {
-            let remaining = self
-                .remaining
-                .get_mut(provider)
-                .expect("a provider cannot retire before its dependents");
+            let remaining = self.remaining.get_mut(provider).expect("a provider cannot retire before its dependents");
             *remaining -= 1;
             if *remaining == 0 {
                 self.ready.insert(provider.clone());

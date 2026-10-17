@@ -95,73 +95,38 @@ pub(super) trait Body<O>: Send {
         Box::pin(std::future::ready(Ok(())))
     }
 
-    fn retain(
-        self: Box<Self>,
-        outcome: Option<Error>,
-        cause: Arc<Error>,
-    ) -> (Box<dyn Finalizer>, Option<Error>, Arc<Error>);
+    fn retain(self: Box<Self>, outcome: Option<Error>, cause: Arc<Error>) -> (Box<dyn Finalizer>, Option<Error>, Arc<Error>);
 }
 
 /* === Implementations === */
 impl Budget {
     fn remaining(&self) -> Duration {
-        self.timeout
-            .saturating_sub(executor::now().saturating_duration_since(self.submitted))
+        self.timeout.saturating_sub(executor::now().saturating_duration_since(self.submitted))
     }
 }
 
 impl<O> Prepared<O> {
     pub(super) fn retain_unavailable(mut self, control: &Instance, admission: Admission) {
-        let outcome = self
-            .refusal
-            .take()
-            .or_else(|| Some(Refusal::Unavailable.into()));
-        let cause = Arc::new(Error::Closing {
-            domain: "preparation driver",
-        });
+        let outcome = self.refusal.take().or_else(|| Some(Refusal::Unavailable.into()));
+        let cause = Arc::new(Error::Closing { domain: "preparation driver" });
         let (owner, _, diagnostic) = self.body.retain(outcome, cause);
         control.complete(Outcome::Unavailable);
-        control.retain(
-            Retained {
-                owner,
-                _permit: None,
-                _admission: admission,
-            },
-            diagnostic,
-        );
+        control.retain(Retained { owner, _permit: None, _admission: admission }, diagnostic);
     }
 }
 
 /* === Public Functions === */
 pub(super) async fn execute<O: Send + 'static>(
-    instances: Arc<Instances>,
-    mut prepared: Prepared<O>,
-    execution: Execution,
-    cause: Option<Position>,
+    instances: Arc<Instances>, mut prepared: Prepared<O>, execution: Execution, cause: Option<Position>,
 ) -> Result<O> {
-    let Execution {
-        admission,
-        submitted,
-        mut cancelled,
-        instance,
-        queue,
-    } = execution;
-    let budget = Budget {
-        submitted,
-        timeout: prepared.policy.timeout,
-    };
+    let Execution { admission, submitted, mut cancelled, instance, queue } = execution;
+    let budget = Budget { submitted, timeout: prepared.policy.timeout };
     let mut middleware = prepared.middleware.take();
     let mut refusal = prepared.refusal.take();
     if refusal.is_none()
         && let Some(session) = &mut middleware
     {
-        refusal = match bounded(
-            budget.remaining(),
-            Box::pin(session.enter()),
-            &mut cancelled,
-        )
-        .await
-        {
+        refusal = match bounded(budget.remaining(), Box::pin(session.enter()), &mut cancelled).await {
             Stage::Completed(answer) => answer.err(),
             Stage::Cancelled => Some(Refusal::Cancelled.into()),
             Stage::Expired => Some(Refusal::TimedOut.into()),
@@ -176,30 +141,9 @@ pub(super) async fn execute<O: Send + 'static>(
             Ok(acquired) => {
                 permit = Some(acquired);
                 queue.release();
-                match initialize(
-                    &instances,
-                    &admission,
-                    prepared.body.as_mut(),
-                    &mut cancelled,
-                    &budget,
-                    &instance,
-                    cause,
-                )
-                .await
-                {
+                match initialize(&instances, &admission, prepared.body.as_mut(), &mut cancelled, &budget, &instance, cause).await {
                     Err(error) => Err(error),
-                    Ok(()) => {
-                        attempts(
-                            &instances,
-                            &admission,
-                            &mut prepared,
-                            &mut cancelled,
-                            &budget,
-                            &instance,
-                            cause,
-                        )
-                        .await
-                    }
+                    Ok(()) => attempts(&instances, &admission, &mut prepared, &mut cancelled, &budget, &instance, cause).await,
                 }
             }
         },
@@ -216,20 +160,10 @@ pub(super) async fn execute<O: Send + 'static>(
         };
         instance.complete(logical.as_ref().map_or(Outcome::Succeeded, failure_outcome));
         let (owner, failure, diagnostic) = prepared.body.retain(logical, Arc::new(cleanup));
-        instance.retain(
-            Retained {
-                owner,
-                _permit: permit,
-                _admission: admission,
-            },
-            diagnostic,
-        );
+        instance.retain(Retained { owner, _permit: permit, _admission: admission }, diagnostic);
         let failure = failure.unwrap_or_else(|| Refusal::Unavailable.into());
         if let Some(session) = &mut middleware {
-            session.observe(super::middleware::Observation {
-                outcome: failure_outcome(&failure),
-                settled: false,
-            });
+            session.observe(super::middleware::Observation { outcome: failure_outcome(&failure), settled: false });
         }
         return Err(failure);
     }
@@ -251,20 +185,13 @@ pub(super) async fn execute<O: Send + 'static>(
     instance.complete(outcome(&answer));
     instance.finished();
     if let Some(session) = &mut middleware {
-        session.observe(super::middleware::Observation {
-            outcome: outcome(&answer),
-            settled: true,
-        });
+        session.observe(super::middleware::Observation { outcome: outcome(&answer), settled: true });
     }
     answer
 }
 
 /* === Private Functions === */
-async fn acquire(
-    admission: &Admission,
-    budget: &Budget,
-    cancelled: &mut watch::Receiver<bool>,
-) -> Result<OwnedSemaphorePermit> {
+async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
     if *cancelled.borrow() {
         return Err(Refusal::Cancelled.into());
     }
@@ -281,27 +208,12 @@ async fn acquire(
 }
 
 async fn initialize<O: Send + 'static>(
-    instances: &Arc<Instances>,
-    admission: &Admission,
-    body: &mut dyn Body<O>,
-    cancelled: &mut watch::Receiver<bool>,
-    budget: &Budget,
-    instance: &Arc<Instance>,
-    cause: Option<Position>,
+    instances: &Arc<Instances>, admission: &Admission, body: &mut dyn Body<O>, cancelled: &mut watch::Receiver<bool>, budget: &Budget,
+    instance: &Arc<Instance>, cause: Option<Position>,
 ) -> Result<()> {
     instance.transition(Phase::Initializing);
-    let core = ScopeCore::new(
-        instances.clone(),
-        admission.clone(),
-        cause,
-        Arc::downgrade(instance),
-    );
-    let answer = bounded(
-        budget.remaining(),
-        body.initialize(Scope::over(&core)),
-        cancelled,
-    )
-    .await;
+    let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+    let answer = bounded(budget.remaining(), body.initialize(Scope::over(&core)), cancelled).await;
     core.close().drain().await;
     if *cancelled.borrow() {
         return Err(Refusal::Cancelled.into());
@@ -314,13 +226,8 @@ async fn initialize<O: Send + 'static>(
 }
 
 async fn attempts<O: Send + 'static>(
-    instances: &Arc<Instances>,
-    admission: &Admission,
-    prepared: &mut Prepared<O>,
-    cancelled: &mut watch::Receiver<bool>,
-    budget: &Budget,
-    instance: &Arc<Instance>,
-    cause: Option<Position>,
+    instances: &Arc<Instances>, admission: &Admission, prepared: &mut Prepared<O>, cancelled: &mut watch::Receiver<bool>, budget: &Budget,
+    instance: &Arc<Instance>, cause: Option<Position>,
 ) -> Result<O> {
     let mut attempt = 0;
     loop {
@@ -334,18 +241,8 @@ async fn attempts<O: Send + 'static>(
         if !instance.attempt(attempt) {
             return Err(Refusal::Cancelled.into());
         }
-        let core = ScopeCore::new(
-            instances.clone(),
-            admission.clone(),
-            cause,
-            Arc::downgrade(instance),
-        );
-        let answer = bounded(
-            prepared.policy.attempt_timeout.min(remaining),
-            prepared.body.run(Scope::over(&core)),
-            cancelled,
-        )
-        .await;
+        let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
+        let answer = bounded(prepared.policy.attempt_timeout.min(remaining), prepared.body.run(Scope::over(&core)), cancelled).await;
         let mut children = core.close();
         if *cancelled.borrow() {
             children.drain().await;
@@ -354,11 +251,7 @@ async fn attempts<O: Send + 'static>(
         let (error, failure) = match answer {
             Stage::Completed(Ok(response)) => {
                 children.drain().await;
-                return if budget.remaining().is_zero() {
-                    Err(Refusal::TimedOut.into())
-                } else {
-                    Ok(response)
-                };
+                return if budget.remaining().is_zero() { Err(Refusal::TimedOut.into()) } else { Ok(response) };
             }
             Stage::Completed(Err(error)) => {
                 let failure = prepared.body.classify(&error);
@@ -374,23 +267,14 @@ async fn attempts<O: Send + 'static>(
             children.drain().await;
             return Err(error);
         }
-        let delay = prepared.policy.retries.retry_after(
-            attempt,
-            failure,
-            prepared.replay,
-            prepared.id.value(),
-        );
+        let delay = prepared.policy.retries.retry_after(attempt, failure, prepared.replay, prepared.id.value());
         let Some(delay) = delay else {
             children.drain().await;
             return Err(error);
         };
         instance.transition(Phase::RetryWaiting);
         futures_util::future::join(children.drain(), async {
-            let _ = executor::timeout(
-                budget.remaining(),
-                interruptible(executor::sleep(delay), cancelled),
-            )
-            .await;
+            let _ = executor::timeout(budget.remaining(), interruptible(executor::sleep(delay), cancelled)).await;
         })
         .await;
         if *cancelled.borrow() {
@@ -408,11 +292,7 @@ async fn attempts<O: Send + 'static>(
     }
 }
 
-async fn bounded<O>(
-    timeout: Duration,
-    future: Attempt<'_, O>,
-    cancelled: &mut watch::Receiver<bool>,
-) -> Stage<O> {
+async fn bounded<O>(timeout: Duration, future: Attempt<'_, O>, cancelled: &mut watch::Receiver<bool>) -> Stage<O> {
     match interruptible(executor::timeout(timeout, future), cancelled).await {
         None => Stage::Cancelled,
         Some(Err(_)) => Stage::Expired,
@@ -421,10 +301,7 @@ async fn bounded<O>(
 }
 
 fn outcome<O>(answer: &Result<O>) -> Outcome {
-    answer
-        .as_ref()
-        .err()
-        .map_or(Outcome::Succeeded, failure_outcome)
+    answer.as_ref().err().map_or(Outcome::Succeeded, failure_outcome)
 }
 
 fn failure_outcome(error: &Error) -> Outcome {

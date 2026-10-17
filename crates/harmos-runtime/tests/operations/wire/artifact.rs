@@ -23,8 +23,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::{
-    Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RestartPolicy,
-    RetryPolicy, Visibility,
+    Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility,
 };
 
 /* === Constants === */
@@ -58,52 +57,22 @@ macro_rules! inert_plugin {
 }
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(
-    Native,
-    "selected-native",
-    harmos_runtime::sidecar::Supervisor,
-    Operations
-);
+inert_plugin!(Native, "selected-native", harmos_runtime::sidecar::Supervisor, Operations);
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(
-    EmptyNative,
-    "empty-native",
-    harmos_runtime::sidecar::Supervisor,
-    ()
-);
+inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(
-    ExplicitEmptyNative,
-    "explicit-empty-native",
-    harmos_runtime::sidecar::Supervisor,
-    ()
-);
+inert_plugin!(ExplicitEmptyNative, "explicit-empty-native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(
-    Guest,
-    "selected-guest",
-    harmos_runtime::guest::Context,
-    Operations
-);
+inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::Context, Operations);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(
-    EmptyGuest,
-    "empty-guest",
-    harmos_runtime::guest::Context,
-    ()
-);
+inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::Context, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(
-    ExplicitEmptyGuest,
-    "explicit-empty-guest",
-    harmos_runtime::guest::Context,
-    ()
-);
+inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::Context, ());
 
 /* === Type Aliases === */
 
@@ -203,26 +172,11 @@ fn native_inventory_contains() {
     let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
     let expected = Declarations::of::<Operations>().unwrap();
     assert_eq!(inspected.operations, expected.clone());
-    assert_eq!(
-        harmos_runtime::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0]
-            .operation()
-            .clone(),
-        expected[0]
-    );
+    assert_eq!(harmos_runtime::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
     assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
-    for bytes in [
-        <EmptyNative as Declared>::markers().unwrap().concat(),
-        <ExplicitEmptyNative as Declared>::markers()
-            .unwrap()
-            .concat(),
-    ] {
-        assert_eq!(
-            Declaration::inspect(&bytes, Facility::Sidecar)
-                .unwrap()
-                .operations,
-            vec![]
-        );
+    for bytes in [<EmptyNative as Declared>::markers().unwrap().concat(), <ExplicitEmptyNative as Declared>::markers().unwrap().concat()] {
+        assert_eq!(Declaration::inspect(&bytes, Facility::Sidecar).unwrap().operations, vec![]);
     }
 }
 
@@ -236,25 +190,10 @@ fn guest_inventory_contains() {
     let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
     let expected = Declarations::of::<Operations>().unwrap();
     assert_eq!(inspected.operations, expected.clone());
-    assert_eq!(
-        harmos_runtime::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0]
-            .operation()
-            .clone(),
-        expected[0]
-    );
+    assert_eq!(harmos_runtime::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
     assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
-    for bytes in [
-        <EmptyGuest as Declared>::markers().unwrap().concat(),
-        <ExplicitEmptyGuest as Declared>::markers()
-            .unwrap()
-            .concat(),
-    ] {
-        assert_eq!(
-            Declaration::inspect(&bytes, Facility::Guest)
-                .unwrap()
-                .operations,
-            vec![]
-        );
+    for bytes in [<EmptyGuest as Declared>::markers().unwrap().concat(), <ExplicitEmptyGuest as Declared>::markers().unwrap().concat()] {
+        assert_eq!(Declaration::inspect(&bytes, Facility::Guest).unwrap().operations, vec![]);
     }
 }

@@ -39,9 +39,7 @@ pub(crate) struct Clock {
 /* === Implementations === */
 impl Clock {
     pub(crate) fn new() -> Self {
-        Self {
-            elapsed_ms: Arc::new(AtomicU64::new(0)),
-        }
+        Self { elapsed_ms: Arc::new(AtomicU64::new(0)) }
     }
 
     pub(crate) async fn advance_ms(&self, milliseconds: u64) {

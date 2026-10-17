@@ -77,15 +77,10 @@ impl SystemFact {
         if !matches!(self.source, FactSource::Sidecar(_)) {
             return true;
         }
-        system_identity(&self.identify().0)
-            .is_ok_and(|value| value == Some((self.source.clone(), self.name.clone())))
+        system_identity(&self.identify().0).is_ok_and(|value| value == Some((self.source.clone(), self.name.clone())))
     }
 
-    pub fn restore<'de, D>(
-        id: &DefinitionId,
-        version: u32,
-        payload: D,
-    ) -> Result<Option<Self>, D::Error>
+    pub fn restore<'de, D>(id: &DefinitionId, version: u32, payload: D) -> Result<Option<Self>, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -94,12 +89,7 @@ impl SystemFact {
         };
         let payload = Vec::<u8>::deserialize(payload)?;
 
-        Ok(Some(Self {
-            source,
-            name,
-            version,
-            payload,
-        }))
+        Ok(Some(Self { source, name, version, payload }))
     }
 }
 
@@ -108,22 +98,15 @@ impl SystemFact {
 /* === Private Functions === */
 fn system_identity(id: &DefinitionId) -> Result<Option<(FactSource, String)>, &'static str> {
     if let Some(namespaced) = id.as_str().strip_prefix("harmos:work/") {
-        let (service, name) = namespaced
-            .split_once('/')
-            .ok_or("a work fact id must contain its local fact name")?;
+        let (service, name) = namespaced.split_once('/').ok_or("a work fact id must contain its local fact name")?;
         if service.is_empty() || name.is_empty() {
             return Err("a work fact id must name both service and fact");
         }
-        return Ok(Some((
-            FactSource::Work(service.to_owned()),
-            name.to_owned(),
-        )));
+        return Ok(Some((FactSource::Work(service.to_owned()), name.to_owned())));
     }
 
     if let Some(namespaced) = id.as_str().strip_prefix("harmos:guest/") {
-        let (guest, name) = namespaced
-            .split_once('/')
-            .ok_or("a guest fact id must contain its local fact name")?;
+        let (guest, name) = namespaced.split_once('/').ok_or("a guest fact id must contain its local fact name")?;
         if guest.is_empty() || name.is_empty() {
             return Err("a guest fact id must name both guest and fact");
         }
@@ -131,21 +114,14 @@ fn system_identity(id: &DefinitionId) -> Result<Option<(FactSource, String)>, &'
     }
 
     if let Some(namespaced) = id.as_str().strip_prefix("harmos:sidecar/") {
-        let (owner, name) = namespaced
-            .split_once('/')
-            .ok_or("a sidecar fact id must contain its local fact name")?;
+        let (owner, name) = namespaced.split_once('/').ok_or("a sidecar fact id must contain its local fact name")?;
         if !owner.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-            || !owner
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+            || !owner.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
             || name.is_empty()
         {
             return Err("a sidecar fact must name a portable artifact owner and nonempty fact");
         }
-        return Ok(Some((
-            FactSource::Sidecar(owner.to_owned()),
-            name.to_owned(),
-        )));
+        return Ok(Some((FactSource::Sidecar(owner.to_owned()), name.to_owned())));
     }
     Ok(None)
 }

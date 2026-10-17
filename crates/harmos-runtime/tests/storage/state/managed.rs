@@ -21,10 +21,7 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::closed;
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::storage::{
-    Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config,
-    history,
-};
+use crate::storage::{Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history};
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
@@ -88,11 +85,7 @@ impl harmos_runtime::Application for Model {
 impl harmos_runtime::state::Transaction<i64> for Add {
     type Error = &'static str;
     fn check(&self, _: &i64) -> Result<(), Self::Error> {
-        if self.amount < 0 {
-            Err("negative amount")
-        } else {
-            Ok(())
-        }
+        if self.amount < 0 { Err("negative amount") } else { Ok(()) }
     }
     fn records(&self, state: &i64, out: &mut harmos_runtime::state::Records) {
         out.push(Seen { before: *state }).unwrap();
@@ -130,20 +123,10 @@ impl From<OldAdd> for Add {
 
 impl Store {
     fn new() -> Self {
-        Self {
-            data: Arc::new(Data::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
-        }
+        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {
-        StorageManager::new(
-            StorageBackends {
-                primary: self.data.clone(),
-                state: self.recovery.clone(),
-            },
-            config,
-        )
-        .unwrap()
+        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config).unwrap()
     }
     async fn boot(&self, storage: &StorageManager) -> Runtime<Bank> {
         Runtime::<Bank>::builder(Ledger::default(), ())
@@ -160,20 +143,11 @@ impl Store {
 
 /* === Private Functions === */
 fn limits() -> ReadLimits {
-    ReadLimits {
-        rows: NonZeroUsize::new(1).unwrap(),
-        bytes: NonZeroUsize::new(256 * 1024).unwrap(),
-    }
+    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(256 * 1024).unwrap() }
 }
 
 async fn balance(runtime: &Runtime<Bank>) -> i64 {
-    runtime
-        .state
-        .state()
-        .read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0))
-        .await
-        .unwrap()
-        .value
+    runtime.state.state().read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0)).await.unwrap().value
 }
 
 #[tokio::test]
@@ -185,10 +159,7 @@ async fn replay_restores_state() {
     for _ in 0..5 {
         journal.commit(deposit(3)).await.unwrap();
     }
-    harmos_runtime::records::RecordManager::new(journal.clone())
-        .publish(Noted("saved".into()))
-        .await
-        .unwrap();
+    harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("saved".into())).await.unwrap();
     assert_eq!(runtime.state.stored(), Position::ORIGIN);
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(6));
@@ -202,10 +173,7 @@ async fn replay_restores_state() {
     assert_eq!(records.len(), 1);
     assert!(records[0].is_ok());
     let journal = runtime.state.as_principal(PrincipalId::new("editor"));
-    journal
-        .undo(PrincipalId::new("editor"), Focus::all())
-        .await
-        .unwrap();
+    journal.undo(PrincipalId::new("editor"), Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 12);
     runtime.stop().await.unwrap();
 
@@ -213,10 +181,7 @@ async fn replay_restores_state() {
     let runtime = store.boot(&storage).await;
     assert_eq!(balance(&runtime).await, 12);
     let journal = runtime.state.as_principal(PrincipalId::new("editor"));
-    journal
-        .redo(PrincipalId::new("editor"), Focus::all())
-        .await
-        .unwrap();
+    journal.redo(PrincipalId::new("editor"), Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 15);
     runtime.stop().await.unwrap();
 }
@@ -228,11 +193,7 @@ async fn commit_awaits_capacity() {
     config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
     let storage = store.manager(config);
     let runtime = store.boot(&storage).await;
-    store
-        .recovery
-        .control
-        .block_write
-        .store(true, Ordering::SeqCst);
+    store.recovery.control.block_write.store(true, Ordering::SeqCst);
     runtime.state.commit(deposit(2)).await.unwrap();
     let next = {
         let journal = runtime.state.clone();
@@ -242,11 +203,7 @@ async fn commit_awaits_capacity() {
     assert_eq!(balance(&runtime).await, 2);
     assert!(!next.is_finished());
     assert_eq!(storage.status().pending_batches, 1);
-    store
-        .recovery
-        .control
-        .block_write
-        .store(false, Ordering::SeqCst);
+    store.recovery.control.block_write.store(false, Ordering::SeqCst);
     store.recovery.control.write_release.notify_one();
     next.await.unwrap().unwrap();
     assert_eq!(balance(&runtime).await, 9);
@@ -265,13 +222,7 @@ async fn oversized_group_refused() {
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    assert!(
-        runtime
-            .records
-            .publish(Noted("x".repeat(4096)))
-            .await
-            .is_err()
-    );
+    assert!(runtime.records.publish(Noted("x".repeat(4096))).await.is_err());
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
     assert_eq!(storage.status().pending_bytes, 0);
@@ -287,11 +238,7 @@ async fn state_stop_retries() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     runtime.state.commit(deposit(8)).await.unwrap();
-    store
-        .recovery
-        .control
-        .flush_failures
-        .store(1, Ordering::SeqCst);
+    store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
     assert!(runtime.stop().await.is_err());
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
     assert_eq!(storage.status().recovery_saved.sequence, 0);
@@ -343,14 +290,7 @@ async fn corrupt_group_blocks() {
             "commit" => group["entries"][0]["metadata"]["commit"] = serde_json::Value::Null,
             _ => unreachable!(),
         }
-        store
-            .recovery
-            .entries
-            .lock()
-            .unwrap()
-            .get_mut(&1)
-            .unwrap()
-            .payload = serde_json::to_vec(&group).unwrap();
+        store.recovery.entries.lock().unwrap().get_mut(&1).unwrap().payload = serde_json::to_vec(&group).unwrap();
         let storage = store.manager(config());
         assert!(
             Runtime::<Bank>::builder(Ledger::default(), ())
@@ -367,14 +307,7 @@ async fn corrupt_group_blocks() {
 
 #[tokio::test]
 async fn managed_requires_storage() {
-    assert!(
-        Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .managed_state(limits())
-            .runtime()
-            .await
-            .is_err()
-    );
+    assert!(Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits()).runtime().await.is_err());
 }
 
 #[tokio::test]
@@ -413,13 +346,8 @@ async fn periodic_save_advances() {
 async fn replay_upcasts_history() {
     let store = Store::new();
     let storage = store.manager(config());
-    let builder = || {
-        Runtime::<Model>::builder(0, ())
-            .register(Transactions::catalog())
-            .register(Records::catalog())
-            .tail(2)
-            .managed_state(limits())
-    };
+    let builder =
+        || Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).tail(2).managed_state(limits());
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
     let receipt = runtime.state.commit(Add { amount: 3 }).await.unwrap();
     assert_eq!(receipt.frontier, Position(3));
@@ -436,44 +364,18 @@ async fn replay_upcasts_history() {
     }
     let storage = store.manager(config());
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| *state)
-            .await
-            .unwrap()
-            .value,
-        -6
-    );
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, -6);
     assert_eq!(runtime.state.applied(), Position(3));
     assert_eq!(runtime.state.stored(), Position(3));
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
-    let facts: Vec<_> = runtime
-        .state
-        .query::<Records>(Position::ORIGIN)
-        .await
-        .collect();
+    let facts: Vec<_> = runtime.state.query::<Records>(Position::ORIGIN).await.collect();
     assert_eq!(facts.len(), 1);
     assert!(facts[0].is_ok());
-    let system: Vec<_> = runtime
-        .state
-        .query::<harmos_runtime::state::SystemFact>(Position::ORIGIN)
-        .await
-        .collect();
+    let system: Vec<_> = runtime.state.query::<harmos_runtime::state::SystemFact>(Position::ORIGIN).await.collect();
     assert_eq!(system.len(), 1);
     assert!(system[0].is_ok());
     runtime.state.commit(Add { amount: 2 }).await.unwrap();
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| *state)
-            .await
-            .unwrap()
-            .value,
-        -4
-    );
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, -4);
     runtime.stop().await.unwrap();
 }
 
@@ -484,18 +386,12 @@ async fn cancelled_replay_releases() {
     let runtime = store.boot(&storage).await;
     runtime.state.commit(deposit(1)).await.unwrap();
     runtime.stop().await.unwrap();
-    store
-        .recovery
-        .control
-        .block_read
-        .store(true, Ordering::SeqCst);
+    store.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = store.manager(config());
     let cleanup;
     {
-        let opening = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .managed_state(limits())
-            .runtime_with_storage(&storage);
+        let opening =
+            Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits()).runtime_with_storage(&storage);
         cleanup = opening.cleanup();
         tokio::pin!(opening);
         tokio::select! {
@@ -516,11 +412,7 @@ async fn save_failure_halts() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     runtime.state.commit(deposit(1)).await.unwrap();
-    store
-        .recovery
-        .control
-        .flush_failures
-        .store(1, Ordering::SeqCst);
+    store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
     assert!(storage.flush_recovery().await.is_err());
     assert!(runtime.state.commit(deposit(9)).await.is_err());
     assert!(runtime.state.capture_status().is_err());
@@ -574,15 +466,7 @@ async fn file_finish_interleaves() {
     assert_eq!(storage.status().saved.sequence, 21);
     assert_eq!(storage.status().recovery_saved.sequence, 20);
     assert_eq!(store.data.records.lock().unwrap().len(), 20);
-    assert_eq!(
-        store
-            .data
-            .files
-            .lock()
-            .unwrap()
-            .get(&reference.position.sequence),
-        Some(&reference)
-    );
+    assert_eq!(store.data.files.lock().unwrap().get(&reference.position.sequence), Some(&reference));
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     assert_eq!(balance(&runtime).await, 20);
@@ -595,11 +479,7 @@ async fn keyed_receipt_survives() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     let key = RequestKey::new("durable-deposit");
-    let receipt = runtime
-        .state
-        .commit_keyed(key.clone(), deposit(7))
-        .await
-        .unwrap();
+    let receipt = runtime.state.commit_keyed(key.clone(), deposit(7)).await.unwrap();
     for _ in 0..5 {
         runtime.state.commit(deposit(1)).await.unwrap();
     }
@@ -608,11 +488,7 @@ async fn keyed_receipt_survives() {
     for _ in 0..2 {
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
-        let retry = runtime
-            .state
-            .commit_keyed(key.clone(), Change::Explode)
-            .await
-            .unwrap();
+        let retry = runtime.state.commit_keyed(key.clone(), Change::Explode).await.unwrap();
         assert_eq!(retry, receipt);
         assert_eq!(balance(&runtime).await, 12);
         assert_eq!(runtime.state.applied(), Position(6));
@@ -625,42 +501,20 @@ async fn keyed_receipt_survives() {
 async fn keyed_group_retained() {
     let store = Store::new();
     let storage = store.manager(config());
-    let builder = || {
-        Runtime::<Model>::builder(0, ())
-            .register(Transactions::catalog())
-            .register(Records::catalog())
-            .managed_state(limits())
-    };
+    let builder =
+        || Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_state(limits());
     let key = RequestKey::new("group");
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    let receipt = runtime
-        .state
-        .caused_by(Position(41))
-        .commit_keyed(key.clone(), Add { amount: 3 })
-        .await
-        .unwrap();
+    let receipt = runtime.state.caused_by(Position(41)).commit_keyed(key.clone(), Add { amount: 3 }).await.unwrap();
     assert_eq!(receipt.position, Position(1));
     assert_eq!(receipt.frontier, Position(3));
     runtime.stop().await.unwrap();
 
     let storage = store.manager(config());
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    let retry = runtime
-        .state
-        .commit_keyed(key, Add { amount: -1 })
-        .await
-        .unwrap();
+    let retry = runtime.state.commit_keyed(key, Add { amount: -1 }).await.unwrap();
     assert_eq!(retry, receipt);
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| *state)
-            .await
-            .unwrap()
-            .value,
-        3
-    );
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
     assert_eq!(runtime.state.applied(), receipt.frontier);
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
     runtime.stop().await.unwrap();
@@ -672,11 +526,7 @@ async fn duplicate_key_blocks() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     for key in ["one", "two"] {
-        runtime
-            .state
-            .commit_keyed(RequestKey::new(key), deposit(1))
-            .await
-            .unwrap();
+        runtime.state.commit_keyed(RequestKey::new(key), deposit(1)).await.unwrap();
     }
     runtime.stop().await.unwrap();
     {

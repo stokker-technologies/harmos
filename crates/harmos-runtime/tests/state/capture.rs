@@ -19,9 +19,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
 // Local Imports
 use harmos_runtime::{
-    Application, Error, Runtime, state::CaptureError, state::CaptureLimits, state::Entry,
-    state::FactSource, state::Focus, state::JournalCapture, state::Position,
-    state::PreparationError, state::PrincipalId, state::Recorded, state::Records,
+    Application, Error, Runtime, state::CaptureError, state::CaptureLimits, state::Entry, state::FactSource, state::Focus,
+    state::JournalCapture, state::Position, state::PreparationError, state::PrincipalId, state::Recorded, state::Records,
     state::SystemFact, state::Transaction,
 };
 
@@ -96,27 +95,15 @@ impl Application for Model {
 }
 
 impl JournalCapture<Model> for Consumer {
-    async fn capture(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Model>>>>,
-        frontier: Position,
-    ) -> Result<(), CaptureError> {
+    async fn capture(&mut self, entries: Vec<Arc<Entry<Recorded<Model>>>>, frontier: Position) -> Result<(), CaptureError> {
         self.offered.send((entries, frontier)).unwrap();
         self.release.acquire().await.unwrap().forget();
-        if self.fail {
-            Err(CaptureError::Failed)
-        } else {
-            Ok(())
-        }
+        if self.fail { Err(CaptureError::Failed) } else { Ok(()) }
     }
 }
 
 impl JournalCapture<Model> for Panics {
-    async fn capture(
-        &mut self,
-        _: Vec<Arc<Entry<Recorded<Model>>>>,
-        _: Position,
-    ) -> Result<(), CaptureError> {
+    async fn capture(&mut self, _: Vec<Arc<Entry<Recorded<Model>>>>, _: Position) -> Result<(), CaptureError> {
         panic!("capture worker failed");
     }
 }
@@ -124,16 +111,7 @@ impl JournalCapture<Model> for Panics {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn open(
-    pending: u32,
-    max: u32,
-    fail: bool,
-    tail: usize,
-) -> (
-    Runtime<Model>,
-    mpsc::UnboundedReceiver<Group>,
-    Arc<Semaphore>,
-) {
+async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model>, mpsc::UnboundedReceiver<Group>, Arc<Semaphore>) {
     let (offered, observed) = mpsc::unbounded_channel();
     let release = Arc::new(Semaphore::new(0));
     let runtime = Runtime::<Model>::builder(0, ())
@@ -141,15 +119,8 @@ async fn open(
         .register(Facts::catalog())
         .tail(tail)
         .require_capture(
-            CaptureLimits {
-                pending_bytes: pending,
-                max_group_bytes: max,
-            },
-            Consumer {
-                offered,
-                release: release.clone(),
-                fail,
-            },
+            CaptureLimits { pending_bytes: pending, max_group_bytes: max },
+            Consumer { offered, release: release.clone(), fail },
         )
         .unwrap()
         .runtime()
@@ -166,58 +137,26 @@ async fn group(observed: &mut mpsc::UnboundedReceiver<Group>) -> Group {
 async fn capture_preserves_evicted() {
     // Each 600-byte record charges >600 bytes; two cannot fit in 1,400.
     let (runtime, mut observed, release) = open(1400, 1400, false, 1).await;
-    let first = runtime
-        .records
-        .publish(Observed("x".repeat(600)))
-        .await
-        .unwrap();
+    let first = runtime.records.publish(Observed("x".repeat(600))).await.unwrap();
     let (held, frontier) = group(&mut observed).await;
     assert_eq!(frontier, first.frontier);
     let journal = runtime.state.clone();
-    let second = tokio::spawn(async move {
-        harmos_runtime::records::RecordManager::new(journal.clone())
-            .publish(Observed("y".repeat(600)))
-            .await
-    });
+    let second =
+        tokio::spawn(async move { harmos_runtime::records::RecordManager::new(journal.clone()).publish(Observed("y".repeat(600))).await });
     tokio::task::yield_now().await;
     assert!(!second.is_finished(), "admission waits for capture capacity");
     assert_eq!(runtime.state.applied(), Position(1));
     // Reads remain available while admission is awaiting capacity.
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| *state)
-            .await
-            .unwrap()
-            .value,
-        0
-    );
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
     assert_eq!(held[0].position, Position(1));
     release.add_permits(1);
     assert_eq!(second.await.unwrap().unwrap().position, Position(2));
     let (next, _) = group(&mut observed).await;
     assert_eq!(next[0].position, Position(2));
-    assert_eq!(
-        held[0].position,
-        Position(1),
-        "direct ownership survives tail eviction"
-    );
-    assert!(
-        runtime
-            .state
-            .query::<Facts>(Position::ORIGIN)
-            .await
-            .next()
-            .unwrap()
-            .is_err()
-    );
+    assert_eq!(held[0].position, Position(1), "direct ownership survives tail eviction");
+    assert!(runtime.state.query::<Facts>(Position::ORIGIN).await.next().unwrap().is_err());
     release.add_permits(1);
-    runtime
-        .state
-        .wait_until_captured(Position(2))
-        .await
-        .unwrap();
+    runtime.state.wait_until_captured(Position(2)).await.unwrap();
     assert_eq!(runtime.stop().await.unwrap(), Position(2));
 }
 
@@ -227,14 +166,8 @@ async fn stop_awaits_groups() {
     let principal = PrincipalId::new("capture");
     let journal = runtime.state.as_principal(principal.clone());
     let commit = journal.commit(Add(5)).await.unwrap();
-    assert_eq!(
-        (commit.position, commit.frontier),
-        (Position(1), Position(2))
-    );
-    harmos_runtime::records::RecordManager::new(journal.clone())
-        .publish(Observed("typed".into()))
-        .await
-        .unwrap();
+    assert_eq!((commit.position, commit.frontier), (Position(1), Position(2)));
+    harmos_runtime::records::RecordManager::new(journal.clone()).publish(Observed("typed".into())).await.unwrap();
     harmos_runtime::records::RecordManager::new(journal.clone())
         .publish_system(SystemFact {
             source: FactSource::Sidecar("probe".into()),
@@ -258,19 +191,11 @@ async fn stop_awaits_groups() {
         let (entries, frontier) = group(&mut observed).await;
         assert_eq!(frontier, Position(expected));
         if entries.len() == 2 {
-            assert_eq!(
-                entries[0].metadata.commit,
-                Some((entries[0].position, frontier))
-            );
-            assert_eq!(
-                entries[1].metadata.causation,
-                Some(harmos_runtime::state::CausationId(entries[0].position))
-            );
+            assert_eq!(entries[0].metadata.commit, Some((entries[0].position, frontier)));
+            assert_eq!(entries[1].metadata.causation, Some(harmos_runtime::state::CausationId(entries[0].position)));
         }
         if expected == 4 {
-            let Recorded::System(fact) = &entries[0].value else {
-                panic!("system fact lost")
-            };
+            let Recorded::System(fact) = &entries[0].value else { panic!("system fact lost") };
             assert_eq!(fact.identify().0.as_str(), "harmos:sidecar/probe/sample");
             assert_eq!(fact.payload, vec![1, 2, 3]);
         }
@@ -285,32 +210,19 @@ async fn stop_awaits_groups() {
 #[tokio::test]
 async fn failure_wakes_waiters() {
     let (runtime, mut observed, release) = open(1400, 1400, true, 1).await;
-    runtime
-        .records
-        .publish(Observed("x".repeat(600)))
-        .await
-        .unwrap();
+    runtime.records.publish(Observed("x".repeat(600))).await.unwrap();
     group(&mut observed).await;
     let journal = runtime.state.clone();
-    let pending = tokio::spawn(async move {
-        harmos_runtime::records::RecordManager::new(journal.clone())
-            .publish(Observed("y".repeat(600)))
-            .await
-    });
+    let pending =
+        tokio::spawn(async move { harmos_runtime::records::RecordManager::new(journal.clone()).publish(Observed("y".repeat(600))).await });
     tokio::task::yield_now().await;
     assert!(!pending.is_finished(), "admission waits for capture capacity");
     release.add_permits(1);
     assert!(matches!(pending.await.unwrap(), Err(Error::CaptureFailed)));
     assert_eq!(runtime.state.applied(), Position(1));
-    assert_eq!(
-        runtime.state.wait_until_captured(Position(1)).await,
-        Err(CaptureError::Failed)
-    );
+    assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
     assert_eq!(runtime.state.capture_status(), Err(CaptureError::Failed));
-    assert!(matches!(
-        runtime.records.publish(Observed("later".into())).await,
-        Err(Error::CaptureFailed)
-    ));
+    assert!(matches!(runtime.records.publish(Observed("later".into())).await, Err(Error::CaptureFailed)));
     runtime.stop().await.unwrap();
 
     assert_eq!(
@@ -323,20 +235,8 @@ async fn failure_wakes_waiters() {
 #[tokio::test]
 async fn oversize_never_applies() {
     let (runtime, mut observed, _) = open(1, 1, false, 1).await;
-    assert!(matches!(
-        runtime.state.commit(Add(9)).await,
-        Err(Error::Preparation(PreparationError::Limit))
-    ));
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| *state)
-            .await
-            .unwrap()
-            .value,
-        0
-    );
+    assert!(matches!(runtime.state.commit(Add(9)).await, Err(Error::Preparation(PreparationError::Limit))));
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert!(observed.try_recv().is_err());
     assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
@@ -348,11 +248,7 @@ async fn queued_groups_outlive() {
     // More independent publications than the normal 1,024-entry tail, with
     // the first callback stalled and every later accepted group still pending.
     for index in 0..1100 {
-        runtime
-            .records
-            .publish(Observed(index.to_string()))
-            .await
-            .unwrap();
+        runtime.records.publish(Observed(index.to_string())).await.unwrap();
     }
     assert_eq!(runtime.state.applied(), Position(1100));
     release.add_permits(1100);
@@ -360,9 +256,7 @@ async fn queued_groups_outlive() {
         let (entries, frontier) = group(&mut observed).await;
         assert_eq!(frontier, Position(expected));
         assert_eq!(entries[0].position, Position(expected));
-        let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value else {
-            panic!("typed record lost")
-        };
+        let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value else { panic!("typed record lost") };
         assert_eq!(value, &(expected - 1).to_string());
     }
     assert_eq!(runtime.stop().await.unwrap(), Position(1100));
@@ -372,26 +266,13 @@ async fn queued_groups_outlive() {
 async fn panic_fails_capture() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Facts::catalog())
-        .require_capture(
-            CaptureLimits {
-                pending_bytes: 4096,
-                max_group_bytes: 4096,
-            },
-            Panics,
-        )
+        .require_capture(CaptureLimits { pending_bytes: 4096, max_group_bytes: 4096 }, Panics)
         .unwrap()
         .runtime()
         .await
         .unwrap();
-    runtime
-        .records
-        .publish(Observed("accepted".into()))
-        .await
-        .unwrap();
-    assert_eq!(
-        runtime.state.wait_until_captured(Position(1)).await,
-        Err(CaptureError::Failed)
-    );
+    runtime.records.publish(Observed("accepted".into())).await.unwrap();
+    assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
     runtime.stop().await.unwrap();
 
     assert_eq!(

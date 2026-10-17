@@ -117,21 +117,11 @@ impl Bucket {
         let mut summary = Summary::new();
         summary.push(point.value);
 
-        Self {
-            field: field.into(),
-            first: point,
-            last: point,
-            min: point,
-            max: point,
-            summary,
-        }
+        Self { field: field.into(), first: point, last: point, min: point, max: point, summary }
     }
 
     pub fn merge(&self, later: &Self) -> Self {
-        assert_eq!(
-            self.field, later.field,
-            "a bucket merges only with a bucket of its own field"
-        );
+        assert_eq!(self.field, later.field, "a bucket merges only with a bucket of its own field");
 
         Self {
             field: self.field.clone(),
@@ -162,115 +152,48 @@ impl Tier {
     pub(crate) fn channel(capacity: usize) -> (Self, mpsc::Receiver<Request>) {
         let (sender, receiver) = mpsc::channel(capacity.max(1));
 
-        (
-            Self {
-                sender,
-                readers: Arc::new(tokio::sync::Semaphore::new(capacity.max(1))),
-            },
-            receiver,
-        )
+        (Self { sender, readers: Arc::new(tokio::sync::Semaphore::new(capacity.max(1))) }, receiver)
     }
 
-    pub(crate) fn reader_permit(
-        &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, crate::streams::ReadError> {
-        self.readers
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| crate::streams::ReadError::Busy)
+    pub(crate) fn reader_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, crate::streams::ReadError> {
+        self.readers.clone().try_acquire_owned().map_err(|_| crate::streams::ReadError::Busy)
     }
 
     pub(crate) async fn reader(
-        &self,
-        stream: Definition,
-        track: Vec<String>,
-        start: Bound<Position>,
-        end: Bound<Position>,
-        limits: crate::streams::ReadLimits,
+        &self, stream: Definition, track: Vec<String>, start: Bound<Position>, end: Bound<Position>, limits: crate::streams::ReadLimits,
         permit: tokio::sync::OwnedSemaphorePermit,
     ) -> Result<Opened, crate::streams::ReadError> {
         let (reply, answer) = oneshot::channel();
         self.sender
-            .send(Request::Reader {
-                stream,
-                track,
-                start,
-                end,
-                limits,
-                permit,
-                reply,
-            })
+            .send(Request::Reader { stream, track, start, end, limits, permit, reply })
             .await
             .map_err(|_| crate::streams::ReadError::Closed)?;
         answer.await.map_err(|_| crate::streams::ReadError::Closed)
     }
 
     pub(crate) async fn rows(
-        &self,
-        stream: Definition,
-        track: Vec<String>,
-        start: Bound<Position>,
-        end: Bound<Position>,
+        &self, stream: Definition, track: Vec<String>, start: Bound<Position>, end: Bound<Position>,
     ) -> Result<Vec<Served>, BeneathWindow> {
         let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(Request::Rows {
-                stream,
-                track,
-                start,
-                end,
-                reply,
-            })
-            .await
-            .map_err(|_| BeneathWindow::Unserved)?;
+        self.sender.send(Request::Rows { stream, track, start, end, reply }).await.map_err(|_| BeneathWindow::Unserved)?;
 
         answer.await.map_err(|_| BeneathWindow::Unserved)?
     }
 
     pub(crate) async fn buckets(
-        &self,
-        stream: Definition,
-        track: Vec<String>,
-        start: Bound<u64>,
-        end: Bound<u64>,
-        budget: usize,
+        &self, stream: Definition, track: Vec<String>, start: Bound<u64>, end: Bound<u64>, budget: usize,
     ) -> Result<Vec<Bucket>, BeneathWindow> {
         let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(Request::Buckets {
-                stream,
-                track,
-                start,
-                end,
-                budget,
-                reply,
-            })
-            .await
-            .map_err(|_| BeneathWindow::Unserved)?;
+        self.sender.send(Request::Buckets { stream, track, start, end, budget, reply }).await.map_err(|_| BeneathWindow::Unserved)?;
 
         answer.await.map_err(|_| BeneathWindow::Unserved)?
     }
 
     pub(crate) async fn aggregate(
-        &self,
-        stream: Definition,
-        track: Vec<String>,
-        start: Bound<u64>,
-        end: Bound<u64>,
-        kind: Aggregate,
+        &self, stream: Definition, track: Vec<String>, start: Bound<u64>, end: Bound<u64>, kind: Aggregate,
     ) -> Result<Vec<Aggregated>, BeneathWindow> {
         let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(Request::Aggregate {
-                stream,
-                track,
-                start,
-                end,
-                kind,
-                reply,
-            })
-            .await
-            .map_err(|_| BeneathWindow::Unserved)?;
+        self.sender.send(Request::Aggregate { stream, track, start, end, kind, reply }).await.map_err(|_| BeneathWindow::Unserved)?;
 
         answer.await.map_err(|_| BeneathWindow::Unserved)?
     }
@@ -278,16 +201,7 @@ impl Tier {
     pub(crate) async fn seal(&self, stream: Definition, track: Vec<String>) -> Position {
         let (reply, answer) = oneshot::channel();
 
-        if self
-            .sender
-            .send(Request::Seal {
-                stream,
-                track,
-                reply,
-            })
-            .await
-            .is_err()
-        {
+        if self.sender.send(Request::Seal { stream, track, reply }).await.is_err() {
             return Position::ORIGIN;
         }
 

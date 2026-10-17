@@ -86,61 +86,31 @@ pub enum ObjectVersion {
 impl MemorySize for ObjectEntry {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.position
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
-            .saturating_add(
-                self.version
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<ObjectVersionToken>()),
-            )
-            .saturating_add(
-                self.value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<ObjectValue>()),
-            )
+            .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.version.memory_size().saturating_sub(std::mem::size_of::<ObjectVersionToken>()))
+            .saturating_add(self.value.memory_size().saturating_sub(std::mem::size_of::<ObjectValue>()))
     }
 }
 
 impl<T: MemorySize> MemorySize for ObjectRevision<T> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.position
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
-            .saturating_add(
-                self.version
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<ObjectVersionToken>()),
-            )
-            .saturating_add(
-                self.value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<T>()),
-            )
+            .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.version.memory_size().saturating_sub(std::mem::size_of::<ObjectVersionToken>()))
+            .saturating_add(self.value.memory_size().saturating_sub(std::mem::size_of::<T>()))
     }
 }
 
 impl MemorySize for ObjectReceipt {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.position.memory_size()
-            - std::mem::size_of::<StorageCursor>()
-            + self.version.memory_size()
+        std::mem::size_of::<Self>() + self.position.memory_size() - std::mem::size_of::<StorageCursor>() + self.version.memory_size()
             - std::mem::size_of::<ObjectVersionToken>()
     }
 }
 
 impl MemorySize for ObjectVersionToken {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.history
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<StoreHistory>()),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
     }
 }
 
@@ -161,8 +131,7 @@ impl ObjectVersionToken {
     }
 
     pub fn decode_bounded(bytes: &[u8], max_bytes: NonZeroUsize) -> Result<Self> {
-        let required =
-            Self::decoding_memory(bytes).map_err(|_| invalid("invalid object version encoding"))?;
+        let required = Self::decoding_memory(bytes).map_err(|_| invalid("invalid object version encoding"))?;
         if required > max_bytes.get() {
             return Err(invalid("object version decoding exceeds allowance"));
         }
@@ -174,49 +143,26 @@ impl ObjectVersionToken {
     }
 
     pub fn new(position: StorageCursor) -> Self {
-        Self {
-            history: position.history,
-            revision: NonZeroU64::new(position.sequence).expect("admission positions are nonzero"),
-        }
+        Self { history: position.history, revision: NonZeroU64::new(position.sequence).expect("admission positions are nonzero") }
     }
 
     pub fn check_position(&self, position: &StorageCursor) -> Result<()> {
         self.history.check(&position.history)?;
         if self.revision.get() != position.sequence {
-            return Err(invalid(
-                "object version does not match its admission identity",
-            ));
+            return Err(invalid("object version does not match its admission identity"));
         }
         Ok(())
     }
 }
 
-crate::postcard_product!(ObjectVersionToken {
-    history: StoreHistory,
-    revision: NonZeroU64
-});
+crate::postcard_product!(ObjectVersionToken { history: StoreHistory, revision: NonZeroU64 });
 
 impl Described for ObjectVersionToken {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectVersionToken));
     const FIELDS: &'static [Field] = &[
-        Field {
-            name: Cow::Borrowed("store"),
-            tag: 1,
-            kind: Kind::String,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("epoch"),
-            tag: 2,
-            kind: Kind::String,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("revision"),
-            tag: 3,
-            kind: Kind::U64,
-            cardinality: Cardinality::Required,
-        },
+        Field { name: Cow::Borrowed("store"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("epoch"), tag: 2, kind: Kind::String, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("revision"), tag: 3, kind: Kind::U64, cardinality: Cardinality::Required },
     ];
 
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<

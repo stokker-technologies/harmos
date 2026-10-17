@@ -58,16 +58,8 @@ pub struct FollowObjects {
 impl MemorySize for FollowObjects {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.after
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.after)),
-            )
-            .saturating_add(
-                self.selection
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.selection)),
-            )
+            .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))
+            .saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
 

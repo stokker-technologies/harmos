@@ -49,23 +49,13 @@ pub struct Witness {
 impl Witness {
     pub fn open() -> Arc<Self> {
         let key = format!("witness-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-        let witness = Arc::new(Self {
-            key: key.clone(),
-            events: watch::Sender::new(BTreeMap::new()),
-        });
-        LEDGERS
-            .lock()
-            .expect("the ledger registry is never poisoned")
-            .insert(key, Arc::downgrade(&witness));
+        let witness = Arc::new(Self { key: key.clone(), events: watch::Sender::new(BTreeMap::new()) });
+        LEDGERS.lock().expect("the ledger registry is never poisoned").insert(key, Arc::downgrade(&witness));
         witness
     }
 
     pub fn find(key: &str) -> Option<Arc<Self>> {
-        LEDGERS
-            .lock()
-            .expect("the ledger registry is never poisoned")
-            .get(key)
-            .and_then(Weak::upgrade)
+        LEDGERS.lock().expect("the ledger registry is never poisoned").get(key).and_then(Weak::upgrade)
     }
 
     pub fn key(&self) -> &str {
@@ -88,10 +78,7 @@ impl Witness {
 
     pub async fn marked(&self, name: &str) {
         let mut events = self.events.subscribe();
-        events
-            .wait_for(|events| events.contains_key(name))
-            .await
-            .expect("the witness owns its sender");
+        events.wait_for(|events| events.contains_key(name)).await.expect("the witness owns its sender");
     }
 }
 

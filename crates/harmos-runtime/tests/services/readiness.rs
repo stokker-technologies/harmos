@@ -63,9 +63,7 @@ async fn late_ready_ignored() {
     let services = runtime.operations.clone();
     runtime.stop().await.unwrap();
     assert_eq!(
-        services
-            .resident(&harmos_runtime::operations::resident::Key::root("initializing"))
-            .and_then(|item| item.health),
+        services.resident(&harmos_runtime::operations::resident::Key::root("initializing")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
 }
@@ -83,11 +81,7 @@ async fn readiness_follows_initialization() {
                 let initialized = initialized.clone();
                 async move {
                     entered.notify_one();
-                    if context
-                        .until_stopping(initialized.notified())
-                        .await
-                        .is_some()
-                    {
+                    if context.until_stopping(initialized.notified()).await.is_some() {
                         context.ready();
                         context.ready();
                         context.stopping().await;
@@ -101,10 +95,7 @@ async fn readiness_follows_initialization() {
         .unwrap();
     entered.notified().await;
     assert_eq!(
-        runtime
-            .operations
-            .resident(&harmos_runtime::operations::resident::Key::root("gated"))
-            .and_then(|item| item.health),
+        runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("gated")).and_then(|item| item.health),
         Some(ServiceStatus::Starting)
     );
     initialized.notify_one();
@@ -112,9 +103,7 @@ async fn readiness_follows_initialization() {
     statuses
         .wait_for(|values| {
             matches!(
-                values
-                    .get(&harmos_runtime::operations::resident::Key::root("gated"))
-                    .and_then(|item| item.health.as_ref()),
+                values.get(&harmos_runtime::operations::resident::Key::root("gated")).and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Running { .. })
             )
         })
@@ -167,10 +156,7 @@ async fn initialization_preserves_credit() {
     entered.notified().await;
     tokio::time::advance(Duration::from_secs(10)).await;
     assert_eq!(
-        runtime
-            .operations
-            .resident(&harmos_runtime::operations::resident::Key::root("unready"))
-            .and_then(|item| item.health),
+        runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("unready")).and_then(|item| item.health),
         Some(ServiceStatus::Starting)
     );
     fail.notify_one();
@@ -178,9 +164,7 @@ async fn initialization_preserves_credit() {
     statuses
         .wait_for(|values| {
             matches!(
-                values
-                    .get(&harmos_runtime::operations::resident::Key::root("unready"))
-                    .and_then(|item| item.health.as_ref()),
+                values.get(&harmos_runtime::operations::resident::Key::root("unready")).and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Inactive { .. })
             )
         })
@@ -192,13 +176,7 @@ async fn initialization_preserves_credit() {
     }) if history == ["not initialized", "not initialized"])
     );
     assert_eq!(attempts.load(SeqCst), 2);
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos_runtime::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test(start_paused = true)]
@@ -252,10 +230,7 @@ async fn retirement_fences_readiness() {
     probe.notify_one();
     probed.notified().await;
     assert_eq!(
-        runtime
-            .operations
-            .resident(&harmos_runtime::operations::resident::Key::root("replacement"))
-            .and_then(|item| item.health),
+        runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("replacement")).and_then(|item| item.health),
         Some(ServiceStatus::Starting)
     );
     initialized.notify_one();
@@ -263,9 +238,7 @@ async fn retirement_fences_readiness() {
     statuses
         .wait_for(|values| {
             matches!(
-                values
-                    .get(&harmos_runtime::operations::resident::Key::root("replacement"))
-                    .and_then(|item| item.health.as_ref()),
+                values.get(&harmos_runtime::operations::resident::Key::root("replacement")).and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Running { .. })
             )
         })
@@ -277,23 +250,14 @@ async fn retirement_fences_readiness() {
 
 #[tokio::test]
 async fn activated_service_starting() {
-    let runtime = assembly()
-        .runtime()
-        .await
-        .expect("a runtime that declares no service of its own boots");
+    let runtime = assembly().runtime().await.expect("a runtime that declares no service of its own boots");
     let statuses = runtime.operations.watch_residents();
-    assert!(
-        statuses.borrow().is_empty(),
-        "nothing is on the watch before a tenant is admitted"
-    );
+    assert!(statuses.borrow().is_empty(), "nothing is on the watch before a tenant is admitted");
 
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition {
-                id: "tenant".into(),
-                policy: harmos_runtime::services::POLICY,
-            },
+            harmos_runtime::services::ServiceDefinition { id: "tenant".into(), policy: harmos_runtime::services::POLICY },
             |_: Arc<()>| {
                 |context: harmos_runtime::services::Service<Bank>| async move {
                     let mut context = context;
@@ -304,11 +268,7 @@ async fn activated_service_starting() {
             },
         )
         .expect("the tenant factory is registered");
-    let _tenant = runtime
-        .operations
-        .submit_resident("tenant")
-        .await
-        .expect("a tenant is admitted after boot");
+    let _tenant = runtime.operations.submit_resident("tenant").await.expect("a tenant is admitted after boot");
 
     // Read on the next line, with nothing awaited in between. The supervisor
     // writes its own first status from a task, and on this runtime a task
@@ -316,25 +276,15 @@ async fn activated_service_starting() {
     // itself put there, and a caller reading the name it just activated finds
     // a service rather than a hole.
     assert_eq!(
-        statuses
-            .borrow()
-            .get(&harmos_runtime::operations::resident::Key::root("tenant"))
-            .and_then(|item| item.health.as_ref()),
+        statuses.borrow().get(&harmos_runtime::operations::resident::Key::root("tenant")).and_then(|item| item.health.as_ref()),
         Some(&ServiceStatus::Starting),
         "an activated tenant reads `Starting` before `activate` answers"
     );
 
     // The supervisor replaces that status rather than introducing the name, so
     // there is no moment on the way to running when the tenant is missing.
-    service_status(statuses.clone(), "tenant", |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
-    assert!(
-        statuses
-            .borrow()
-            .contains_key(&harmos_runtime::operations::resident::Key::root("tenant"))
-    );
+    service_status(statuses.clone(), "tenant", |status| matches!(status, ServiceStatus::Running { .. })).await;
+    assert!(statuses.borrow().contains_key(&harmos_runtime::operations::resident::Key::root("tenant")));
     runtime.stop().await.unwrap();
 }
 
@@ -342,26 +292,15 @@ async fn activated_service_starting() {
 async fn context_publishes_streams() {
     let runtime = assembly()
         .register(support::streams())
-        .service(
-            "source",
-            |context: harmos_runtime::services::Service<Bank>| async move {
-                context.streams().publish(support::pulse(7));
-                Ok::<(), Fault<&'static str>>(())
-            },
-        )
+        .service("source", |context: harmos_runtime::services::Service<Bank>| async move {
+            context.streams().publish(support::pulse(7));
+            Ok::<(), Fault<&'static str>>(())
+        })
         .runtime()
         .await
         .expect("the stream-producing service boots");
-    service_status(runtime.operations.watch_residents(), "source", |status| {
-        *status == ServiceStatus::Stopped
-    })
-    .await;
-    let rows: Vec<_> = runtime
-        .streams
-        .query::<support::Pulse>(..)
-        .await
-        .expect("the service's row remains in the window")
-        .collect();
+    service_status(runtime.operations.watch_residents(), "source", |status| *status == ServiceStatus::Stopped).await;
+    let rows: Vec<_> = runtime.streams.query::<support::Pulse>(..).await.expect("the service's row remains in the window").collect();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].value.sample, 7);
     runtime.stop().await.unwrap();

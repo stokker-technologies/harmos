@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Share The Deterministic Script Between Stories And Benchmarks
 
 /* === Modules === */
@@ -15,8 +14,8 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
 use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
+use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
 use harmos_runtime::{DefinitionId, Identified};
 
 // Standard Library Imports
@@ -24,7 +23,6 @@ use harmos_runtime::{DefinitionId, Identified};
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -50,7 +48,6 @@ impl Identified for Noted {
         (DefinitionId::new(NOTED.1), NOTED.2)
     }
 }
-
 
 /* === Public Functions === */
 pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {

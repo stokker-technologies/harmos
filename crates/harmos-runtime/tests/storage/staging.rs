@@ -79,10 +79,7 @@ async fn resume_continues_offset() {
     assert_eq!(resumed.length(), 11);
     let result = resumed.finish().await.unwrap();
     assert_eq!(result.length, 11);
-    assert_eq!(
-        f.data.blobs.lock().unwrap()[result.metadata.id.as_str()].1,
-        b"firstsecond"
-    );
+    assert_eq!(f.data.blobs.lock().unwrap()[result.metadata.id.as_str()].1, b"firstsecond");
     assert!(f.storage.resume_file(&token).await.is_err());
     f.finish().await;
 }
@@ -119,10 +116,7 @@ async fn resume_reconciles_write() {
     assert_eq!(resumed.length(), 8);
     resumed.write_all(b" bytes").await.unwrap();
     let reference = resumed.finish().await.unwrap();
-    assert_eq!(
-        f.data.blobs.lock().unwrap()[reference.metadata.id.as_str()].1,
-        b"retained bytes"
-    );
+    assert_eq!(f.data.blobs.lock().unwrap()[reference.metadata.id.as_str()].1, b"retained bytes");
     f.finish().await;
 }
 
@@ -143,18 +137,12 @@ async fn idle_session_expires() {
     tokio::time::advance(Duration::from_secs(1)).await;
     f.data.control.abandoned.notified().await;
     assert!(f.data.abandoned_files.lock().unwrap().contains("expired"));
-    assert_eq!(
-        f.data.staged.lock().unwrap()["expired"].1,
-        b"partial after idle"
-    );
+    assert_eq!(f.data.staged.lock().unwrap()["expired"].1, b"partial after idle");
     assert!(f.storage.resume_file(&token).await.is_err());
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     let data = f.data.clone();
     f.finish().await;
-    assert_eq!(
-        data.staged.lock().unwrap()["expired"].1,
-        b"partial after idle"
-    );
+    assert_eq!(data.staged.lock().unwrap()["expired"].1, b"partial after idle");
 }
 
 #[tokio::test(start_paused = true)]
@@ -177,10 +165,7 @@ async fn cancelled_resume_expires() {
 
     // The Fence Completes Without A Resumer; Its Generation Expires Unadopted.
     f.data.control.fenced.notified().await;
-    assert_eq!(
-        f.data.file_generations.lock().unwrap().get("unadopted"),
-        Some(&2)
-    );
+    assert_eq!(f.data.file_generations.lock().unwrap().get("unadopted"), Some(&2));
     unadopted_token.generation = 2;
     tokio::time::advance(Duration::from_secs(61)).await;
     assert!(f.storage.resume_file(&unadopted_token).await.is_err());
@@ -208,10 +193,7 @@ async fn follow_tails_production() {
     let mut producer = f.storage.produce_file(metadata("growing")).await.unwrap();
     producer.write_all(b"first").await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile {
-        history: token.history.clone(),
-        id: token.id.clone(),
-    };
+    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
     let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
     let max = NonZeroUsize::new(3).unwrap();
     assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"fir");
@@ -230,10 +212,7 @@ async fn follow_tails_production() {
     }
     drop(reader);
     let mut resumed = f.storage.follow_file(&identity, 8).await.unwrap();
-    assert_eq!(
-        resumed.next_batch(max).await.unwrap().unwrap().bytes,
-        b"ond"
-    );
+    assert_eq!(resumed.next_batch(max).await.unwrap().unwrap().bytes, b"ond");
     producer.finish().await.unwrap();
     assert!(resumed.next_batch(max).await.unwrap().is_none());
     assert_eq!(resumed.progress().phase, FilePhase::Finished);
@@ -255,32 +234,19 @@ async fn follow_ends_abandoned() {
     use harmos_runtime::storage::{FilePhase, StagedFile};
     use std::num::NonZeroUsize;
     let f = Fixture::new(config()).await;
-    let mut producer = f
-        .storage
-        .produce_file(metadata("partial-reader"))
-        .await
-        .unwrap();
+    let mut producer = f.storage.produce_file(metadata("partial-reader")).await.unwrap();
     producer.write_all(b"partial").await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile {
-        history: token.history.clone(),
-        id: token.id.clone(),
-    };
+    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
     let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
     producer.abort().await.unwrap();
     let max = NonZeroUsize::new(100).unwrap();
-    assert_eq!(
-        reader.next_batch(max).await.unwrap().unwrap().bytes,
-        b"partial"
-    );
+    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"partial");
     assert!(reader.next_batch(max).await.unwrap().is_none());
     assert_eq!(reader.progress().phase, FilePhase::Abandoned);
     drop(reader);
     let mut replay = f.storage.follow_file(&identity, 3).await.unwrap();
-    assert_eq!(
-        replay.next_batch(max).await.unwrap().unwrap().bytes,
-        b"tial"
-    );
+    assert_eq!(replay.next_batch(max).await.unwrap().unwrap().bytes, b"tial");
     assert!(replay.next_batch(max).await.unwrap().is_none());
     assert_eq!(replay.progress().phase, FilePhase::Abandoned);
     drop(replay);
@@ -292,17 +258,10 @@ async fn cancelled_follow_offset() {
     use harmos_runtime::storage::StagedFile;
     use std::num::NonZeroUsize;
     let f = Fixture::new(config()).await;
-    let mut producer = f
-        .storage
-        .produce_file(metadata("cancel-reader"))
-        .await
-        .unwrap();
+    let mut producer = f.storage.produce_file(metadata("cancel-reader")).await.unwrap();
     producer.write_all(b"first").await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile {
-        history: token.history.clone(),
-        id: token.id.clone(),
-    };
+    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
     let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
     f.data.control.block_read.store(true, Ordering::SeqCst);
     {
@@ -328,10 +287,7 @@ async fn private_files_hidden() {
     let f = Fixture::new(config()).await;
     let mut private = f.storage.create_file(metadata("private")).await.unwrap();
     private.write_all(b"private bytes").await.unwrap();
-    let identity = StagedFile {
-        history: f.storage.cursor_accepted().history,
-        id: Identifier::new("private").unwrap(),
-    };
+    let identity = StagedFile { history: f.storage.cursor_accepted().history, id: Identifier::new("private").unwrap() };
     assert!(f.storage.follow_file(&identity, 0).await.is_err());
     assert!(f.storage.file_progress(&identity).await.is_err());
     private.abort().await.unwrap();

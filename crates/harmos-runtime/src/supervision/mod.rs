@@ -9,29 +9,17 @@
 
 /* === Modules === */
 pub(crate) mod cleanup;
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) mod dependencies;
 pub(crate) mod executor;
 pub(crate) mod instance;
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod listeners;
 mod task;
 
 /* === Re-Exports === */
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) use listeners::{Delivery as ListenerDelivery, Listener};
 pub(crate) use task::{Task, settle_all};
 
@@ -53,11 +41,7 @@ use tokio::task::{JoinError, JoinHandle};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) struct Backoff;
 
 struct Attempt<T>(JoinHandle<T>);
@@ -72,17 +56,11 @@ pub(crate) enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Backoff {
     pub(crate) fn duration(attempt: usize, base: Duration, cap: Duration) -> Duration {
         let shift = u32::try_from(attempt.min(16)).expect("the capped attempt fits u32");
-        let exponential = base
-            .saturating_mul(1_u32.checked_shl(shift).unwrap_or(u32::MAX))
-            .min(cap);
+        let exponential = base.saturating_mul(1_u32.checked_shl(shift).unwrap_or(u32::MAX)).min(cap);
         let jitter_range = exponential.as_millis().saturating_div(4).saturating_add(1);
         let jitter = ((attempt as u128).wrapping_mul(17).wrapping_add(11)) % jitter_range;
 
@@ -105,20 +83,14 @@ impl<T> Drop for Attempt<T> {
 }
 
 /* === Public Functions === */
-pub(crate) async fn attempt<F>(
-    future: F,
-    mut stopping: watch::Receiver<bool>,
-    stop_timeout: Duration,
-) -> Result<F::Output, Failure>
+pub(crate) async fn attempt<F>(future: F, mut stopping: watch::Receiver<bool>, stop_timeout: Duration) -> Result<F::Output, Failure>
 where
     F: Future + Send,
     F::Output: Send,
 {
     let mut future = std::pin::pin!(future);
     let mut running = std::pin::pin!(std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
             Ok(poll) => poll.map(Ok),
             Err(_) => Poll::Ready(Err(Failure::Panicked)),
         }
@@ -135,10 +107,7 @@ where
     }
 }
 
-pub(crate) async fn interruptible<F: Future>(
-    future: F,
-    stopping: &mut watch::Receiver<bool>,
-) -> Option<F::Output> {
+pub(crate) async fn interruptible<F: Future>(future: F, stopping: &mut watch::Receiver<bool>) -> Option<F::Output> {
     let mut future = std::pin::pin!(future);
     let stopped = async {
         loop {

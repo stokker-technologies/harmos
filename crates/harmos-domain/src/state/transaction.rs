@@ -53,10 +53,7 @@ pub trait Transaction<S> {
 pub trait TransactionCatalog<S>: Transaction<S> + super::record::CatalogCodec {
     fn replay(&self, prepared: &super::record::Prepared, state: &mut S) -> Result<(), DecodeError> {
         if self.identify() != (prepared.id.clone(), prepared.version) {
-            return Err(DecodeError::Malformed {
-                id: prepared.id.clone(),
-                version: prepared.version,
-            });
+            return Err(DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version });
         }
         self.apply(state);
         Ok(())
@@ -112,11 +109,7 @@ impl super::record::CatalogCodec for Never {
 }
 
 impl super::record::RecordCatalog for Never {
-    fn restore(
-        _: &DefinitionId,
-        _: u32,
-        _: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error> {
+    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
         Ok(None)
     }
 }

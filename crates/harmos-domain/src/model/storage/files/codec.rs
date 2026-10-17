@@ -72,16 +72,12 @@ impl crate::model::storage::codec::Value for Phase {
         1
     }
 
-    fn postcard_memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<usize, MessageError> {
+    fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, MessageError> {
         Self::postcard_read(input)?;
         Ok(0)
     }
 
-    fn postcard_read(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<Self::Native, MessageError> {
+    fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<Self::Native, MessageError> {
         match input.value::<u64>()? {
             0 => Ok(super::FilePhase::Producing),
             1 => Ok(super::FilePhase::Finished),
@@ -106,10 +102,7 @@ impl FileMetadata {
 
 impl FileReference {
     pub fn encode_bounded(&self, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
-        self.check_native().map_err(|_| Error::InvalidInput {
-            field: "storage file codec",
-            reason: "invalid file reference",
-        })?;
+        self.check_native().map_err(|_| Error::InvalidInput { field: "storage file codec", reason: "invalid file reference" })?;
         encode_bounded(self, max_bytes)
     }
 
@@ -119,18 +112,10 @@ impl FileReference {
 
     pub fn check_native(&self) -> std::result::Result<(), MessageError> {
         if self.position.sequence == 0
-            || self
-                .metadata
-                .expected_length
-                .is_some_and(|length| length != self.length)
-            || self
-                .metadata
-                .expected_sha256
-                .is_some_and(|hash| hash != self.sha256)
+            || self.metadata.expected_length.is_some_and(|length| length != self.length)
+            || self.metadata.expected_sha256.is_some_and(|hash| hash != self.sha256)
         {
-            return Err(MessageError::borrowed(
-                "file reference conflicts with its position or integrity requirements",
-            ));
+            return Err(MessageError::borrowed("file reference conflicts with its position or integrity requirements"));
         }
         Ok(())
     }
@@ -145,48 +130,18 @@ crate::postcard_product!(FileMetadata {
 });
 
 crate::postcard_product!(
-    FileReference {
-        position: StorageCursor,
-        metadata: FileMetadata,
-        length: u64,
-        sha256: [u8; 32],
-    },
+    FileReference { position: StorageCursor, metadata: FileMetadata, length: u64, sha256: [u8; 32] },
     validate = FileReference::check_native
 );
 
 impl Described for FileMetadata {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileMetadata));
     const FIELDS: &'static [Field] = &[
-        Field {
-            name: Cow::Borrowed("id"),
-            tag: 1,
-            kind: Kind::String,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("scope"),
-            tag: 2,
-            kind: Kind::String,
-            cardinality: Cardinality::Optional,
-        },
-        Field {
-            name: Cow::Borrowed("media_type"),
-            tag: 3,
-            kind: Kind::String,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("expected_length"),
-            tag: 4,
-            kind: Kind::U64,
-            cardinality: Cardinality::Optional,
-        },
-        Field {
-            name: Cow::Borrowed("expected_sha256"),
-            tag: 5,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Optional,
-        },
+        Field { name: Cow::Borrowed("id"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("scope"), tag: 2, kind: Kind::String, cardinality: Cardinality::Optional },
+        Field { name: Cow::Borrowed("media_type"), tag: 3, kind: Kind::String, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("expected_length"), tag: 4, kind: Kind::U64, cardinality: Cardinality::Optional },
+        Field { name: Cow::Borrowed("expected_sha256"), tag: 5, kind: Kind::Bytes, cardinality: Cardinality::Optional },
     ];
 
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
@@ -200,31 +155,17 @@ impl Described for FileReference {
         Field {
             name: Cow::Borrowed("position"),
             tag: 1,
-            kind: Kind::Message {
-                definition: StorageCursor::DEFINITION,
-            },
+            kind: Kind::Message { definition: StorageCursor::DEFINITION },
             cardinality: Cardinality::Required,
         },
         Field {
             name: Cow::Borrowed("metadata"),
             tag: 2,
-            kind: Kind::Message {
-                definition: FileMetadata::DEFINITION,
-            },
+            kind: Kind::Message { definition: FileMetadata::DEFINITION },
             cardinality: Cardinality::Required,
         },
-        Field {
-            name: Cow::Borrowed("length"),
-            tag: 3,
-            kind: Kind::U64,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("sha256"),
-            tag: 4,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
+        Field { name: Cow::Borrowed("length"), tag: 3, kind: Kind::U64, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("sha256"), tag: 4, kind: Kind::Bytes, cardinality: Cardinality::Required },
     ];
 
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<

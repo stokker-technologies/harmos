@@ -69,40 +69,36 @@ fn contract_scenario() {
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let temporary = tempfile::tempdir().unwrap();
-                    let directory = temporary.path();
-                    let capture = JsonlStreams::<Model>::open(directory).unwrap();
-                    assert_eq!(
-                        capture.resume(),
-                        harmos::storage::Cursor::ORIGIN,
-                        "a directory nothing has recorded into resumes from the origin"
-                    );
-                    let runtime = harmos::Runtime::<Model>::builder(support::Ledger::default(), ())
-                        .register(Feeds::catalog())
-                        .attach_streams(capture.select::<Reading>())
-                        .runtime()
-                        .await
-                        .unwrap();
-                    for value in 1..=7 {
-                        runtime.streams.publish(Reading { value });
-                    }
-                    runtime.stop().await.unwrap();
-                    assert_eq!(
-                        JsonlStreams::<Model>::open(directory).unwrap().resume(),
-                        harmos::storage::Cursor(7),
-                        "a cursor survives the process that wrote it"
-                    );
-                    assert_eq!(
-                        JsonlStreams::<Model>::open(directory).unwrap().resume(),
-                        harmos::storage::Cursor(7),
-                        "healing repairs captures and never touches the checkpoint beside them"
-                    );
-                });
+            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
+                let temporary = tempfile::tempdir().unwrap();
+                let directory = temporary.path();
+                let capture = JsonlStreams::<Model>::open(directory).unwrap();
+                assert_eq!(
+                    capture.resume(),
+                    harmos::storage::Cursor::ORIGIN,
+                    "a directory nothing has recorded into resumes from the origin"
+                );
+                let runtime = harmos::Runtime::<Model>::builder(support::Ledger::default(), ())
+                    .register(Feeds::catalog())
+                    .attach_streams(capture.select::<Reading>())
+                    .runtime()
+                    .await
+                    .unwrap();
+                for value in 1..=7 {
+                    runtime.streams.publish(Reading { value });
+                }
+                runtime.stop().await.unwrap();
+                assert_eq!(
+                    JsonlStreams::<Model>::open(directory).unwrap().resume(),
+                    harmos::storage::Cursor(7),
+                    "a cursor survives the process that wrote it"
+                );
+                assert_eq!(
+                    JsonlStreams::<Model>::open(directory).unwrap().resume(),
+                    harmos::storage::Cursor(7),
+                    "healing repairs captures and never touches the checkpoint beside them"
+                );
+            });
         }
     }
     {
@@ -136,17 +132,12 @@ fn contract_scenario() {
             std::fs::create_dir_all(directory).unwrap();
             let path = directory.join("only.jsonl");
             let mut file = std::fs::File::create(&path).unwrap();
-            file.write_all(vec![b'x'; 64 * 1024 + 7].as_slice())
-                .unwrap();
+            file.write_all(vec![b'x'; 64 * 1024 + 7].as_slice()).unwrap();
             drop(file);
 
             JsonlStreams::<Model>::open(directory).unwrap();
 
-            assert_eq!(
-                std::fs::metadata(&path).unwrap().len(),
-                0,
-                "nothing in it was ever a readable row"
-            );
+            assert_eq!(std::fs::metadata(&path).unwrap().len(), 0, "nothing in it was ever a readable row");
         }
     }
     {
@@ -164,16 +155,7 @@ fn contract_scenario() {
 
             assert_eq!(
                 read_rows::<Columns>(&path).unwrap(),
-                vec![
-                    Columns {
-                        position: 7,
-                        gap_missed: None
-                    },
-                    Columns {
-                        position: 9,
-                        gap_missed: Some(3)
-                    },
-                ],
+                vec![Columns { position: 7, gap_missed: None }, Columns { position: 9, gap_missed: Some(3) },],
                 "a struct naming only the technical members reads the whole capture"
             );
         }

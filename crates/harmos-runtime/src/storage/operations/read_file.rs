@@ -47,31 +47,20 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<FileBatch>;
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        ctx: Self::Context<'a>,
-        request: &mut ReadFile,
-        output: &mut Self::Endpoints,
+        &mut self, ctx: Self::Context<'a>, request: &mut ReadFile, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
-        let grant = harmos_domain::plugin::Grant::of(
-            ReadFile::ID,
-            request.file.metadata.id.as_str().to_owned(),
-        );
+        let grant = harmos_domain::plugin::Grant::of(ReadFile::ID, request.file.metadata.id.as_str().to_owned());
         ctx.admit_stream_grant(&grant)?;
         let mut reader = self.storage.read_file(request.clone()).await?;
         while let Some(batch) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
             let charge = batch.memory_size();
-            tokio::time::timeout(IO_TIMEOUT, output.send_with(charge, || Ok(batch)))
-                .await
-                .map_err(|_| super::output_timeout())??;
+            tokio::time::timeout(IO_TIMEOUT, output.send_with(charge, || Ok(batch))).await.map_err(|_| super::output_timeout())??;
         }
         Ok(reader.completion()?.into())
     }

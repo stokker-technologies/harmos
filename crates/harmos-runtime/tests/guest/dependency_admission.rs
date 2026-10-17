@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Guest Dependency Admission Against The Original Provider.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 
@@ -48,33 +46,11 @@ async fn dependencies_share_admission() {
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos_runtime::plugin::PluginManager::new(
-        dependency_candidate(&mut lifecycle, "dependencies").await,
-    )
-    .unwrap();
+    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(
-        runtime
-            .operations
-            .call(Echo {
-                say: "dependency:normal".into()
-            })
-            .await
-            .unwrap()
-            .said,
-        "normal"
-    );
-    for (say, message) in [
-        ("refuse", "provider refusal"),
-        ("timeout", "deadline elapsed"),
-    ] {
-        let error = runtime
-            .operations
-            .call(Echo {
-                say: format!("dependency:{say}"),
-            })
-            .await
-            .unwrap_err();
+    assert_eq!(runtime.operations.call(Echo { say: "dependency:normal".into() }).await.unwrap().said, "normal");
+    for (say, message) in [("refuse", "provider refusal"), ("timeout", "deadline elapsed")] {
+        let error = runtime.operations.call(Echo { say: format!("dependency:{say}") }).await.unwrap_err();
         assert!(
             matches!(component_error(&error), harmos_runtime::operations::ComponentError::Remote(failure) if failure.code() == harmos_runtime::operations::FailureKind::Permanent && failure.cause().contains(message)),
             "{error:?}"
@@ -92,34 +68,15 @@ async fn cancelled_dependency_admission() {
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager =
-        harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await)
-            .unwrap();
+    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let invocation = runtime
-        .operations
-        .submit(Echo {
-            say: "dependency:cancel".into(),
-        })
-        .unwrap();
+    let invocation = runtime.operations.submit(Echo { say: "dependency:cancel".into() }).unwrap();
     provider.started.notified().await;
     invocation.cancel();
-    assert!(matches!(
-        invocation.await,
-        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
-    ));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     provider.cancelled.notified().await;
-    let after = runtime
-        .operations
-        .call(Echo {
-            say: "after cancellation".into(),
-        })
-        .await
-        .unwrap_err();
-    assert!(matches!(
-        component_error(&after),
-        harmos_runtime::operations::ComponentError::Unavailable
-    ));
+    let after = runtime.operations.call(Echo { say: "after cancellation".into() }).await.unwrap_err();
+    assert!(matches!(component_error(&after), harmos_runtime::operations::ComponentError::Unavailable));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
 
     drop((manager, lifecycle));
@@ -132,47 +89,22 @@ async fn background_cleanup_retained() {
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager =
-        harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await)
-            .unwrap();
+    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let prepared = provider.prepared.load(Ordering::SeqCst);
 
     // The Saved Initialization Context Uses The Original Generation And Provider.
-    let answered = runtime
-        .operations
-        .call(Echo {
-            say: "saved-dependency:original-background".into(),
-        })
-        .await
-        .unwrap();
+    let answered = runtime.operations.call(Echo { say: "saved-dependency:original-background".into() }).await.unwrap();
     assert_eq!(answered.said, "original-background");
     provider.fail_cleanup.store(true, Ordering::SeqCst);
-    let refused = runtime
-        .operations
-        .call(Echo {
-            say: "saved-dependency:physical-cleanup".into(),
-        })
-        .await
-        .unwrap_err();
-    assert!(matches!(
-        component_error(&refused),
-        harmos_runtime::operations::ComponentError::Remote { .. }
-    ));
+    let refused = runtime.operations.call(Echo { say: "saved-dependency:physical-cleanup".into() }).await.unwrap_err();
+    assert!(matches!(component_error(&refused), harmos_runtime::operations::ComponentError::Remote { .. }));
     assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 2);
     assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
 
     // Destroying The Actual Guest Store Does Not Settle Its Failed Host Debt.
-    let trapped = runtime
-        .operations
-        .call(Fail {})
-        .await
-        .unwrap_err();
-    assert!(
-        execution_error(&trapped)
-            .downcast_ref::<wasmtime::Trap>()
-            .is_some()
-    );
+    let trapped = runtime.operations.call(Fail {}).await.unwrap_err();
+    assert!(execution_error(&trapped).downcast_ref::<wasmtime::Trap>().is_some());
     let first = manager.shutdown(&mut lifecycle).await.unwrap_err();
     let harmos_runtime::Error::PluginLifecycle { source } = first else {
         panic!("the failed guest must report its original shutdown refusal");
@@ -187,18 +119,11 @@ async fn background_cleanup_retained() {
         panic!("the manager preserves its original cleanup failure");
     };
     assert_eq!(*domain, "plugin cleanup");
-    let original = source
-        .downcast_ref::<harmos_runtime::Error>()
-        .expect("the original SDK error remains available");
-    assert!(matches!(
-        component_error(original),
-        harmos_runtime::operations::ComponentError::Unavailable
-    ));
+    let original = source.downcast_ref::<harmos_runtime::Error>().expect("the original SDK error remains available");
+    assert!(matches!(component_error(original), harmos_runtime::operations::ComponentError::Unavailable));
 
     for _ in 0..2 {
-        let harmos_runtime::Error::PluginLifecycle { source } =
-            manager.shutdown(&mut lifecycle).await.unwrap_err()
-        else {
+        let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(&mut lifecycle).await.unwrap_err() else {
             panic!("the original host cleanup must remain retryable");
         };
         let harmos_runtime::plugin::PluginFailure::Cleanup(failures) = *source else {
@@ -209,9 +134,7 @@ async fn background_cleanup_retained() {
         let mut source = Some(&failures[0].error as &dyn std::error::Error);
         let mut original_refusal = false;
         while let Some(error) = source {
-            original_refusal |= error
-                .to_string()
-                .contains("fixture physical cleanup refused");
+            original_refusal |= error.to_string().contains("fixture physical cleanup refused");
             source = error.source();
         }
         assert!(original_refusal);
@@ -220,19 +143,13 @@ async fn background_cleanup_retained() {
     }
     let failed_attempts = provider.cleanup_attempts.load(Ordering::SeqCst);
     assert!(failed_attempts >= 2);
-    assert_eq!(
-        provider.observed.lock().unwrap().as_slice(),
-        ["original-background", "physical-cleanup"]
-    );
+    assert_eq!(provider.observed.lock().unwrap().as_slice(), ["original-background", "physical-cleanup"]);
 
     // The Original Finalizer Settles Once Its Physical Cleanup Succeeds
     provider.fail_cleanup.store(false, Ordering::SeqCst);
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 2);
-    assert_eq!(
-        provider.cleanup_attempts.load(Ordering::SeqCst),
-        failed_attempts + 1
-    );
+    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), failed_attempts + 1);
     assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
     drop((answered, manager, lifecycle));
     runtime.stop().await.unwrap();
@@ -244,40 +161,21 @@ async fn missing_provider_refused() {
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
-    let missing = candidate
-        .definitions()
-        .filter(|definition| definition.id != "provider")
-        .cloned();
+    let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
     // No Plugin Provides It, So Planning Routes It To The Host, Whose Preflight Refuses It
     let planned = harmos_runtime::plugin::PluginDefinitions::new(missing, []).unwrap();
     let routed = planned
         .host_requirements()
-        .map(|(definition, required)| {
-            (
-                definition.id.clone(),
-                required.contract.operation().id.to_string(),
-            )
-        })
+        .map(|(definition, required)| (definition.id.clone(), required.contract.operation().id.to_string()))
         .filter(|(_, operation)| operation == "provider.echo")
         .collect::<Vec<_>>();
-    assert_eq!(
-        routed,
-        [("sandbox-guest".to_owned(), "provider.echo".to_owned())]
-    );
+    assert_eq!(routed, [("sandbox-guest".to_owned(), "provider.echo".to_owned())]);
     assert!(matches!(
         runtime.operations.validate_requirements(&planned),
-        Err(harmos_runtime::Error::NotRegistered {
-            domain: "host provider",
-            ..
-        })
+        Err(harmos_runtime::Error::NotRegistered { domain: "host provider", .. })
     ));
     assert!(provider.observed.lock().unwrap().is_empty());
-    let mut operations: Vec<_> = runtime
-        .operations
-        .definitions()
-        .iter()
-        .map(|operation| operation.id.to_string())
-        .collect();
+    let mut operations: Vec<_> = runtime.operations.definitions().iter().map(|operation| operation.id.to_string()).collect();
     operations.sort();
     assert_eq!(operations, ["host.publish"]);
     drop(lifecycle);
@@ -290,48 +188,16 @@ async fn shutdown_fences_callers() {
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos_runtime::plugin::PluginManager::new(
-        native_dependency_candidate(&mut lifecycle, "dependencies", true).await,
-    )
-    .unwrap();
+    let mut manager =
+        harmos_runtime::plugin::PluginManager::new(native_dependency_candidate(&mut lifecycle, "dependencies", true).await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let stale = runtime
-        .operations
-        .caller(&manager.caller("client").unwrap())
-        .unwrap();
-    assert_eq!(
-        runtime
-            .operations
-            .call(Forward {
-                say: "dependency:roundtrip".into()
-            })
-            .await
-            .unwrap()
-            .said,
-        "roundtrip"
-    );
+    let stale = runtime.operations.caller(&manager.caller("client").unwrap()).unwrap();
+    assert_eq!(runtime.operations.call(Forward { say: "dependency:roundtrip".into() }).await.unwrap().said, "roundtrip");
     manager.shutdown(&mut lifecycle).await.unwrap();
-    assert_eq!(
-        *provider.observed.lock().unwrap(),
-        ["initialize", "roundtrip"]
-    );
-    assert!(
-        stale
-            .call(Echo {
-                say: "closed".into()
-            })
-            .await
-            .is_err()
-    );
+    assert_eq!(*provider.observed.lock().unwrap(), ["initialize", "roundtrip"]);
+    assert!(stale.call(Echo { say: "closed".into() }).await.is_err());
     manager.shutdown(&mut lifecycle).await.unwrap();
-    assert!(
-        !provider
-            .observed
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|say| say == "cleanup")
-    );
+    assert!(!provider.observed.lock().unwrap().iter().any(|say| say == "cleanup"));
 
     drop((manager, lifecycle, stale));
     runtime.stop().await.unwrap();
@@ -343,19 +209,12 @@ async fn cancelled_shutdown_cleanup() {
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos_runtime::plugin::PluginManager::new(
-        native_dependency_candidate(&mut lifecycle, "dependencies", false).await,
-    )
-    .unwrap();
+    let mut manager =
+        harmos_runtime::plugin::PluginManager::new(native_dependency_candidate(&mut lifecycle, "dependencies", false).await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let prepared = provider.prepared.load(Ordering::SeqCst);
     provider.hold_cleanup.store(true, Ordering::SeqCst);
-    let invocation = runtime
-        .operations
-        .submit(ProviderEcho {
-            say: "physical-cleanup".into(),
-        })
-        .unwrap();
+    let invocation = runtime.operations.submit(ProviderEcho { say: "physical-cleanup".into() }).unwrap();
     provider.cleanup_started.notified().await;
     assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
     let mut waiter = Box::pin(manager.shutdown(&mut lifecycle));
@@ -366,15 +225,7 @@ async fn cancelled_shutdown_cleanup() {
     }
     drop(waiter);
     assert!(!provider.hold_cleanup.load(Ordering::SeqCst));
-    assert!(
-        runtime
-            .operations
-            .call(Echo {
-                say: "closed".into()
-            })
-            .await
-            .is_err()
-    );
+    assert!(runtime.operations.call(Echo { say: "closed".into() }).await.is_err());
     provider.cleanup_release.notify_one();
     manager.shutdown(&mut lifecycle).await.unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
@@ -388,4 +239,3 @@ async fn cancelled_shutdown_cleanup() {
 }
 
 /* === Tests === */
-

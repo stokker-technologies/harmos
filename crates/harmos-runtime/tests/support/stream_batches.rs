@@ -81,47 +81,23 @@ pub async fn raw_and_summary_delivery() {
     assert_eq!(*runtime.streams.demand::<Measured>().borrow(), 2);
     for group in [3, 1, 5] {
         for _ in 0..group {
-            runtime.streams.publish(Measured {
-                value: 2.0,
-                other: 9.0,
-            });
+            runtime.streams.publish(Measured { value: 2.0, other: 9.0 });
         }
         assert!(
-            !runtime
-                .streams
-                .query::<Measured>(..)
-                .await
-                .unwrap()
-                .collect::<Vec<_>>()
-                .is_empty(),
+            !runtime.streams.query::<Measured>(..).await.unwrap().collect::<Vec<_>>().is_empty(),
             "raw rows are immediate even before a statistical group fills"
         );
     }
     for _ in 0..2 {
-        let Some(BatchItem::Summary(a)) = first.next().await else {
-            panic!("full group")
-        };
-        let Some(BatchItem::Summary(b)) = second.next().await else {
-            panic!("full group")
-        };
-        assert!(
-            std::sync::Arc::ptr_eq(&a, &b),
-            "observers share the one computation"
-        );
+        let Some(BatchItem::Summary(a)) = first.next().await else { panic!("full group") };
+        let Some(BatchItem::Summary(b)) = second.next().await else { panic!("full group") };
+        assert!(std::sync::Arc::ptr_eq(&a, &b), "observers share the one computation");
         assert_eq!(a.count, 4);
-        assert_eq!(
-            a.fields[0].aggregate(harmos_runtime::Aggregate::Mean),
-            Some(2.0)
-        );
-        assert_eq!(
-            a.fields[1].aggregate(harmos_runtime::Aggregate::Mean),
-            Some(9.0)
-        );
+        assert_eq!(a.fields[0].aggregate(harmos_runtime::Aggregate::Mean), Some(2.0));
+        assert_eq!(a.fields[1].aggregate(harmos_runtime::Aggregate::Mean), Some(9.0));
     }
     runtime.stop().await.unwrap();
-    let Some(BatchItem::Summary(tail)) = first.next().await else {
-        panic!("partial group")
-    };
+    let Some(BatchItem::Summary(tail)) = first.next().await else { panic!("partial group") };
     assert_eq!(tail.count, 1);
     assert!(tail.partial);
     assert_eq!(first.next().await, None);
@@ -132,29 +108,16 @@ pub async fn summary_cost() {
     let runtime = runtime().await;
     let mut rates = [Vec::new(), Vec::new(), Vec::new()];
     for repetition in 0..6 {
-        for mode in if repetition % 2 == 0 {
-            [0, 1, 2]
-        } else {
-            [2, 1, 0]
-        } {
+        for mode in if repetition % 2 == 0 { [0, 1, 2] } else { [2, 1, 0] } {
             let started = std::time::Instant::now();
             for row in 0..ROWS {
                 let value = std::hint::black_box((row % 100) as f64);
                 if mode == 1 {
-                    runtime.streams.publish(Measured {
-                        value,
-                        other: value * 2.0,
-                    });
+                    runtime.streams.publish(Measured { value, other: value * 2.0 });
                 } else if mode == 2 {
-                    runtime.streams.publish(Grouped {
-                        value,
-                        other: value * 2.0,
-                    });
+                    runtime.streams.publish(Grouped { value, other: value * 2.0 });
                 } else {
-                    runtime.streams.publish(Raw {
-                        value,
-                        other: value * 2.0,
-                    });
+                    runtime.streams.publish(Raw { value, other: value * 2.0 });
                 }
             }
             let rate = ROWS as f64 / started.elapsed().as_secs_f64();
@@ -178,11 +141,7 @@ pub async fn summary_cost() {
 
 /* === Private Functions === */
 async fn runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::builder((), ())
-        .register(Catalog::catalog())
-        .runtime()
-        .await
-        .unwrap()
+    Runtime::<Probe>::builder((), ()).register(Catalog::catalog()).runtime().await.unwrap()
 }
 
 /* === Tests === */

@@ -12,9 +12,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_domain::model::storage::query::transform::filter::{
-    Clause, Compare, Condition, Filter, Term,
-};
+pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 
 /* === Imports === */
 // Standard Library Imports
@@ -43,18 +41,10 @@ use crate::storage::query::transform::FieldPathExecution;
 pub trait FilterExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 
     /// Ascending indices of the rows of `input` this filter keeps.
-    fn select(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<Vec<u64>>;
+    fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>>;
 }
 
 /* === Implementations === */
@@ -63,12 +53,7 @@ impl FilterExecution for Filter {
         if self.clauses.is_empty()
             || self.clauses.len() > 64
             || self.clauses.iter().any(|clause| clause.terms.is_empty())
-            || self
-                .clauses
-                .iter()
-                .map(|clause| clause.terms.len())
-                .sum::<usize>()
-                > 256
+            || self.clauses.iter().map(|clause| clause.terms.len()).sum::<usize>() > 256
         {
             return Err(invalid("filter requires nonempty bounded clauses"));
         }
@@ -104,16 +89,12 @@ impl FilterExecution for Filter {
                         | arrow_schema::DataType::UInt64,
                         ScalarValue::Unsigned(_),
                     ) => true,
-                    (
-                        arrow_schema::DataType::Float32 | arrow_schema::DataType::Float64,
-                        ScalarValue::Float(_),
-                    ) => true,
+                    (arrow_schema::DataType::Float32 | arrow_schema::DataType::Float64, ScalarValue::Float(_)) => true,
                     (arrow_schema::DataType::Utf8, ScalarValue::Text(_)) => true,
                     (arrow_schema::DataType::Timestamp(_, _), ScalarValue::Datetime(_)) => true,
-                    (
-                        kind,
-                        ScalarValue::Exact(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_),
-                    ) if kind == &super::exact_type() => true,
+                    (kind, ScalarValue::Exact(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_)) if kind == &super::exact_type() => {
+                        true
+                    }
                     _ => false,
                 };
                 if !compatible {
@@ -124,20 +105,12 @@ impl FilterExecution for Filter {
         Ok(input.clone())
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         take(input, self.select(input, check)?)
     }
 
     /// Ascending indices of the rows of `input` this filter keeps.
-    fn select(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<Vec<u64>> {
+    fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>> {
         let mut selected = Vec::new();
         for row in 0..input.num_rows() {
             check()?;
@@ -151,10 +124,7 @@ impl FilterExecution for Filter {
                     let answer = match &term.condition {
                         Condition::IsNull => absent,
                         _ if absent => false,
-                        Condition::Compare {
-                            op,
-                            value: expected,
-                        } => compare(&value, *op, expected)?,
+                        Condition::Compare { op, value: expected } => compare(&value, *op, expected)?,
                         Condition::In { values } => {
                             let mut found = false;
                             for expected in values {

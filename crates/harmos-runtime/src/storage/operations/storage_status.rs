@@ -53,21 +53,14 @@ impl<C: 'static> Operation for Handler<C> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = ();
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        _request: &mut StorageStatus,
-        _: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, _request: &mut StorageStatus, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageInfo>> {
-        let result: ::core::result::Result<StorageInfo, Self::Error> =
-            async move { self.storage.info().map_err(Into::into) }.await;
+        let result: ::core::result::Result<StorageInfo, Self::Error> = async move { self.storage.info().map_err(Into::into) }.await;
         result.map(::core::convert::Into::into)
     }
 

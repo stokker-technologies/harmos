@@ -43,8 +43,8 @@ use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
 use super::worker::Worker;
 use super::{
-    ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageCursor,
-    StorageFuture, StorageSchema, StorageSettings, StoredRecord, StoredRow,
+    ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageCursor, StorageFuture, StorageSchema, StorageSettings,
+    StoredRecord, StoredRow,
 };
 use crate::execution::Execution;
 use crate::{Error, Identifier, Result};
@@ -94,11 +94,7 @@ pub(super) struct Inner {
     pub(super) primary: Arc<dyn StorageBackend>,
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition: fn(
-        &SchemaKey,
-    ) -> harmos_domain::Result<
-        harmos_domain::model::storage::catalog::ObjectDefinition,
-    >,
+    pub(super) object_definition: fn(&SchemaKey) -> harmos_domain::Result<harmos_domain::model::storage::catalog::ObjectDefinition>,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -199,11 +195,7 @@ pub(super) enum Operation {
     Schema(StorageSchema),
     File(super::FileReference),
     Records(Vec<StoredRecord>),
-    ObjectGroup {
-        schemas: Vec<StorageSchema>,
-        objects: Vec<super::ObjectEntry>,
-        bytes: usize,
-    },
+    ObjectGroup { schemas: Vec<StorageSchema>, objects: Vec<super::ObjectEntry>, bytes: usize },
     Stream(Vec<StoredRow>),
     Recovery(Vec<RecoveryEntry>),
     Snapshot(RecoverySnapshot),
@@ -220,19 +212,13 @@ pub trait WorkerOwner: Send + Sync {
 /* === Implementations === */
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
-        }
+        Self { inner: self.inner.clone(), catalog: PhantomData }
     }
 }
 
 impl<C> StorageManager<C> {
     pub fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
-        }
+        StorageManager { inner: self.inner.clone(), catalog: PhantomData }
     }
 }
 
@@ -241,32 +227,15 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         Self::with_execution(backends, settings, Execution::default())
     }
 
-    pub fn with_execution(
-        backends: StorageBackends,
-        settings: StorageSettings,
-        execution: Execution,
-    ) -> Result<Self> {
+    pub fn with_execution(backends: StorageBackends, settings: StorageSettings, execution: Execution) -> Result<Self> {
         C::validate()?;
         settings.validate()?;
-        let StorageBackends {
-            primary,
-            state: state_backend,
-        } = backends;
+        let StorageBackends { primary, state: state_backend } = backends;
         primary.history().check(state_backend.history())?;
         let history = primary.history().clone();
-        let position = StorageCursor {
-            history: history.clone(),
-            sequence: 0,
-        };
-        let recovery_position = RecoveryPosition {
-            history,
-            sequence: 0,
-        };
-        let receipts = super::receipts::Receipts::new(
-            MUTATION_RETENTION,
-            settings.mutation_bytes(),
-            execution,
-        )?;
+        let position = StorageCursor { history: history.clone(), sequence: 0 };
+        let recovery_position = RecoveryPosition { history, sequence: 0 };
+        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, settings.mutation_bytes(), execution)?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
@@ -276,12 +245,8 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
                 control_waiting: std::sync::atomic::AtomicUsize::new(0),
                 object_writes: tokio::sync::Mutex::new(()),
-                query_active: Arc::new(tokio::sync::Semaphore::new(
-                    settings.request.max_active_queries.get(),
-                )),
-                query_pending: Arc::new(tokio::sync::Semaphore::new(
-                    settings.request.max_pending_queries.get(),
-                )),
+                query_active: Arc::new(tokio::sync::Semaphore::new(settings.request.max_active_queries.get())),
+                query_pending: Arc::new(tokio::sync::Semaphore::new(settings.request.max_pending_queries.get())),
                 settings,
                 primary,
                 recovery: state_backend,

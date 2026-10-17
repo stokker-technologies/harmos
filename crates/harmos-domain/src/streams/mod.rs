@@ -96,11 +96,7 @@ pub trait StreamRow: Clone + Send + Sync + Serialize + DeserializeOwned + 'stati
     const VERSION: u32;
     const WINDOW: usize;
     fn metadata() -> crate::Metadata {
-        crate::Metadata::new(
-            crate::Identifier::declared(Self::ID, "stream"),
-            Self::ID,
-            None,
-        )
+        crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
     }
     fn row_metadata() -> Vec<crate::StreamField> {
         Vec::new()
@@ -153,11 +149,7 @@ impl Definition {
         self.batch
     }
 
-    pub fn publication(
-        mut self,
-        owner: impl Into<Arc<str>>,
-        schema: impl Into<Arc<crate::schema::graph::Schema>>,
-    ) -> Self {
+    pub fn publication(mut self, owner: impl Into<Arc<str>>, schema: impl Into<Arc<crate::schema::graph::Schema>>) -> Self {
         self.owner = Some(owner.into());
         self.schema = Some(schema.into());
         self
@@ -166,11 +158,7 @@ impl Definition {
     pub fn declared<S: 'static>(id: impl Into<Arc<str>>, version: u32, window: usize) -> Self {
         let id = id.into();
         Self {
-            metadata: crate::Metadata::new(
-                crate::Identifier::declared(id.as_ref(), "stream"),
-                id.as_ref(),
-                None,
-            ),
+            metadata: crate::Metadata::new(crate::Identifier::declared(id.as_ref(), "stream"), id.as_ref(), None),
             row_metadata: Vec::new(),
             id,
             version,
@@ -187,11 +175,7 @@ impl Definition {
         self
     }
 
-    pub fn presentation(
-        mut self,
-        metadata: crate::Metadata,
-        rows: Vec<crate::StreamField>,
-    ) -> Self {
+    pub fn presentation(mut self, metadata: crate::Metadata, rows: Vec<crate::StreamField>) -> Self {
         self.metadata = metadata;
         self.row_metadata = rows;
         self
@@ -240,18 +224,11 @@ impl BatchDefinition {
     }
 
     pub fn of<S: Batched>() -> Self {
-        assert!(
-            S::SAMPLES > 0 && !S::MEASURES.is_empty(),
-            "a batch needs samples and measured fields"
-        );
+        assert!(S::SAMPLES > 0 && !S::MEASURES.is_empty(), "a batch needs samples and measured fields");
         Self {
             samples: S::SAMPLES,
             fields: S::MEASURES,
-            measure: |row, visit| {
-                row.downcast_ref::<S>()
-                    .expect("declared stream row")
-                    .measure(visit)
-            },
+            measure: |row, visit| row.downcast_ref::<S>().expect("declared stream row").measure(visit),
         }
     }
 }

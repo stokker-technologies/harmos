@@ -71,11 +71,7 @@ enum Stage {
 
 /* === Implementations === */
 impl Plan {
-    pub(super) fn new(
-        input: Arc<Schema>,
-        transforms: Vec<Transform>,
-        slice: RowSlice,
-    ) -> Result<Self> {
+    pub(super) fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
         crate::storage::arrow::validate_schema(&input)?;
         if transforms.len() > MAX_TRANSFORMS {
             return Err(invalid("too many query transforms"));
@@ -100,28 +96,14 @@ impl Plan {
                 let suffix = transforms.split_off(index + 1);
                 let transform = transforms.pop().expect("global stage transform");
                 let stage = match &transform {
-                    Transform::Aggregate(aggregate) => {
-                        Stage::Aggregate(Some(aggregate.start(&stage_schema)?))
-                    }
-                    Transform::Histogram(histogram) => {
-                        Stage::Histogram(Some(histogram.start(&stage_schema)?))
-                    }
+                    Transform::Aggregate(aggregate) => Stage::Aggregate(Some(aggregate.start(&stage_schema)?)),
+                    Transform::Histogram(histogram) => Stage::Histogram(Some(histogram.start(&stage_schema)?)),
                     _ => Stage::Collect(transform, Vec::new()),
                 };
                 (transforms, stage, suffix)
             }
         };
-        Ok(Self {
-            input,
-            output: Arc::new(schema),
-            prefix,
-            stage,
-            suffix,
-            slice,
-            skipped: 0,
-            emitted: 0,
-            retained: Vec::new(),
-        })
+        Ok(Self { input, output: Arc::new(schema), prefix, stage, suffix, slice, skipped: 0, emitted: 0, retained: Vec::new() })
     }
 
     pub(super) fn output_schema(&self) -> Arc<Schema> {
@@ -139,18 +121,14 @@ impl Plan {
 
     /// Whether the row limit is already satisfied, so no more input is needed.
     pub(super) fn is_satisfied(&self) -> bool {
-        matches!(self.stage, Stage::Stream)
-            && self.slice.limit.is_some_and(|limit| self.emitted >= limit)
+        matches!(self.stage, Stage::Stream) && self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
     /// Process one source page. Streaming plans return the page's sliced output;
     /// global plans fold or collect it. Every claim draws from the attempt bank,
     /// and stateful stages change only after all claims for the page succeed.
     pub(super) fn page(
-        &mut self,
-        input: &RecordBatch,
-        bank: &MemoryBank,
-        check: &mut impl FnMut() -> Result<()>,
+        &mut self, input: &RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
     ) -> Result<Option<RecordBatch>> {
         if input.schema() != self.input {
             return Err(invalid("source batch schema changed"));
@@ -162,9 +140,7 @@ impl Plan {
                 Ok(Some(current))
             }
             Stage::Aggregate(groups) => {
-                let groups = groups
-                    .as_mut()
-                    .ok_or_else(|| invalid("finished reduction"))?;
+                let groups = groups.as_mut().ok_or_else(|| invalid("finished reduction"))?;
                 let transform_bound = working_bound(&current, &self.output)?;
                 let _scratch = claim(bank, transform_bound)?;
                 // The Growth Bound Is Claimed Before The Groups Change.
@@ -214,11 +190,7 @@ impl Plan {
     }
 
     /// Produce the global output once after the source is exhausted.
-    pub(super) fn finish(
-        &mut self,
-        bank: &MemoryBank,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<Option<RecordBatch>> {
+    pub(super) fn finish(&mut self, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         let output = match &mut self.stage {
             Stage::Stream => return Ok(None),
             Stage::Aggregate(groups) => {
@@ -241,9 +213,8 @@ impl Plan {
                     || Ok(Arc::new(transform_input(&self.input, &self.prefix)?)),
                     |batch| Ok::<_, crate::Error>(batch.schema()),
                 )?;
-                let resident = inputs.iter().try_fold(0usize, |total, batch| {
-                    resident_bytes(batch).map(|bytes| total.saturating_add(bytes))
-                })?;
+                let resident =
+                    inputs.iter().try_fold(0usize, |total, batch| resident_bytes(batch).map(|bytes| total.saturating_add(bytes)))?;
                 let _concat = claim(bank, resident.saturating_mul(2).saturating_add(65536))?;
                 let combined = arrow_select::concat::concat_batches(&schema, inputs.iter())
                     .map_err(|_| invalid("query input concatenation failed"))?;
@@ -265,14 +236,10 @@ impl Plan {
         let skip = self.slice.offset.saturating_sub(self.skipped).min(rows);
         self.skipped += skip;
         let available = rows - skip;
-        let take = self.slice.limit.map_or(available, |limit| {
-            limit.saturating_sub(self.emitted).min(available)
-        });
+        let take = self.slice.limit.map_or(available, |limit| limit.saturating_sub(self.emitted).min(available));
         self.emitted += take;
-        let offset =
-            usize::try_from(skip).map_err(|_| invalid("query offset exceeds platform size"))?;
-        let length =
-            usize::try_from(take).map_err(|_| invalid("query limit exceeds platform size"))?;
+        let offset = usize::try_from(skip).map_err(|_| invalid("query offset exceeds platform size"))?;
+        let length = usize::try_from(take).map_err(|_| invalid("query limit exceeds platform size"))?;
         Ok(batch.slice(offset, length))
     }
 }
@@ -286,11 +253,7 @@ pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usiz
     let rows = input.num_rows().max(1);
     resident
         .checked_mul(8)
-        .and_then(|bytes| {
-            rows.checked_mul(width)
-                .and_then(|cells| cells.checked_mul(512))
-                .and_then(|scratch| bytes.checked_add(scratch))
-        })
+        .and_then(|bytes| rows.checked_mul(width).and_then(|cells| cells.checked_mul(512)).and_then(|scratch| bytes.checked_add(scratch)))
         .and_then(|bytes| bytes.checked_add(schema_memory(output).saturating_mul(4)))
         .and_then(|bytes| bytes.checked_add(4096))
         .ok_or_else(|| invalid("query transform working memory overflow"))
@@ -299,20 +262,14 @@ pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usiz
 /* === Private Functions === */
 // Run Transforms In Order, Retaining Each Output Under The Attempt Bank.
 fn apply(
-    transforms: &[Transform],
-    mut current: RecordBatch,
-    bank: &MemoryBank,
-    check: &mut impl FnMut() -> Result<()>,
+    transforms: &[Transform], mut current: RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
 ) -> Result<RecordBatch> {
     for transform in transforms {
         check()?;
         let output_schema = transform.output_schema(current.schema().as_ref())?;
         let _scratch = claim(bank, working_bound(&current, &output_schema)?)?;
         let output = transform.apply(&current, check)?;
-        let retained = bank.reserve(crate::storage::arrow::new_resident_bytes(
-            &output,
-            &[&current],
-        )?)?;
+        let retained = bank.reserve(crate::storage::arrow::new_resident_bytes(&output, &[&current])?)?;
         current = retain_native(output, retained)?;
     }
     Ok(current)
@@ -325,9 +282,7 @@ fn claim(bank: &MemoryBank, bytes: usize) -> Result<crate::storage::memory::Memo
 }
 
 fn transform_input(input: &Schema, prefix: &[Transform]) -> Result<Schema> {
-    prefix.iter().try_fold(input.clone(), |schema, transform| {
-        transform.output_schema(&schema)
-    })
+    prefix.iter().try_fold(input.clone(), |schema, transform| transform.output_schema(&schema))
 }
 
 /* === Tests === */

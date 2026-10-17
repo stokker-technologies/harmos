@@ -49,20 +49,8 @@ struct Claim {
 
 /* === Implementations === */
 impl Lanes {
-    pub(super) fn admit(
-        self: &Arc<Self>,
-        ancestors: &[&'static str],
-        lane: &'static str,
-        bounded: bool,
-    ) -> Result<Admission> {
-        let dependencies = if bounded {
-            ancestors
-                .iter()
-                .map(|&parent| (parent, lane))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+    pub(super) fn admit(self: &Arc<Self>, ancestors: &[&'static str], lane: &'static str, bounded: bool) -> Result<Admission> {
+        let dependencies = if bounded { ancestors.iter().map(|&parent| (parent, lane)).collect::<Vec<_>>() } else { Vec::new() };
         let mut edges = self.edges.lock().expect("operation lane graph is healthy");
 
         // Validate the whole claim before mutating counts. Checking the reverse
@@ -81,13 +69,7 @@ impl Lanes {
         if bounded {
             held.push(lane);
         }
-        Ok(Admission {
-            held: held.into(),
-            _claim: Arc::new(Claim {
-                lanes: Arc::downgrade(self),
-                edges: dependencies,
-            }),
-        })
+        Ok(Admission { held: held.into(), _claim: Arc::new(Claim { lanes: Arc::downgrade(self), edges: dependencies }) })
     }
 }
 
@@ -104,9 +86,7 @@ impl Drop for Claim {
         };
         let mut edges = lanes.edges.lock().expect("operation lane graph is healthy");
         for edge in &self.edges {
-            let count = edges
-                .get_mut(edge)
-                .expect("admitted dependency is retained");
+            let count = edges.get_mut(edge).expect("admitted dependency is retained");
             *count -= 1;
             if *count == 0 {
                 edges.remove(edge);
@@ -118,11 +98,7 @@ impl Drop for Claim {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn reaches(
-    edges: &BTreeMap<(&'static str, &'static str), usize>,
-    from: &'static str,
-    to: &'static str,
-) -> bool {
+fn reaches(edges: &BTreeMap<(&'static str, &'static str), usize>, from: &'static str, to: &'static str) -> bool {
     let mut pending = vec![from];
     let mut visited = BTreeSet::new();
     while let Some(lane) = pending.pop() {
@@ -130,11 +106,7 @@ fn reaches(
             return true;
         }
         if visited.insert(lane) {
-            pending.extend(
-                edges
-                    .keys()
-                    .filter_map(|&(parent, child)| (parent == lane).then_some(child)),
-            );
+            pending.extend(edges.keys().filter_map(|&(parent, child)| (parent == lane).then_some(child)));
         }
     }
     false

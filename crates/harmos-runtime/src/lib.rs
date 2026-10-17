@@ -60,17 +60,14 @@ pub mod __private {
     pub extern crate serde_json;
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
-        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply,
-        decoding_vector, postcard_product,
+        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, postcard_product,
     };
     pub use harmos_domain::declare;
     pub use harmos_domain::inventory as PluginInventory;
-    pub use harmos_domain::{
-        Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError,
-    };
+    pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
     pub use harmos_sdk::plugin::{
-        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
-        Requirement as PluginRequirement, Requirements as PluginRequirements,
+        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
+        Requirements as PluginRequirements,
     };
     #[cfg(feature = "plugin-sidecar")]
     pub use harmos_sidecar as sidecar;
@@ -86,11 +83,7 @@ pub mod __private {
     pub use crate::state::{Catalogued, Mutual};
     pub use harmos_domain::__private::Answer;
 
-    pub fn stream_definition<S: StreamRow>(
-        id: &'static str,
-        version: u32,
-        window: usize,
-    ) -> crate::streams::Definition {
+    pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {
         crate::streams::Definition::declared::<S>(id, version, window)
             .batching(S::batch_definition())
             .presentation(S::metadata(), S::row_metadata())
@@ -105,18 +98,15 @@ pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 
 pub use harmos_domain::{
-    Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
-    RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
+    Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField,
+    StreamSpec, Value, ValueError, btree_map_memory,
 };
 pub use harmos_sdk::plugin::Plugin;
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema};
-pub use harmos_macros::{
-    lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction,
-    transactions,
-};
+pub use harmos_macros::{lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction, transactions};
 
 /* === Imports === */
 // Standard Library Imports

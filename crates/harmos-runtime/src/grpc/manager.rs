@@ -83,24 +83,13 @@ impl GrpcManager {
 
     pub fn register_service<S>(&self, service: S) -> Result<()>
     where
-        S: Service<http::Request<Body>, Response = http::Response<Body>, Error = Infallible>
-            + NamedService
-            + Clone
-            + Send
-            + Sync
-            + 'static,
+        S: Service<http::Request<Body>, Response = http::Response<Body>, Error = Infallible> + NamedService + Clone + Send + Sync + 'static,
         S::Future: Send + 'static,
     {
-        let mut state = self
-            .state
-            .lock()
-            .expect("gRPC configuration lock is healthy");
+        let mut state = self.state.lock().expect("gRPC configuration lock is healthy");
         state.configurable(self.host.attached())?;
         if state.services.contains(S::NAME) {
-            return Err(Error::AlreadyRegistered {
-                domain: "gRPC service",
-                name: S::NAME.to_owned(),
-            });
+            return Err(Error::AlreadyRegistered { domain: "gRPC service", name: S::NAME.to_owned() });
         }
         self.operations.reserve_grpc_service(S::NAME)?;
         state.services.insert(S::NAME.to_owned());
@@ -109,10 +98,7 @@ impl GrpcManager {
     }
 
     pub fn register_middleware(&self, middleware: Arc<dyn Middleware>) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .expect("gRPC configuration lock is healthy");
+        let mut state = self.state.lock().expect("gRPC configuration lock is healthy");
         state.configurable(self.host.attached())?;
         state.middleware.push(middleware);
         Ok(())
@@ -121,19 +107,11 @@ impl GrpcManager {
     pub async fn attach(&self, settings: Settings) -> Result<Attached> {
         settings.validate()?;
         let router = super::routing::Router::new(self.operations.clone(), settings.operations)
-            .map_err(|_| Error::InvalidInput {
-                field: "gRPC operation settings",
-                reason: "invalid transport bounds",
-            })?;
+            .map_err(|_| Error::InvalidInput { field: "gRPC operation settings", reason: "invalid transport bounds" })?;
         let resources = {
-            let state = self
-                .state
-                .lock()
-                .expect("gRPC configuration lock is healthy");
+            let state = self.state.lock().expect("gRPC configuration lock is healthy");
             if state.closed {
-                return Err(Error::Closing {
-                    domain: "gRPC configuration",
-                });
+                return Err(Error::Closing { domain: "gRPC configuration" });
             }
             let methods = self.operations.grpc_methods();
             let mut routes = state.routes.clone();
@@ -160,19 +138,10 @@ impl GrpcManager {
                 "starting gRPC listener"
             );
             let routes = routes.into_axum_router().fallback_service(router);
-            Arc::new(listener::Resources::new(
-                settings,
-                routes.into(),
-                state.middleware.clone(),
-            ))
+            Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone()))
         };
         let (generation, address) = self.host.attach(resources).await?;
-        Ok(Attached {
-            host: self.host.clone(),
-            generation,
-            address,
-            detached: false,
-        })
+        Ok(Attached { host: self.host.clone(), generation, address, detached: false })
     }
 
     pub fn methods(&self) -> Vec<crate::operations::GrpcMethod> {
@@ -184,10 +153,7 @@ impl GrpcManager {
     }
 
     pub(crate) fn close_admission(&self) {
-        self.state
-            .lock()
-            .expect("gRPC configuration lock is healthy")
-            .closed = true;
+        self.state.lock().expect("gRPC configuration lock is healthy").closed = true;
         self.host.close();
     }
 
@@ -226,19 +192,12 @@ impl Settings {
         }
         if self.request_timeout.is_zero()
             || self.shutdown_timeout.is_zero()
-            || tokio::time::Instant::now()
-                .checked_add(self.request_timeout)
-                .is_none()
-            || tokio::time::Instant::now()
-                .checked_add(self.shutdown_timeout)
-                .is_none()
+            || tokio::time::Instant::now().checked_add(self.request_timeout).is_none()
+            || tokio::time::Instant::now().checked_add(self.shutdown_timeout).is_none()
             || self.connections.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.calls_per_connection.get() > u32::MAX as usize
         {
-            return Err(Error::InvalidInput {
-                field: "gRPC settings",
-                reason: "timeouts and capacity must be positive supported bounds",
-            });
+            return Err(Error::InvalidInput { field: "gRPC settings", reason: "timeouts and capacity must be positive supported bounds" });
         }
         Ok(())
     }
@@ -247,9 +206,7 @@ impl Settings {
 impl State {
     fn configurable(&self, attached: bool) -> Result<()> {
         if attached || self.closed {
-            return Err(Error::Closing {
-                domain: "gRPC configuration",
-            });
+            return Err(Error::Closing { domain: "gRPC configuration" });
         }
         Ok(())
     }

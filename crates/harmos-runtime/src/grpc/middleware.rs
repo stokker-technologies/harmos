@@ -88,20 +88,11 @@ impl Invocation {
 
 impl Session {
     pub(super) fn new(
-        path: String,
-        metadata: MetadataMap,
-        extensions: tonic::codegen::http::Extensions,
-        peer: Option<std::net::SocketAddr>,
+        path: String, metadata: MetadataMap, extensions: tonic::codegen::http::Extensions, peer: Option<std::net::SocketAddr>,
         entries: Arc<[Arc<dyn Middleware>]>,
     ) -> Self {
         Self {
-            call: Invocation {
-                path,
-                metadata,
-                extensions,
-                peer,
-                context: CallContext::default(),
-            },
+            call: Invocation { path, metadata, extensions, peer, context: CallContext::default() },
             entries,
             entered: 0,
             observed: false,
@@ -148,16 +139,9 @@ impl Drop for Session {
 
 /* === Private Functions === */
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
-    std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
-            Ok(result) => result,
-            Err(_) => std::task::Poll::Ready(Err(crate::Error::InvalidInput {
-                field: "gRPC middleware",
-                reason: "middleware entry panicked",
-            })),
-        }
+    std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
+        Ok(result) => result,
+        Err(_) => std::task::Poll::Ready(Err(crate::Error::InvalidInput { field: "gRPC middleware", reason: "middleware entry panicked" })),
     })
     .await
 }

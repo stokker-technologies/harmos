@@ -76,10 +76,7 @@ impl Service<http::Request<Body>> for Inbound {
     type Future = Pin<Box<dyn Future<Output = Result<Response, Infallible>> + Send>>;
 
     fn poll_ready(&mut self, context: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
-        <tonic::service::Routes as Service<http::Request<Body>>>::poll_ready(
-            &mut self.routes,
-            context,
-        )
+        <tonic::service::Routes as Service<http::Request<Body>>>::poll_ready(&mut self.routes, context)
     }
 
     fn call(&mut self, mut request: http::Request<Body>) -> Self::Future {
@@ -97,26 +94,14 @@ impl Service<http::Request<Body>> for Inbound {
             };
             let deadline = tokio::time::Instant::now() + timeout;
             let metadata = MetadataMap::from_headers(request.headers().clone());
+            let peer = request.extensions().get::<tonic::transport::server::TcpConnectInfo>().and_then(|info| info.remote_addr);
+
             let peer = request
                 .extensions()
-                .get::<tonic::transport::server::TcpConnectInfo>()
-                .and_then(|info| info.remote_addr);
-
-            let peer =
-                request
-                    .extensions()
-                    .get::<tonic::transport::server::TlsConnectInfo<
-                        tonic::transport::server::TcpConnectInfo,
-                    >>()
-                    .and_then(|info| info.get_ref().remote_addr)
-                    .or(peer);
-            let mut session = Session::new(
-                request.uri().path().to_owned(),
-                metadata,
-                request.extensions().clone(),
-                peer,
-                entries,
-            );
+                .get::<tonic::transport::server::TlsConnectInfo<tonic::transport::server::TcpConnectInfo>>()
+                .and_then(|info| info.get_ref().remote_addr)
+                .or(peer);
+            let mut session = Session::new(request.uri().path().to_owned(), metadata, request.extensions().clone(), peer, entries);
             let entered = tokio::select! {
                 biased;
                 _ = shutdown(stopping.clone()) => Err(Status::unavailable("gRPC listener is stopping")),
@@ -128,9 +113,7 @@ impl Service<http::Request<Body>> for Inbound {
                 return Ok(status.into_http());
             }
             let mut context = session.context();
-            context
-                .insert(crate::operations::context::Deadline(deadline))
-                .expect("transport owns the deadline type");
+            context.insert(crate::operations::context::Deadline(deadline)).expect("transport owns the deadline type");
             request.extensions_mut().insert(TrustedContext(context));
             let response = tokio::select! {
                 biased;
@@ -167,10 +150,7 @@ impl Service<http::Request<Body>> for Inbound {
 impl http_body::Body for Observed {
     type Data = bytes::Bytes;
     type Error = Status;
-    fn poll_frame(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Status>>> {
+    fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<http_body::Frame<Self::Data>, Status>>> {
         if self.ended {
             return Poll::Ready(None);
         }
@@ -178,17 +158,13 @@ impl http_body::Body for Observed {
             self.session.observe(Code::Unavailable);
             self.ended = true;
             self.body = Body::empty();
-            return Poll::Ready(Some(Ok(trailers(Status::unavailable(
-                "gRPC listener is stopping",
-            )))));
+            return Poll::Ready(Some(Ok(trailers(Status::unavailable("gRPC listener is stopping")))));
         }
         if self.deadline.as_mut().poll(cx).is_ready() {
             self.session.observe(Code::DeadlineExceeded);
             self.ended = true;
             self.body = Body::empty();
-            return Poll::Ready(Some(Ok(trailers(Status::deadline_exceeded(
-                "RPC deadline elapsed",
-            )))));
+            return Poll::Ready(Some(Ok(trailers(Status::deadline_exceeded("RPC deadline elapsed")))));
         }
         match Pin::new(&mut self.body).poll_frame(cx) {
             Poll::Ready(Some(Ok(frame))) => {
@@ -221,9 +197,7 @@ impl http_body::Body for Observed {
 /* === Private Functions === */
 fn trailers(status: Status) -> http_body::Frame<bytes::Bytes> {
     let mut headers = http::HeaderMap::new();
-    status
-        .add_header(&mut headers)
-        .expect("static transport status is valid metadata");
+    status.add_header(&mut headers).expect("static transport status is valid metadata");
     http_body::Frame::trailers(headers)
 }
 
@@ -236,30 +210,18 @@ async fn shutdown(mut stopping: watch::Receiver<bool>) {
 }
 
 fn status(headers: &http::HeaderMap) -> Option<Code> {
-    headers
-        .get("grpc-status")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<i32>().ok())
-        .map(Code::from_i32)
+    headers.get("grpc-status").and_then(|value| value.to_str().ok()).and_then(|value| value.parse::<i32>().ok()).map(Code::from_i32)
 }
 
 fn request_timeout(headers: &http::HeaderMap, maximum: Duration) -> Result<Duration, Status> {
     let Some(value) = headers.get("grpc-timeout") else {
         return Ok(maximum);
     };
-    let value = value
-        .to_str()
-        .map_err(|_| Status::invalid_argument("invalid grpc-timeout"))?;
-    if !(2..=9).contains(&value.len())
-        || !value[..value.len() - 1]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit())
-    {
+    let value = value.to_str().map_err(|_| Status::invalid_argument("invalid grpc-timeout"))?;
+    if !(2..=9).contains(&value.len()) || !value[..value.len() - 1].bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(Status::invalid_argument("invalid grpc-timeout"));
     }
-    let amount = value[..value.len() - 1]
-        .parse::<u64>()
-        .map_err(|_| Status::invalid_argument("invalid grpc-timeout"))?;
+    let amount = value[..value.len() - 1].parse::<u64>().map_err(|_| Status::invalid_argument("invalid grpc-timeout"))?;
     let duration = match value.as_bytes()[value.len() - 1] {
         b'H' => Duration::from_secs(amount * 3600),
         b'M' => Duration::from_secs(amount * 60),

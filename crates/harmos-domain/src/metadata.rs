@@ -65,30 +65,15 @@ pub enum IdentifierError {
 impl MemorySize for Metadata {
     fn memory_size(&self) -> usize {
         let fields = [
-            (
-                self.identifier.memory_size(),
-                std::mem::size_of_val(&self.identifier),
-            ),
+            (self.identifier.memory_size(), std::mem::size_of_val(&self.identifier)),
             (self.label.memory_size(), std::mem::size_of_val(&self.label)),
-            (
-                self.description.memory_size(),
-                std::mem::size_of_val(&self.description),
-            ),
+            (self.description.memory_size(), std::mem::size_of_val(&self.description)),
             (self.tags.memory_size(), std::mem::size_of_val(&self.tags)),
-            (
-                self.attributes.memory_size(),
-                std::mem::size_of_val(&self.attributes),
-            ),
+            (self.attributes.memory_size(), std::mem::size_of_val(&self.attributes)),
         ];
-        fields
-            .into_iter()
-            .fold(std::mem::size_of::<Self>(), |bytes, (owned, inline)| {
-                if owned == usize::MAX {
-                    usize::MAX
-                } else {
-                    bytes.saturating_add(owned.saturating_sub(inline))
-                }
-            })
+        fields.into_iter().fold(std::mem::size_of::<Self>(), |bytes, (owned, inline)| {
+            if owned == usize::MAX { usize::MAX } else { bytes.saturating_add(owned.saturating_sub(inline)) }
+        })
     }
 }
 
@@ -108,8 +93,7 @@ impl Identifier {
 
     pub fn declared(value: impl Into<String>, kind: &str) -> Self {
         let value = value.into();
-        Self::new(value.clone())
-            .unwrap_or_else(|error| panic!("invalid {kind} identifier {value:?}: {error}"))
+        Self::new(value.clone()).unwrap_or_else(|error| panic!("invalid {kind} identifier {value:?}: {error}"))
     }
 
     pub fn as_str(&self) -> &str {
@@ -124,18 +108,14 @@ impl crate::__private::PostcardValue for Identifier {
     fn size(&self) -> usize {
         crate::__private::PostcardValue::size(&self.0)
     }
-    fn memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> Result<usize, crate::MessageError> {
+    fn memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize, crate::MessageError> {
         let text: &str = input.value()?;
-        validate_identifier(text)
-            .map_err(|_| crate::MessageError::borrowed("invalid identifier"))?;
+        validate_identifier(text).map_err(|_| crate::MessageError::borrowed("invalid identifier"))?;
         crate::__private::decoding_add(std::mem::size_of::<Self>(), text.len())
     }
     fn read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Self, crate::MessageError> {
         let text: &str = input.value()?;
-        validate_identifier(text)
-            .map_err(|_| crate::MessageError::borrowed("invalid identifier"))?;
+        validate_identifier(text).map_err(|_| crate::MessageError::borrowed("invalid identifier"))?;
         Ok(Self(Box::<str>::from(text).into_string()))
     }
 }
@@ -154,19 +134,12 @@ impl<'de> Deserialize<'de> for Identifier {
 }
 
 impl Metadata {
-    pub fn new(
-        identifier: Identifier,
-        label: impl Into<String>,
-        description: Option<String>,
-    ) -> Self {
+    pub fn new(identifier: Identifier, label: impl Into<String>, description: Option<String>) -> Self {
         Self::definition(identifier, label, description, std::iter::empty::<String>())
     }
 
     pub fn definition(
-        identifier: Identifier,
-        label: impl Into<String>,
-        description: Option<String>,
-        tags: impl IntoIterator<Item = impl Into<String>>,
+        identifier: Identifier, label: impl Into<String>, description: Option<String>, tags: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         let mut unique_tags = Vec::new();
         for tag in tags {

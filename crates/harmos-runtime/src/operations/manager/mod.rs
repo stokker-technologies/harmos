@@ -46,11 +46,7 @@ use super::{Context, OperationGeneration, OperationInstance, OperationInstanceId
 
 use super::instances::Instances;
 use crate::operations::{CacheKey, Definition, OperationDeclaration};
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
 use crate::supervision::executor;
 use crate::supervision::instance::Instance;
@@ -80,11 +76,7 @@ pub(crate) struct Registry {
     state: Mutex<State>,
 }
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) struct GenerationCommit<'a> {
     _state: std::sync::MutexGuard<'a, State>,
 }
@@ -92,11 +84,7 @@ pub(crate) struct GenerationCommit<'a> {
 struct State {
     closing: bool,
     entries: BTreeMap<String, BTreeMap<String, Arc<Entry>>>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     staging: Vec<std::sync::Weak<PluginScope>>,
     #[cfg(feature = "grpc")]
     grpc: BTreeMap<String, Weak<Entry>>,
@@ -127,17 +115,9 @@ pub(super) struct Entry {
     pub(super) wire: Option<super::wire::Dispatch>,
     #[cfg(feature = "plugin-sidecar")]
     pub(super) native: Option<Arc<super::native::Binding>>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     plugin: Option<PluginScope>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) sdk: Option<harmos_domain::operations::lifecycle::Action>,
 }
 
@@ -156,15 +136,8 @@ pub(super) struct GrantAuthority {
     owner: String,
     operation: String,
     // A cross-owner plugin caller and its declared requirement for this operation.
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    plugin: Option<(
-        String,
-        Option<harmos_domain::inventory::contracts::Required>,
-    )>,
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
     // The grants an external caller's authorizer selected for this operation.
     external: Option<harmos_domain::inventory::contracts::Required>,
 }
@@ -191,15 +164,8 @@ enum Retirement {
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
-fn grant_allowed(
-    required: Option<&harmos_domain::inventory::contracts::Required>,
-    grant: Option<&harmos_domain::plugin::Grant>,
-) -> bool {
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
     match grant {
         None => true,
         Some(grant) => required.is_some_and(|required| required.grants(grant)),
@@ -207,16 +173,9 @@ fn grant_allowed(
 }
 
 async fn settle(entry: &Entry) -> Result<()> {
-    let pending = entry
-        .pending
-        .lock()
-        .expect("operation settlement lock is healthy")
-        .clone();
+    let pending = entry.pending.lock().expect("operation settlement lock is healthy").clone();
     for settled in pending.into_values() {
-        settled
-            .settle()
-            .await
-            .map_err(|source| Error::OperationSettlement { source })?;
+        settled.settle().await.map_err(|source| Error::OperationSettlement { source })?;
     }
     Ok(())
 }

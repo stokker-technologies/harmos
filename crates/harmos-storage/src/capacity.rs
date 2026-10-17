@@ -129,22 +129,11 @@ impl Pool {
     fn charge(self, inner: &Inner, state: &mut State, bytes: usize) -> bool {
         state.collect();
         let fits = match self {
-            Self::Read => state
-                .status
-                .read_bytes
-                .checked_add(bytes)
-                .is_some_and(|total| total <= self.ceiling(inner)),
+            Self::Read => state.status.read_bytes.checked_add(bytes).is_some_and(|total| total <= self.ceiling(inner)),
             Self::Write => {
                 let capacity = inner.settings.request.max_pending_write_bytes.get();
-                state
-                    .scratch_bytes
-                    .checked_add(bytes)
-                    .is_some_and(|total| total <= capacity / 2)
-                    && state
-                        .status
-                        .pending_bytes
-                        .checked_add(bytes)
-                        .is_some_and(|total| total <= capacity)
+                state.scratch_bytes.checked_add(bytes).is_some_and(|total| total <= capacity / 2)
+                    && state.status.pending_bytes.checked_add(bytes).is_some_and(|total| total <= capacity)
             }
         };
         if !fits {
@@ -177,18 +166,10 @@ impl Pool {
 impl Refusal {
     pub(super) fn into_error(self) -> Error {
         match self {
-            Self::Exceeded(pool) => Error::ResourceExhausted {
-                resource: pool.resource(),
-            },
-            Self::Busy => Error::ResourceExhausted {
-                resource: "storage capacity",
-            },
-            Self::Cycle => Error::ResourceExhausted {
-                resource: "storage capacity cycle",
-            },
-            Self::Elapsed => Error::ResourceExhausted {
-                resource: "storage capacity deadline",
-            },
+            Self::Exceeded(pool) => Error::ResourceExhausted { resource: pool.resource() },
+            Self::Busy => Error::ResourceExhausted { resource: "storage capacity" },
+            Self::Cycle => Error::ResourceExhausted { resource: "storage capacity cycle" },
+            Self::Elapsed => Error::ResourceExhausted { resource: "storage capacity deadline" },
             Self::Failed(error) => error,
         }
     }
@@ -202,24 +183,14 @@ impl From<Refusal> for Error {
 
 impl Reservation {
     pub(super) fn empty(inner: &Arc<Inner>, pool: Pool, held: &Held) -> Self {
-        Self {
-            inner: Arc::clone(inner),
-            pool,
-            bytes: 0,
-            held: held.clone(),
-        }
+        Self { inner: Arc::clone(inner), pool, bytes: 0, held: held.clone() }
     }
 
     /// Own bytes the caller already charged to `pool` under the state lock.
     pub(super) fn charged(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Self {
-            inner: Arc::clone(inner),
-            pool,
-            bytes,
-            held,
-        }
+        Self { inner: Arc::clone(inner), pool, bytes, held }
     }
 
     /// Charge bytes for lifecycle work (startup recovery) that runs before the
@@ -227,28 +198,16 @@ impl Reservation {
     pub(super) fn lifecycle(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Result<Self> {
         let mut state = inner.state.lock().unwrap();
         if bytes > pool.ceiling(inner) || !pool.charge(inner, &mut state, bytes) {
-            return Err(Error::ResourceExhausted {
-                resource: pool.resource(),
-            });
+            return Err(Error::ResourceExhausted { resource: pool.resource() });
         }
         drop(state);
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Ok(Self {
-            inner: Arc::clone(inner),
-            pool,
-            bytes,
-            held,
-        })
+        Ok(Self { inner: Arc::clone(inner), pool, bytes, held })
     }
 
     /// Reserve without waiting.
-    pub(super) fn try_new(
-        inner: &Arc<Inner>,
-        pool: Pool,
-        held: &Held,
-        bytes: usize,
-    ) -> std::result::Result<Self, Refusal> {
+    pub(super) fn try_new(inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize) -> std::result::Result<Self, Refusal> {
         let mut reservation = Self::empty(inner, pool, held);
         reservation.try_grow(bytes)?;
         Ok(reservation)
@@ -256,11 +215,7 @@ impl Reservation {
 
     /// Reserve, waiting for other owners to release capacity.
     pub(super) async fn wait(
-        inner: &Arc<Inner>,
-        pool: Pool,
-        held: &Held,
-        bytes: usize,
-        deadline: Option<Instant>,
+        inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
         let mut reservation = Self::empty(inner, pool, held);
         reservation.grow(bytes, deadline).await?;
@@ -288,21 +243,13 @@ impl Reservation {
     /// holds bytes joins the pool's growers and waits unless no grower, itself
     /// included, could grow even after every other owner released everything;
     /// only that certain cycle is refused, with `Cycle`.
-    pub(super) async fn grow(
-        &mut self,
-        additional: usize,
-        deadline: Option<Instant>,
-    ) -> std::result::Result<(), Refusal> {
+    pub(super) async fn grow(&mut self, additional: usize, deadline: Option<Instant>) -> std::result::Result<(), Refusal> {
         if additional == 0 {
             return Ok(());
         }
         let inner = Arc::clone(&self.inner);
         let mut waiting: Option<Waiting> = None;
-        let result = inner
-            .wait(deadline, |state| {
-                self.grow_step(state, additional, &mut waiting)
-            })
-            .await;
+        let result = inner.wait(deadline, |state| self.grow_step(state, additional, &mut waiting)).await;
         drop(waiting);
         result
     }
@@ -332,12 +279,7 @@ impl Reservation {
     pub(super) fn split(&mut self, bytes: usize) -> Self {
         assert!(bytes <= self.bytes, "split exceeds reservation");
         self.bytes -= bytes;
-        Self {
-            inner: Arc::clone(&self.inner),
-            pool: self.pool,
-            bytes,
-            held: self.held.clone(),
-        }
+        Self { inner: Arc::clone(&self.inner), pool: self.pool, bytes, held: self.held.clone() }
     }
 
     /// Hand this charge to Arrow buffers or other shared consumers.
@@ -346,12 +288,7 @@ impl Reservation {
         RetainedMemory::new(owner)
     }
 
-    fn grow_step(
-        &mut self,
-        state: &mut State,
-        additional: usize,
-        waiting: &mut Option<Waiting>,
-    ) -> Attempt<()> {
+    fn grow_step(&mut self, state: &mut State, additional: usize, waiting: &mut Option<Waiting>) -> Attempt<()> {
         match self.attempt(state, additional) {
             Attempt::Wait if waiting.is_none() && self.held.bytes() != 0 => {
                 match Waiting::join(&self.inner, state, self.pool, &self.held, additional) {
@@ -378,10 +315,7 @@ impl Reservation {
             return Attempt::Refuse(Refusal::Failed(error));
         }
         let owned = self.held.bytes();
-        if owned
-            .checked_add(additional)
-            .is_none_or(|total| total > self.pool.ceiling(&self.inner))
-        {
+        if owned.checked_add(additional).is_none_or(|total| total > self.pool.ceiling(&self.inner)) {
             return Attempt::Refuse(Refusal::Exceeded(self.pool));
         }
         if !self.pool.charge(&self.inner, state, additional) {
@@ -400,41 +334,22 @@ impl Growers {
     // Some Grower's Need Fits Once Every Owner That Is Not Growing Released Everything.
     fn can_progress(&self, ceiling: usize, held: usize, need: usize) -> bool {
         let waiters = self.waiting.values();
-        let held = waiters.clone().fold(held, |total, grower| {
-            total.saturating_add(grower.held.bytes())
-        });
+        let held = waiters.clone().fold(held, |total, grower| total.saturating_add(grower.held.bytes()));
         let free = ceiling.saturating_sub(held);
         need <= free || waiters.into_iter().any(|grower| grower.need <= free)
     }
 }
 
 impl Waiting {
-    fn join(
-        inner: &Arc<Inner>,
-        state: &mut State,
-        pool: Pool,
-        held: &Held,
-        need: usize,
-    ) -> Option<Self> {
+    fn join(inner: &Arc<Inner>, state: &mut State, pool: Pool, held: &Held, need: usize) -> Option<Self> {
         let growers = &mut state.growers[pool.index()];
         if !growers.can_progress(pool.ceiling(inner), held.bytes(), need) {
             return None;
         }
         let id = growers.next;
         growers.next += 1;
-        growers.waiting.insert(
-            id,
-            Grower {
-                held: held.clone(),
-                need,
-            },
-        );
-        Some(Self {
-            inner: Arc::clone(inner),
-            pool,
-            id,
-            active: true,
-        })
+        growers.waiting.insert(id, Grower { held: held.clone(), need });
+        Some(Self { inner: Arc::clone(inner), pool, id, active: true })
     }
 
     // Admission And Departure Share The State Lock: A Running Owner Must Never
@@ -450,9 +365,7 @@ impl Drop for Waiting {
         if !self.active {
             return;
         }
-        self.inner.state.lock().unwrap().growers[self.pool.index()]
-            .waiting
-            .remove(&self.id);
+        self.inner.state.lock().unwrap().growers[self.pool.index()].waiting.remove(&self.id);
     }
 }
 
@@ -476,9 +389,7 @@ impl Inner {
     /// across the await, so dropping the future cancels cleanly; an optional
     /// deadline bounds the wait.
     pub(super) async fn wait<T>(
-        &self,
-        deadline: Option<Instant>,
-        mut attempt: impl FnMut(&mut State) -> Attempt<T>,
+        &self, deadline: Option<Instant>, mut attempt: impl FnMut(&mut State) -> Attempt<T>,
     ) -> std::result::Result<T, Refusal> {
         let mut changed = self.changed.subscribe();
         loop {
@@ -489,9 +400,7 @@ impl Inner {
                 Attempt::Wait => {}
             }
             let notified = match deadline {
-                Some(deadline) => tokio::time::timeout_at(deadline, changed.changed())
-                    .await
-                    .map_err(|_| Refusal::Elapsed)?,
+                Some(deadline) => tokio::time::timeout_at(deadline, changed.changed()).await.map_err(|_| Refusal::Elapsed)?,
                 None => changed.changed().await,
             };
             notified.map_err(|_| Refusal::Failed(Error::Closing { domain: "storage" }))?;
@@ -502,10 +411,7 @@ impl Inner {
 impl Inner {
     /// The capacity wait for admission checks phrased as `Result<Option<T>>`:
     /// `Ok(None)` waits for released capacity, `Err` refuses.
-    pub(super) async fn admit_when<T>(
-        &self,
-        mut check: impl FnMut(&mut State) -> Result<Option<T>>,
-    ) -> Result<T> {
+    pub(super) async fn admit_when<T>(&self, mut check: impl FnMut(&mut State) -> Result<Option<T>>) -> Result<T> {
         self.wait(None, |state| match check(state) {
             Ok(Some(value)) => Attempt::Ready(value),
             Ok(None) => Attempt::Wait,
@@ -529,9 +435,7 @@ pub(super) fn admitting(state: &State, pool: Pool) -> Result<()> {
     if pool == Pool::Write
         && let Some(source) = &state.status.failure
     {
-        return Err(Error::Persistence {
-            source: source.clone(),
-        });
+        return Err(Error::Persistence { source: source.clone() });
     }
     Ok(())
 }
@@ -554,10 +458,7 @@ mod tests {
         settings.budget.read_memory_bytes = NonZeroUsize::new(100).unwrap();
         settings.response.batch_bytes = NonZeroUsize::new(40).unwrap();
         let storage = crate::StorageManager::<()>::new(
-            crate::StorageBackends {
-                primary: Arc::new(Data::<()>::new(history())),
-                state: Arc::new(Recovery::new(history())),
-            },
+            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
             settings,
         )
         .unwrap();
@@ -574,31 +475,19 @@ mod tests {
         let mut waiting_b = None;
         {
             let mut state = inner.state.lock().unwrap();
-            assert!(matches!(
-                a.grow_step(&mut state, 40, &mut waiting_a),
-                Attempt::Wait
-            ));
-            assert!(matches!(
-                b.grow_step(&mut state, 40, &mut waiting_b),
-                Attempt::Wait
-            ));
+            assert!(matches!(a.grow_step(&mut state, 40, &mut waiting_a), Attempt::Wait));
+            assert!(matches!(b.grow_step(&mut state, 40, &mut waiting_b), Attempt::Wait));
         }
         drop(external);
         let mut waiting_c = None;
         let mut c = Reservation::empty(inner, Pool::Read, &Held::default());
         {
             let mut state = inner.state.lock().unwrap();
-            assert!(matches!(
-                a.grow_step(&mut state, 40, &mut waiting_a),
-                Attempt::Ready(())
-            ));
+            assert!(matches!(a.grow_step(&mut state, 40, &mut waiting_a), Attempt::Ready(())));
             // A Has Not Dropped Its Wait Guard. Its Successful Admission Must
             // Already Have Left The Ledger Before C Can Enter The Same Lock.
             assert!(matches!(c.attempt(&mut state, 10), Attempt::Ready(())));
-            assert!(matches!(
-                c.grow_step(&mut state, 15, &mut waiting_c),
-                Attempt::Wait
-            ));
+            assert!(matches!(c.grow_step(&mut state, 15, &mut waiting_c), Attempt::Wait));
         }
         drop((waiting_a, waiting_b, waiting_c));
         drop((a, b, c));

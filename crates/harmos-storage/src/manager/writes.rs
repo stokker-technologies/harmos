@@ -12,29 +12,17 @@ use super::*;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn write_schema(
-        &self,
-        key: &SchemaKey,
-        schema: &crate::schema::graph::Schema,
-    ) -> Result<StorageCursor> {
+    pub async fn write_schema(&self, key: &SchemaKey, schema: &crate::schema::graph::Schema) -> Result<StorageCursor> {
         self.admit_schema(key, schema, None).await
     }
 
     pub(crate) async fn admit_schema(
-        &self,
-        key: &SchemaKey,
-        schema: &crate::schema::graph::Schema,
-        mutation: Option<&crate::storage::MutationId>,
+        &self, key: &SchemaKey, schema: &crate::schema::graph::Schema, mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
         let scratch = schema
             .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput {
-                field: "storage schema",
-                reason: "invalid message field budget",
-            })?;
-        let mutation = mutation
-            .map(|id| crate::admissions::schema_mutation(id, key, schema))
-            .transpose()?;
+            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid message field budget" })?;
+        let mutation = mutation.map(|id| crate::admissions::schema_mutation(id, key, schema)).transpose()?;
         // Replay Completed Admission Before Scratch Pressure Or Later I/O Errors.
         // Admission Rechecks The Same Ledger After Every Suspension.
         if let Some(mutation) = mutation {
@@ -45,28 +33,19 @@ impl<C> StorageManager<C> {
             if !state.ready || !state.status.running {
                 return Err(Error::NotReady { domain: "storage" });
             }
-            if let ReceiptState::Complete(value) =
-                state.receipts.lookup(mutation.id, &mutation.fingerprint)?
-            {
+            if let ReceiptState::Complete(value) = state.receipts.lookup(mutation.id, &mutation.fingerprint)? {
                 return value.cursor();
             }
         }
         let scratch = self.reserve_scratch(scratch).await?;
         schema
             .prepare(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput {
-                field: "storage schema",
-                reason: "invalid message fields",
-            })?;
+            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid message fields" })?;
         drop(scratch);
         let bytes = StorageSchema::resident_bytes(key, schema, self.inner.primary.history())?;
         let sequence = self
             .admit_mutation(Domain::Data, bytes, 1, mutation, false, |sequence| {
-                Ok(Operation::Schema(StorageSchema::new(
-                    self.position(sequence),
-                    key.clone(),
-                    schema.clone(),
-                )))
+                Ok(Operation::Schema(StorageSchema::new(self.position(sequence), key.clone(), schema.clone())))
             })
             .await?;
         Ok(self.position(sequence))
@@ -83,10 +62,7 @@ impl<C> StorageManager<C> {
                 source_time: record.source_time,
                 payload: record.payload,
             };
-            Ok((
-                encoded_size(&value)?,
-                record.resident_bytes(self.inner.primary.history())?,
-            ))
+            Ok((encoded_size(&value)?, record.resident_bytes(self.inner.primary.history())?))
         }))
     }
 
@@ -110,17 +86,12 @@ impl<C> StorageManager<C> {
                 .resident_bytes(self.inner.primary.history())?
                 .checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>())
                 .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
-                .ok_or(Error::ResourceExhausted {
-                    resource: "stream batch memory",
-                })?;
+                .ok_or(Error::ResourceExhausted { resource: "stream batch memory" })?;
             Ok((encoded_size(&value)?, resident))
         }))
     }
 
-    pub(super) fn batch_prefix(
-        &self,
-        sizes: impl Iterator<Item = Result<(usize, usize)>>,
-    ) -> Result<usize> {
+    pub(super) fn batch_prefix(&self, sizes: impl Iterator<Item = Result<(usize, usize)>>) -> Result<usize> {
         let mut bytes = 0usize;
         let mut rows = 0usize;
         let mut resident = 0usize;
@@ -129,13 +100,7 @@ impl<C> StorageManager<C> {
         for size in sizes {
             let (size, held) = size?;
             if size > maximum || held > memory {
-                return if rows == 0 {
-                    Err(Error::ResourceExhausted {
-                        resource: "oversized atomic write row",
-                    })
-                } else {
-                    Ok(rows)
-                };
+                return if rows == 0 { Err(Error::ResourceExhausted { resource: "oversized atomic write row" }) } else { Ok(rows) };
             }
             if size > maximum - bytes || held > memory - resident {
                 break;
@@ -152,9 +117,7 @@ impl<C> StorageManager<C> {
     }
 
     pub(crate) async fn admit_records<'a>(
-        &self,
-        records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone,
-        mutation: Option<Mutation<'_>>,
+        &self, records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone, mutation: Option<Mutation<'_>>,
     ) -> Result<StorageCursor> {
         if records.len() == 0 {
             return Ok(self.status().accepted);
@@ -162,29 +125,14 @@ impl<C> StorageManager<C> {
         let bytes = records.clone().try_fold(0usize, |bytes, record| {
             bytes
                 .checked_add(record.resident_bytes(self.inner.primary.history())?)
-                .ok_or(Error::InvalidInput {
-                    field: "storage admission",
-                    reason: "size overflow",
-                })
+                .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
         })?;
         let sequence = self
-            .admit_mutation(
-                Domain::Data,
-                bytes,
-                records.len(),
-                mutation,
-                false,
-                |first| {
-                    Ok(Operation::Records(
-                        records
-                            .enumerate()
-                            .map(|(index, record)| {
-                                record.stored(self.position(first + index as u64))
-                            })
-                            .collect(),
-                    ))
-                },
-            )
+            .admit_mutation(Domain::Data, bytes, records.len(), mutation, false, |first| {
+                Ok(Operation::Records(
+                    records.enumerate().map(|(index, record)| record.stored(self.position(first + index as u64))).collect(),
+                ))
+            })
             .await?;
         Ok(self.position(sequence))
     }
@@ -194,9 +142,7 @@ impl<C> StorageManager<C> {
     }
 
     pub(crate) async fn admit_stream<'a>(
-        &self,
-        rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone,
-        mutation: Option<Mutation<'_>>,
+        &self, rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone, mutation: Option<Mutation<'_>>,
     ) -> Result<StorageCursor> {
         if rows.len() == 0 {
             return Ok(self.status().accepted);
@@ -204,16 +150,9 @@ impl<C> StorageManager<C> {
         let bytes = rows.clone().try_fold(0usize, |bytes, row| {
             bytes
                 .checked_add(row.record.resident_bytes(self.inner.primary.history())?)
-                .and_then(|bytes| {
-                    bytes.checked_add(
-                        std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>(),
-                    )
-                })
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>()))
                 .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
-                .ok_or(Error::InvalidInput {
-                    field: "storage admission",
-                    reason: "size overflow",
-                })
+                .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
         })?;
         let sequence = self
             .admit_mutation(Domain::Data, bytes, rows.len(), mutation, true, |first| {

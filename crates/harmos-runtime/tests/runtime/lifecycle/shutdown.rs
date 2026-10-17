@@ -148,13 +148,16 @@ async fn services_stop_first() {
     trace.started.notified().await;
     runtime
         .operations
-        .register_service(harmos_runtime::services::ServiceDefinition { id: "caller".into(), policy: harmos_runtime::services::POLICY }, |_: Arc<()>| {
-            |mut context: harmos_runtime::services::Service<Editor>| async move {
-                context.ready();
-                context.stopping().await;
-                Ok::<(), harmos_runtime::services::Fault<std::convert::Infallible>>(())
-            }
-        })
+        .register_service(
+            harmos_runtime::services::ServiceDefinition { id: "caller".into(), policy: harmos_runtime::services::POLICY },
+            |_: Arc<()>| {
+                |mut context: harmos_runtime::services::Service<Editor>| async move {
+                    context.ready();
+                    context.stopping().await;
+                    Ok::<(), harmos_runtime::services::Fault<std::convert::Infallible>>(())
+                }
+            },
+        )
         .unwrap();
     let lease = runtime.operations.submit_resident("caller").await.unwrap();
     lease.ready().await.unwrap();

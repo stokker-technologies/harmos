@@ -20,11 +20,7 @@ where
         match arrival {
             Arrival::Binary(_) => unreachable!("binary ownership is consumed by absorb"),
             Arrival::Publications(receipts) => {
-                self.deliveries.extend(
-                    receipts
-                        .into_iter()
-                        .map(|receipt| Box::pin(receipt.committed()) as _),
-                );
+                self.deliveries.extend(receipts.into_iter().map(|receipt| Box::pin(receipt.committed()) as _));
                 Absorbed::Carried
             }
             Arrival::ObserverFailed(error) => Absorbed::Malformed(error),
@@ -39,10 +35,7 @@ where
                 Absorbed::Carried
             }
             Arrival::Frame(Frame::Refusal { id, refusal }) => {
-                let refused = SidecarError::Refused {
-                    code: refusal.code(),
-                    failure: refusal.into_failure(),
-                };
+                let refused = SidecarError::Refused { code: refusal.code(), failure: refusal.into_failure() };
                 self.settle(id, Err(refused));
                 Absorbed::Carried
             }
@@ -50,9 +43,7 @@ where
                 if method == Frame::EXITING {
                     self.announced = Some(reason(&params));
                 } else {
-                    return Absorbed::Malformed(
-                        "application notifications require an admitted operation".to_owned(),
-                    );
+                    return Absorbed::Malformed("application notifications require an admitted operation".to_owned());
                 }
                 Absorbed::Carried
             }
@@ -66,17 +57,13 @@ where
                         Ok(child) => child,
                         Err(error) => {
                             let refusal = harmos_domain::Refusal::of(error);
-                            return self.send(Frame::Refusal { id, refusal }).await.map_or_else(
-                                |error| Absorbed::Malformed(error.to_string()),
-                                |()| Absorbed::Carried,
-                            );
+                            return self
+                                .send(Frame::Refusal { id, refusal })
+                                .await
+                                .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                         }
                     };
-                    let scope = self
-                        .child_scopes
-                        .values()
-                        .find(|scope| &scope.context == child.context())
-                        .cloned();
+                    let scope = self.child_scopes.values().find(|scope| &scope.context == child.context()).cloned();
                     let admission = if self.routed_tasks.len() >= CHILD_REQUESTS {
                         Err(crate::plugin::DispatchError::Busy.into_refusal())
                     } else if let Some(scope) = scope {
@@ -91,32 +78,15 @@ where
                             let invocation = match scope {
                                 Some(scope) => Box::pin(async move {
                                     match child {
-                                        crate::operations::WireChild::Call(call) => {
-                                            scope.call(call, submitted, cancelled).await
-                                        }
-                                        crate::operations::WireChild::Control(control) => {
-                                            scope.control(control, cancelled).await
-                                        }
+                                        crate::operations::WireChild::Call(call) => scope.call(call, submitted, cancelled).await,
+                                        crate::operations::WireChild::Control(control) => scope.control(control, cancelled).await,
                                     }
                                 })
-                                    as Pin<
-                                        Box<
-                                            dyn Future<
-                                                    Output = Result<
-                                                        Vec<u8>,
-                                                        harmos_domain::Refusal,
-                                                    >,
-                                                > + Send,
-                                        >,
-                                    >,
+                                    as Pin<Box<dyn Future<Output = Result<Vec<u8>, harmos_domain::Refusal>> + Send>>,
                                 None => {
                                     // Submitted Children Belong To An Attempt Scope
                                     let call = match child {
-                                        crate::operations::WireChild::Call(call)
-                                            if !call.submit =>
-                                        {
-                                            call
-                                        }
+                                        crate::operations::WireChild::Call(call) if !call.submit => call,
                                         _ => {
                                             let refusal = harmos_domain::Refusal::new(
                                                 harmos_domain::UNKNOWN,
@@ -125,52 +95,29 @@ where
                                             return self
                                                 .send(Frame::Refusal { id, refusal })
                                                 .await
-                                                .map_or_else(
-                                                    |error| Absorbed::Malformed(error.to_string()),
-                                                    |()| Absorbed::Carried,
-                                                );
+                                                .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                                         }
                                     };
                                     match if call.generation_context.as_ref().is_some_and(|token| {
-                                        self.plugin.as_ref().is_some_and(|scope| {
-                                            scope.accepts_generation_context(token)
-                                        })
+                                        self.plugin.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))
                                     }) {
-                                        self.caller
-                                            .as_ref()
-                                            .ok_or(crate::Error::Closing {
-                                                domain: "native generation caller",
-                                            })
-                                            .and_then(|caller| {
-                                                caller.submit_encoded_at(
-                                                    &call.operation,
-                                                    call.payload,
-                                                    submitted,
-                                                    call.values,
-                                                )
-                                            })
+                                        self.caller.as_ref().ok_or(crate::Error::Closing { domain: "native generation caller" }).and_then(
+                                            |caller| caller.submit_encoded_at(&call.operation, call.payload, submitted, call.values),
+                                        )
                                     } else {
-                                        Err(crate::Error::Closing {
-                                            domain: "native attempt or generation context",
-                                        })
+                                        Err(crate::Error::Closing { domain: "native attempt or generation context" })
                                     } {
                                         Ok(invocation) => Box::pin(async move {
-                                            crate::operations::children::lifecycle(
-                                                invocation, cancelled,
-                                            )
-                                            .await
-                                            .map_err(crate::operations::children::refused)
+                                            crate::operations::children::lifecycle(invocation, cancelled)
+                                                .await
+                                                .map_err(crate::operations::children::refused)
                                         }),
                                         Err(error) => {
-                                            let refusal =
-                                                crate::operations::children::refused(error);
+                                            let refusal = crate::operations::children::refused(error);
                                             return self
                                                 .send(Frame::Refusal { id, refusal })
                                                 .await
-                                                .map_or_else(
-                                                    |error| Absorbed::Malformed(error.to_string()),
-                                                    |()| Absorbed::Carried,
-                                                );
+                                                .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                                         }
                                     }
                                 }
@@ -187,20 +134,15 @@ where
                             };
                             self.routed_tasks.insert(
                                 id,
-                                RoutedTask {
-                                    running: executor::task(future),
-                                    token,
-                                    cancellation: Some(cancellation),
-                                    failure: None,
-                                },
+                                RoutedTask { running: executor::task(future), token, cancellation: Some(cancellation), failure: None },
                             );
                             return Absorbed::Carried;
                         }
                     };
-                    return self.send(Frame::Refusal { id, refusal }).await.map_or_else(
-                        |error| Absorbed::Malformed(error.to_string()),
-                        |()| Absorbed::Carried,
-                    );
+                    return self
+                        .send(Frame::Refusal { id, refusal })
+                        .await
+                        .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried);
                 }
                 let refusal = if self.routed_tasks.len() >= CHILD_REQUESTS {
                     crate::plugin::DispatchError::Busy.into_refusal()
@@ -212,9 +154,7 @@ where
                             let task_token = Arc::clone(&token);
                             let (cancellation, cancelled) = oneshot::channel();
                             let future = async move {
-                                let outcome =
-                                    crate::operations::children::lifecycle(invocation, cancelled)
-                                        .await;
+                                let outcome = crate::operations::children::lifecycle(invocation, cancelled).await;
                                 let frame = match outcome {
                                     Ok(result) => Frame::Answer { id, result },
                                     Err(error) => {
@@ -226,27 +166,18 @@ where
                             };
                             self.routed_tasks.insert(
                                 id,
-                                RoutedTask {
-                                    running: executor::task(future),
-                                    token,
-                                    cancellation: Some(cancellation),
-                                    failure: None,
-                                },
+                                RoutedTask { running: executor::task(future), token, cancellation: Some(cancellation), failure: None },
                             );
                             return Absorbed::Carried;
                         }
                         Err(error) => crate::operations::children::refused(error),
                     }
                 } else {
-                    harmos_domain::Refusal::new(
-                        -32_606,
-                        "no managed operation caller is configured",
-                    )
+                    harmos_domain::Refusal::new(-32_606, "no managed operation caller is configured")
                 };
-                self.send(Frame::Refusal { id, refusal }).await.map_or_else(
-                    |error| Absorbed::Malformed(error.to_string()),
-                    |()| Absorbed::Carried,
-                )
+                self.send(Frame::Refusal { id, refusal })
+                    .await
+                    .map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried)
             }
             Arrival::Frame(Frame::Cancel { id }) => {
                 if let Some(task) = self.routed_tasks.get_mut(&id)
@@ -264,31 +195,18 @@ where
                 };
                 // A cancelled id can be reused before its already-queued reply
                 // is consumed. Only the task that owns the current slot may reply.
-                if !self
-                    .routed_tasks
-                    .get(&id)
-                    .is_some_and(|current| Arc::ptr_eq(&current.token, &token))
-                {
+                if !self.routed_tasks.get(&id).is_some_and(|current| Arc::ptr_eq(&current.token, &token)) {
                     return Absorbed::Carried;
                 }
-                let task = self
-                    .routed_tasks
-                    .get_mut(&id)
-                    .expect("the reply owns its slot");
+                let task = self.routed_tasks.get_mut(&id).expect("the reply owns its slot");
                 if let Err(error) = (&mut task.running).await {
-                    let failure = format!(
-                        "native operation drain failed: {}",
-                        harmos_domain::failure::Report(&error)
-                    );
+                    let failure = format!("native operation drain failed: {}", harmos_domain::failure::Report(&error));
                     task.failure = Some(failure.clone());
                     *self.cleanup_failure = Some(failure.clone());
                     return Absorbed::Malformed(failure);
                 }
                 self.routed_tasks.remove(&id);
-                self.send(frame).await.map_or_else(
-                    |error| Absorbed::Malformed(error.to_string()),
-                    |()| Absorbed::Carried,
-                )
+                self.send(frame).await.map_or_else(|error| Absorbed::Malformed(error.to_string()), |()| Absorbed::Carried)
             }
             Arrival::Diagnostic(line) => {
                 (self.notice)(self.context, Notice::Logged { line });

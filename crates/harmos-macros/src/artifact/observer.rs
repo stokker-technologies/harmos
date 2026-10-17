@@ -53,46 +53,27 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 
 /* === Private Functions === */
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
-    let (harmos, interval, streams, demand_keys, activation, description, id) =
-        arguments(attribute)?;
+    let (harmos, interval, streams, demand_keys, activation, description, id) = arguments(attribute)?;
     let block = block(item.clone(), "#[harmos::observer]")?;
     let name = &block.self_ty;
-    let id = id
-        .map(|id| quote!(#id))
-        .unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
+    let id = id.map(|id| quote!(#id)).unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
     let description = super::description(description, &block.attrs);
 
-    let observing = required(
-        &block,
-        "observe",
-        "async fn observe(&mut self, context: &ObserverContext<'_, Resources>) -> Result<(), Error>",
-    )?;
-    asynchronous(
-        observing,
-        "a observe awaits its instrument without blocking the executor",
-    )?;
+    let observing =
+        required(&block, "observe", "async fn observe(&mut self, context: &ObserverContext<'_, Resources>) -> Result<(), Error>")?;
+    asynchronous(observing, "a observe awaits its instrument without blocking the executor")?;
     let (resources, host) = resources(observing)?;
-    let host = host
-        .map(|ty| quote!(#ty))
-        .unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
+    let host = host.map(|ty| quote!(#ty)).unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
     let observed = returned(observing)?;
     let construction = if let Some(opening) = declared(&block, "initialize") {
-        asynchronous(
-            opening,
-            "initializing awaits whatever the observer acquires",
-        )?;
-        if opening.sig.inputs.len() != 1
-            || !matches!(opening.sig.inputs.first(), Some(FnArg::Typed(_)))
-        {
+        asynchronous(opening, "initializing awaits whatever the observer acquires")?;
+        if opening.sig.inputs.len() != 1 || !matches!(opening.sig.inputs.first(), Some(FnArg::Typed(_))) {
             return Err(Error::new(
                 opening.sig.inputs.span(),
                 "initialize takes the resource bundle and returns the observer: `async fn initialize(resources: &Resources) -> Result<Self, Error>`",
             ));
         }
-        borrowed(
-            &parameter(opening.sig.inputs.first().expect("one typed parameter"))?,
-            "the bundle an observer binds",
-        )?;
+        borrowed(&parameter(opening.sig.inputs.first().expect("one typed parameter"))?, "the bundle an observer binds")?;
         returned(opening)?;
         quote!(<Self>::initialize(resources))
     } else {
@@ -120,21 +101,21 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             "observe returns Result<(), Error>; publish zero or more values through context.publish_on::<Stream>(&row).await instead of returning a row",
         ));
     }
-    let activation = if activation == "demand" {
-        quote!(Demand)
-    } else {
-        quote!(Plugin)
-    };
+    let activation = if activation == "demand" { quote!(Demand) } else { quote!(Plugin) };
 
-    let closing = ["stop", "cleanup"].into_iter().filter_map(|name| declared(&block, name))
+    let closing = ["stop", "cleanup"]
+        .into_iter()
+        .filter_map(|name| declared(&block, name))
         .map(|closing| {
             asynchronous(closing, "stopping awaits whatever the retained instance releases")?;
             if closing.sig.inputs.len() != 1
                 || !matches!(closing.sig.inputs.first(), Some(FnArg::Receiver(receiver))
                     if matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, Some(_))))
             {
-                return Err(Error::new(closing.sig.inputs.span(),
-                    "observer cleanup borrows its original owner: use &mut self and return Result<(), Error>"));
+                return Err(Error::new(
+                    closing.sig.inputs.span(),
+                    "observer cleanup borrows its original owner: use &mut self and return Result<(), Error>",
+                ));
             }
             returned(closing)?;
             let name = &closing.sig.ident;
@@ -143,7 +124,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                     <Self>::#name(self)
                 }
             })
-        }).collect::<Result<Vec<_>, _>>()?;
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(quote! {
         #item
@@ -199,26 +181,13 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 fn resources(observing: &syn::ImplItemFn) -> Result<(Type, Option<Type>), Error> {
     let valid_receiver = matches!(observing.sig.inputs.first(), Some(FnArg::Receiver(receiver)) if matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, Some(_))));
     if observing.sig.inputs.len() != 2 || !valid_receiver {
-        return Err(Error::new(
-            observing.sig.inputs.span(),
-            "observe takes `&mut self` and `context: &ObserverContext<'_, Resources>`",
-        ));
+        return Err(Error::new(observing.sig.inputs.span(), "observe takes `&mut self` and `context: &ObserverContext<'_, Resources>`"));
     }
-    let context = borrowed(
-        &parameter(&observing.sig.inputs[1])?,
-        "the observer context",
-    )?;
+    let context = borrowed(&parameter(&observing.sig.inputs[1])?, "the observer context")?;
     let Type::Path(path) = &context else {
-        return Err(Error::new(
-            context.span(),
-            "observe receives `&ObserverContext<'_, Resources>`",
-        ));
+        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_, Resources>`"));
     };
-    let segment = path
-        .path
-        .segments
-        .last()
-        .expect("a type path has a segment");
+    let segment = path.path.segments.last().expect("a type path has a segment");
     let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
         return Err(Error::new(
             context.span(),
@@ -235,37 +204,16 @@ fn resources(observing: &syn::ImplItemFn) -> Result<(Type, Option<Type>), Error>
         .collect();
     if segment.ident != "ObserverContext"
         || !(1..=2).contains(&types.len())
-        || arguments.args.iter().any(|argument| {
-            !matches!(
-                argument,
-                GenericArgument::Type(_) | GenericArgument::Lifetime(_)
-            )
-        })
+        || arguments.args.iter().any(|argument| !matches!(argument, GenericArgument::Type(_) | GenericArgument::Lifetime(_)))
     {
-        return Err(Error::new(
-            context.span(),
-            "observe receives `&ObserverContext<'_, Resources>`",
-        ));
+        return Err(Error::new(context.span(), "observe receives `&ObserverContext<'_, Resources>`"));
     }
 
     Ok((types[0].clone(), types.get(1).map(|ty| (*ty).clone())))
 }
 
 #[allow(clippy::type_complexity)]
-fn arguments(
-    attribute: TokenStream,
-) -> Result<
-    (
-        HarmosPath,
-        LitInt,
-        Vec<Path>,
-        Vec<Path>,
-        String,
-        Option<LitStr>,
-        Option<LitStr>,
-    ),
-    Error,
-> {
+fn arguments(attribute: TokenStream) -> Result<(HarmosPath, LitInt, Vec<Path>, Vec<Path>, String, Option<LitStr>, Option<LitStr>), Error> {
     let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut harmos_path: Option<Path> = None;
@@ -285,55 +233,37 @@ fn arguments(
             Meta::NameValue(named) if named.path.is_ident("id") => {
                 let value = syn::parse2::<LitStr>(named.value.to_token_stream())?;
                 if value.value().trim().is_empty() || value.value().chars().any(char::is_control) {
-                    return Err(Error::new(
-                        value.span(),
-                        "an observer identity must be nonempty and contain no control characters",
-                    ));
+                    return Err(Error::new(value.span(), "an observer identity must be nonempty and contain no control characters"));
                 }
                 set_once(&mut id, value, named.span(), "id")?;
             }
             Meta::List(listed) if listed.path.is_ident("streams") => set_once(
                 &mut streams,
-                listed
-                    .parse_args_with(Punctuated::<Path, Token![,]>::parse_terminated)?
-                    .into_iter()
-                    .collect::<Vec<_>>(),
+                listed.parse_args_with(Punctuated::<Path, Token![,]>::parse_terminated)?.into_iter().collect::<Vec<_>>(),
                 listed.span(),
                 "streams",
             )?,
             Meta::List(listed) if listed.path.is_ident("demand_keys") => set_once(
                 &mut demand_keys,
-                listed
-                    .parse_args_with(Punctuated::<Path, Token![,]>::parse_terminated)?
-                    .into_iter()
-                    .collect::<Vec<_>>(),
+                listed.parse_args_with(Punctuated::<Path, Token![,]>::parse_terminated)?.into_iter().collect::<Vec<_>>(),
                 listed.span(),
                 "demand_keys",
             )?,
-            Meta::NameValue(named) if named.path.is_ident("activation") => set_once(
-                &mut activation,
-                syn::parse2::<syn::LitStr>(named.value.to_token_stream())?,
-                named.span(),
-                "activation",
-            )?,
-            Meta::NameValue(named) if named.path.is_ident("description") => set_once(
-                &mut description,
-                syn::parse2::<LitStr>(named.value.to_token_stream())?,
-                named.span(),
-                "description",
-            )?,
+            Meta::NameValue(named) if named.path.is_ident("activation") => {
+                set_once(&mut activation, syn::parse2::<syn::LitStr>(named.value.to_token_stream())?, named.span(), "activation")?
+            }
+            Meta::NameValue(named) if named.path.is_ident("description") => {
+                set_once(&mut description, syn::parse2::<LitStr>(named.value.to_token_stream())?, named.span(), "description")?
+            }
             Meta::NameValue(named) if named.path.is_ident("stream") => {
                 return Err(Error::new(
                     named.span(),
                     "replace `stream = Row` with `streams(Row)` and return Result<()>; publish through the observe context",
                 ));
             }
-            Meta::NameValue(named) if named.path.is_ident("interval_ms") => set_once(
-                &mut interval,
-                syn::parse2::<LitInt>(named.value.to_token_stream())?,
-                named.span(),
-                "interval_ms",
-            )?,
+            Meta::NameValue(named) if named.path.is_ident("interval_ms") => {
+                set_once(&mut interval, syn::parse2::<LitInt>(named.value.to_token_stream())?, named.span(), "interval_ms")?
+            }
             other => {
                 return Err(Error::new(
                     other.span(),
@@ -351,39 +281,20 @@ fn arguments(
         ));
     };
     if interval.base10_parse::<u64>()? == 0 {
-        return Err(Error::new(
-            interval.span(),
-            "an observer's interval is at least 1 millisecond",
-        ));
+        return Err(Error::new(interval.span(), "an observer's interval is at least 1 millisecond"));
     }
 
     let streams = streams.unwrap_or_default();
     let demand_keys = demand_keys.unwrap_or_default();
-    let activation = activation
-        .map(|value| value.value())
-        .unwrap_or_else(|| "plugin".into());
+    let activation = activation.map(|value| value.value()).unwrap_or_else(|| "plugin".into());
     if !matches!(activation.as_str(), "plugin" | "demand") {
-        return Err(Error::new(
-            span,
-            "activation is either `plugin` or `demand`",
-        ));
+        return Err(Error::new(span, "activation is either `plugin` or `demand`"));
     }
     if activation == "demand" && streams.is_empty() && demand_keys.is_empty() {
-        return Err(Error::new(
-            span,
-            "a demand observer requires `streams(A, B)` or `demand_keys(KEY, OTHER)`",
-        ));
+        return Err(Error::new(span, "a demand observer requires `streams(A, B)` or `demand_keys(KEY, OTHER)`"));
     }
 
-    Ok((
-        HarmosPath::resolve(harmos_path),
-        interval,
-        streams,
-        demand_keys,
-        activation,
-        description,
-        id,
-    ))
+    Ok((HarmosPath::resolve(harmos_path), interval, streams, demand_keys, activation, description, id))
 }
 
 /* === Tests === */

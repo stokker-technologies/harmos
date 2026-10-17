@@ -27,9 +27,8 @@ use super::snapshot::{Restored, SnapshotPolicy};
 use crate::state::{Metadata, Tail, UndoEntry, Undos, dispatch::Dispatch};
 use crate::storage::SchemaKey;
 use crate::{
-    Application, DefinitionId, Error, Result, runtime::Incompatible, state::At,
-    state::CatalogCodec, state::Entry, state::Envelope, state::Kind, state::Position,
-    state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey,
+    Application, DefinitionId, Error, Result, runtime::Incompatible, state::At, state::CatalogCodec, state::Entry, state::Envelope,
+    state::Kind, state::Position, state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey,
     storage::Payload,
 };
 
@@ -139,10 +138,7 @@ impl<A: Application> Serialize for Window<'_, A> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         let mut sequence = serializer.serialize_seq(Some(self.0.entries.len()))?;
         for entry in &self.0.entries {
-            let prepared = entry
-                .prepared
-                .as_ref()
-                .ok_or_else(|| serde::ser::Error::custom("unprepared snapshot entry"))?;
+            let prepared = entry.prepared.as_ref().ok_or_else(|| serde::ser::Error::custom("unprepared snapshot entry"))?;
             sequence.serialize_element(&EntryRef {
                 position: entry.position,
                 kind: entry.value.kind(),
@@ -182,19 +178,12 @@ impl Write for Bounded {
 
 /* === Public Functions === */
 pub(super) fn encode<A: Application>(
-    policy: &SnapshotPolicy,
-    state: &At<A::State>,
-    undos: &Undos<A>,
-    tail: &Tail<A>,
-    receipts: &HashMap<RequestKey, Receipt>,
+    policy: &SnapshotPolicy, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>, receipts: &HashMap<RequestKey, Receipt>,
 ) -> Result<Vec<u8>>
 where
     A::State: Serialize,
 {
-    let mut out = Bounded {
-        bytes: Vec::new(),
-        limit: policy.max_bytes.get(),
-    };
+    let mut out = Bounded { bytes: Vec::new(), limit: policy.max_bytes.get() };
     let mut serializer = serde_json::Serializer::new(&mut out);
     let result = (|| {
         let mut value = serializer.serialize_struct("Snapshot", 7)?;
@@ -207,28 +196,18 @@ where
         value.serialize_field("tail", &Window(tail))?;
         SerializeStruct::end(value)
     })();
-    result.map_err(|_| Error::InvalidInput {
-        field: "state snapshot",
-        reason: "cannot encode within payload limit",
-    })?;
+    result.map_err(|_| Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" })?;
     Ok(out.bytes)
 }
 
 pub(super) fn decode<A: Application>(
-    bytes: &[u8],
-    policy: &SnapshotPolicy,
-    catalog: &Dispatch<A, Payload<A>>,
-    tail_limit: usize,
+    bytes: &[u8], policy: &SnapshotPolicy, catalog: &Dispatch<A, Payload<A>>, tail_limit: usize,
 ) -> std::result::Result<Restored<A>, Incompatible>
 where
     A::State: DeserializeOwned,
 {
-    let snapshot: Snapshot<A::State> =
-        serde_json::from_slice(bytes).map_err(Incompatible::unreadable)?;
-    if snapshot.version != 1
-        || snapshot.schema != policy.schema
-        || bytes.len() > policy.max_bytes.get()
-    {
+    let snapshot: Snapshot<A::State> = serde_json::from_slice(bytes).map_err(Incompatible::unreadable)?;
+    if snapshot.version != 1 || snapshot.schema != policy.schema || bytes.len() > policy.max_bytes.get() {
         return Err(invalid());
     }
     let mut entries = BTreeMap::new();
@@ -237,28 +216,14 @@ where
         if entry.position <= previous
             || entry.position > snapshot.position
             || entry.principal.as_str().len() > 1024
-            || entry
-                .undone
-                .is_some_and(|at| at <= entry.position || at > snapshot.position)
+            || entry.undone.is_some_and(|at| at <= entry.position || at > snapshot.position)
         {
             return Err(invalid());
         }
         previous = entry.position;
         let forward = transaction(&entry.forward, catalog)?;
-        let inverse = entry
-            .inverse
-            .as_ref()
-            .map(|value| transaction(value, catalog))
-            .transpose()?;
-        entries.insert(
-            entry.position,
-            UndoEntry {
-                principal: entry.principal,
-                forward,
-                inverse,
-                undone: entry.undone,
-            },
-        );
+        let inverse = entry.inverse.as_ref().map(|value| transaction(value, catalog)).transpose()?;
+        entries.insert(entry.position, UndoEntry { principal: entry.principal, forward, inverse, undone: entry.undone });
     }
     let mut receipts = HashMap::new();
     for (key, receipt) in snapshot.receipts {
@@ -298,27 +263,15 @@ where
         }
     }
     trim(&mut tail, tail_limit);
-    Ok(Restored {
-        state: At {
-            value: snapshot.state,
-            position: snapshot.position,
-        },
-        undos: Undos { entries },
-        receipts,
-        tail,
-    })
+    Ok(Restored { state: At { value: snapshot.state, position: snapshot.position }, undos: Undos { entries }, receipts, tail })
 }
 
 /* === Private Functions === */
 fn transaction<A: Application>(
-    value: &Prepared,
-    catalog: &Dispatch<A, Payload<A>>,
+    value: &Prepared, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Arc<A::Transaction>, Incompatible> {
     let bytes = serde_json::to_vec(&value.payload).map_err(Incompatible::unreadable)?;
-    catalog
-        .decode_transaction(&value.id, value.version, &bytes)
-        .map(Arc::new)
-        .map_err(Incompatible::unreadable)
+    catalog.decode_transaction(&value.id, value.version, &bytes).map(Arc::new).map_err(Incompatible::unreadable)
 }
 
 fn invalid() -> Incompatible {

@@ -7,13 +7,7 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-test = [
-  "build==1.6.1",
-  "protobuf==7.36.2",
-  "setuptools==84.0.0",
-  "types-protobuf==7.35.1.20260906",
-  "wheel==0.48.0",
-]
+test = ["build==1.6.1", "protobuf==7.36.2", "setuptools==84.0.0", "types-protobuf==7.35.1.20260906", "wheel==0.48.0"]
 dev = ["ruff==0.17.0", "ty==0.0.86", "hatchling==1.32.4"]
 
 [build-system]

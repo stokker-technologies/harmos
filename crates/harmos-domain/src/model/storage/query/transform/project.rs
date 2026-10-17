@@ -49,21 +49,12 @@ pub struct Projection {
 /* === Implementations === */
 impl MemorySize for Project {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .fields
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.fields))
+        std::mem::size_of::<Self>() + self.fields.memory_size().saturating_sub(std::mem::size_of_val(&self.fields))
     }
 }
 impl MemorySize for Projection {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
-            + self.name.capacity()
+        std::mem::size_of::<Self>() + self.field.memory_size().saturating_sub(std::mem::size_of_val(&self.field)) + self.name.capacity()
     }
 }
 

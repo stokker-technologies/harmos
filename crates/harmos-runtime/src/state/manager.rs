@@ -24,9 +24,9 @@ use super::ManagedState;
 use super::transaction::TransactionError;
 use super::writer::{Admission, Direction, Refusal, Request};
 use super::{
-    At, CausationId, CorrelationId, DecodeError, DefinitionId, Entry, Error, Focus, Inverting,
-    Position, PreparationError, Prepared, PrincipalId, ReadRequest, Reads, Receipt, Recorded,
-    RequestKey, Reversals, Tail, Transaction, Undos, capture, dispatch, history, writer,
+    At, CausationId, CorrelationId, DecodeError, DefinitionId, Entry, Error, Focus, Inverting, Position, PreparationError, Prepared,
+    PrincipalId, ReadRequest, Reads, Receipt, Recorded, RequestKey, Reversals, Tail, Transaction, Undos, capture, dispatch, history,
+    writer,
 };
 use crate::Application;
 
@@ -45,8 +45,7 @@ pub(crate) struct TrackedState<A: Application> {
     pub(super) poisoned: AtomicBool,
     pub(crate) sealing: watch::Sender<bool>,
     pub(super) capture_failed: Arc<AtomicBool>,
-    pub(super) capture_progress:
-        Option<watch::Receiver<Result<Position, crate::state::CaptureError>>>,
+    pub(super) capture_progress: Option<watch::Receiver<Result<Position, crate::state::CaptureError>>>,
     pub(super) catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
     pub(super) reads: Reads<A>,
     pub(super) record_preparation: Arc<tokio::sync::Semaphore>,
@@ -79,11 +78,7 @@ pub(crate) struct Feed<A: Application> {
 /* === Implementations === */
 impl<A: Application> TrackedState<A> {
     pub(super) fn unavailable<E>(&self) -> Error<E> {
-        if self.capture_failed.load(Ordering::Acquire) {
-            Error::CaptureFailed
-        } else {
-            Error::Unavailable
-        }
+        if self.capture_failed.load(Ordering::Acquire) { Error::CaptureFailed } else { Error::Unavailable }
     }
 
     pub(super) fn poison(&self) {
@@ -111,15 +106,9 @@ impl<A: Application> StateManager<A> {
     // The private boot boundary receives already-owned journal components.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
-        origin: At<A::State>,
-        inverses: Inverting<A>,
-        undos: Undos<A>,
-        requests: usize,
-        tail: Tail<A>,
-        durability: Option<watch::Receiver<Position>>,
-        catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
-        capture: Option<capture::Declaration<A>>,
-        storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
+        origin: At<A::State>, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
+        durability: Option<watch::Receiver<Position>>, catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
+        capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
         clock: fn() -> super::Timestamp,
     ) -> (Self, JoinHandle<()>, mpsc::Receiver<ReadRequest<A>>) {
         let position = origin.position;
@@ -144,14 +133,7 @@ impl<A: Application> StateManager<A> {
             reads,
             clock,
         });
-        let running = tokio::spawn(writer::run(
-            receiver,
-            Arc::clone(&tracked),
-            durable,
-            inverses,
-            undos,
-            capture,
-        ));
+        let running = tokio::spawn(writer::run(receiver, Arc::clone(&tracked), durable, inverses, undos, capture));
 
         (
             Self {
@@ -174,11 +156,7 @@ impl<A: Application> StateManager<A> {
         self.request(None, transaction.into()).await
     }
 
-    pub async fn commit_keyed<T>(
-        &self,
-        key: RequestKey,
-        transaction: T,
-    ) -> Result<Receipt, Error<T::Error>>
+    pub async fn commit_keyed<T>(&self, key: RequestKey, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
         T: Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<TransactionError<A>>,
@@ -186,48 +164,23 @@ impl<A: Application> StateManager<A> {
         self.request(Some(key), transaction.into()).await
     }
 
-    pub(crate) fn record_resources(
-        &self,
-    ) -> (
-        Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
-        Arc<tokio::sync::Semaphore>,
-    ) {
-        (
-            Arc::clone(&self.tracked.catalog),
-            Arc::clone(&self.tracked.record_preparation),
-        )
+    pub(crate) fn record_resources(&self) -> (Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>, Arc<tokio::sync::Semaphore>) {
+        (Arc::clone(&self.tracked.catalog), Arc::clone(&self.tracked.record_preparation))
     }
 
     pub(crate) async fn append_prepared(
-        &self,
-        value: Recorded<A>,
-        prepared: Prepared,
-        permit: tokio::sync::OwnedSemaphorePermit,
+        &self, value: Recorded<A>, prepared: Prepared, permit: tokio::sync::OwnedSemaphorePermit,
     ) -> Result<Receipt, Error> {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Record {
-            value,
-            prepared,
-            preparation: permit,
-            context: self.context.clone(),
-            reply,
-        };
+        let request = Request::Record { value, prepared, preparation: permit, context: self.context.clone(), reply };
 
         if self.writer.send(request).await.is_err() {
             return Err(self.unavailable());
         }
-        answer
-            .await
-            .map_err(|_| self.unavailable())?
-            .map_err(preparation)
+        answer.await.map_err(|_| self.unavailable())?.map_err(preparation)
     }
 
-    pub fn decode_transaction(
-        &self,
-        id: &DefinitionId,
-        version: u32,
-        bytes: &[u8],
-    ) -> Result<A::Transaction, DecodeError> {
+    pub fn decode_transaction(&self, id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<A::Transaction, DecodeError> {
         self.tracked.catalog.decode_transaction(id, version, bytes)
     }
 
@@ -238,11 +191,7 @@ impl<A: Application> StateManager<A> {
         self.query_through(after, self.applied()).await
     }
 
-    pub async fn query_through<X>(
-        &self,
-        after: Position,
-        through: Position,
-    ) -> impl Iterator<Item = Result<Entry<X>, Error>>
+    pub async fn query_through<X>(&self, after: Position, through: Position) -> impl Iterator<Item = Result<Entry<X>, Error>>
     where
         X: Clone + Send + 'static,
     {
@@ -264,14 +213,10 @@ impl<A: Application> StateManager<A> {
                 Ok(entries) => entries
                     .into_iter()
                     .filter_map(|entry| {
-                        entry.value.select::<X>().map(|value| {
-                            Ok(Entry {
-                                prepared: None,
-                                position: entry.position,
-                                metadata: entry.metadata,
-                                value,
-                            })
-                        })
+                        entry
+                            .value
+                            .select::<X>()
+                            .map(|value| Ok(Entry { prepared: None, position: entry.position, metadata: entry.metadata, value }))
                     })
                     .collect::<Vec<_>>()
                     .into_iter(),
@@ -301,9 +246,7 @@ impl<A: Application> StateManager<A> {
     }
 
     pub(crate) fn feed(&self) -> Feed<A> {
-        Feed {
-            tracked: Arc::clone(&self.tracked),
-        }
+        Feed { tracked: Arc::clone(&self.tracked) }
     }
 
     pub fn stored(&self) -> Position {
@@ -320,37 +263,21 @@ impl<A: Application> StateManager<A> {
         }
     }
 
-    pub async fn undo(
-        &self,
-        principal: PrincipalId,
-        focus: Focus<A>,
-    ) -> Result<Receipt, Error<TransactionError<A>>> {
+    pub async fn undo(&self, principal: PrincipalId, focus: Focus<A>) -> Result<Receipt, Error<TransactionError<A>>> {
         self.revert(principal, focus, Direction::Undo).await
     }
 
-    pub async fn redo(
-        &self,
-        principal: PrincipalId,
-        focus: Focus<A>,
-    ) -> Result<Receipt, Error<TransactionError<A>>> {
+    pub async fn redo(&self, principal: PrincipalId, focus: Focus<A>) -> Result<Receipt, Error<TransactionError<A>>> {
         self.revert(principal, focus, Direction::Redo).await
     }
 
-    pub async fn reversals(
-        &self,
-        principal: PrincipalId,
-        focus: Focus<A>,
-    ) -> Result<At<Reversals>, Error> {
+    pub async fn reversals(&self, principal: PrincipalId, focus: Focus<A>) -> Result<At<Reversals>, Error> {
         if self.tracked.poisoned() {
             return Err(self.unavailable());
         }
 
         let (reply, answer) = oneshot::channel();
-        let request = Request::Reversals {
-            principal,
-            focus,
-            reply,
-        };
+        let request = Request::Reversals { principal, focus, reply };
 
         if self.writer.send(request).await.is_err() {
             return Err(self.unavailable());
@@ -372,20 +299,9 @@ impl<A: Application> StateManager<A> {
         scoped
     }
 
-    async fn revert(
-        &self,
-        principal: PrincipalId,
-        focus: Focus<A>,
-        direction: Direction,
-    ) -> Result<Receipt, Error<TransactionError<A>>> {
+    async fn revert(&self, principal: PrincipalId, focus: Focus<A>, direction: Direction) -> Result<Receipt, Error<TransactionError<A>>> {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Revert {
-            principal,
-            focus,
-            direction,
-            context: self.context.clone(),
-            reply,
-        };
+        let request = Request::Revert { principal, focus, direction, context: self.context.clone(), reply };
 
         if self.writer.send(request).await.is_err() {
             return Err(self.unavailable());
@@ -405,10 +321,7 @@ impl<A: Application> StateManager<A> {
         }
     }
 
-    pub async fn wait_until_captured(
-        &self,
-        through: Position,
-    ) -> Result<(), crate::state::CaptureError> {
+    pub async fn wait_until_captured(&self, through: Position) -> Result<(), crate::state::CaptureError> {
         let Some(mut progress) = self.tracked.capture_progress.clone() else {
             return Ok(());
         };
@@ -423,36 +336,19 @@ impl<A: Application> StateManager<A> {
     }
 
     pub fn capture_status(&self) -> Result<(), crate::state::CaptureError> {
-        if self.tracked.capture_failed.load(Ordering::Acquire) {
-            Err(crate::state::CaptureError::Failed)
-        } else {
-            Ok(())
-        }
+        if self.tracked.capture_failed.load(Ordering::Acquire) { Err(crate::state::CaptureError::Failed) } else { Ok(()) }
     }
 
     fn unavailable<E>(&self) -> Error<E> {
-        if self.capture_status().is_err() {
-            Error::CaptureFailed
-        } else {
-            Error::Unavailable
-        }
+        if self.capture_status().is_err() { Error::CaptureFailed } else { Error::Unavailable }
     }
 
-    async fn request<E>(
-        &self,
-        key: Option<RequestKey>,
-        transaction: A::Transaction,
-    ) -> Result<Receipt, Error<E>>
+    async fn request<E>(&self, key: Option<RequestKey>, transaction: A::Transaction) -> Result<Receipt, Error<E>>
     where
         E: From<TransactionError<A>>,
     {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Commit {
-            transaction,
-            key,
-            context: self.context.clone(),
-            reply,
-        };
+        let request = Request::Commit { transaction, key, context: self.context.clone(), reply };
 
         if self.writer.send(request).await.is_err() {
             return Err(self.unavailable());
@@ -467,28 +363,14 @@ impl<A: Application> StateManager<A> {
 }
 
 impl<A: Application> Feed<A> {
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(crate) async fn shared_page(
-        &self,
-        after: Position,
-        through: Position,
-        max_rows: std::num::NonZeroUsize,
+        &self, after: Position, through: Position, max_rows: std::num::NonZeroUsize,
     ) -> Result<history::SharedPage<A>, Error> {
-        self.tracked
-            .tail
-            .read()
-            .await
-            .shared_page(after, through, max_rows)
+        self.tracked.tail.read().await.shared_page(after, through, max_rows)
     }
 
-    pub(crate) async fn since(
-        &self,
-        after: Position,
-    ) -> Result<Vec<Arc<Entry<Recorded<A>>>>, Error> {
+    pub(crate) async fn since(&self, after: Position) -> Result<Vec<Arc<Entry<Recorded<A>>>>, Error> {
         let tail = self.tracked.tail.read().await;
 
         tail.since(after)

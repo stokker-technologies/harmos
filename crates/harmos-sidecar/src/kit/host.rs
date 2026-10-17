@@ -21,9 +21,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
 use crate::Frame;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::Id;
-use harmos_sdk::operations::{
-    CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl,
-};
+use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl};
 
 /* === Constants === */
 const PENDING_CALLS: usize = 256;
@@ -86,16 +84,9 @@ pub enum CallError {
     #[error("the host connection is unavailable")]
     Unavailable,
     #[error("the host returned a malformed reply for `{method}`: {message}")]
-    Malformed {
-        method: &'static str,
-        message: String,
-    },
+    Malformed { method: &'static str, message: String },
     #[error("the request for `{method}` requires {encoded} bytes; the frame limit is {limit}")]
-    Oversized {
-        method: &'static str,
-        encoded: usize,
-        limit: usize,
-    },
+    Oversized { method: &'static str, encoded: usize, limit: usize },
     #[error(transparent)]
     Publication(#[from] PublicationError),
     #[error("`{method}` needs process-local resources a connection cannot carry")]
@@ -137,19 +128,12 @@ impl harmos_sdk::plugin::Context for Supervisor {
 impl PendingCalls {
     fn new() -> Self {
         Self {
-            state: Mutex::new(PendingState {
-                closed: false,
-                next_id: 1,
-                waiters: HashMap::new(),
-            }),
+            state: Mutex::new(PendingState { closed: false, next_id: 1, waiters: HashMap::new() }),
             capacity: Semaphore::new(PENDING_CALLS),
         }
     }
 
-    fn register(
-        &self,
-        waiter: oneshot::Sender<Result<Vec<u8>, CallError>>,
-    ) -> Result<u64, CallError> {
+    fn register(&self, waiter: oneshot::Sender<Result<Vec<u8>, CallError>>) -> Result<u64, CallError> {
         let mut state = self.state.lock().expect("the pending-call lock is healthy");
         if state.closed {
             return Err(CallError::Unavailable);
@@ -163,12 +147,7 @@ impl PendingCalls {
     }
 
     fn answer(&self, id: u64, result: Result<Vec<u8>, CallError>) {
-        let waiter = self
-            .state
-            .lock()
-            .expect("the pending-call lock is healthy")
-            .waiters
-            .remove(&id);
+        let waiter = self.state.lock().expect("the pending-call lock is healthy").waiters.remove(&id);
         if let Some(waiter) = waiter {
             let _ = waiter.send(result);
         }
@@ -189,14 +168,7 @@ impl PendingCalls {
 
 impl Drop for PendingCall<'_> {
     fn drop(&mut self) {
-        let unanswered = self
-            .pending
-            .state
-            .lock()
-            .expect("the pending-call lock is healthy")
-            .waiters
-            .remove(&self.id)
-            .is_some();
+        let unanswered = self.pending.state.lock().expect("the pending-call lock is healthy").waiters.remove(&self.id).is_some();
         if unanswered && let Some(cancel) = self.cancel.take() {
             cancel.send(Outgoing::Frame(Frame::Cancel { id: self.id }));
         }
@@ -223,14 +195,10 @@ impl Supervisor {
     }
 
     pub(crate) fn for_attempt(
-        &self,
-        context: [u8; 32],
-        values: Vec<harmos_domain::operations::CallValue>,
+        &self, context: [u8; 32], values: Vec<harmos_domain::operations::CallValue>,
     ) -> Result<Self, harmos_domain::operations::ContextError> {
         let mut host = self.for_operation(context);
-        host.call = Arc::new(harmos_domain::operations::CallContext::from_portable(
-            values,
-        )?);
+        host.call = Arc::new(harmos_domain::operations::CallContext::from_portable(values)?);
         Ok(host)
     }
 
@@ -239,8 +207,7 @@ impl Supervisor {
     }
 
     pub fn with_value<T: harmos_domain::operations::ContextValue>(
-        &self,
-        value: T,
+        &self, value: T,
     ) -> Result<Self, harmos_domain::operations::ContextError> {
         let mut child = self.clone();
         child.call = Arc::new(self.call.with_value(value)?);
@@ -249,11 +216,7 @@ impl Supervisor {
 
     // One child call on this attempt or generation; a submitted child answers
     // its instance id and stays owned by the attempt.
-    pub(super) async fn child_call<O>(
-        &self,
-        request: &O,
-        submit: bool,
-    ) -> Result<Vec<u8>, CallError>
+    pub(super) async fn child_call<O>(&self, request: &O, submit: bool) -> Result<Vec<u8>, CallError>
     where
         O: OperationDeclaration,
     {
@@ -271,11 +234,7 @@ impl Supervisor {
 
     // Drive a child this attempt submitted; the host resolves it only within
     // the same attempt context.
-    pub(super) async fn child_control(
-        &self,
-        instance: Id,
-        action: WireChildAction,
-    ) -> Result<Vec<u8>, CallError> {
+    pub(super) async fn child_control(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, CallError> {
         let params = self.control_params(instance, action)?;
         self.exchange_with(|id, call| {
             let frame = Self::request_frame(id, CHILD_METHOD, params)?;
@@ -313,33 +272,18 @@ impl Supervisor {
 
     fn control_params(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, CallError> {
         let context = self.operation_context.ok_or(CallError::Unavailable)?;
-        let control = WireChildControl {
-            context,
-            instance: instance.value(),
-            action,
-        };
-        control.encode().map_err(|error| CallError::Malformed {
-            method: CHILD_METHOD,
-            message: error.to_string(),
-        })
+        let control = WireChildControl { context, instance: instance.value(), action };
+        control.encode().map_err(|error| CallError::Malformed { method: CHILD_METHOD, message: error.to_string() })
     }
 
-    fn child<O: OperationDeclaration>(
-        &self,
-        request: &O,
-        submit: bool,
-    ) -> Result<Vec<u8>, CallError> {
+    fn child<O: OperationDeclaration>(&self, request: &O, submit: bool) -> Result<Vec<u8>, CallError> {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
         }
         let context = self.operation_context.unwrap_or([0; 32]);
         let encoded = Frame::request_encoded_len::<O>(request);
         if encoded > Frame::LIMIT {
-            return Err(CallError::Oversized {
-                method: O::ID,
-                encoded,
-                limit: Frame::LIMIT,
-            });
+            return Err(CallError::Oversized { method: O::ID, encoded, limit: Frame::LIMIT });
         }
         let payload = harmos_domain::Message::encode_to_vec(request);
         let command = harmos_sdk::operations::WireChildCall {
@@ -350,71 +294,40 @@ impl Supervisor {
             payload,
             submit,
         };
-        command.encode().map_err(|error| CallError::Malformed {
-            method: O::ID,
-            message: error.to_string(),
-        })
+        command.encode().map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })
     }
 
     fn request_frame(id: u64, method: &'static str, params: Vec<u8>) -> Result<Frame, CallError> {
-        let mut frame = Frame::Call {
-            id: u64::MAX,
-            method: method.to_owned(),
-            params,
-        };
+        let mut frame = Frame::Call { id: u64::MAX, method: method.to_owned(), params };
         let encoded = frame.encoded_len();
         if encoded > Frame::LIMIT {
-            return Err(CallError::Oversized {
-                method,
-                encoded,
-                limit: Frame::LIMIT,
-            });
+            return Err(CallError::Oversized { method, encoded, limit: Frame::LIMIT });
         }
-        let Frame::Call { id: original, .. } = &mut frame else {
-            unreachable!()
-        };
+        let Frame::Call { id: original, .. } = &mut frame else { unreachable!() };
         *original = id;
         Ok(frame)
     }
 
     async fn exchange_with<'a, E: From<CallError> + Send>(
-        &'a self,
-        prepare: impl FnOnce(u64, mpsc::Permit<'a, Outgoing>) -> Result<(), E> + Send,
+        &'a self, prepare: impl FnOnce(u64, mpsc::Permit<'a, Outgoing>) -> Result<(), E> + Send,
     ) -> Result<Vec<u8>, E> {
-        let permit = self
-            .pending
-            .capacity
-            .acquire()
-            .await
-            .map_err(|_| CallError::Unavailable)?;
+        let permit = self.pending.capacity.acquire().await.map_err(|_| CallError::Unavailable)?;
         // Reserve both frames atomically so concurrent callers cannot hold all
         // queue capacity while waiting for a second slot. The cancel permit
         // stays with the call and makes cancellation reliable even under load.
-        let mut frames = self
-            .outgoing
-            .reserve_many(2)
-            .await
-            .map_err(|_| CallError::Unavailable)?;
+        let mut frames = self.outgoing.reserve_many(2).await.map_err(|_| CallError::Unavailable)?;
         let call = frames.next().expect("two reserved frame slots");
         let cancel = frames.next().expect("two reserved frame slots");
         let (waiter, response) = oneshot::channel();
         let id = self.pending.register(waiter)?;
-        let mut pending = PendingCall {
-            pending: &self.pending,
-            id,
-            _permit: permit,
-            cancel: Some(cancel),
-        };
+        let mut pending = PendingCall { pending: &self.pending, id, _permit: permit, cancel: Some(cancel) };
 
         if let Err(source) = prepare(id, call) {
             // No Call Was Sent, So Release The Reserved Cancel Without Sending It.
             pending.cancel.take();
             return Err(source);
         }
-        response
-            .await
-            .map_err(|_| CallError::Unavailable)?
-            .map_err(E::from)
+        response.await.map_err(|_| CallError::Unavailable)?.map_err(E::from)
     }
 
     pub(crate) fn receive_answer(&self, id: u64, result: Vec<u8>) {
@@ -424,8 +337,7 @@ impl Supervisor {
     pub(crate) fn receive_refusal(&self, id: u64, refusal: harmos_domain::Refusal) {
         let code = refusal.code();
         let failure = refusal.into_failure();
-        self.pending
-            .answer(id, Err(CallError::Refused { code, failure }));
+        self.pending.answer(id, Err(CallError::Refused { code, failure }));
     }
 
     pub(crate) fn disconnected(&self) {
@@ -445,10 +357,7 @@ impl Supervisor {
     // frame and batch limits; each call awaits its answer before the next.
     // `stamps[i]` is the production time of `rows[i]`.
     pub(super) async fn publication<S>(
-        &self,
-        rows: &[S::Row],
-        stamps: &[Option<i64>],
-        context: Option<&str>,
+        &self, rows: &[S::Row], stamps: &[Option<i64>], context: Option<&str>,
     ) -> Result<(), super::PublishError>
     where
         S: crate::StreamSpec,
@@ -466,20 +375,12 @@ impl Supervisor {
             let mut sent = 0;
             let bytes = self
                 .exchange_with(|id, call| {
-                    sent = self.with_publication::<S, super::PublishError>(
-                        rest.0,
-                        rest.1,
-                        context,
-                        |request| {
-                            let params = self
-                                .child::<harmos_domain::operations::streams::Publish>(
-                                    &request, false,
-                                )?;
-                            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
-                            call.send(Outgoing::Frame(frame));
-                            Ok(())
-                        },
-                    )?;
+                    sent = self.with_publication::<S, super::PublishError>(rest.0, rest.1, context, |request| {
+                        let params = self.child::<harmos_domain::operations::streams::Publish>(&request, false)?;
+                        let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+                        call.send(Outgoing::Frame(frame));
+                        Ok(())
+                    })?;
                     Ok::<(), super::PublishError>(())
                 })
                 .await?;
@@ -500,49 +401,22 @@ impl Supervisor {
     // and a stamp no delta can express starts the next call. A call carries
     // at most one window of rows, so the host never evicts its own rows.
     fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
-        &self,
-        rows: &[S::Row],
-        stamps: &[Option<i64>],
-        context: Option<&str>,
+        &self, rows: &[S::Row], stamps: &[Option<i64>], context: Option<&str>,
         send: impl FnOnce(harmos_domain::operations::streams::Publish) -> Result<(), E>,
     ) -> Result<usize, E>
     where
         S::Row: Message,
     {
-        let fits = |body: usize| {
-            Frame::request_payload_encoded_len(
-                harmos_domain::operations::streams::Publish::ID,
-                body,
-            ) <= Frame::LIMIT
-        };
-        let mut sequences = self
-            .sequences
-            .lock()
-            .expect("the publication sequence lock is healthy");
+        let fits = |body: usize| Frame::request_payload_encoded_len(harmos_domain::operations::streams::Publish::ID, body) <= Frame::LIMIT;
+        let mut sequences = self.sequences.lock().expect("the publication sequence lock is healthy");
         let next = sequences.entry(S::ID).or_insert(0);
-        let first = next
-            .checked_add(1)
-            .ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
+        let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
         *next = first;
         let published_unix_micros = stamps[0];
-        let head = crate::wire::publication_encoded_len(
-            S::ID,
-            S::VERSION,
-            first,
-            rows[0].encoded_len(),
-            published_unix_micros,
-            context,
-        );
-        let encoded = |count: usize, following: usize| {
-            head.saturating_add(crate::wire::varint_len(count as u64))
-                .saturating_add(following)
-        };
+        let head = crate::wire::publication_encoded_len(S::ID, S::VERSION, first, rows[0].encoded_len(), published_unix_micros, context);
+        let encoded = |count: usize, following: usize| head.saturating_add(crate::wire::varint_len(count as u64)).saturating_add(following);
         if !fits(encoded(0, 0)) {
-            return Err(PublicationError::Oversized {
-                encoded: encoded(0, 0),
-                limit: Frame::LIMIT,
-            }
-            .into());
+            return Err(PublicationError::Oversized { encoded: encoded(0, 0), limit: Frame::LIMIT }.into());
         }
         let mut following = 0_usize;
         let mut deltas = Vec::with_capacity(rows.len() - 1);
@@ -558,8 +432,7 @@ impl Supervisor {
                 },
                 (None, Some(_)) => break,
             };
-            let grown = following
-                .saturating_add(crate::wire::following_encoded_len(row.encoded_len(), delta));
+            let grown = following.saturating_add(crate::wire::following_encoded_len(row.encoded_len(), delta));
             let total = encoded(deltas.len() + 1, grown);
             if total > PUBLICATION_BATCH_BYTES || !fits(total) || *next == u64::MAX {
                 break;
@@ -579,11 +452,9 @@ impl Supervisor {
             following: rows[1..taken]
                 .iter()
                 .zip(deltas)
-                .map(|(row, published_delta_micros)| {
-                    harmos_domain::operations::streams::FollowingRow {
-                        payload: row.encode_to_vec(),
-                        published_delta_micros,
-                    }
+                .map(|(row, published_delta_micros)| harmos_domain::operations::streams::FollowingRow {
+                    payload: row.encode_to_vec(),
+                    published_delta_micros,
                 })
                 .collect(),
         })?;
@@ -591,9 +462,7 @@ impl Supervisor {
     }
 
     pub fn exiting(&self, reason: impl Into<String>) -> bool {
-        self.outgoing
-            .try_send(Outgoing::Exiting(reason.into()))
-            .is_ok()
+        self.outgoing.try_send(Outgoing::Exiting(reason.into())).is_ok()
     }
 
     pub fn abandon(&self) -> bool {
@@ -614,9 +483,7 @@ fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
 pub(super) fn published_at() -> Option<i64> {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(elapsed) => i64::try_from(elapsed.as_micros()).ok(),
-        Err(error) => i64::try_from(error.duration().as_micros())
-            .ok()
-            .and_then(i64::checked_neg),
+        Err(error) => i64::try_from(error.duration().as_micros()).ok().and_then(i64::checked_neg),
     }
 }
 

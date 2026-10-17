@@ -64,11 +64,7 @@ impl EvidenceDirectory {
         }
         sync(&root)?;
 
-        Ok(Self {
-            root,
-            ceiling: CEILING,
-            cadence: CADENCE,
-        })
+        Ok(Self { root, ceiling: CEILING, cadence: CADENCE })
     }
 
     pub fn reading(mut self, bytes: usize) -> Self {
@@ -133,10 +129,7 @@ impl EvidenceDirectory {
             }
         }
 
-        Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "the quarantine has no unused name left",
-        ))
+        Err(io::Error::new(io::ErrorKind::AlreadyExists, "the quarantine has no unused name left"))
     }
 }
 
@@ -151,27 +144,19 @@ impl Vault for EvidenceDirectory {
 
     async fn open(&self, name: &str) -> Result<u64, EvidenceError> {
         if self.held(name).exists() {
-            return Err(EvidenceError::unwritable(format!(
-                "`{name}` is already kept, and this directory overwrites nothing"
-            )));
+            return Err(EvidenceError::unwritable(format!("`{name}` is already kept, and this directory overwrites nothing")));
         }
         // Created here rather than on the first append, so a draft handed to a
         // foreign process is a file that exists before the process does, and
         // its directory entry is durable before anything is written into it.
         let staged = self.staged(name);
         let fresh = !staged.exists();
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&staged)
-            .map_err(EvidenceError::unwritable)?;
+        let file = OpenOptions::new().create(true).append(true).open(&staged).map_err(EvidenceError::unwritable)?;
         if fresh {
             sync(&self.root.join(DRAFTS)).map_err(EvidenceError::unwritable)?;
         }
 
-        file.metadata()
-            .map(|held| held.len())
-            .map_err(EvidenceError::unreadable)
+        file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)
     }
 
     async fn external(&self, name: &str) -> Result<Option<PathBuf>, EvidenceError> {
@@ -179,21 +164,14 @@ impl Vault for EvidenceDirectory {
     }
 
     async fn append(&self, name: &str, bytes: &[u8]) -> Result<u64, EvidenceError> {
-        let mut file = OpenOptions::new()
-            .append(true)
-            .open(self.staged(name))
-            .map_err(EvidenceError::unwritable)?;
+        let mut file = OpenOptions::new().append(true).open(self.staged(name)).map_err(EvidenceError::unwritable)?;
         file.write_all(bytes).map_err(EvidenceError::unwritable)?;
 
-        file.metadata()
-            .map(|held| held.len())
-            .map_err(EvidenceError::unreadable)
+        file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)
     }
 
     async fn length(&self, name: &str) -> Result<u64, EvidenceError> {
-        fs::metadata(self.staged(name))
-            .map(|held| held.len())
-            .map_err(EvidenceError::unreadable)
+        fs::metadata(self.staged(name)).map(|held| held.len()).map_err(EvidenceError::unreadable)
     }
 
     async fn verify(&self, name: &str) -> Result<(u64, u64), EvidenceError> {
@@ -202,11 +180,7 @@ impl Vault for EvidenceDirectory {
         // opened for reading alone with `ERROR_ACCESS_DENIED`. One handle does
         // both halves, so the bytes folded below are the bytes just made
         // durable rather than whatever a second open found.
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(self.staged(name))
-            .map_err(EvidenceError::unreadable)?;
+        let mut file = OpenOptions::new().read(true).write(true).open(self.staged(name)).map_err(EvidenceError::unreadable)?;
         // Durable first. A digest folded from bytes that have not reached the
         // disk describes a file that may not survive the fact about to name it.
         file.sync_data().map_err(EvidenceError::unwritable)?;
@@ -227,8 +201,7 @@ impl Vault for EvidenceDirectory {
     }
 
     async fn claim(&self, name: &str) -> Result<(), EvidenceError> {
-        self.rename(&self.staged(name), &self.held(name))
-            .map_err(EvidenceError::unwritable)
+        self.rename(&self.staged(name), &self.held(name)).map_err(EvidenceError::unwritable)
     }
 
     async fn quarantine(&self, name: &str) -> Result<(), EvidenceError> {
@@ -238,27 +211,16 @@ impl Vault for EvidenceDirectory {
         }
         let aside = self.unused(name).map_err(EvidenceError::unwritable)?;
 
-        self.rename(&staged, &aside)
-            .map_err(EvidenceError::unwritable)
+        self.rename(&staged, &aside).map_err(EvidenceError::unwritable)
     }
 
-    async fn read(
-        &self,
-        name: &str,
-        offset: u64,
-        limit: usize,
-    ) -> Result<(Vec<u8>, u64), EvidenceError> {
+    async fn read(&self, name: &str, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), EvidenceError> {
         let kept = self.healed(name).map_err(EvidenceError::unreadable)?;
 
         window(&kept, offset, limit.min(self.ceiling))
     }
 
-    async fn read_draft(
-        &self,
-        name: &str,
-        offset: u64,
-        limit: usize,
-    ) -> Result<(Vec<u8>, u64), EvidenceError> {
+    async fn read_draft(&self, name: &str, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), EvidenceError> {
         window(&self.staged(name), offset, limit.min(self.ceiling))
     }
 }
@@ -268,35 +230,24 @@ impl Vault for EvidenceDirectory {
 /* === Private Functions === */
 fn window(path: &Path, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), EvidenceError> {
     let mut file = File::open(path).map_err(EvidenceError::unreadable)?;
-    let length = file
-        .metadata()
-        .map(|held| held.len())
-        .map_err(EvidenceError::unreadable)?;
+    let length = file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)?;
     if offset >= length {
         return Ok((Vec::new(), length));
     }
-    file.seek(SeekFrom::Start(offset))
-        .map_err(EvidenceError::unreadable)?;
+    file.seek(SeekFrom::Start(offset)).map_err(EvidenceError::unreadable)?;
     let wanted = limit.min((length - offset) as usize);
     let mut bytes = vec![0; wanted];
-    file.read_exact(&mut bytes)
-        .map_err(EvidenceError::unreadable)?;
+    file.read_exact(&mut bytes).map_err(EvidenceError::unreadable)?;
 
     Ok((bytes, length))
 }
 
 fn fold(digest: u64, bytes: &[u8]) -> u64 {
-    bytes.iter().fold(digest, |held, byte| {
-        (held ^ u64::from(*byte)).wrapping_mul(DIGEST_PRIME)
-    })
+    bytes.iter().fold(digest, |held, byte| (held ^ u64::from(*byte)).wrapping_mul(DIGEST_PRIME))
 }
 
 fn sync(directory: &Path) -> io::Result<()> {
-    if cfg!(unix) {
-        File::open(directory)?.sync_all()
-    } else {
-        Ok(())
-    }
+    if cfg!(unix) { File::open(directory)?.sync_all() } else { Ok(()) }
 }
 
 /* === Tests === */

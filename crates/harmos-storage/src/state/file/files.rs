@@ -37,30 +37,13 @@ pub(super) struct Files {
 impl Files {
     pub(super) fn open(root: &Path) -> Result<Self> {
         fs::create_dir_all(root).map_err(io)?;
-        let lease = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(root.join("state.lock"))
-            .map_err(io)?;
-        lease.try_lock().map_err(|error| {
-            Error::backend("lock state storage", BackendFailure::Conflict, error)
-        })?;
-        Ok(Self {
-            root: root.to_owned(),
-            _lease: lease,
-        })
+        let lease = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join("state.lock")).map_err(io)?;
+        lease.try_lock().map_err(|error| Error::backend("lock state storage", BackendFailure::Conflict, error))?;
+        Ok(Self { root: root.to_owned(), _lease: lease })
     }
 
     pub(super) fn journal(&self) -> Result<File> {
-        OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(self.root.join("state.jsonl"))
-            .map_err(io)
+        OpenOptions::new().create(true).truncate(false).read(true).write(true).open(self.root.join("state.jsonl")).map_err(io)
     }
 
     pub(super) fn snapshot<T: DeserializeOwned>(&self, maximum: usize) -> Result<Option<T>> {
@@ -74,10 +57,7 @@ impl Files {
             Read::Value(value) => value,
             Read::End | Read::Incomplete => return Err(corrupt("incomplete state checkpoint")),
         };
-        if !matches!(
-            format::read::<serde_json::Value>(&mut reader, maximum)?,
-            Read::End
-        ) {
+        if !matches!(format::read::<serde_json::Value>(&mut reader, maximum)?, Read::End) {
             return Err(corrupt("state checkpoint contains trailing records"));
         }
         Ok(Some(value))
@@ -88,10 +68,7 @@ impl Files {
     }
 
     /// The caller has already durably published a checkpoint covering discarded entries.
-    pub(super) fn replace_journal(
-        &self,
-        write: impl FnOnce(&mut BufWriter<File>) -> Result<()>,
-    ) -> Result<()> {
+    pub(super) fn replace_journal(&self, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {
         self.replace("state.jsonl", write)
     }
 
@@ -107,19 +84,10 @@ impl Files {
         options.open(&self.root).map_err(io)?.sync_all().map_err(io)
     }
 
-    fn replace(
-        &self,
-        name: &str,
-        write: impl FnOnce(&mut BufWriter<File>) -> Result<()>,
-    ) -> Result<()> {
+    fn replace(&self, name: &str, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {
         // The Exclusive Lease Owns These Temporary Names, Including Crash Remnants.
         let temporary = self.root.join(format!("{name}.pending"));
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&temporary)
-            .map_err(io)?;
+        let file = OpenOptions::new().create(true).truncate(true).write(true).open(&temporary).map_err(io)?;
         let mut writer = BufWriter::new(file);
         write(&mut writer)?;
         writer.flush().map_err(io)?;

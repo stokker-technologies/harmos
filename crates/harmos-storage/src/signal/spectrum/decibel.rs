@@ -48,18 +48,12 @@ pub enum Scale {
 impl Decibel {
     #[must_use]
     pub fn amplitude(reference: f64) -> Self {
-        Self {
-            reference,
-            factor: 20.0,
-        }
+        Self { reference, factor: 20.0 }
     }
 
     #[must_use]
     pub fn power(reference: f64) -> Self {
-        Self {
-            reference,
-            factor: 10.0,
-        }
+        Self { reference, factor: 10.0 }
     }
 
     #[must_use]
@@ -109,11 +103,7 @@ impl Decibel {
 
     #[must_use]
     pub fn to_db(&self, linear: f64) -> f64 {
-        if linear > 0.0 {
-            self.factor * (linear / self.reference).log10()
-        } else {
-            f64::NEG_INFINITY
-        }
+        if linear > 0.0 { self.factor * (linear / self.reference).log10() } else { f64::NEG_INFINITY }
     }
 
     #[must_use]
@@ -128,8 +118,7 @@ impl Decibel {
 
     #[must_use]
     pub fn offset_from(&self, other: &Self) -> Option<f64> {
-        self.is_compatible(other)
-            .then(|| self.factor * (other.reference / self.reference).log10())
+        self.is_compatible(other).then(|| self.factor * (other.reference / self.reference).log10())
     }
 }
 
@@ -156,13 +145,10 @@ impl Scale {
         match (self, other) {
             (Self::Linear, Self::Linear) => true,
             (Self::Decibel(left), Self::Decibel(right)) => left.is_compatible(right),
-            (Self::Decibel(scale), Self::Ratio { factor })
-            | (Self::Ratio { factor }, Self::Decibel(scale)) => {
+            (Self::Decibel(scale), Self::Ratio { factor }) | (Self::Ratio { factor }, Self::Decibel(scale)) => {
                 (scale.factor - factor).abs() < f64::EPSILON
             }
-            (Self::Ratio { factor: left }, Self::Ratio { factor: right }) => {
-                (left - right).abs() < f64::EPSILON
-            }
+            (Self::Ratio { factor: left }, Self::Ratio { factor: right }) => (left - right).abs() < f64::EPSILON,
             (Self::Linear, _) | (_, Self::Linear) => false,
         }
     }
@@ -171,15 +157,10 @@ impl Scale {
     pub fn sum(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (Self::Linear, Self::Linear) => Some(Self::Linear),
-            (Self::Decibel(scale), Self::Ratio { .. })
-            | (Self::Ratio { .. }, Self::Decibel(scale))
-                if self.is_compatible(other) =>
-            {
+            (Self::Decibel(scale), Self::Ratio { .. }) | (Self::Ratio { .. }, Self::Decibel(scale)) if self.is_compatible(other) => {
                 Some(Self::Decibel(*scale))
             }
-            (Self::Ratio { factor }, Self::Ratio { .. }) if self.is_compatible(other) => {
-                Some(Self::Ratio { factor: *factor })
-            }
+            (Self::Ratio { factor }, Self::Ratio { .. }) if self.is_compatible(other) => Some(Self::Ratio { factor: *factor }),
             _ => None,
         }
     }
@@ -188,17 +169,9 @@ impl Scale {
     pub fn difference(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (Self::Linear, Self::Linear) => Some(Self::Linear),
-            (Self::Decibel(left), Self::Decibel(_)) if self.is_compatible(other) => {
-                Some(Self::Ratio {
-                    factor: left.factor,
-                })
-            }
-            (Self::Decibel(scale), Self::Ratio { .. }) if self.is_compatible(other) => {
-                Some(Self::Decibel(*scale))
-            }
-            (Self::Ratio { factor }, Self::Ratio { .. }) if self.is_compatible(other) => {
-                Some(Self::Ratio { factor: *factor })
-            }
+            (Self::Decibel(left), Self::Decibel(_)) if self.is_compatible(other) => Some(Self::Ratio { factor: left.factor }),
+            (Self::Decibel(scale), Self::Ratio { .. }) if self.is_compatible(other) => Some(Self::Decibel(*scale)),
+            (Self::Ratio { factor }, Self::Ratio { .. }) if self.is_compatible(other) => Some(Self::Ratio { factor: *factor }),
             _ => None,
         }
     }

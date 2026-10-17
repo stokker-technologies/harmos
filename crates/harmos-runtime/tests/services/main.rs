@@ -105,11 +105,15 @@ impl Operation for Ping {
 
 /* === Private Functions === */
 async fn service_status(
-    mut services: tokio::sync::watch::Receiver<BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot>>,
+    mut services: tokio::sync::watch::Receiver<
+        BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot>,
+    >,
     name: &str, wanted: impl Fn(&ServiceStatus) -> bool,
 ) -> ServiceStatus {
     services
-        .wait_for(|all| all.get(&harmos_runtime::operations::resident::Key::root(name)).and_then(|item| item.health.as_ref()).is_some_and(&wanted))
+        .wait_for(|all| {
+            all.get(&harmos_runtime::operations::resident::Key::root(name)).and_then(|item| item.health.as_ref()).is_some_and(&wanted)
+        })
         .await
         .expect("the runtime keeps the status sender open")
         .get(&harmos_runtime::operations::resident::Key::root(name))
@@ -132,9 +136,10 @@ async fn handle_shares_manager() {
     let runtime = assembly().service("boot", resident).runtime().await.unwrap();
     let manager = runtime.handle().operations;
     manager
-        .register_service(harmos_runtime::services::ServiceDefinition { id: "dynamic".into(), policy: harmos_runtime::services::POLICY }, |_: Arc<()>| {
-            resident
-        })
+        .register_service(
+            harmos_runtime::services::ServiceDefinition { id: "dynamic".into(), policy: harmos_runtime::services::POLICY },
+            |_: Arc<()>| resident,
+        )
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);

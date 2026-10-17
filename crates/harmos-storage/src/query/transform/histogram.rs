@@ -51,11 +51,7 @@ pub trait HistogramExecution {
     /// Start incremental binning over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Bins>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
@@ -66,9 +62,7 @@ impl HistogramExecution for Histogram {
             || self.edges.iter().any(|edge| !edge.is_finite())
             || self.edges.windows(2).any(|pair| pair[0] >= pair[1])
         {
-            return Err(invalid(
-                "histogram requires 2..65536 finite strictly increasing edges",
-            ));
+            return Err(invalid("histogram requires 2..65536 finite strictly increasing edges"));
         }
         if !numeric_type(self.field.field(input)?.data_type()) {
             return Err(invalid("histogram requires numeric field"));
@@ -82,18 +76,10 @@ impl HistogramExecution for Histogram {
 
     /// Start incremental binning over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Bins> {
-        Ok(Bins {
-            schema: Arc::new(self.output_schema(input)?),
-            plan: self.clone(),
-            counts: vec![0; self.edges.len() + 1],
-        })
+        Ok(Bins { schema: Arc::new(self.output_schema(input)?), plan: self.clone(), counts: vec![0; self.edges.len() + 1] })
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         let mut bins = self.start(input.schema().as_ref())?;
         bins.push(input, check)?;
         bins.finish()
@@ -113,11 +99,7 @@ impl Bins {
 
     /// Count one batch. First and last bins hold finite values outside the
     /// edges; a failed batch leaves the counts unchanged.
-    pub fn push(
-        &mut self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<()> {
+    pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
         let edges = &self.plan.edges;
         let mut counts = self.counts.clone();
         for row in 0..input.num_rows() {
@@ -139,33 +121,18 @@ impl Bins {
             } else {
                 edges.partition_point(|edge| *edge <= value)
             };
-            counts[bin] = counts[bin]
-                .checked_add(1)
-                .ok_or_else(|| invalid("histogram count overflow"))?;
+            counts[bin] = counts[bin].checked_add(1).ok_or_else(|| invalid("histogram count overflow"))?;
         }
         self.counts = counts;
         Ok(())
     }
 
     pub fn finish(self) -> Result<RecordBatch> {
-        let lower = std::iter::once(None)
-            .chain(self.plan.edges.iter().copied().map(Some))
-            .collect::<Vec<_>>();
-        let upper = self
-            .plan
-            .edges
-            .iter()
-            .copied()
-            .map(Some)
-            .chain(std::iter::once(None))
-            .collect::<Vec<_>>();
+        let lower = std::iter::once(None).chain(self.plan.edges.iter().copied().map(Some)).collect::<Vec<_>>();
+        let upper = self.plan.edges.iter().copied().map(Some).chain(std::iter::once(None)).collect::<Vec<_>>();
         RecordBatch::try_new(
             self.schema,
-            vec![
-                Arc::new(Float64Array::from(lower)),
-                Arc::new(Float64Array::from(upper)),
-                Arc::new(UInt64Array::from(self.counts)),
-            ],
+            vec![Arc::new(Float64Array::from(lower)), Arc::new(Float64Array::from(upper)), Arc::new(UInt64Array::from(self.counts))],
         )
         .map_err(|_| invalid("histogram output batch is invalid"))
     }

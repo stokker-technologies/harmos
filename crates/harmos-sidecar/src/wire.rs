@@ -18,9 +18,7 @@
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 // Local Imports
 use harmos_domain::Message;
-use harmos_sdk::operations::{
-    CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand,
-};
+use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand};
 
 /* === Constants === */
 
@@ -51,26 +49,11 @@ pub struct Publication {
 /* === Enums === */
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
-    Call {
-        id: u64,
-        method: String,
-        params: Vec<u8>,
-    },
-    Cancel {
-        id: u64,
-    },
-    Push {
-        method: String,
-        params: Vec<u8>,
-    },
-    Answer {
-        id: u64,
-        result: Vec<u8>,
-    },
-    Refusal {
-        id: u64,
-        refusal: harmos_domain::Refusal,
-    },
+    Call { id: u64, method: String, params: Vec<u8> },
+    Cancel { id: u64 },
+    Push { method: String, params: Vec<u8> },
+    Answer { id: u64, result: Vec<u8> },
+    Refusal { id: u64, refusal: harmos_domain::Refusal },
 }
 
 /* === Traits === */
@@ -93,11 +76,7 @@ impl Frame {
             return usize::MAX;
         }
         let payload = binary_payload_growth(payload);
-        let prepare = WireCommand::Prepare {
-            invocation: u64::MAX,
-            operation: operation.to_owned(),
-            payload: Vec::new(),
-        };
+        let prepare = WireCommand::Prepare { invocation: u64::MAX, operation: operation.to_owned(), payload: Vec::new() };
         let child = WireChildCall {
             context: [u8::MAX; 32],
             generation_context: Some([u8::MAX; 32]),
@@ -106,22 +85,8 @@ impl Frame {
             payload: Vec::new(),
             submit: true,
         };
-        call_encoded_len(
-            u64::MAX,
-            WIRE_METHOD,
-            prepare
-                .encode()
-                .map_or(usize::MAX, |bytes| bytes.len())
-                .saturating_add(payload),
-        )
-        .max(call_encoded_len(
-            u64::MAX,
-            CHILD_METHOD,
-            child
-                .encode()
-                .map_or(usize::MAX, |bytes| bytes.len())
-                .saturating_add(payload),
-        ))
+        call_encoded_len(u64::MAX, WIRE_METHOD, prepare.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(payload))
+            .max(call_encoded_len(u64::MAX, CHILD_METHOD, child.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(payload)))
     }
 
     pub fn request_fits<O: OperationDeclaration>(request: &O) -> bool {
@@ -129,13 +94,8 @@ impl Frame {
     }
 
     pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize {
-        let empty = WireAnswer::Ready {
-            payload: Vec::new(),
-        };
-        let payload = empty
-            .encode()
-            .map_or(usize::MAX, |bytes| bytes.len())
-            .saturating_add(binary_payload_growth(reply.encoded_len()));
+        let empty = WireAnswer::Ready { payload: Vec::new() };
+        let payload = empty.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(binary_payload_growth(reply.encoded_len()));
         answer_encoded_len(u64::MAX, payload)
     }
 
@@ -149,9 +109,9 @@ impl Frame {
             Self::Answer { id, result } => answer_encoded_len(*id, result.len()),
             Self::Refusal { id, refusal } => refusal_encoded_len(*id, refusal),
             Self::Cancel { id } => 2 + varint_len(*id) + varint_len(u64::MAX),
-            Self::Push { method, params } => 2usize
-                .saturating_add(binary_bytes_len(method.len()))
-                .saturating_add(binary_bytes_len(params.len())),
+            Self::Push { method, params } => {
+                2usize.saturating_add(binary_bytes_len(method.len())).saturating_add(binary_bytes_len(params.len()))
+            }
         }
     }
 
@@ -161,10 +121,7 @@ impl Frame {
 
     #[cfg(feature = "kit")]
     pub(crate) fn exiting(reason: String) -> Self {
-        Self::Push {
-            method: Self::EXITING.to_owned(),
-            params: reason.encode_to_vec(),
-        }
+        Self::Push { method: Self::EXITING.to_owned(), params: reason.encode_to_vec() }
     }
 
     pub fn exiting_reason(params: &[u8]) -> Option<String> {
@@ -177,10 +134,7 @@ impl Frame {
     {
         loop {
             let mut bytes = Vec::new();
-            let read = input
-                .take(Self::LIMIT as u64 + 1)
-                .read_until(b'\n', &mut bytes)
-                .await?;
+            let read = input.take(Self::LIMIT as u64 + 1).read_until(b'\n', &mut bytes).await?;
             if read == 0 {
                 return Ok(None);
             }
@@ -200,12 +154,7 @@ impl Frame {
 // Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
-    stream: &str,
-    schema: u32,
-    sequence: u64,
-    payload: usize,
-    published_unix_micros: Option<i64>,
-    context: Option<&str>,
+    stream: &str, schema: u32, sequence: u64, payload: usize, published_unix_micros: Option<i64>, context: Option<&str>,
 ) -> usize {
     binary_bytes_len(stream.len())
         .saturating_add(varint_len(u64::from(schema)))
@@ -231,23 +180,16 @@ fn binary_payload_growth(bytes: usize) -> usize {
 }
 
 fn call_encoded_len(id: u64, method: &str, payload_len: usize) -> usize {
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(binary_bytes_len(method.len()))
-        .saturating_add(binary_bytes_len(payload_len))
+    2usize.saturating_add(varint_len(id)).saturating_add(binary_bytes_len(method.len())).saturating_add(binary_bytes_len(payload_len))
 }
 
 fn answer_encoded_len(id: u64, payload_len: usize) -> usize {
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(binary_bytes_len(payload_len))
+    2usize.saturating_add(varint_len(id)).saturating_add(binary_bytes_len(payload_len))
 }
 
 fn refusal_encoded_len(id: u64, refusal: &harmos_domain::Refusal) -> usize {
     let refusal = postcard::experimental::serialized_size(refusal).unwrap_or(usize::MAX);
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(refusal)
+    2usize.saturating_add(varint_len(id)).saturating_add(refusal)
 }
 
 #[cfg(feature = "kit")]

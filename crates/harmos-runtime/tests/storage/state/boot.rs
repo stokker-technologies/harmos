@@ -20,13 +20,10 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::closed;
-use crate::storage::{
-    Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog,
-    config, history, write,
-};
+use crate::storage::{Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
 use harmos_runtime::{
-    Builder, runtime::Incompatible, services::Fault, services::Service, state::Entry,
-    state::Position, state::Recorded, storage::JournalConsumer, storage::Recovery, storage::Source,
+    Builder, runtime::Incompatible, services::Fault, services::Service, state::Entry, state::Position, state::Recorded,
+    storage::JournalConsumer, storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -64,14 +61,7 @@ impl Probe {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Backend::new(history()));
         Self {
-            storage: StorageManager::new(
-                StorageBackends {
-                    primary: data.clone(),
-                    state: recovery.clone(),
-                },
-                config(),
-            )
-            .unwrap(),
+            storage: StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config()).unwrap(),
             data,
             recovery,
             load_gate: None,
@@ -89,11 +79,7 @@ impl JournalConsumer<Bank> for Probe {
         Position::ORIGIN
     }
 
-    async fn drain(
-        &mut self,
-        _entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         if let Some(gate) = self.drain_gate.take() {
             gate.entered.notify_one();
             gate.release.notified().await;
@@ -139,11 +125,7 @@ async fn storage_precedes_recovery() {
     probe.write_drain = true;
     let storage = probe.storage.clone();
     let data = probe.data.clone();
-    let runtime = builder()
-        .recover(probe)
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    let runtime = builder().recover(probe).runtime_with_storage(&storage).await.unwrap();
     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
     assert!(runtime.storage().is_some());
     assert!(runtime.handle().storage().is_some());
@@ -156,11 +138,7 @@ async fn failed_open_skips() {
     for fail_recovery in [false, true] {
         let probe = Probe::new();
         let storage = probe.storage.clone();
-        let control = if fail_recovery {
-            &probe.recovery.control
-        } else {
-            &probe.data.control
-        };
+        let control = if fail_recovery { &probe.recovery.control } else { &probe.data.control };
         control.fail_open.store(true, Ordering::SeqCst);
         let started = Arc::new(AtomicBool::new(false));
         let mark = started.clone();
@@ -184,11 +162,7 @@ async fn cancelled_open_closes() {
     for block_recovery in [false, true] {
         let probe = Probe::new();
         let storage = probe.storage.clone();
-        let control = if block_recovery {
-            &probe.recovery.control
-        } else {
-            &probe.data.control
-        };
+        let control = if block_recovery { &probe.recovery.control } else { &probe.data.control };
         control.block_open.store(true, Ordering::SeqCst);
         let cleanup;
         {
@@ -213,13 +187,7 @@ async fn load_failure_closes() {
     let storage = probe.storage.clone();
     let data = probe.data.clone();
     let recovery = probe.recovery.clone();
-    assert!(
-        builder()
-            .recover(probe)
-            .runtime_with_storage(&storage)
-            .await
-            .is_err()
-    );
+    assert!(builder().recover(probe).runtime_with_storage(&storage).await.is_err());
     assert!(storage.status().closed);
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(recovery.control.closes.load(Ordering::SeqCst), 1);
@@ -275,18 +243,12 @@ async fn consumer_panic_blocks() {
     probe.panic_drain = true;
     let storage = probe.storage.clone();
     let data = probe.data.clone();
-    let result = builder()
-        .recover(probe)
-        .runtime_with_storage(&storage)
-        .await;
+    let result = builder().recover(probe).runtime_with_storage(&storage).await;
     let error = result.err().expect("consumer panic refuses boot");
-    let error = std::iter::successors(
-        Some(&error as &(dyn std::error::Error + 'static)),
-        |error| error.source(),
-    )
-    .map(ToString::to_string)
-    .collect::<Vec<_>>()
-    .join(": ");
+    let error = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ");
     assert!(error.contains("controlled consumer panic"), "{error}");
     assert!(storage.status().closed);
     assert!(!data.control.open.load(Ordering::SeqCst));
@@ -295,16 +257,8 @@ async fn consumer_panic_blocks() {
 #[tokio::test]
 async fn second_boot_refused() {
     let probe = Probe::new();
-    let runtime = builder()
-        .runtime_with_storage(&probe.storage)
-        .await
-        .unwrap();
-    assert!(
-        builder()
-            .runtime_with_storage(&probe.storage)
-            .await
-            .is_err()
-    );
+    let runtime = builder().runtime_with_storage(&probe.storage).await.unwrap();
+    assert!(builder().runtime_with_storage(&probe.storage).await.is_err());
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 0);
     write(&probe.storage, "original").await;
     runtime.stop().await.unwrap();
@@ -318,19 +272,11 @@ async fn reserved_service_refused() {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Backend::new(history()));
         let policy = config();
-        let storage: StorageManager = StorageManager::new(
-            StorageBackends {
-                primary: data.clone(),
-                state: recovery.clone(),
-            },
-            policy,
-        )
-        .unwrap();
+        let storage: StorageManager =
+            StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, policy).unwrap();
         let result = builder()
             .service(name, |_context: Service<Bank>| async {
-                Err::<(), Fault<String>>(Fault::Application(
-                    "application service unexpectedly started".to_owned(),
-                ))
+                Err::<(), Fault<String>>(Fault::Application("application service unexpectedly started".to_owned()))
             })
             .runtime_with_storage(&storage)
             .await;
@@ -375,15 +321,8 @@ async fn stop_retains_panic() {
         let storage = probe.storage.clone();
         let data = probe.data.clone();
         let recovery = probe.recovery.clone();
-        let runtime = builder()
-            .recover(probe)
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
-        recovery
-            .control
-            .fail_close
-            .store(fail_close, Ordering::SeqCst);
+        let runtime = builder().recover(probe).runtime_with_storage(&storage).await.unwrap();
+        recovery.control.fail_close.store(fail_close, Ordering::SeqCst);
         if fail_close {
             assert!(runtime.stop().await.is_err());
             assert!(recovery.control.open.load(Ordering::SeqCst));
@@ -391,18 +330,8 @@ async fn stop_retains_panic() {
         }
         for _ in 0..2 {
             let error = runtime.stop().await.unwrap_err();
-            assert!(matches!(
-                error,
-                harmos_runtime::Error::TaskFailed {
-                    domain: "journal supervisor",
-                    ..
-                }
-            ));
-            assert!(
-                error
-                    .to_string()
-                    .contains("controlled final consumer panic")
-            );
+            assert!(matches!(error, harmos_runtime::Error::TaskFailed { domain: "journal supervisor", .. }));
+            assert!(error.to_string().contains("controlled final consumer panic"));
         }
         assert!(!data.control.open.load(Ordering::SeqCst));
         assert!(!recovery.control.open.load(Ordering::SeqCst));
@@ -414,11 +343,7 @@ async fn stop_retains_panic() {
 #[tokio::test]
 async fn cleanup_failure_retries() {
     let probe = Probe::new();
-    probe
-        .recovery
-        .control
-        .block_open
-        .store(true, Ordering::SeqCst);
+    probe.recovery.control.block_open.store(true, Ordering::SeqCst);
     probe.data.control.fail_close.store(true, Ordering::SeqCst);
     let cleanup;
     {
@@ -431,13 +356,7 @@ async fn cleanup_failure_retries() {
         }
     }
     let failure = cleanup.wait().await.unwrap_err();
-    assert!(matches!(
-        failure,
-        harmos_runtime::Error::TaskFailed {
-            domain: "bootstrap cleanup",
-            ..
-        }
-    ));
+    assert!(matches!(failure, harmos_runtime::Error::TaskFailed { domain: "bootstrap cleanup", .. }));
     assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Failed);
     assert!(cleanup.failure().is_some());
     assert!(probe.data.control.open.load(Ordering::SeqCst));
@@ -459,11 +378,7 @@ async fn zero_deadline_refused() {
         .await
         .err()
         .unwrap();
-    assert!(
-        error
-            .to_string()
-            .contains("positive representable finite duration")
-    );
+    assert!(error.to_string().contains("positive representable finite duration"));
     assert!(!probe.data.control.open.load(Ordering::SeqCst));
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 0);
     assert_eq!(probe.recovery.control.closes.load(Ordering::SeqCst), 0);
@@ -473,19 +388,14 @@ async fn zero_deadline_refused() {
 async fn init_failure_closes() {
     let probe = Probe::new();
     let mut error = builder()
-        .initialize(Duration::from_secs(1), |_| async {
-            Err::<(), _>(std::io::Error::other("controlled initialization failure"))
-        })
+        .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled initialization failure")) })
         .runtime_with_storage(&probe.storage)
         .await
         .err()
         .unwrap();
     let cause = std::error::Error::source(&error).unwrap();
     let source = std::error::Error::source(cause).unwrap();
-    assert_eq!(
-        source.downcast_ref::<std::io::Error>().unwrap().to_string(),
-        "controlled initialization failure"
-    );
+    assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().to_string(), "controlled initialization failure");
     assert!(error.cleanup_error().is_none());
     error.retry_cleanup().await.unwrap();
     assert!(probe.storage.status().closed);
@@ -509,20 +419,13 @@ async fn deadline_awaits_cleanup() {
                 context.stopping().await;
                 gate.entered.notify_one();
                 gate.release.notified().await;
-                let receipt = context
-                    .state()
-                    .commit(crate::storage::support::Deposit {
-                        account: crate::storage::support::HOUSE,
-                        amount: 1,
-                    })
-                    .await;
+                let receipt =
+                    context.state().commit(crate::storage::support::Deposit { account: crate::storage::support::HOUSE, amount: 1 }).await;
                 committed.store(receipt.is_ok(), Ordering::SeqCst);
                 Ok::<(), Fault<std::io::Error>>(())
             }
         })
-        .initialize(Duration::from_millis(5), |_| async {
-            std::future::pending::<Result<(), std::io::Error>>().await
-        });
+        .initialize(Duration::from_millis(5), |_| async { std::future::pending::<Result<(), std::io::Error>>().await });
     let open = startup.runtime_with_storage(&probe.storage);
     tokio::pin!(open);
     tokio::select! {
@@ -534,10 +437,7 @@ async fn deadline_awaits_cleanup() {
     let error = open.await.err().unwrap();
     assert!(error.to_string().contains("deadline has elapsed"));
     assert!(probe.storage.status().closed);
-    assert!(
-        committed.load(Ordering::SeqCst),
-        "journal stays open through physical service cleanup"
-    );
+    assert!(committed.load(Ordering::SeqCst), "journal stays open through physical service cleanup");
 }
 
 #[tokio::test]
@@ -594,9 +494,7 @@ async fn failed_cleanup_retryable() {
     let probe = Probe::new();
     probe.data.control.fail_close.store(true, Ordering::SeqCst);
     let mut error = builder()
-        .initialize(Duration::from_secs(1), |_| async {
-            Err::<(), _>(std::io::Error::other("controlled startup failure"))
-        })
+        .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled startup failure")) })
         .runtime_with_storage(&probe.storage)
         .await
         .err()

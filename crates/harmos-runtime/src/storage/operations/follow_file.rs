@@ -53,23 +53,14 @@ impl<C: 'static> Operation for Handler<C> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<FileBatch>;
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut FollowFile,
-        output: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut FollowFile, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProgress>> {
-        let mut follower = self
-            .storage
-            .follow_file(&request.file, request.offset)
-            .await?;
+        let mut follower = self.storage.follow_file(&request.file, request.offset).await?;
         let batch_bytes = self.storage.settings().response.batch_bytes;
         while let Some(batch) = follower.next_batch(batch_bytes).await? {
             output.send_with(batch.memory_size(), || Ok(batch)).await?;

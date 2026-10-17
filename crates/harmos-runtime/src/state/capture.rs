@@ -23,10 +23,7 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 // Local Imports
-use crate::{
-    Application, state::Entry, state::Position, state::PreparationError, state::Receipt,
-    state::Recorded, state::RequestKey,
-};
+use crate::{Application, state::Entry, state::Position, state::PreparationError, state::Receipt, state::Recorded, state::RequestKey};
 
 /* === Constants === */
 
@@ -111,26 +108,20 @@ pub enum CaptureError {
 /* === Traits === */
 pub trait JournalCapture<A: Application>: Send + 'static {
     fn capture(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        frontier: Position,
+        &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
     ) -> impl Future<Output = Result<(), CaptureError>> + Send;
 }
 
 pub(crate) trait Capturing<A: Application>: Send {
     fn capture(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        frontier: Position,
+        &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
     ) -> Pin<Box<dyn Future<Output = Result<(), CaptureError>> + Send + '_>>;
 }
 
 /* === Implementations === */
 impl<A: Application, C: JournalCapture<A>> Capturing<A> for C {
     fn capture(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        frontier: Position,
+        &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
     ) -> Pin<Box<dyn Future<Output = Result<(), CaptureError>> + Send + '_>> {
         Box::pin(JournalCapture::capture(self, entries, frontier))
     }
@@ -158,24 +149,12 @@ impl<A: Application> CallbackDeclaration<A> {
         let (sender, mut receiver) = mpsc::unbounded_channel::<Group<A>>();
         let (signal, _) = watch::channel(false);
         let (progress, _) = watch::channel(Ok(origin));
-        let shared = Arc::new(Shared {
-            failed,
-            signal,
-            progress,
-            capacity: Arc::new(Semaphore::new(self.limits.pending_bytes as usize)),
-        });
-        let mut guard = Failure {
-            shared: shared.clone(),
-            clean: false,
-        };
+        let shared = Arc::new(Shared { failed, signal, progress, capacity: Arc::new(Semaphore::new(self.limits.pending_bytes as usize)) });
+        let mut guard = Failure { shared: shared.clone(), clean: false };
         let mut consumer = self.consumer;
         let worker = tokio::spawn(async move {
             while let Some(group) = receiver.recv().await {
-                if consumer
-                    .capture(group.entries, group.frontier)
-                    .await
-                    .is_err()
-                {
+                if consumer.capture(group.entries, group.frontier).await.is_err() {
                     return;
                 }
                 // Capacity includes the callback until successful acknowledgement.
@@ -185,12 +164,7 @@ impl<A: Application> CallbackDeclaration<A> {
             guard.clean = true;
             drop(guard);
         });
-        Callback {
-            sender,
-            shared,
-            limits: self.limits,
-            worker,
-        }
+        Callback { sender, shared, limits: self.limits, worker }
     }
 }
 
@@ -200,37 +174,15 @@ impl<A: Application> Callback<A> {
         if bytes > self.limits.max_group_bytes as usize {
             return Err(PreparationError::Limit);
         }
-        self.shared
-            .capacity
-            .clone()
-            .acquire_many_owned(bytes as u32)
-            .await
-            .map_err(|_| PreparationError::CaptureFailed)
+        self.shared.capacity.clone().acquire_many_owned(bytes as u32).await.map_err(|_| PreparationError::CaptureFailed)
     }
 
     pub fn check(&self) -> Result<(), PreparationError> {
-        if self.shared.failed.load(Ordering::Acquire) {
-            Err(PreparationError::CaptureFailed)
-        } else {
-            Ok(())
-        }
+        if self.shared.failed.load(Ordering::Acquire) { Err(PreparationError::CaptureFailed) } else { Ok(()) }
     }
 
-    pub fn submit(
-        &self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        frontier: Position,
-        permit: OwnedSemaphorePermit,
-    ) {
-        if self
-            .sender
-            .send(Group {
-                entries,
-                frontier,
-                _permit: permit,
-            })
-            .is_err()
-        {
+    pub fn submit(&self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position, permit: OwnedSemaphorePermit) {
+        if self.sender.send(Group { entries, frontier, _permit: permit }).is_err() {
             self.shared.fail();
         }
     }
@@ -253,12 +205,7 @@ impl<A: Application> Declaration<A> {
     pub(crate) fn start(self, failed: Arc<AtomicBool>, origin: Position) -> Capture<A> {
         match self {
             Self::Callback(callback) => Capture::Callback(callback.start(failed, origin)),
-            Self::Managed {
-                storage,
-                receipts,
-                projection,
-                snapshots,
-            } => Capture::Managed {
+            Self::Managed { storage, receipts, projection, snapshots } => Capture::Managed {
                 storage,
                 receipts,
                 projection,
@@ -273,21 +220,10 @@ impl<A: Application> Declaration<A> {
 
 impl<A: Application> Capture<A> {
     pub(crate) async fn snapshot(
-        &self,
-        tracked: &super::TrackedState<A>,
-        undos: &super::Undos<A>,
-        receipts: &HashMap<RequestKey, Receipt>,
-        final_save: bool,
+        &self, tracked: &super::TrackedState<A>, undos: &super::Undos<A>, receipts: &HashMap<RequestKey, Receipt>, final_save: bool,
     ) {
-        if let Self::Managed {
-            storage,
-            snapshots: Some(snapshots),
-            ..
-        } = self
-        {
-            snapshots
-                .capture(storage, tracked, undos, receipts, final_save)
-                .await;
+        if let Self::Managed { storage, snapshots: Some(snapshots), .. } = self {
+            snapshots.capture(storage, tracked, undos, receipts, final_save).await;
         }
     }
 
@@ -299,27 +235,19 @@ impl<A: Application> Capture<A> {
     }
 
     pub(crate) async fn reserve(
-        &self,
-        bytes: usize,
-        group: &crate::state::recovery::Group<&serde_json::Value>,
+        &self, bytes: usize, group: &crate::state::recovery::Group<&serde_json::Value>,
     ) -> Result<Permit, PreparationError> {
         match self {
             Self::Callback(callback) => callback.reserve(bytes).await.map(Permit::Callback),
-            Self::Managed {
-                storage,
-                projection,
-                ..
-            } => storage
-                .reserve_group(group, projection.as_ref())
-                .await
-                .map(Permit::Managed)
-                .map_err(|error| match error {
+            Self::Managed { storage, projection, .. } => {
+                storage.reserve_group(group, projection.as_ref()).await.map(Permit::Managed).map_err(|error| match error {
                     crate::Error::InvalidInput { .. } => PreparationError::Limit,
                     _ => {
                         self.fail();
                         PreparationError::CaptureFailed
                     }
-                }),
+                })
+            }
         }
     }
 
@@ -338,16 +266,9 @@ impl<A: Application> Capture<A> {
         }
     }
 
-    pub(crate) fn submit(
-        &self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        frontier: Position,
-        permit: Permit,
-    ) {
+    pub(crate) fn submit(&self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position, permit: Permit) {
         match (self, permit) {
-            (Self::Callback(callback), Permit::Callback(permit)) => {
-                callback.submit(entries, frontier, permit)
-            }
+            (Self::Callback(callback), Permit::Callback(permit)) => callback.submit(entries, frontier, permit),
             (Self::Managed { progress, .. }, Permit::Managed(permit)) => {
                 permit.commit(frontier);
                 let _ = progress.send_replace(Ok(frontier));
@@ -371,13 +292,7 @@ impl<A: Application> Capture<A> {
     }
 
     fn fail(&self) {
-        if let Self::Managed {
-            failed,
-            progress,
-            signal,
-            ..
-        } = self
-        {
+        if let Self::Managed { failed, progress, signal, .. } = self {
             failed.store(true, Ordering::Release);
             let _ = progress.send_replace(Err(CaptureError::Failed));
             signal.send_replace(true);

@@ -155,13 +155,7 @@ impl<S> futures_core::Stream for Batches<S> {
             };
             this.next = Some(Box::pin(cursor.advance()));
         }
-        match this
-            .next
-            .as_mut()
-            .expect("advance installed")
-            .as_mut()
-            .poll(cx)
-        {
+        match this.next.as_mut().expect("advance installed").as_mut().poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready((cursor, item)) => {
                 this.next = None;
@@ -178,16 +172,7 @@ impl Feed {
     pub(crate) fn following<S>(self: &Arc<Self>, held: Holding) -> Batches<S> {
         let bell = self.bell.subscribe();
         let next = self.ring.lock().expect("summary ring is healthy").next;
-        Batches {
-            cursor: Some(Cursor {
-                feed: Arc::clone(self),
-                bell,
-                next,
-            }),
-            next: None,
-            marker: PhantomData,
-            _held: held,
-        }
+        Batches { cursor: Some(Cursor { feed: Arc::clone(self), bell, next }), next: None, marker: PhantomData, _held: held }
     }
 }
 
@@ -199,14 +184,7 @@ impl State {
             count: 0,
             missed: 0,
             fields: vec![Accumulator::default(); definition.fields().len()],
-            feed: Arc::new(Feed {
-                ring: Mutex::new(Retained {
-                    rows: VecDeque::with_capacity(64),
-                    next: 0,
-                    closed: false,
-                }),
-                bell,
-            }),
+            feed: Arc::new(Feed { ring: Mutex::new(Retained { rows: VecDeque::with_capacity(64), next: 0, closed: false }), bell }),
             closed: false,
         }
     }
@@ -216,12 +194,7 @@ impl State {
             return;
         }
         let mut fields = self.fields.iter_mut();
-        self.definition.measure(row, &mut |value| {
-            fields
-                .next()
-                .expect("one accumulator per declared measure")
-                .push(value)
-        });
+        self.definition.measure(row, &mut |value| fields.next().expect("one accumulator per declared measure").push(value));
         self.count += 1;
         if self.count == self.definition.samples() {
             self.flush(false);
@@ -270,11 +243,7 @@ impl State {
         if self.count > 0 || self.missed > 0 {
             self.flush(true);
         }
-        self.feed
-            .ring
-            .lock()
-            .expect("summary ring is healthy")
-            .closed = true;
+        self.feed.ring.lock().expect("summary ring is healthy").closed = true;
         self.feed.bell.send_replace(());
     }
 }
@@ -299,21 +268,11 @@ impl Accumulator {
     fn finish(&self, field: &'static str) -> Measurement {
         let running = self.running;
         let overflow = !running.is_empty()
-            && [
-                Some(running.sum()),
-                running.mean(),
-                running.variance(),
-                running.rms(),
-            ]
-            .into_iter()
-            .any(|statistic| !statistic.is_some_and(f64::is_finite));
+            && [Some(running.sum()), running.mean(), running.variance(), running.rms()]
+                .into_iter()
+                .any(|statistic| !statistic.is_some_and(f64::is_finite));
         let statistics = (!running.is_empty() && !overflow).then_some(running);
-        Measurement {
-            field,
-            statistics,
-            invalid: self.invalid,
-            overflow,
-        }
+        Measurement { field, statistics, invalid: self.invalid, overflow }
     }
 }
 

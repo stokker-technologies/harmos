@@ -44,9 +44,7 @@ pub fn component() -> Vec<u8> {
 
 pub fn sandbox() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT
-        .get_or_init(|| load("harmos-sandbox-guest"))
-        .clone()
+    COMPONENT.get_or_init(|| load("harmos-sandbox-guest")).clone()
 }
 
 /* === Private Functions === */

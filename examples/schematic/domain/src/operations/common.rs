@@ -19,13 +19,12 @@
 // Local Imports
 
 /* === Constants === */
-pub const POLICY: harmos_domain::operations::OperationPolicy =
-    harmos_domain::operations::OperationPolicy {
-        timeout: std::time::Duration::from_secs(10),
-        attempt_timeout: std::time::Duration::from_secs(10),
-        retries: harmos_domain::operations::RetryPolicy::Never,
-        restart: harmos_domain::operations::RestartPolicy::Never,
-    };
+pub const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    retries: harmos_domain::operations::RetryPolicy::Never,
+    restart: harmos_domain::operations::RestartPolicy::Never,
+};
 
 /* === Macros === */
 

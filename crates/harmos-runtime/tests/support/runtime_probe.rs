@@ -90,9 +90,7 @@ impl Undoable for Rename {
 
 impl Invert<Sheet> for Rename {
     fn invert(&self, before: &Sheet) -> Self {
-        Self {
-            to: before.title.clone(),
-        }
+        Self { to: before.title.clone() }
     }
 }
 
@@ -161,11 +159,7 @@ impl harmos_runtime::state::CatalogCodec for Note {
 }
 
 impl harmos_runtime::state::RecordCatalog for Note {
-    fn restore(
-        id: &harmos_runtime::DefinitionId,
-        version: u32,
-        _payload: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error> {
+    fn restore(id: &harmos_runtime::DefinitionId, version: u32, _payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
         if id.as_str() != "sheet.exported" || version != 1 {
             return Ok(None);
         }
@@ -175,9 +169,7 @@ impl harmos_runtime::state::RecordCatalog for Note {
 
 /* === Public Functions === */
 pub(crate) fn rename(title: &str) -> Change {
-    Change::Rename(Rename {
-        to: title.to_owned(),
-    })
+    Change::Rename(Rename { to: title.to_owned() })
 }
 
 pub(crate) fn named((kind, id, version): (Kind, &str, u32)) -> (Kind, DefinitionId, u32) {

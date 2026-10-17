@@ -52,42 +52,25 @@ fn schematic(directory: &Path, backend: &str, plugin: &Path, advanced: bool) -> 
     let output = command.output().unwrap();
     succeeded(&output);
 
-    String::from_utf8(output.stdout)
-        .unwrap()
-        .lines()
-        .map(str::to_owned)
-        .collect()
+    String::from_utf8(output.stdout).unwrap().lines().map(str::to_owned).collect()
 }
 
 // Cargo Invokes Its Subcommand With The Subcommand Name First
 fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
     let tool = fixtures::artifact("cargo-harmos");
 
-    Command::new(tool)
-        .current_dir(directory)
-        .arg("harmos")
-        .args(arguments)
-        .output()
-        .unwrap()
+    Command::new(tool).current_dir(directory).arg("harmos").args(arguments).output().unwrap()
 }
 
 fn succeeded(output: &Output) {
-    assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
 }
 
 fn walkthrough(backend: &str, plugin: PathBuf) {
     let directory = tempfile::tempdir().unwrap();
     let lines = schematic(directory.path(), backend, &plugin, false);
 
-    assert_eq!(
-        lines.first().map(String::as_str),
-        Some("Placed R1 and U1, connected POWER, moved R1")
-    );
+    assert_eq!(lines.first().map(String::as_str), Some("Placed R1 and U1, connected POWER, moved R1"));
     assert!(lines.iter().any(|line| line == "Undid and redid the route"));
     assert_eq!(lines.last().map(String::as_str), Some(REOPENED));
     assert!(!lines.iter().any(|line| line.starts_with("Analysis")));
@@ -116,16 +99,10 @@ fn backends_report_alike() {
     let native = schematic(directory.path(), "--sidecar", &sidecar, true);
     let guest = schematic(directory.path(), "--guest", &guest, true);
 
-    let (directories, shared): (Vec<_>, Vec<_>) = native
-        .into_iter()
-        .partition(|line| line.starts_with("Native directories:"));
+    let (directories, shared): (Vec<_>, Vec<_>) = native.into_iter().partition(|line| line.starts_with("Native directories:"));
     assert_eq!(directories, [r#"Native directories: ["alpha", "zeta"]"#]);
     assert_eq!(shared, guest);
-    for expected in [
-        "Analysis settled: 3 findings",
-        "Cancelled analysis and waited for settlement",
-        REOPENED,
-    ] {
+    for expected in ["Analysis settled: 3 findings", "Cancelled analysis and waited for settlement", REOPENED] {
         assert!(guest.iter().any(|line| line == expected), "missing {expected}");
     }
 }
@@ -133,15 +110,9 @@ fn backends_report_alike() {
 #[test]
 fn inspect_reports_plugins() {
     let directory = tempfile::tempdir().unwrap();
-    for (artifact, facility) in [
-        ("schematic-guest", "guest"),
-        ("schematic-sidecar", "sidecar"),
-    ] {
+    for (artifact, facility) in [("schematic-guest", "guest"), ("schematic-sidecar", "sidecar")] {
         let path = fixtures::artifact(artifact);
-        let output = cargo_harmos(
-            directory.path(),
-            &["inspect".as_ref(), path.as_os_str(), "--json".as_ref()],
-        );
+        let output = cargo_harmos(directory.path(), &["inspect".as_ref(), path.as_os_str(), "--json".as_ref()]);
         succeeded(&output);
 
         let record: Value = serde_json::from_slice(&output.stdout).unwrap();

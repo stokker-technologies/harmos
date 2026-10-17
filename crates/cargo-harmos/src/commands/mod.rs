@@ -56,10 +56,7 @@ pub enum Command {
 
 /* === Implementations === */
 impl Command {
-    pub fn run(
-        self,
-        cancellation: &harmos_packaging::BuildCancellation,
-    ) -> Result<(), crate::error::Error> {
+    pub fn run(self, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), crate::error::Error> {
         #[cfg(not(any(feature = "sidecar", feature = "guest")))]
         let _ = cancellation;
         match self {

@@ -36,16 +36,11 @@ use crate::{Result, state::Kind};
 /* === Implementations === */
 impl<C> StorageManager<C> {
     pub(crate) async fn reserve_group(
-        &self,
-        group: &Group<&serde_json::Value>,
-        projection: Option<&crate::storage::capture::Projection>,
+        &self, group: &Group<&serde_json::Value>, projection: Option<&crate::storage::capture::Projection>,
     ) -> Result<Permit> {
-        let projection =
-            projection.filter(|_| group.entries.iter().any(|e| e.kind == Kind::Record));
+        let projection = projection.filter(|_| group.entries.iter().any(|e| e.kind == Kind::Record));
         let bytes = encoded_size(group)?;
-        let mut permit = self
-            .reserve_transition(bytes, projection.map(|p| p.limits))
-            .await?;
+        let mut permit = self.reserve_transition(bytes, projection.map(|p| p.limits)).await?;
         if let Some(projection) = projection {
             let mut records = crate::storage::ProjectedRecords::new(&mut permit, projection.limits);
             for entry in group.entries.iter().filter(|e| e.kind == Kind::Record) {

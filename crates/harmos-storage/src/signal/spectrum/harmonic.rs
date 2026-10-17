@@ -63,10 +63,7 @@ pub fn harmonics(magnitude: &[f64], fraction: f64) -> Vec<usize> {
     let strongest = magnitude.iter().copied().fold(0.0_f64, f64::max);
     let floor = fraction * strongest;
 
-    let mut found: Vec<usize> = peaks(magnitude)
-        .into_iter()
-        .filter(|bin| magnitude[*bin] >= floor)
-        .collect();
+    let mut found: Vec<usize> = peaks(magnitude).into_iter().filter(|bin| magnitude[*bin] >= floor).collect();
 
     found.sort_unstable();
     found
@@ -76,9 +73,7 @@ pub fn harmonics(magnitude: &[f64], fraction: f64) -> Vec<usize> {
 pub fn fundamental(frequency: &[f64], magnitude: &[f64]) -> Option<usize> {
     let guard = step_of(frequency) * 0.5;
 
-    peaks(magnitude)
-        .into_iter()
-        .find(|bin| frequency.get(*bin).is_some_and(|at| *at > guard))
+    peaks(magnitude).into_iter().find(|bin| frequency.get(*bin).is_some_and(|at| *at > guard))
 }
 
 #[must_use]

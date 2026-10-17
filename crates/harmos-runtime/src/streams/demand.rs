@@ -44,9 +44,7 @@ pub(crate) struct Holding {
 /* === Implementations === */
 impl Demand {
     pub(crate) fn of(window: &Window) -> Self {
-        Self {
-            updates: window.interest(),
-        }
+        Self { updates: window.interest() }
     }
 
     pub async fn changed(&mut self) -> Result<(), Error> {

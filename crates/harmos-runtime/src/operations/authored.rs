@@ -117,15 +117,9 @@ impl<T: Operation> Bound<T> {
     }
 }
 
-impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response<Payload<T>>>
-    for Bound<T>
-{
+impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response<Payload<T>>> for Bound<T> {
     fn transferred(&self) -> bool {
-        self.physical
-            .operation
-            .as_ref()
-            .is_some_and(Operation::transferred)
-            || super::EndpointSet::transferred(&self.physical.endpoints)
+        self.physical.operation.as_ref().is_some_and(Operation::transferred) || super::EndpointSet::transferred(&self.physical.endpoints)
     }
 
     fn initialize<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, ()> {
@@ -138,10 +132,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
                 return Ok(());
             }
             let resources = Arc::clone(&self.physical.resources);
-            let operation = guarded(self.entry.id(), async {
-                T::initialize(resources, context).await
-            })
-            .await?;
+            let operation = guarded(self.entry.id(), async { T::initialize(resources, context).await }).await?;
             self.physical.operation = Some(operation);
             Ok(())
         })
@@ -159,11 +150,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
                     .operation
                     .as_mut()
                     .expect("initialized operation")
-                    .run(
-                        context,
-                        &mut self.physical.request,
-                        &mut self.physical.endpoints,
-                    )
+                    .run(context, &mut self.physical.request, &mut self.physical.endpoints)
                     .await
             })
             .await
@@ -182,34 +169,13 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
         Box::pin(self.physical.finish(self.entry.id(), &self.control))
     }
 
-    fn retain(
-        self: Box<Self>,
-        outcome: Option<Error>,
-        cause: Arc<Error>,
-    ) -> (Box<dyn Finalizer>, Option<Error>, Arc<Error>) {
+    fn retain(self: Box<Self>, outcome: Option<Error>, cause: Arc<Error>) -> (Box<dyn Finalizer>, Option<Error>, Arc<Error>) {
         let outcome = outcome.map(Arc::new);
         let operation = self.entry.id().to_owned();
         let failure = super::finalization::failed(&operation, outcome.clone(), cause.clone());
-        let diagnostic = Arc::new(super::finalization::failed(
-            &operation,
-            outcome.clone(),
-            cause,
-        ));
-        let Self {
-            physical,
-            control,
-            admission,
-            preparation,
-            ..
-        } = *self;
-        let owner = Owned {
-            physical,
-            control,
-            operation,
-            outcome,
-            _admission: admission,
-            _preparation: preparation,
-        };
+        let diagnostic = Arc::new(super::finalization::failed(&operation, outcome.clone(), cause));
+        let Self { physical, control, admission, preparation, .. } = *self;
+        let owner = Owned { physical, control, operation, outcome, _admission: admission, _preparation: preparation };
         (Box::new(owner), Some(failure), diagnostic)
     }
 }
@@ -220,18 +186,13 @@ impl<T: Operation> Finalizer for Owned<T> {
     }
 
     fn failure(&self, cause: Arc<Error>) -> Arc<Error> {
-        Arc::new(super::finalization::failed(
-            &self.operation,
-            self.outcome.clone(),
-            cause,
-        ))
+        Arc::new(super::finalization::failed(&self.operation, self.outcome.clone(), cause))
     }
 }
 
 /* === Public Functions === */
 pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
-    operations: &OperationManager,
-    resources: Arc<T::Resources>,
+    operations: &OperationManager, resources: Arc<T::Resources>,
 ) -> Typed<T::Declaration, T::Endpoints> {
     let registry = Arc::downgrade(&operations.registry);
     let instances = operations.instances.clone();
@@ -239,120 +200,73 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
     let preparation_budget = operations.preparation.clone();
     let resident = operations.resident.clone();
     Typed {
-        prepare: Box::new(
-            move |(request, endpoints),
-                  id,
-                  control,
-                  entry,
-                  admission,
-                  source,
-                  origin,
-                  preparation| {
-                let super::binding::Request {
-                    value: request,
-                    retention,
-                    context,
-                } = request;
-                let registry = registry.upgrade().ok_or(Error::Closing {
-                    domain: "operations",
-                })?;
-                let operations = OperationManager {
-                    registry,
-                    context,
-                    instances: instances.clone(),
-                    lanes: lanes.clone(),
-                    preparation: preparation_budget.clone(),
-                    resident: resident.clone(),
-                };
-                let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    if operations
-                        .context
-                        .get()
-                        .is_some_and(|context| context.is_empty())
-                    {
-                        T::Declaration::key(&request)
-                    } else {
-                        None
-                    }
-                }))
-                .map_err(|_| Error::OperationPanicked {
-                    operation: entry.id().to_owned(),
-                })?;
-                if key.is_some()
-                    && std::any::TypeId::of::<T::Endpoints>() != std::any::TypeId::of::<()>()
-                {
-                    return Err(Error::InvalidInput {
-                        field: "operation stream cache",
-                        reason: "endpoint execution cannot reuse a response without executing its streams",
-                    });
-                }
-                let cached = key.as_ref().and_then(|key| {
-                    operations.lookup::<T::Declaration>(&entry, key, &origin.identity)
+        prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
+            let super::binding::Request { value: request, retention, context } = request;
+            let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
+            let operations = OperationManager {
+                registry,
+                context,
+                instances: instances.clone(),
+                lanes: lanes.clone(),
+                preparation: preparation_budget.clone(),
+                resident: resident.clone(),
+            };
+            let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if operations.context.get().is_some_and(|context| context.is_empty()) { T::Declaration::key(&request) } else { None }
+            }))
+            .map_err(|_| Error::OperationPanicked { operation: entry.id().to_owned() })?;
+            if key.is_some() && std::any::TypeId::of::<T::Endpoints>() != std::any::TypeId::of::<()>() {
+                return Err(Error::InvalidInput {
+                    field: "operation stream cache",
+                    reason: "endpoint execution cannot reuse a response without executing its streams",
                 });
-                let bound = Bound::<T> {
-                    physical: Physical {
-                        resources: resources.clone(),
-                        operation: None,
-                        request,
-                        endpoints,
-                        _request: retention,
-                        stopped: false,
-                    },
-                    cached,
-                    entry: entry.clone(),
-                    operations: operations.clone(),
-                    id,
-                    control: Arc::downgrade(&control),
-                    attempt: 0,
-                    admission,
-                    source: source.clone(),
-                    grants: origin.grants.clone(),
-                    preparation,
-                };
-                let mut prepared = super::binding::prepared(&entry, id, Box::new(bound));
-                let Some(key) = key else { return Ok(prepared) };
-                let registry = Arc::downgrade(&operations.registry);
-                prepared.completed = Some(Box::new(move |response| {
-                    if source.check().is_ok()
-                        && let Some(registry) = registry.upgrade()
-                    {
-                        registry.insert::<T::Declaration>(
-                            &entry,
-                            key.clone(),
-                            origin.identity.clone(),
-                            response.clone(),
-                        );
-                    }
-                }));
-                Ok(prepared)
-            },
-        ),
+            }
+            let cached = key.as_ref().and_then(|key| operations.lookup::<T::Declaration>(&entry, key, &origin.identity));
+            let bound = Bound::<T> {
+                physical: Physical {
+                    resources: resources.clone(),
+                    operation: None,
+                    request,
+                    endpoints,
+                    _request: retention,
+                    stopped: false,
+                },
+                cached,
+                entry: entry.clone(),
+                operations: operations.clone(),
+                id,
+                control: Arc::downgrade(&control),
+                attempt: 0,
+                admission,
+                source: source.clone(),
+                grants: origin.grants.clone(),
+                preparation,
+            };
+            let mut prepared = super::binding::prepared(&entry, id, Box::new(bound));
+            let Some(key) = key else { return Ok(prepared) };
+            let registry = Arc::downgrade(&operations.registry);
+            prepared.completed = Some(Box::new(move |response| {
+                if source.check().is_ok()
+                    && let Some(registry) = registry.upgrade()
+                {
+                    registry.insert::<T::Declaration>(&entry, key.clone(), origin.identity.clone(), response.clone());
+                }
+            }));
+            Ok(prepared)
+        }),
     }
 }
 
 /* === Private Functions === */
-async fn guarded<O, E>(
-    operation: &str,
-    future: impl Future<Output = std::result::Result<O, E>>,
-) -> Result<O>
+async fn guarded<O, E>(operation: &str, future: impl Future<Output = std::result::Result<O, E>>) -> Result<O>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
     let mut future = std::pin::pin!(future);
-    std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
-            Ok(result) => result.map(|result| {
-                result.map_err(|source| Error::OperationFailed {
-                    operation: operation.to_owned(),
-                    source: Arc::new(source),
-                })
-            }),
-            Err(_) => std::task::Poll::Ready(Err(Error::OperationPanicked {
-                operation: operation.to_owned(),
-            })),
-        }
+    std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
+        Ok(result) => result
+            .map(|result| result.map_err(|source| Error::OperationFailed { operation: operation.to_owned(), source: Arc::new(source) })),
+        Err(_) => std::task::Poll::Ready(Err(Error::OperationPanicked { operation: operation.to_owned() })),
     })
     .await
 }

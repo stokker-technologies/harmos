@@ -53,14 +53,8 @@ impl SchemaInput {
     pub fn new(key: SchemaKey, graph: &Schema) -> Result<Self> {
         graph
             .prepare(&crate::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput {
-                field: "storage schema",
-                reason: "invalid finite schema graph",
-            })?;
-        Ok(Self {
-            key,
-            graph: graph.clone(),
-        })
+            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid finite schema graph" })?;
+        Ok(Self { key, graph: graph.clone() })
     }
 
     pub fn graph(&self) -> &Schema {
@@ -70,17 +64,12 @@ impl SchemaInput {
 impl MemorySize for SchemaInput {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.key.memory_size() - std::mem::size_of::<SchemaKey>()
-            + self
-                .graph
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<Schema>())
+            + self.graph.memory_size().saturating_sub(std::mem::size_of::<Schema>())
     }
 }
 impl MemorySize for SchemaInfo {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.position.memory_size()
-            - std::mem::size_of::<StorageCursor>()
-            + self.schema.memory_size()
+        std::mem::size_of::<Self>() + self.position.memory_size() - std::mem::size_of::<StorageCursor>() + self.schema.memory_size()
             - std::mem::size_of::<SchemaInput>()
     }
 }

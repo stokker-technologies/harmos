@@ -55,11 +55,7 @@ impl HarmosPath {
                 };
                 let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
 
-                return Self(if package == "dokime" {
-                    syn::parse_quote!(::#name::__harmos)
-                } else {
-                    syn::parse_quote!(::#name)
-                });
+                return Self(if package == "dokime" { syn::parse_quote!(::#name::__harmos) } else { syn::parse_quote!(::#name) });
             }
         }
 
@@ -86,16 +82,9 @@ pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
         return None;
     }
 
-    Some(
-        syn::parse2::<Path>(named.value.to_token_stream()).map_err(|error| {
-            Error::new(
-                named.value.span(),
-                format!(
-                    "`{KEY}` names the crate path generated code resolves harmos through: {error}"
-                ),
-            )
-        }),
-    )
+    Some(syn::parse2::<Path>(named.value.to_token_stream()).map_err(|error| {
+        Error::new(named.value.span(), format!("`{KEY}` names the crate path generated code resolves harmos through: {error}"))
+    }))
 }
 
 /* === Private Functions === */

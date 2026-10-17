@@ -49,9 +49,7 @@ pub fn value_at(x: &[f64], y: &[f64], at: f64) -> f64 {
         return y[length - 1];
     }
 
-    let above = x[..length]
-        .partition_point(|sample| *sample < at)
-        .clamp(1, length - 1);
+    let above = x[..length].partition_point(|sample| *sample < at).clamp(1, length - 1);
     let below = above - 1;
     let span = x[above] - x[below];
 
@@ -77,9 +75,7 @@ pub fn resample_uniform(x: &[f64], y: &[f64], step: f64) -> Vec<f64> {
     let span = x[length - 1] - x[0];
     let count = (span / step).floor() as usize + 1;
 
-    (0..count)
-        .map(|index| value_at(x, y, x[0] + index as f64 * step))
-        .collect()
+    (0..count).map(|index| value_at(x, y, x[0] + index as f64 * step)).collect()
 }
 
 #[must_use]
@@ -94,9 +90,7 @@ pub fn resample_count(values: &[f64], count: usize) -> Vec<f64> {
     let step = (values.len() - 1) as f64 / (count - 1) as f64;
     let axis: Vec<f64> = (0..values.len()).map(|index| index as f64).collect();
 
-    (0..count)
-        .map(|index| value_at(&axis, values, index as f64 * step))
-        .collect()
+    (0..count).map(|index| value_at(&axis, values, index as f64 * step)).collect()
 }
 
 #[must_use]
@@ -114,11 +108,7 @@ pub fn nearest(x: &[f64], at: f64) -> Option<usize> {
     }
 
     let below = above - 1;
-    Some(if at - x[below] <= x[above] - at {
-        below
-    } else {
-        above
-    })
+    Some(if at - x[below] <= x[above] - at { below } else { above })
 }
 
 /* === Private Functions === */

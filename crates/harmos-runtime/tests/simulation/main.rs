@@ -291,8 +291,6 @@ impl harmos_runtime::Message for Drawing {
     }
 }
 
-
-
 impl harmos_runtime::MemorySize for Drawing {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -512,8 +510,10 @@ impl IdleResident {
                 ..Default::default()
             },
         };
-        let resident =
-            Supervised::new(source, (|_: &harmos_runtime::services::Service<Bank>, _: Notice| {}) as fn(&harmos_runtime::services::Service<Bank>, Notice));
+        let resident = Supervised::new(
+            source,
+            (|_: &harmos_runtime::services::Service<Bank>, _: Notice| {}) as fn(&harmos_runtime::services::Service<Bank>, Notice),
+        );
         let managed = harmos_runtime::sidecar::Managed::new(resident, definition, Lanes::Open, capacity, NonZeroUsize::new(4096).unwrap())
             .expect("the frozen idle graph is valid");
         Self { managed }

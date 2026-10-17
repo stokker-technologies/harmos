@@ -52,9 +52,7 @@ pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
     let mut sizes = Vec::new();
     let mut memories = Vec::new();
     let mut reads = Vec::new();
-    let Item::Enum(item) = item else {
-        unreachable!("validated message shape")
-    };
+    let Item::Enum(item) = item else { unreachable!("validated message shape") };
     let name = &item.ident;
     for (index, variant) in item.variants.iter().enumerate() {
         let name = &variant.ident;
@@ -83,22 +81,14 @@ pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
         }
         let (pattern, value) = match fields {
             Fields::Unit => (quote!(#variant_name), quote!(#variant_name)),
-            Fields::Named(_) => (
-                quote!(#variant_name { #(#members: #bindings),* }),
-                quote!(#variant_name { #(#members: #decoded),* }),
-            ),
-            Fields::Unnamed(_) => (
-                quote!(#variant_name(#(#bindings),*)),
-                quote!(#variant_name(#(#decoded),*)),
-            ),
+            Fields::Named(_) => (quote!(#variant_name { #(#members: #bindings),* }), quote!(#variant_name { #(#members: #decoded),* })),
+            Fields::Unnamed(_) => (quote!(#variant_name(#(#bindings),*)), quote!(#variant_name(#(#decoded),*))),
         };
         let prefix = quote!(#sdk::__private::PostcardValue::write(&#index, bytes););
         let initial_size = quote!(#sdk::__private::PostcardValue::size(&#index));
         writes.push(quote!(#pattern => { #prefix #(#encoded)* }));
         sizes.push(quote!(#pattern => { let bytes = #initial_size; #(let bytes = bytes.saturating_add(#lengths);)* bytes }));
-        memories.push(
-            quote!(#index => { let bytes = ::std::mem::size_of::<Self>(); #(#memory)* Ok(bytes) }),
-        );
+        memories.push(quote!(#index => { let bytes = ::std::mem::size_of::<Self>(); #(#memory)* Ok(bytes) }));
         reads.push(quote!(#index => Ok(#value)));
     }
     let select = quote!(let variant: u32 = input.value()?;);

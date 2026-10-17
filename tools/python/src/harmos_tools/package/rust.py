@@ -38,6 +38,7 @@ from ..test import archive, preflight
 
 # === Public Functions === #
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
@@ -63,10 +64,16 @@ def main() -> None:
         output = ROOT / "target/package" / f"{package['name']}-{selected}.crate"
         output.unlink(missing_ok=True)
         crates.append(output)
-    produced = archive.native(ROOT, profile, "rust-package",
-                              [["cargo", "package", "--workspace", "--locked", "--no-verify"]], crates,
-                              locks=[ROOT / "Cargo.lock"], inputs=[ROOT / "Cargo.toml", *manifests],
-                              parents=stamp["producers"])
+    produced = archive.native(
+        ROOT,
+        profile,
+        "rust-package",
+        [["cargo", "package", "--workspace", "--locked", "--no-verify"]],
+        crates,
+        locks=[ROOT / "Cargo.lock"],
+        inputs=[ROOT / "Cargo.toml", *manifests],
+        parents=stamp["producers"],
+    )
     producers = [produced]
     assets = {}
     for source in crates:
@@ -87,18 +94,37 @@ def main() -> None:
         build = json.loads(receipt.read_text(encoding="utf-8"))
         outputs = [destination / artifact["producer"] / f"{artifact['name']}.harmos" for artifact in build["artifacts"]]
         result = destination / f"{name}.json"
-        command = [str(tool), "harmos", backend, "package", "--build-json", str(receipt),
-                   "--relocate-from", selectors["build_roots"][name], "--relocate-to", str(FIXTURES / "builds" / name),
-                   "--output", str(destination), "--json"]
-        packaged = archive.native(ROOT, profile, "package", [command], [*outputs, result],
-                                  locks=[ROOT / "Cargo.lock"], inputs=[tool, receipt, FIXTURES / "builds" / name],
-                                  parents=stamp["producers"], stdout={0: result})
+        command = [
+            str(tool),
+            "harmos",
+            backend,
+            "package",
+            "--build-json",
+            str(receipt),
+            "--relocate-from",
+            selectors["build_roots"][name],
+            "--relocate-to",
+            str(FIXTURES / "builds" / name),
+            "--output",
+            str(destination),
+            "--json",
+        ]
+        packaged = archive.native(
+            ROOT,
+            profile,
+            "package",
+            [command],
+            [*outputs, result],
+            locks=[ROOT / "Cargo.lock"],
+            inputs=[tool, receipt, FIXTURES / "builds" / name],
+            parents=stamp["producers"],
+            stdout={0: result},
+        )
         producers.append(packaged)
         for filename, expected in packaged["exports"].items():
             path = Path(filename)
             assets[path.relative_to(destination).as_posix()] = _asset(path, expected)
-    catalog = {"tree": stamp["tree"], "revision": stamp["revision"], "profile": profile,
-               "producers": producers, "assets": assets}
+    catalog = {"tree": stamp["tree"], "revision": stamp["revision"], "profile": profile, "producers": producers, "assets": assets}
     (destination / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
 
@@ -116,6 +142,7 @@ def _asset(path: Path, expected: str) -> dict:
     if actual != expected:
         raise RuntimeError(f"distribution bytes differ from their original producer: {path}")
     return {"sha256": expected, "bytes": path.stat().st_size}
+
 
 # === Entry Point === #
 

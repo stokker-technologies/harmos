@@ -39,10 +39,7 @@ const CLOSE: f64 = 1e-9;
 /* === Private Functions === */
 fn close(found: Option<f64>, expected: f64) {
     let found = found.expect("an answer");
-    assert!(
-        (found - expected).abs() <= CLOSE * expected.abs().max(1.0),
-        "{found} is not {expected}"
-    );
+    assert!((found - expected).abs() <= CLOSE * expected.abs().max(1.0), "{found} is not {expected}");
 }
 
 /* === Tests === */
@@ -167,15 +164,9 @@ fn predicates_bound_inclusively() {
 // merged, so agreement proves the streaming form matches the exact one.
 #[test]
 fn chunked_summaries_agree() {
-    let values: Vec<f64> = (0..97)
-        .map(|index| ((index * 37) % 23) as f64 * 1.5 - 11.0)
-        .chain([f64::NAN, f64::INFINITY])
-        .collect();
+    let values: Vec<f64> = (0..97).map(|index| ((index * 37) % 23) as f64 * 1.5 - 11.0).chain([f64::NAN, f64::INFINITY]).collect();
     let series = Series::new(&values);
-    let summary = values
-        .chunks(10)
-        .map(Summary::of)
-        .fold(Summary::new(), |held, next| held.merge(&next));
+    let summary = values.chunks(10).map(Summary::of).fold(Summary::new(), |held, next| held.merge(&next));
 
     assert_eq!(series.count(), summary.count());
     close(Some(series.sum()), summary.sum());

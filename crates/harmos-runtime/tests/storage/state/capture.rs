@@ -103,7 +103,9 @@ impl harmos_runtime::state::Transaction<u64> for Advance {
 }
 
 impl RecordProjection for Projection {
-    fn project<'a>(&'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
+    fn project<'a>(
+        &'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let bytes = serde_json::to_vec(entry).unwrap();
@@ -119,7 +121,9 @@ impl RecordProjection for Projection {
 }
 
 impl RecordProjection for IncrementalProjection {
-    fn project<'a>(&'a self, _: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
+    fn project<'a>(
+        &'a self, _: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let payload = vec![0; 100 * 1024];
@@ -539,7 +543,11 @@ async fn registration_stores_schema() {
         .register(
             "plugin",
             &key,
-            &harmos_runtime::schema::graph::Schema::from_declaration(Message::DEFINITION, &harmos_runtime::config::SchemaSettings::default()).unwrap(),
+            &harmos_runtime::schema::graph::Schema::from_declaration(
+                Message::DEFINITION,
+                &harmos_runtime::config::SchemaSettings::default(),
+            )
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -549,7 +557,11 @@ async fn registration_stores_schema() {
         .register(
             "plugin",
             &key,
-            &harmos_runtime::schema::graph::Schema::from_declaration(Message::DEFINITION, &harmos_runtime::config::SchemaSettings::default()).unwrap(),
+            &harmos_runtime::schema::graph::Schema::from_declaration(
+                Message::DEFINITION,
+                &harmos_runtime::config::SchemaSettings::default(),
+            )
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -558,7 +570,9 @@ async fn registration_stores_schema() {
     let mut reader = storage
         .query(harmos_runtime::storage::operations::Query {
             at: storage.cursor_saved(),
-            source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection { schema: Some(key.clone()) }),
+            source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
+                schema: Some(key.clone()),
+            }),
             transforms: Vec::new(),
             slice: harmos_runtime::storage::query::RowSlice::default(),
         })

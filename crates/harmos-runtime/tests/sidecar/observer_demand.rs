@@ -26,7 +26,9 @@ use super::operations::{Lanes, Managed};
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
 use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
-use harmos_runtime::sidecar::{Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor};
+use harmos_runtime::sidecar::{
+    Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor,
+};
 
 /* === Constants === */
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
@@ -141,7 +143,9 @@ impl harmos_runtime::Plugin for Producer {
     fn resources(&self) -> Arc<Resources> {
         self.resources.clone()
     }
-    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(
+        &self, table: &mut harmos_runtime::operations::WireTable<Supervisor>,
+    ) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {

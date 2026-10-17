@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Compiler Authoring Diagnostics
 
 /* === Modules === */
@@ -25,7 +24,6 @@ mod path;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 

@@ -18,9 +18,7 @@ use std::collections::VecDeque;
 // Local Imports
 use crate::operations::{Context, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::writes::{
-    BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt,
-};
+use crate::storage::writes::{BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -45,12 +43,8 @@ pub(crate) enum WriteKind {
 
 /* === Private Functions === */
 pub(crate) async fn exchange<C>(
-    storage: &StorageManager<C>,
-    ctx: &Context<'_>,
-    scope: Option<&crate::Identifier>,
-    endpoints: &mut (StreamInput<DataBatch>, StreamOutput<WriteReceipt>),
-    kind: WriteKind,
-    operation: &'static str,
+    storage: &StorageManager<C>, ctx: &Context<'_>, scope: Option<&crate::Identifier>,
+    endpoints: &mut (StreamInput<DataBatch>, StreamOutput<WriteReceipt>), kind: WriteKind, operation: &'static str,
 ) -> Result<WriteCompletion> {
     storage.retry_transient_persistence();
     let (input, output) = endpoints;

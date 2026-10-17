@@ -21,10 +21,8 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use crate::backend::{Data, Recovery, history};
-use harmos_storage::{
-    ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject,
-};
 use harmos_domain::{DefinitionId, Identified, Identifier, Message};
+use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject};
 
 /* === Constants === */
 
@@ -179,44 +177,23 @@ fn limit() -> NonZeroUsize {
 }
 
 fn document(status: &str) -> Document {
-    Document {
-        id: "document-1".into(),
-        status: status.into(),
-    }
+    Document { id: "document-1".into(), status: status.into() }
 }
 
 #[tokio::test]
 async fn numeric_keys_roundtrip() {
     let primary = Arc::new(Data::<NumericObjects>::with_catalog(history()));
-    let storage = StorageManager::<NumericObjects>::new(
-        StorageBackends {
-            primary,
-            state: Arc::new(Recovery::new(history())),
-        },
-        storage_settings(),
-    )
-    .unwrap();
+    let storage =
+        StorageManager::<NumericObjects>::new(StorageBackends { primary, state: Arc::new(Recovery::new(history())) }, storage_settings())
+            .unwrap();
     crate::fixture::start(&storage).await;
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
     storage.flush_until(&admitted.position).await.unwrap();
-    let found = storage
-        .read_object::<Counter>(
-            &42,
-            harmos_storage::ObjectVersion::Exact(admitted.version.clone()),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+    let found = storage.read_object::<Counter>(&42, harmos_storage::ObjectVersion::Exact(admitted.version.clone())).await.unwrap().unwrap();
     assert_eq!(found.value, object);
     assert_eq!(found.version, admitted.version);
-    assert!(
-        storage
-            .read_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage.read_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,).await.unwrap().is_none());
     storage.close().await.unwrap();
 }
 
@@ -226,19 +203,8 @@ fn catalog_projects_schema() {
     <() as ObjectCatalog>::validate().unwrap();
     assert!(<() as ObjectCatalog>::definitions().as_ref().is_empty());
     let definitions = Objects::definitions();
-    assert_eq!(
-        definitions
-            .as_ref()
-            .iter()
-            .map(|d| d.schema().unwrap().version.get())
-            .collect::<Vec<_>>(),
-        [2, 1]
-    );
-    assert!(
-        (definitions.as_ref()[0].declaration().fields)()
-            .iter()
-            .any(|field| field.name == "status")
-    );
+    assert_eq!(definitions.as_ref().iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(), [2, 1]);
+    assert!((definitions.as_ref()[0].declaration().fields)().iter().any(|field| field.name == "status"));
     assert!(Ambiguous::validate().is_err());
     assert!(Invalid::validate().is_err());
 }
@@ -250,29 +216,17 @@ fn updates_keep_identity() {
     assert_eq!(first.schema, second.schema);
     assert_eq!(first.item, second.item);
     assert_ne!(first.payload, second.payload);
-    assert_eq!(
-        Objects::decode::<Document>(&second, limit()).unwrap(),
-        document("finished")
-    );
-    assert_eq!(
-        RenamedVariants::encode(&document("finished"), limit()).unwrap(),
-        second
-    );
+    assert_eq!(Objects::decode::<Document>(&second, limit()).unwrap(), document("finished"));
+    assert_eq!(RenamedVariants::encode(&document("finished"), limit()).unwrap(), second);
     Objects::validate_value(&second, limit()).unwrap();
 }
 
 #[test]
 fn decode_requires_version() {
-    let old = LegacyDocument {
-        id: "document-1".into(),
-        status: "archived".into(),
-    };
+    let old = LegacyDocument { id: "document-1".into(), status: "archived".into() };
     let value = Objects::encode(&old, limit()).unwrap();
     Objects::validate_value(&value, limit()).unwrap();
-    assert_eq!(
-        Objects::decode::<LegacyDocument>(&value, limit()).unwrap(),
-        old
-    );
+    assert_eq!(Objects::decode::<LegacyDocument>(&value, limit()).unwrap(), old);
     assert!(Objects::decode::<Document>(&value, limit()).is_err());
     let mut unknown = value;
     unknown.schema.version = std::num::NonZeroU32::new(3).unwrap();
@@ -285,11 +239,7 @@ fn forged_values_refused() {
     for case in 0..4 {
         let mut value = original.clone();
         match case {
-            0 => {
-                value.item =
-                    harmos_storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap())
-                        .unwrap()
-            }
+            0 => value.item = harmos_storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap()).unwrap(),
             1 => value.schema.id = Identifier::new("other").unwrap(),
             2 => value.payload = vec![0xff],
             _ => value.payload = document("finished").encode_to_vec(),
@@ -302,10 +252,7 @@ fn forged_values_refused() {
             assert!(Objects::decode::<Document>(&value, limit()).is_err());
         }
     }
-    let invalid = Document {
-        id: String::new(),
-        status: "new".into(),
-    };
+    let invalid = Document { id: String::new(), status: "new".into() };
     assert!(Objects::encode(&invalid, limit()).is_err());
 }
 
@@ -325,13 +272,8 @@ fn payload_limit_bounds() {
 fn ambiguous_catalog_refused() {
     let primary = Arc::new(Data::<Ambiguous>::with_catalog(history()));
     let recovery = Arc::new(Recovery::new(history()));
-    let result = StorageManager::<Ambiguous>::new(
-        StorageBackends {
-            primary: primary.clone(),
-            state: recovery.clone(),
-        },
-        storage_settings(),
-    );
+    let result =
+        StorageManager::<Ambiguous>::new(StorageBackends { primary: primary.clone(), state: recovery.clone() }, storage_settings());
     assert!(
         matches!(&result, Err(harmos_storage::Error::Domain(harmos_domain::Error::InvalidInput { field: "object catalog", .. }))),
         "{:?}",

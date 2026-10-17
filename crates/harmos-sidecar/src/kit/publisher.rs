@@ -18,10 +18,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{
-    CallError, ObserverContext, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
-    PublicationError, Supervisor,
-};
+use super::{CallError, ObserverContext, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
 use harmos_domain::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */
@@ -69,19 +66,13 @@ impl From<PublishError> for harmos_domain::Refusal {
 
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
-        Self {
-            supervisor: self.supervisor.clone(),
-            _plugin: PhantomData,
-        }
+        Self { supervisor: self.supervisor.clone(), _plugin: PhantomData }
     }
 }
 
 impl Supervisor {
     pub fn publisher<P: Declared>(&self) -> Publisher<P> {
-        Publisher {
-            supervisor: self.clone(),
-            _plugin: PhantomData,
-        }
+        Publisher { supervisor: self.clone(), _plugin: PhantomData }
     }
 }
 
@@ -97,34 +88,20 @@ impl<P: Declared> Publisher<P> {
         self.publish_on_context::<S>(row, None).await
     }
 
-    pub async fn publish_on_context<S: StreamSpec>(
-        &self,
-        row: &S::Row,
-        context: Option<&str>,
-    ) -> Result<(), PublishError>
+    pub async fn publish_on_context<S: StreamSpec>(&self, row: &S::Row, context: Option<&str>) -> Result<(), PublishError>
     where
         S::Row: Message,
     {
         Self::declared::<S>()?;
         let stamps = [self.supervisor.now()];
-        self.supervisor
-            .publication::<S>(std::slice::from_ref(row), &stamps, context)
-            .await
+        self.supervisor.publication::<S>(std::slice::from_ref(row), &stamps, context).await
     }
 
     pub fn batch<S: StreamSpec>(&self) -> Batch<S> {
-        Batch {
-            rows: Vec::new(),
-            stamps: Vec::new(),
-            latest: None,
-            clock: self.supervisor.clock(),
-        }
+        Batch { rows: Vec::new(), stamps: Vec::new(), latest: None, clock: self.supervisor.clock() }
     }
 
-    pub async fn publish_batch_on<S: StreamSpec>(
-        &self,
-        batch: &Batch<S>,
-    ) -> Result<(), PublishError>
+    pub async fn publish_batch_on<S: StreamSpec>(&self, batch: &Batch<S>) -> Result<(), PublishError>
     where
         S::Row: Message,
     {
@@ -136,25 +113,16 @@ impl<P: Declared> Publisher<P> {
     // rows). Each call answers once the host's ingest has taken in every row
     // published before it on the stream, so no row is dropped unread. Rows
     // before a refused row stay published.
-    pub async fn publish_batch_on_context<S: StreamSpec>(
-        &self,
-        batch: &Batch<S>,
-        context: Option<&str>,
-    ) -> Result<(), PublishError>
+    pub async fn publish_batch_on_context<S: StreamSpec>(&self, batch: &Batch<S>, context: Option<&str>) -> Result<(), PublishError>
     where
         S::Row: Message,
     {
         Self::declared::<S>()?;
-        self.supervisor
-            .publication::<S>(&batch.rows, &batch.stamps, context)
-            .await
+        self.supervisor.publication::<S>(&batch.rows, &batch.stamps, context).await
     }
 
     fn declared<S: StreamSpec>() -> Result<(), PublicationError> {
-        if P::STREAMS
-            .iter()
-            .any(|entry| entry.id == S::ID && entry.schema == S::VERSION)
-        {
+        if P::STREAMS.iter().any(|entry| entry.id == S::ID && entry.schema == S::VERSION) {
             Ok(())
         } else {
             Err(PublicationError::Undeclared { stream: S::ID })
@@ -206,18 +174,11 @@ impl<R, P: Declared> ObserverHost<R> for Publisher<P> {
     }
 }
 
-impl<R: Sync, V: StreamSpec<Row = V> + harmos_domain::schema::Described + Message, P: Declared>
-    ObserverPublisher<R, V> for Publisher<P>
-{
+impl<R: Sync, V: StreamSpec<Row = V> + harmos_domain::schema::Described + Message, P: Declared> ObserverPublisher<R, V> for Publisher<P> {
     type Error = PublishError;
-    const STREAM: Option<harmos_domain::inventory::publications::Entry> =
-        Some(harmos_domain::inventory::publications::Entry::of::<V>());
+    const STREAM: Option<harmos_domain::inventory::publications::Entry> = Some(harmos_domain::inventory::publications::Entry::of::<V>());
 
-    async fn publish(
-        &self,
-        _: &ObserverContext<'_, R, Self>,
-        value: V,
-    ) -> Result<(), PublishError> {
+    async fn publish(&self, _: &ObserverContext<'_, R, Self>, value: V) -> Result<(), PublishError> {
         self.publish_on::<V>(&value).await
     }
 }
@@ -228,11 +189,7 @@ where
 {
     type Error = PublishError;
 
-    async fn publish_on(
-        &self,
-        _: &ObserverContext<'_, R, Self>,
-        row: &S::Row,
-    ) -> Result<(), PublishError> {
+    async fn publish_on(&self, _: &ObserverContext<'_, R, Self>, row: &S::Row) -> Result<(), PublishError> {
         Publisher::publish_on::<S>(self, row).await
     }
 }
@@ -259,9 +216,7 @@ mod tests {
 
     #[test]
     fn clock_never_regresses() {
-        let mut batch = Batch::<Samples> {
-            rows: Vec::new(), stamps: Vec::new(), latest: None, clock: || None,
-        };
+        let mut batch = Batch::<Samples> { rows: Vec::new(), stamps: Vec::new(), latest: None, clock: || None };
         batch.push(0);
         batch.clock = || Some(100);
         batch.push(1);
@@ -283,7 +238,9 @@ mod tests {
     #[test]
     fn explicit_source_stamps() {
         let mut batch = Batch::<Samples> {
-            rows: Vec::new(), stamps: Vec::new(), latest: None,
+            rows: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
             clock: || panic!("explicit stamps do not consult the kit clock"),
         };
         batch.push_at(1, 100);

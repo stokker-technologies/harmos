@@ -16,18 +16,11 @@ pub(crate) mod host;
 /* === Re-Exports === */
 pub use harmos_guest::operations;
 
-pub use harmos_guest::operations::{
-    CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
-};
+pub use harmos_guest::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 
-pub use harmos_guest::{
-    ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, inventory,
-    reserved,
-};
+pub use harmos_guest::{ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, inventory, reserved};
 
-pub use harmos_guest::{
-    Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT, export_plugin,
-};
+pub use harmos_guest::{Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT, export_plugin};
 
 pub use collection::{registrations, validate};
 

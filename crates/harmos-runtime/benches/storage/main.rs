@@ -8,10 +8,7 @@
  */
 
 /* === Modules === */
-#[allow(
-    dead_code,
-    reason = "Reuse the controlled backend without its fault scenarios"
-)]
+#[allow(dead_code, reason = "Reuse the controlled backend without its fault scenarios")]
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 mod contention;
@@ -116,11 +113,7 @@ impl harmos_runtime::state::Transaction<State> for Advance {
     }
 
     fn records(&self, _: &State, output: &mut harmos_runtime::state::Records) {
-        output
-            .push(Observed {
-                payload: self.payload.clone(),
-            })
-            .unwrap();
+        output.push(Observed { payload: self.payload.clone() }).unwrap();
     }
 
     fn apply(&self, state: &mut State) {
@@ -130,9 +123,7 @@ impl harmos_runtime::state::Transaction<State> for Advance {
 
 impl RecordProjection for Projection {
     fn project<'a>(
-        &'a self,
-        entry: &'a Envelope<&serde_json::Value>,
-        output: &'a mut ProjectedRecords<'_>,
+        &'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             let payload = serde_json::to_vec(entry).unwrap();
@@ -147,25 +138,13 @@ impl RecordProjection for Projection {
 
 /* === Private Functions === */
 fn main() {
-    println!(
-        "{}",
-        serde_json::json!({"kind":"storage_benchmark_provenance", "provenance": metrics::provenance()})
-    );
-    let executor = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
+    println!("{}", serde_json::json!({"kind":"storage_benchmark_provenance", "provenance": metrics::provenance()}));
+    let executor = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 
     executor.block_on(async {
         for repetition in 0..3 {
             for count in [500, 1_000, 2_000] {
-                for mode in [
-                    "direct",
-                    "direct_grouped",
-                    "journal",
-                    "captured_record",
-                    "transaction",
-                ] {
+                for mode in ["direct", "direct_grouped", "journal", "captured_record", "transaction"] {
                     measure(mode, count, Some(repetition)).await;
                 }
             }
@@ -176,13 +155,7 @@ fn main() {
     let mut group = criterion.benchmark_group("storage");
     group.sample_size(10);
     for count in [500, 1_000, 2_000] {
-        for mode in [
-            "direct",
-            "direct_grouped",
-            "journal",
-            "captured_record",
-            "transaction",
-        ] {
+        for mode in ["direct", "direct_grouped", "journal", "captured_record", "transaction"] {
             group.bench_with_input(BenchmarkId::new(mode, count), &count, |b, &count| {
                 b.iter_custom(|iterations| {
                     executor.block_on(async {
@@ -223,22 +196,11 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
         },
         ..backend::storage_settings()
     };
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: recovery.clone(),
-        },
-        config,
-    )
-    .unwrap();
-    let mut builder = Runtime::<Model>::builder(State::default(), ())
-        .register(Transactions::catalog())
-        .register(Records::catalog())
-        .tail(1);
+    let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
+    let mut builder =
+        Runtime::<Model>::builder(State::default(), ()).register(Transactions::catalog()).register(Records::catalog()).tail(1);
     if matches!(mode, "captured_record" | "transaction") {
-        builder = builder
-            .managed_state(limits(1, 64 * 1_024))
-            .store_records(limits(1, 64 * 1_024), Projection);
+        builder = builder.managed_state(limits(1, 64 * 1_024)).store_records(limits(1, 64 * 1_024), Projection);
     }
     let runtime = builder.runtime_with_storage(&storage).await.unwrap();
     let schema = schema();
@@ -261,16 +223,9 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     recovery.control.flushes.lock().unwrap().clear();
 
     let payload = "x".repeat(PAYLOAD_BYTES);
-    let encoded = harmos_runtime::Message::encode_to_vec(&Text {
-        value: payload.clone(),
-    });
-    let items: Vec<_> = (0..count)
-        .map(|n| Identifier::new(format!("item-{n}")).unwrap())
-        .collect();
-    let inputs: Vec<_> = items
-        .iter()
-        .map(|item| record(&schema, item, &encoded))
-        .collect();
+    let encoded = harmos_runtime::Message::encode_to_vec(&Text { value: payload.clone() });
+    let items: Vec<_> = (0..count).map(|n| Identifier::new(format!("item-{n}")).unwrap()).collect();
+    let inputs: Vec<_> = items.iter().map(|item| record(&schema, item, &encoded)).collect();
     STATE_CLONES.store(0, Ordering::Relaxed);
     let begin = Instant::now();
     let mut halves = Vec::new();
@@ -282,28 +237,13 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
             for input in part {
                 match mode {
                     "direct" => {
-                        storage
-                            .write_records(std::slice::from_ref(input))
-                            .await
-                            .unwrap();
+                        storage.write_records(std::slice::from_ref(input)).await.unwrap();
                     }
                     "transaction" => {
-                        runtime
-                            .state
-                            .commit(Advance {
-                                payload: payload.clone(),
-                            })
-                            .await
-                            .unwrap();
+                        runtime.state.commit(Advance { payload: payload.clone() }).await.unwrap();
                     }
                     _ => {
-                        runtime
-                            .records
-                            .publish(Observed {
-                                payload: payload.clone(),
-                            })
-                            .await
-                            .unwrap();
+                        runtime.records.publish(Observed { payload: payload.clone() }).await.unwrap();
                     }
                 }
             }
@@ -323,15 +263,13 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     let mut reader = storage
         .query(harmos_runtime::storage::operations::Query {
             at: storage.cursor_saved(),
-            source: harmos_runtime::storage::query::Source::Records(
-                harmos_runtime::storage::query::RecordSelection {
-                    schema,
-                    scope: None,
-                    item: None,
-                    source_start: None,
-                    source_end: None,
-                },
-            ),
+            source: harmos_runtime::storage::query::Source::Records(harmos_runtime::storage::query::RecordSelection {
+                schema,
+                scope: None,
+                item: None,
+                source_start: None,
+                source_end: None,
+            }),
             transforms: Vec::new(),
             slice: harmos_runtime::storage::query::RowSlice::default(),
         })
@@ -369,9 +307,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     storage.close().await.unwrap();
     runtime.stop().await.unwrap();
 
-    Duration::from_secs_f64(
-        (admission_ms + flush_data_ms + flush_recovery_ms + replay_ms) / 1_000.0,
-    )
+    Duration::from_secs_f64((admission_ms + flush_data_ms + flush_recovery_ms + replay_ms) / 1_000.0)
 }
 
 fn nonzero(value: usize) -> NonZeroUsize {
@@ -379,10 +315,7 @@ fn nonzero(value: usize) -> NonZeroUsize {
 }
 
 fn limits(rows: usize, bytes: usize) -> ReadLimits {
-    ReadLimits {
-        rows: nonzero(rows),
-        bytes: nonzero(bytes),
-    }
+    ReadLimits { rows: nonzero(rows), bytes: nonzero(bytes) }
 }
 
 fn schema() -> SchemaKey {
@@ -394,14 +327,7 @@ fn schema() -> SchemaKey {
 }
 
 fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordWrite<'a> {
-    RecordWrite {
-        schema,
-        scope: None,
-        item,
-        source: None,
-        source_time: None,
-        payload,
-    }
+    RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
 }
 
 /* === Tests === */

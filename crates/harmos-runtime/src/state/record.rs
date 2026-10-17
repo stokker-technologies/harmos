@@ -10,9 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_domain::state::{
-    CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records,
-};
+pub use harmos_domain::state::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records};
 
 /* === Imports === */
 use super::envelope::Recorded;
@@ -30,9 +28,7 @@ pub(crate) struct PreparedCommit<A: Application> {
 
 /* === Public Functions === */
 pub(crate) fn prepare<A: Application>(
-    transaction: &A::Transaction,
-    state: &A::State,
-    catalog: &super::dispatch::Dispatch<A, crate::storage::Payload<A>>,
+    transaction: &A::Transaction, state: &A::State, catalog: &super::dispatch::Dispatch<A, crate::storage::Payload<A>>,
 ) -> Result<PreparedCommit<A>, PreparationError> {
     let (prepared, members) = Records::collect(transaction, state)?;
     let records = members
@@ -53,8 +49,5 @@ pub(crate) fn prepare<A: Application>(
             Ok((Recorded::Record(value), member))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(PreparedCommit {
-        transaction: prepared,
-        records,
-    })
+    Ok(PreparedCommit { transaction: prepared, records })
 }

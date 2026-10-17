@@ -41,11 +41,7 @@ pub mod __private {
     pub extern crate serde_json;
     pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
 
-    pub fn stream_definition<S: StreamRow>(
-        id: &'static str,
-        version: u32,
-        window: usize,
-    ) -> crate::streams::Definition {
+    pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {
         crate::streams::Definition::declared::<S>(id, version, window)
             .batching(S::batch_definition())
             .presentation(S::metadata(), S::row_metadata())
@@ -53,8 +49,8 @@ pub mod __private {
 
     pub use crate::inventory as PluginInventory;
     pub use crate::plugin::{
-        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
-        Requirement as PluginRequirement, Requirements as PluginRequirements,
+        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
+        Requirements as PluginRequirements,
     };
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
@@ -64,9 +60,7 @@ pub mod __private {
 
     pub use crate::answer::Answer;
     pub use crate::message::MessageError;
-    pub use crate::message::allocation::{
-        add as decoding_add, multiply as decoding_multiply, vector as decoding_vector,
-    };
+    pub use crate::message::allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
     pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
     pub use crate::state::{Catalogued, Mutual};
 }
@@ -77,10 +71,7 @@ pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};
 pub use failure::Failure;
-pub use identity::{
-    DefinitionId, Identified, Requirement, artifact_subset, qualified, qualified_len, qualify,
-    stream_subset,
-};
+pub use identity::{DefinitionId, Identified, Requirement, artifact_subset, qualified, qualified_len, qualify, stream_subset};
 pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
 pub use metadata::{Identifier, IdentifierError, Metadata};
@@ -90,8 +81,7 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    catalog, listener, message, observer, operation, plugin, record, records, stream, streams,
-    transaction, transactions,
+    catalog, listener, message, observer, operation, plugin, record, records, stream, streams, transaction, transactions,
 };
 pub use message::{MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use presentation::{RowMetadata, StreamField};

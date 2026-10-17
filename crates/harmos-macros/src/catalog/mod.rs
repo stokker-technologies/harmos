@@ -122,18 +122,7 @@ fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<Token
     } else {
         TokenStream::new()
     };
-    let behavior = state
-        .map(|state| {
-            behavior(
-                &name,
-                &visibility,
-                &members,
-                state,
-                closing.error.as_ref(),
-                harmos,
-            )
-        })
-        .unwrap_or_default();
+    let behavior = state.map(|state| behavior(&name, &visibility, &members, state, closing.error.as_ref(), harmos)).unwrap_or_default();
 
     Ok(quote! {
         #[#harmos::catalog(harmos_path = #harmos)]
@@ -146,13 +135,7 @@ fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<Token
     })
 }
 
-fn crossing(
-    name: &Ident,
-    visibility: &syn::Visibility,
-    members: &[Member],
-    state: Option<&Path>,
-    harmos: &HarmosPath,
-) -> TokenStream {
+fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: Option<&Path>, harmos: &HarmosPath) -> TokenStream {
     let identities = members.iter().map(|member| {
         let variant = &member.name;
         let definition = &member.definition;
@@ -229,11 +212,13 @@ fn crossing(
             }
         },
     };
-    let record_catalog = state.is_none().then(|| quote! {
-        impl #harmos::state::RecordCatalog for #name {
-            fn restore(id: &#harmos::DefinitionId, version: u32, payload: &#harmos::__private::serde_json::Value)
-                -> ::core::result::Result<::core::option::Option<Self>, #harmos::__private::serde_json::Error> {
-                Self::restore(id, version, payload)
+    let record_catalog = state.is_none().then(|| {
+        quote! {
+            impl #harmos::state::RecordCatalog for #name {
+                fn restore(id: &#harmos::DefinitionId, version: u32, payload: &#harmos::__private::serde_json::Value)
+                    -> ::core::result::Result<::core::option::Option<Self>, #harmos::__private::serde_json::Error> {
+                    Self::restore(id, version, payload)
+                }
             }
         }
     });
@@ -268,25 +253,13 @@ fn crossing(
 }
 
 fn behavior(
-    name: &Ident,
-    visibility: &syn::Visibility,
-    members: &[Member],
-    state: &Path,
-    error: Option<&Path>,
-    harmos: &HarmosPath,
+    name: &Ident, visibility: &syn::Visibility, members: &[Member], state: &Path, error: Option<&Path>, harmos: &HarmosPath,
 ) -> TokenStream {
     let aggregated = Ident::new(&format!("{name}Error"), name.span());
     let (refusal, declaration, wrap): (TokenStream, TokenStream, Vec<TokenStream>) = match error {
         // The application aggregates its own refusals, so every variant's error
         // travels in through the conversion the application declared.
-        Some(named) => (
-            quote!(#named),
-            quote!(),
-            members
-                .iter()
-                .map(|_| quote!(::core::convert::Into::into))
-                .collect(),
-        ),
+        Some(named) => (quote!(#named), quote!(), members.iter().map(|_| quote!(::core::convert::Into::into)).collect()),
         None => (
             quote!(#aggregated),
             aggregate(&aggregated, visibility, members, state, harmos),
@@ -352,13 +325,7 @@ fn behavior(
     }
 }
 
-fn aggregate(
-    aggregated: &Ident,
-    visibility: &syn::Visibility,
-    members: &[Member],
-    state: &Path,
-    harmos: &HarmosPath,
-) -> TokenStream {
+fn aggregate(aggregated: &Ident, visibility: &syn::Visibility, members: &[Member], state: &Path, harmos: &HarmosPath) -> TokenStream {
     let variants = members.iter().map(|member| {
         let variant = &member.name;
         let definition = &member.definition;
@@ -414,13 +381,7 @@ fn inverses(name: &Ident, members: &[Member], state: &Path) -> TokenStream {
     }
 }
 
-fn registration(
-    name: &Ident,
-    visibility: &syn::Visibility,
-    members: &[Member],
-    state: Option<&Path>,
-    harmos: &HarmosPath,
-) -> TokenStream {
+fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: Option<&Path>, harmos: &HarmosPath) -> TokenStream {
     let declared = members.iter().map(|member| {
         let definition = &member.definition;
 
@@ -504,11 +465,7 @@ fn closing(attribute: TokenStream) -> Result<Closing, Error> {
         }
     }
 
-    Ok(Closing {
-        state,
-        error,
-        harmos: HarmosPath::resolve(harmos_path),
-    })
+    Ok(Closing { state, error, harmos: HarmosPath::resolve(harmos_path) })
 }
 
 fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
@@ -523,22 +480,13 @@ fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
             ));
         };
         let [field] = &fields.unnamed.iter().collect::<Vec<_>>()[..] else {
-            return Err(Error::new(
-                variant.span(),
-                "a catalog variant wraps exactly one definition type",
-            ));
+            return Err(Error::new(variant.span(), "a catalog variant wraps exactly one definition type"));
         };
-        members.push(Member {
-            name: variant.ident.clone(),
-            definition: field.ty.clone(),
-        });
+        members.push(Member { name: variant.ident.clone(), definition: field.ty.clone() });
     }
 
     if members.is_empty() {
-        return Err(Error::new(
-            catalog.span(),
-            "a catalog declares at least one definition",
-        ));
+        return Err(Error::new(catalog.span(), "a catalog declares at least one definition"));
     }
 
     Ok(members)

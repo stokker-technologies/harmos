@@ -21,14 +21,14 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Local Imports
 use super::cases::Text;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 use harmos_runtime::operations::{Context, Operation, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Requirement, Router,
 };
 use harmos_runtime::{Error, Message, Result, operations::OperationManager};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -99,7 +99,8 @@ impl harmos_runtime::operations::Operation for CorePublication {
         Ok(Self(owner))
     }
     async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, _request: &mut harmos_runtime::operations::streams::Publish, _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, _request: &mut harmos_runtime::operations::streams::Publish,
+        _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
@@ -113,10 +114,6 @@ impl harmos_runtime::operations::Operation for CorePublication {
         result.map(::core::convert::Into::into)
     }
 }
-
-
-
-
 
 impl From<&str> for Control {
     fn from(value: &str) -> Self {

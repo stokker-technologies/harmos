@@ -43,10 +43,7 @@ pub(super) enum Read<T> {
 /// The limit covers every byte written, including the envelope and newline.
 pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
     let json = serde_json::to_vec(value).map_err(json)?;
-    let length = json
-        .len()
-        .checked_add(OVERHEAD)
-        .ok_or_else(|| invalid("state size overflow"))?;
+    let length = json.len().checked_add(OVERHEAD).ok_or_else(|| invalid("state size overflow"))?;
     if length > maximum {
         return Err(invalid("state record exceeds configured storage size"));
     }
@@ -64,30 +61,19 @@ pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>>
 }
 
 /// A newline is the commit delimiter; malformed complete lines are never skipped.
-pub(super) fn write<T: Serialize>(
-    writer: &mut impl Write,
-    value: &T,
-    maximum: usize,
-) -> Result<()> {
+pub(super) fn write<T: Serialize>(writer: &mut impl Write, value: &T, maximum: usize) -> Result<()> {
     let line = encode(value, maximum)?;
     writer.write_all(&line).map_err(io)
 }
 
 /// Reads at most one configured record, envelope included.
 /// An incomplete tail is distinguished from corruption in a committed line.
-pub(super) fn read<T: DeserializeOwned>(
-    reader: &mut impl BufRead,
-    maximum: usize,
-) -> Result<Read<T>> {
+pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usize) -> Result<Read<T>> {
     let mut line = Vec::new();
     loop {
         let available = reader.fill_buf().map_err(io)?;
         if available.is_empty() {
-            return Ok(if line.is_empty() {
-                Read::End
-            } else {
-                Read::Incomplete
-            });
+            return Ok(if line.is_empty() { Read::End } else { Read::Incomplete });
         }
         let complete = available.iter().position(|byte| *byte == b'\n');
         let count = complete.map_or(available.len(), |index| index + 1);
@@ -139,18 +125,11 @@ fn json(error: serde_json::Error) -> Error {
 }
 
 pub(super) fn corrupt(reason: &'static str) -> Error {
-    Error::backend(
-        "read state file",
-        BackendFailure::Corrupt,
-        std::io::Error::new(std::io::ErrorKind::InvalidData, reason),
-    )
+    Error::backend("read state file", BackendFailure::Corrupt, std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
 }
 
 pub(super) fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "state file",
-        reason,
-    }
+    Error::InvalidInput { field: "state file", reason }
 }
 
 /* === Tests === */
@@ -163,18 +142,10 @@ mod tests {
         let mut bytes = Vec::new();
         write(&mut bytes, &vec![1u8, 2, 3], 128).unwrap();
         let mut input = bytes.as_slice();
-        assert!(
-            matches!(read::<Vec<u8>>(&mut input, 128).unwrap(), Read::Value(value) if value == [1, 2, 3])
-        );
-        assert!(matches!(
-            read::<Vec<u8>>(&mut input, 128).unwrap(),
-            Read::End
-        ));
+        assert!(matches!(read::<Vec<u8>>(&mut input, 128).unwrap(), Read::Value(value) if value == [1, 2, 3]));
+        assert!(matches!(read::<Vec<u8>>(&mut input, 128).unwrap(), Read::End));
         let mut truncated = &bytes[..bytes.len() - 1];
-        assert!(matches!(
-            read::<Vec<u8>>(&mut truncated, 128).unwrap(),
-            Read::Incomplete
-        ));
+        assert!(matches!(read::<Vec<u8>>(&mut truncated, 128).unwrap(), Read::Incomplete));
         bytes[1] = b'9';
         assert!(read::<Vec<u8>>(&mut bytes.as_slice(), 128).is_err());
     }

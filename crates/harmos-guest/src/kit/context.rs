@@ -21,23 +21,14 @@ use super::UNKNOWN;
 
 /* === Constants === */
 #[cfg(target_arch = "wasm32")]
-static CHILD: fn(Vec<u8>) -> Child =
-    |payload| Box::pin(super::plugin::__bindings::harmos::guest::operation_context::child(payload));
+static CHILD: fn(Vec<u8>) -> Child = |payload| Box::pin(super::plugin::__bindings::harmos::guest::operation_context::child(payload));
 
 /* === Macros === */
 
 /* === Type Aliases === */
 #[cfg(target_arch = "wasm32")]
-type Child = std::pin::Pin<
-    Box<
-        dyn std::future::Future<
-                Output = Result<
-                    Vec<u8>,
-                    super::plugin::__bindings::harmos::guest::capabilities::Refusal,
-                >,
-            >,
-    >,
->;
+type Child =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, super::plugin::__bindings::harmos::guest::capabilities::Refusal>>>>;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -54,11 +45,7 @@ pub struct Context {
 /* === Implementations === */
 impl harmos_sdk::plugin::Context for Context {
     fn with_generation(&self, token: [u8; 32]) -> Self {
-        Self {
-            context: self.context,
-            generation_context: Some(token),
-            call: self.call.clone(),
-        }
+        Self { context: self.context, generation_context: Some(token), call: self.call.clone() }
     }
 }
 
@@ -67,10 +54,7 @@ impl Context {
         &self.call
     }
 
-    pub fn with_value<T: crate::operations::ContextValue>(
-        &self,
-        value: T,
-    ) -> Result<Self, crate::operations::ContextError> {
+    pub fn with_value<T: crate::operations::ContextValue>(&self, value: T) -> Result<Self, crate::operations::ContextError> {
         let mut child = self.clone();
         child.call = std::sync::Arc::new(self.call.with_value(value)?);
         Ok(child)
@@ -78,10 +62,7 @@ impl Context {
 
     pub(super) fn calling_context(&self) -> Result<[u8; 32], crate::OperationRefusal> {
         if self.context.is_none() && self.generation_context.is_none() {
-            return Err(crate::OperationRefusal::new(
-                UNKNOWN,
-                "no guest calling context",
-            ));
+            return Err(crate::OperationRefusal::new(UNKNOWN, "no guest calling context"));
         }
         Ok(self.context.unwrap_or([0; 32]))
     }

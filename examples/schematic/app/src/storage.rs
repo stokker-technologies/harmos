@@ -39,19 +39,14 @@ use schematic_storage::{Jsonl, JsonlStreams};
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn recordings(
-    assembly: Builder<SchematicEditor>,
-    config: &Settings,
-) -> Result<Builder<SchematicEditor>, io::Error> {
+pub fn recordings(assembly: Builder<SchematicEditor>, config: &Settings) -> Result<Builder<SchematicEditor>, io::Error> {
     let recordings = JsonlStreams::<SchematicEditor>::open(config.recordings())?;
     let recordings = recordings.select::<NetVoltage>();
     Ok(assembly.attach_streams(recordings))
 }
 
 pub fn attach(
-    assembly: Builder<SchematicEditor>,
-    recovery: Jsonl<SchematicEditor>,
-    config: &Settings,
+    assembly: Builder<SchematicEditor>, recovery: Jsonl<SchematicEditor>, config: &Settings,
 ) -> Result<Builder<SchematicEditor>, io::Error> {
     let recovery = recovery.syncing_every(config.journal_sync_entries.get());
     let assembly = assembly.recover(recovery);

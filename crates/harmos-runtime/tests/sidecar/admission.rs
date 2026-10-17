@@ -69,11 +69,7 @@ impl harmos_runtime::operations::lifecycle::Policy for Program {
 impl harmos_runtime::Plugin for Program {
     fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
         let marks = current();
-        let catalog = if marks.seen("catalog-changed") {
-            "changed"
-        } else {
-            "first"
-        };
+        let catalog = if marks.seen("catalog-changed") { "changed" } else { "first" };
         registrar.register("fixture", 1, &catalog)?;
         registrar.register("unknown", 2, &vec![3, 4])?;
         marks.mark("registered");
@@ -125,11 +121,7 @@ impl harmos_runtime::Plugin for Program {
 
 /* === Private Functions === */
 fn current() -> Arc<Witness> {
-    CURRENT
-        .lock()
-        .expect("the current witness is never poisoned")
-        .clone()
-        .expect("an admission story installs its witness")
+    CURRENT.lock().expect("the current witness is never poisoned").clone().expect("an admission story installs its witness")
 }
 
 fn install() -> Arc<Witness> {
@@ -150,8 +142,7 @@ fn expected() -> Vec<Registration> {
 async fn native(expected: &[Registration]) -> operations::Managed<Source> {
     let source = Source::new(NonZeroUsize::new(1).unwrap()).unwrap();
     let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
-    let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice))
-        .expected_registrations(expected);
+    let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice)).expected_registrations(expected);
     let runtime = assembly()
         .register(operations::Lanes::catalog())
         .operation_settings(harmos_runtime::operations::Settings {
@@ -195,10 +186,8 @@ async fn catalog_drift_refused() {
         // The Frozen Catalog Differs, So Initialization Never Starts
         assert!(fixture.initialize().await.is_err());
         let runtime = &fixture.runtime;
-        let status = service_status(runtime.operations.watch_residents(), NAME, |value| {
-            matches!(value, ServiceStatus::Inactive { .. })
-        })
-        .await;
+        let status =
+            service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
         assert!(
             matches!(status, ServiceStatus::Inactive { cause: ServiceExit::Application(ref reason), .. } if reason.contains("expected catalog")),
             "{status:?}"
@@ -207,13 +196,7 @@ async fn catalog_drift_refused() {
         assert!(!marks.seen("initialized"));
         assert!(!*ready.borrow());
         assert!(registrations.borrow().is_none());
-        assert!(matches!(
-            runtime.stop().await,
-            Err(harmos_runtime::Error::TaskFailed {
-                domain: "service",
-                ..
-            })
-        ));
+        assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     }
 }
 
@@ -240,9 +223,7 @@ async fn readiness_requires_init() {
         }
         assert!(!*ready.borrow());
         assert_eq!(
-            services
-                .resident(&harmos_runtime::operations::resident::Key::root(NAME))
-                .and_then(|item| item.health),
+            services.resident(&harmos_runtime::operations::resident::Key::root(NAME)).and_then(|item| item.health),
             Some(ServiceStatus::Starting)
         );
         assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
@@ -252,10 +233,7 @@ async fn readiness_requires_init() {
 
     // Readiness Follows Initialization And Ends With Shutdown
     publications::ready(ready.clone()).await;
-    service_status(services.watch_residents(), NAME, |value| {
-        matches!(value, ServiceStatus::Running { .. })
-    })
-    .await;
+    service_status(services.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Running { .. })).await;
     assert_eq!(marks.count("initialized"), 1);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
@@ -271,24 +249,13 @@ async fn refused_init_unready() {
     let mut fixture = native(&expected()).await;
     let ready = fixture.resident().ready();
 
-    let failure = fixture
-        .initialize()
-        .await
-        .expect_err("the actual SDK initialization refuses");
+    let failure = fixture.initialize().await.expect_err("the actual SDK initialization refuses");
 
-    let cause = failure
-        .failure()
-        .expect("the original authored refusal crosses as a structured failure");
-    assert!(
-        cause.cause().contains("initialization refused"),
-        "{cause:?}"
-    );
+    let cause = failure.failure().expect("the original authored refusal crosses as a structured failure");
+    assert!(cause.cause().contains("initialization refused"), "{cause:?}");
     assert!(marks.seen("initialized"));
     assert!(!*ready.borrow());
-    assert_eq!(
-        fixture.status(NAME).unwrap().state,
-        harmos_runtime::plugin::PluginState::Failed
-    );
+    assert_eq!(fixture.status(NAME).unwrap().state, harmos_runtime::plugin::PluginState::Failed);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
 }
@@ -312,8 +279,7 @@ async fn restart_closes_admission() {
     };
     let source = Source::new(NonZeroUsize::new(1).unwrap()).unwrap();
     let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
-    let calls = Supervised::new(source, notices as fn(&Service<Bank>, Notice))
-        .expected_registrations(&expected());
+    let calls = Supervised::new(source, notices as fn(&Service<Bank>, Notice)).expected_registrations(&expected());
     let ready = calls.ready();
     let registrations = calls.registrations();
     let runtime = assembly()
@@ -327,48 +293,30 @@ async fn restart_closes_admission() {
     let resident = calls.clone();
     runtime
         .operations
-        .register_service(
-            harmos_runtime::services::ServiceDefinition {
-                id: NAME.into(),
-                policy,
-            },
-            move |_: Arc<()>| {
-                harmos_runtime::sidecar::Managed::new(
-                    resident.clone(),
-                    definition.clone(),
-                    HostLanes::Open,
-                    NonZeroUsize::new(1).unwrap(),
-                    NonZeroUsize::new(4096).unwrap(),
-                )
-                .unwrap()
-            },
-        )
+        .register_service(harmos_runtime::services::ServiceDefinition { id: NAME.into(), policy }, move |_: Arc<()>| {
+            harmos_runtime::sidecar::Managed::new(
+                resident.clone(),
+                definition.clone(),
+                HostLanes::Open,
+                NonZeroUsize::new(1).unwrap(),
+                NonZeroUsize::new(4096).unwrap(),
+            )
+            .unwrap()
+        })
         .unwrap();
     let _lease = runtime.operations.submit_resident(NAME).await.unwrap();
-    service_status(runtime.operations.watch_residents(), NAME, |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
+    service_status(runtime.operations.watch_residents(), NAME, |status| matches!(status, ServiceStatus::Running { .. })).await;
 
     // The Restarted Generation Registers A Changed Catalog And Is Refused
     marks.mark("catalog-changed");
     marks.mark("crash");
-    service_status(runtime.operations.watch_residents(), NAME, |value| {
-        matches!(value, ServiceStatus::Inactive { .. })
-    })
-    .await;
+    service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
     assert!(!*ready.borrow());
     assert!(registrations.borrow().is_none());
     assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
     assert_eq!(marks.count("initialized"), 1);
     assert_eq!(marks.count("registered"), 2);
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos_runtime::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 /* === Tests === */

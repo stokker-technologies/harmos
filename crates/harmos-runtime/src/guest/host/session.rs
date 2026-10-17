@@ -95,10 +95,7 @@ struct Retired {
 /* === Enums === */
 enum Command {
     Operation(WireCommand),
-    Background {
-        call: WireChildCall,
-        submitted: tokio::time::Instant,
-    },
+    Background { call: WireChildCall, submitted: tokio::time::Instant },
     Close(Option<PluginEndpoint>),
 }
 
@@ -117,10 +114,7 @@ enum Ending {
 /* === Implementations === */
 impl Future for Called<'_> {
     type Output = bool;
-    fn poll(
-        mut self: Pin<&mut Self>,
-        context: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<bool> {
+    fn poll(mut self: Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<bool> {
         self.future.as_mut().poll(context)
     }
 }
@@ -138,11 +132,7 @@ impl Endpoint {
         &self.definitions
     }
 
-    pub(crate) async fn phase(
-        &self,
-        command: WireCommand,
-        children: Option<Children>,
-    ) -> Result<WireAnswer, Error> {
+    pub(crate) async fn phase(&self, command: WireCommand, children: Option<Children>) -> Result<WireAnswer, Error> {
         let reply = self.request(Command::Operation(command), children).await?;
         match reply {
             Reply::Operation(answer) => Ok(answer),
@@ -150,24 +140,15 @@ impl Endpoint {
         }
     }
 
-    pub(super) async fn background(
-        &self,
-        call: WireChildCall,
-        submitted: tokio::time::Instant,
-    ) -> Result<Vec<u8>, Error> {
-        if !call.generation_context.as_ref().is_some_and(|token| {
-            self.scope
-                .as_ref()
-                .is_some_and(|scope| scope.accepts_generation_context(token))
-        }) {
-            return Err(Error::OperationCaller(crate::Error::Closing {
-                domain: "guest generation context",
-            }));
-        }
-        match self
-            .request(Command::Background { call, submitted }, None)
-            .await?
+    pub(super) async fn background(&self, call: WireChildCall, submitted: tokio::time::Instant) -> Result<Vec<u8>, Error> {
+        if !call
+            .generation_context
+            .as_ref()
+            .is_some_and(|token| self.scope.as_ref().is_some_and(|scope| scope.accepts_generation_context(token)))
         {
+            return Err(Error::OperationCaller(crate::Error::Closing { domain: "guest generation context" }));
+        }
+        match self.request(Command::Background { call, submitted }, None).await? {
             Reply::Background(payload) => Ok(payload),
             Reply::Operation(_) => unreachable!("background replies retain their request kind"),
         }
@@ -178,30 +159,16 @@ impl Endpoint {
             return Err(unavailable());
         }
         let (answer, answered) = oneshot::channel();
-        let request = Request {
-            call,
-            children,
-            answer,
-        };
-        self.requests
-            .send(request)
-            .await
-            .map_err(|_| unavailable())?;
+        let request = Request { call, children, answer };
+        self.requests.send(request).await.map_err(|_| unavailable())?;
         answered.await.map_err(|_| {
-            self.failure
-                .lock()
-                .expect("guest terminal failure lock")
-                .clone()
-                .map_or_else(unavailable, |source| Error::Execution { source })
+            self.failure.lock().expect("guest terminal failure lock").clone().map_or_else(unavailable, |source| Error::Execution { source })
         })?
     }
 
     pub(crate) async fn settle(&self) -> Result<(), Error> {
         let mut ended = self.ended.clone();
-        ended
-            .wait_for(|ended| *ended)
-            .await
-            .map_err(|_| unavailable())?;
+        ended.wait_for(|ended| *ended).await.map_err(|_| unavailable())?;
         Ok(())
     }
 }
@@ -220,12 +187,7 @@ impl<A: Application> Session<A> {
             failure: Mutex::new(None),
         });
         guest.store.data_mut().session = Some(Arc::downgrade(&endpoint));
-        let owned = Owned {
-            guest: Some(guest),
-            endpoint: Arc::clone(&endpoint),
-            ended,
-            loans: Arc::new(Mutex::new(BTreeMap::new())),
-        };
+        let owned = Owned { guest: Some(guest), endpoint: Arc::clone(&endpoint), ended, loans: Arc::new(Mutex::new(BTreeMap::new())) };
         let (stopping, stopped) = watch::channel(false);
         let running = executor::task(async move {
             let mut owned = owned;
@@ -233,9 +195,7 @@ impl<A: Application> Session<A> {
                 let running = owned.run(incoming, stopped);
                 let mut running = std::pin::pin!(running);
                 std::future::poll_fn(|context| {
-                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        running.as_mut().poll(context)
-                    })) {
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| running.as_mut().poll(context))) {
                         Ok(poll) => poll.map(Ok),
                         Err(_) => std::task::Poll::Ready(Err(())),
                     }
@@ -246,11 +206,7 @@ impl<A: Application> Session<A> {
                 Ok(result) => result,
                 Err(()) => {
                     let source = Arc::new(wasmtime::Error::msg("guest session machinery panicked"));
-                    *owned
-                        .endpoint
-                        .failure
-                        .lock()
-                        .expect("guest terminal failure lock") = Some(Arc::clone(&source));
+                    *owned.endpoint.failure.lock().expect("guest terminal failure lock") = Some(Arc::clone(&source));
                     owned.endpoint.accepting.store(false, Ordering::Release);
                     // A Poisoned Store Cannot Be Re-Entered; Its Host Debts Stay Owned.
                     owned.destroy_store();
@@ -259,15 +215,7 @@ impl<A: Application> Session<A> {
             };
             (owned, result)
         });
-        Self {
-            endpoint,
-            stopping,
-            running: Some(running),
-            ending: None,
-            instance: None,
-            closing: false,
-            _application: PhantomData,
-        }
+        Self { endpoint, stopping, running: Some(running), ending: None, instance: None, closing: false, _application: PhantomData }
     }
 
     pub(super) fn endpoint(&self) -> Arc<Endpoint> {
@@ -280,11 +228,7 @@ impl<A: Application> Session<A> {
             self.instance = instance;
             if !*self.endpoint.ended.borrow() {
                 let (answer, _answered) = oneshot::channel();
-                let request = Request {
-                    call: Command::Close(self.instance.take()),
-                    children: None,
-                    answer,
-                };
+                let request = Request { call: Command::Close(self.instance.take()), children: None, answer };
                 // A Terminal Session Returns The Same Instance With Its Failed Send.
                 if let Err(error) = self.endpoint.requests.send(request).await
                     && let Command::Close(instance) = error.0.call
@@ -295,9 +239,7 @@ impl<A: Application> Session<A> {
             self.closing = true;
         }
         if let Some(running) = &mut self.running {
-            let (owned, result) = running.await.map_err(|source| Error::Guest {
-                message: source.to_string(),
-            })?;
+            let (owned, result) = running.await.map_err(|source| Error::Guest { message: source.to_string() })?;
             self.running.take();
             let mut owned = owned;
             if let Some(guest) = &mut owned.guest
@@ -327,10 +269,7 @@ impl<A: Application> Drop for Session<A> {
 
 impl Drop for Retired {
     fn drop(&mut self) {
-        self.contexts
-            .lock()
-            .expect("guest child context lock")
-            .remove(&self.token);
+        self.contexts.lock().expect("guest child context lock").remove(&self.token);
     }
 }
 
@@ -347,11 +286,7 @@ impl<A: Application> Drop for Owned<A> {
 }
 
 impl<A: Application> Owned<A> {
-    async fn run(
-        &mut self,
-        mut incoming: mpsc::Receiver<Request>,
-        mut stopped: watch::Receiver<bool>,
-    ) -> Result<(), Error> {
+    async fn run(&mut self, mut incoming: mpsc::Receiver<Request>, mut stopped: watch::Receiver<bool>) -> Result<(), Error> {
         let guest = self.guest.as_mut().expect("owned guest store");
         let operate = guest.sdk.func_operate();
         let contexts = Arc::clone(&guest.store.data().children);
@@ -504,11 +439,7 @@ impl<A: Application> Owned<A> {
         let ending = match ending {
             Ok(ending) => ending,
             Err(source) => {
-                *self
-                    .endpoint
-                    .failure
-                    .lock()
-                    .expect("guest terminal failure lock") = Some(Arc::new(source));
+                *self.endpoint.failure.lock().expect("guest terminal failure lock") = Some(Arc::new(source));
                 self.endpoint.accepting.store(false, Ordering::Release);
                 Ending::Stopped
             }
@@ -523,13 +454,8 @@ impl<A: Application> Owned<A> {
     fn destroy_store(&mut self) {
         let guest = self.guest.take();
         drop(guest);
-        let attempts: Vec<_> = self
-            .loans
-            .lock()
-            .expect("guest invocation loan lock")
-            .values_mut()
-            .map(|loan| std::mem::take(&mut loan.attempts))
-            .collect();
+        let attempts: Vec<_> =
+            self.loans.lock().expect("guest invocation loan lock").values_mut().map(|loan| std::mem::take(&mut loan.attempts)).collect();
         drop(attempts);
         // This Acknowledges Store Destruction, Not Host Background Settlement.
         self.ended.send_replace(true);
@@ -542,27 +468,14 @@ impl<A: Application> Owned<A> {
             .lock()
             .expect("guest invocation loan lock")
             .iter()
-            .filter_map(|(id, loan)| {
-                loan.background
-                    .as_ref()
-                    .map(|control| (*id, Arc::clone(control)))
-            })
+            .filter_map(|(id, loan)| loan.background.as_ref().map(|control| (*id, Arc::clone(control))))
             .collect();
         for (id, control) in controls {
-            control.settle().await.map_err(|source| {
-                Error::OperationCaller(crate::Error::OperationSettlement { source })
-            })?;
-            let retired = self
-                .loans
-                .lock()
-                .expect("guest invocation loan lock")
-                .remove(&id);
+            control.settle().await.map_err(|source| Error::OperationCaller(crate::Error::OperationSettlement { source }))?;
+            let retired = self.loans.lock().expect("guest invocation loan lock").remove(&id);
             drop(retired);
         }
-        self.loans
-            .lock()
-            .expect("guest invocation loan lock")
-            .clear();
+        self.loans.lock().expect("guest invocation loan lock").clear();
         Ok(())
     }
 }
@@ -571,10 +484,7 @@ impl<A: Application> Owned<A> {
 
 /* === Private Functions === */
 fn unavailable() -> Error {
-    Error::Unavailable {
-        method: "operate".to_owned(),
-        discarded: "the original guest store is unavailable".to_owned(),
-    }
+    Error::Unavailable { method: "operate".to_owned(), discarded: "the original guest store is unavailable".to_owned() }
 }
 
 /* === Tests === */

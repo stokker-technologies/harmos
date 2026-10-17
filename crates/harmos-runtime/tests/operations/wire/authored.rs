@@ -557,7 +557,9 @@ mod listed {
         async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
             Self(owner)
         }
-        async fn run(&mut self, _: Context<'_>, _: &mut DoublingDeclaration) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
+        async fn run(
+            &mut self, _: Context<'_>, _: &mut DoublingDeclaration,
+        ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
         }
     }

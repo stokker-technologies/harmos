@@ -44,12 +44,7 @@ pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_p
             println!("{}: {}", artifact.producer, artifact.path.display());
         }
         for schema in &build.schemas {
-            println!(
-                "{}/{}: {}",
-                schema.producer,
-                schema.catalog,
-                schema.directory.display()
-            );
+            println!("{}/{}: {}", schema.producer, schema.catalog, schema.directory.display());
         }
     }
     Ok(())
@@ -64,19 +59,13 @@ pub fn dev(event: harmos_packaging::DevEvent, json: bool) -> Result<(), harmos_p
             }
             serde_json::json!({"event":"started", "attempt":attempt})
         }
-        DevEvent::Finished {
-            attempt,
-            result: Ok(result),
-        } => {
+        DevEvent::Finished { attempt, result: Ok(result) } => {
             if !json {
                 build(&result, false)?;
             }
             serde_json::json!({"event":"built", "attempt":attempt, "build":result})
         }
-        DevEvent::Finished {
-            attempt,
-            result: Err(error),
-        } => {
+        DevEvent::Finished { attempt, result: Err(error) } => {
             eprintln!("Build attempt {attempt} failed: {error}");
             serde_json::json!({"event":"failed", "attempt":attempt, "error":error.to_string()})
         }

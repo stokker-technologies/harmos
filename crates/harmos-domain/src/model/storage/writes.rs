@@ -82,31 +82,15 @@ pub enum WriteReceipt {
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.destination
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.destination)),
-            )
-            .saturating_add(
-                self.schema
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.schema)),
-            )
-            .saturating_add(
-                self.data
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.data)),
-            )
+            .saturating_add(self.destination.memory_size().saturating_sub(std::mem::size_of_val(&self.destination)))
+            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of_val(&self.schema)))
+            .saturating_add(self.data.memory_size().saturating_sub(std::mem::size_of_val(&self.data)))
     }
 }
 
 impl MemorySize for BatchReceipt {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.cursor
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.cursor)),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.cursor.memory_size().saturating_sub(std::mem::size_of_val(&self.cursor)))
     }
 }
 
@@ -115,21 +99,13 @@ impl MemorySize for WriteReceipt {
         let receipt = match self {
             Self::Accepted(receipt) | Self::Durable(receipt) => receipt,
         };
-        std::mem::size_of::<Self>().saturating_add(
-            receipt
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<BatchReceipt>()),
-        )
+        std::mem::size_of::<Self>().saturating_add(receipt.memory_size().saturating_sub(std::mem::size_of::<BatchReceipt>()))
     }
 }
 
 impl MemorySize for WriteCompletion {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.cursor
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.cursor)),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.cursor.memory_size().saturating_sub(std::mem::size_of_val(&self.cursor)))
     }
 }
 

@@ -53,10 +53,7 @@ impl<A: Application> ManagedState<A> {
             return Err(self.tracked.unavailable());
         }
 
-        Ok(At {
-            value: read(&state.value),
-            position: state.position,
-        })
+        Ok(At { value: read(&state.value), position: state.position })
     }
 
     pub async fn at(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {

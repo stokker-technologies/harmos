@@ -52,10 +52,7 @@ pub fn edges(x: &[f64], y: &[f64], low: f64, high: f64) -> Vec<Edge> {
     }
 
     let lowest = y[..length].iter().copied().fold(f64::INFINITY, f64::min);
-    let highest = y[..length]
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
+    let highest = y[..length].iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let range = highest - lowest;
     if !range.is_finite() || range < f64::EPSILON {
         return Vec::new();
@@ -70,17 +67,11 @@ pub fn edges(x: &[f64], y: &[f64], low: f64, high: f64) -> Vec<Edge> {
 
         match state {
             Level::Beneath if current > high => {
-                found.push(Edge {
-                    at: crossed(x, index, high, previous, current),
-                    rising: true,
-                });
+                found.push(Edge { at: crossed(x, index, high, previous, current), rising: true });
                 state = Level::Above;
             }
             Level::Above if current < low => {
-                found.push(Edge {
-                    at: crossed(x, index, low, previous, current),
-                    rising: false,
-                });
+                found.push(Edge { at: crossed(x, index, low, previous, current), rising: false });
                 state = Level::Beneath;
             }
             Level::Between => state = level(current, low, high),
@@ -97,8 +88,7 @@ pub fn crossing(x: &[f64], y: &[f64], target: f64) -> Option<f64> {
 
     (1..length).find_map(|index| {
         let (previous, current) = (y[index - 1], y[index]);
-        let straddles =
-            (previous <= target && target <= current) || (current <= target && target <= previous);
+        let straddles = (previous <= target && target <= current) || (current <= target && target <= previous);
 
         straddles.then(|| crossed(x, index, target, previous, current))
     })

@@ -44,8 +44,14 @@ def main(arguments: list[str] | None = None) -> None:
         sys.exit(f"fixture stamp {STAMP} is absent; run mise run build")
     stamp = json.loads(STAMP.read_text(encoding="utf-8"))
     selectors = stamp["metadata"]
-    selected = [*selectors["artifacts"].values(), *selectors["libraries"].values(),
-                *selectors["builds"].values(), selectors["vendor"], selectors["wheels"], selectors["requirements"]]
+    selected = [
+        *selectors["artifacts"].values(),
+        *selectors["libraries"].values(),
+        *selectors["builds"].values(),
+        selectors["vendor"],
+        selectors["wheels"],
+        selectors["requirements"],
+    ]
     hosts = [(FIXTURES / relative).relative_to(ROOT).as_posix() for relative in selected]
     archive.fixtures(ROOT, archive.tree(ROOT), profile, hosts)
     if not set(selectors["executables"]).issubset(selectors["artifacts"].values()):

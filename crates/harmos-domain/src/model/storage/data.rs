@@ -93,8 +93,7 @@ pub struct StreamWrite<'a> {
 /* === Implementations === */
 impl MemorySize for RecordInput {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.schema.memory_size() - std::mem::size_of::<SchemaKey>()
-            + self.scope.memory_size()
+        std::mem::size_of::<Self>() + self.schema.memory_size() - std::mem::size_of::<SchemaKey>() + self.scope.memory_size()
             - std::mem::size_of::<Option<Identifier>>()
             + self.item.memory_size()
             - std::mem::size_of::<Identifier>()
@@ -105,8 +104,7 @@ impl MemorySize for RecordInput {
 }
 impl MemorySize for StreamInput {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.record.memory_size() - std::mem::size_of::<RecordInput>()
-            + self.stream.memory_size()
+        std::mem::size_of::<Self>() + self.record.memory_size() - std::mem::size_of::<RecordInput>() + self.stream.memory_size()
             - std::mem::size_of::<Identifier>()
     }
 }
@@ -126,11 +124,7 @@ impl RecordInput {
 
 impl StreamInput {
     pub fn borrowed(&self) -> StreamWrite<'_> {
-        StreamWrite {
-            record: self.record.borrowed(),
-            stream: &self.stream,
-            sequence: self.sequence,
-        }
+        StreamWrite { record: self.record.borrowed(), stream: &self.stream, sequence: self.sequence }
     }
 }
 
@@ -151,44 +145,22 @@ impl RecordWrite<'_> {
 impl<T: MemorySize> MemorySize for StoredRecord<T> {
     fn memory_size(&self) -> usize {
         let dynamic = [
-            self.position
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            self.schema
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<SchemaKey>()),
-            self.scope
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<Option<Identifier>>()),
-            self.item
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<Identifier>()),
-            self.source
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<Option<Identifier>>()),
-            self.payload
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<T>()),
+            self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()),
+            self.schema.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()),
+            self.scope.memory_size().saturating_sub(std::mem::size_of::<Option<Identifier>>()),
+            self.item.memory_size().saturating_sub(std::mem::size_of::<Identifier>()),
+            self.source.memory_size().saturating_sub(std::mem::size_of::<Option<Identifier>>()),
+            self.payload.memory_size().saturating_sub(std::mem::size_of::<T>()),
         ];
-        dynamic
-            .into_iter()
-            .fold(std::mem::size_of::<Self>(), usize::saturating_add)
+        dynamic.into_iter().fold(std::mem::size_of::<Self>(), usize::saturating_add)
     }
 }
 
 impl<T: MemorySize> MemorySize for StoredRow<T> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.stream
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
-            .saturating_add(
-                self.record
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StoredRecord<T>>()),
-            )
+            .saturating_add(self.stream.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
+            .saturating_add(self.record.memory_size().saturating_sub(std::mem::size_of::<StoredRecord<T>>()))
     }
 }
 

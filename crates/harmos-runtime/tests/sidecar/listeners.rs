@@ -20,17 +20,14 @@ use std::time::Duration;
 
 // Local Imports
 use super::operations::{Calling, Lanes, Managed};
-use harmos_runtime::Message;
-use harmos_runtime::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
-};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
+use harmos_runtime::Message;
+use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
-static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> =
-    Mutex::new(std::collections::BTreeMap::new());
+static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
@@ -76,9 +73,7 @@ enum Callbacks {
 /* === Implementations === */
 impl Seed {
     fn new(probe: &Arc<Probe>) -> Self {
-        let id = NEXT_SEED
-            .try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1))
-            .unwrap();
+        let id = NEXT_SEED.try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1)).unwrap();
         let mut seeds = SEEDS.lock().unwrap();
         assert!(seeds.len() < 64, "fixture handoff stays bounded");
         assert!(seeds.insert(id, Arc::downgrade(probe)).is_none());
@@ -129,10 +124,7 @@ impl harmos_runtime::Plugin for Receiver {
     fn resources(&self) -> Arc<Probe> {
         self.probe.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Observing>(self.resources())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
@@ -166,25 +158,14 @@ impl Operation for Observing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Probe>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<Probe>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut Observe,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut Observe, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            assert_eq!(
-                request.context(),
-                DeliveryContext::Record {
-                    position: harmos_runtime::state::Position(1)
-                }
-            );
+            assert_eq!(request.context(), DeliveryContext::Record { position: harmos_runtime::state::Position(1) });
             self.resources.active.fetch_add(1, Ordering::SeqCst);
             self.resources.entered.notify_one();
             let _active = InFlight(&self.resources);
@@ -194,9 +175,7 @@ impl Operation for Observing {
             if request.row().value == 99 {
                 return Err(Refusal::of("the reaction refused"));
             }
-            self.resources
-                .total
-                .fetch_add(request.row().value as usize, Ordering::SeqCst);
+            self.resources.total.fetch_add(request.row().value as usize, Ordering::SeqCst);
             Ok(())
         }
         .await;
@@ -208,13 +187,7 @@ impl Operation for Observing {
 
 /* === Private Functions === */
 fn delivered(value: u32) -> Observe {
-    Delivery::new(
-        DeliveryContext::Record {
-            position: harmos_runtime::state::Position(1),
-        },
-        Observation { value },
-    )
-    .unwrap()
+    Delivery::new(DeliveryContext::Record { position: harmos_runtime::state::Position(1) }, Observation { value }).unwrap()
 }
 
 #[tokio::test]
@@ -223,21 +196,10 @@ async fn callback_outcomes_cleanup() {
     let seed = Seed::new(&probe);
     let capacity = std::num::NonZeroUsize::new(4).unwrap();
     let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
-    let mut fixture = Managed::attach(
-        source,
-        serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
-        capacity,
-        vec![],
-        std::convert::identity,
-    )
-    .await;
+    let mut fixture =
+        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
     assert!(
-        fixture
-            .runtime
-            .operations
-            .submit_encoded(Observe::ID, delivered(7).encode_to_vec())
-            .is_err(),
+        fixture.runtime.operations.submit_encoded(Observe::ID, delivered(7).encode_to_vec()).is_err(),
         "an unstaged callback is unavailable"
     );
     fixture.initialize().await.unwrap();
@@ -248,28 +210,19 @@ async fn callback_outcomes_cleanup() {
 
     for name in ["unknown", "harmos.record"] {
         assert!(
-            operations
-                .submit_encoded(name, delivered(1).encode_to_vec())
-                .is_err(),
+            operations.submit_encoded(name, delivered(1).encode_to_vec()).is_err(),
             "unknown and retired dispatch cannot reach a callback"
         );
     }
     for payload in [vec![0xff], delivered(99).encode_to_vec()] {
-        let error = operations
-            .submit_encoded(Observe::ID, payload)
-            .unwrap()
-            .await
-            .unwrap_err();
+        let error = operations.submit_encoded(Observe::ID, payload).unwrap().await.unwrap_err();
         assert!(
             matches!(error, harmos_runtime::Error::OperationFailed { .. }),
             "malformed and refused callbacks retain operation failures: {error}"
         );
     }
     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
-    assert!(matches!(
-        fixture.call(delivered(0)).await,
-        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
-    ));
+    assert!(matches!(fixture.call(delivered(0)).await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
     fixture.call(delivered(3)).await.unwrap();
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
     assert_eq!(probe.total.load(Ordering::SeqCst), 10);
@@ -277,9 +230,7 @@ async fn callback_outcomes_cleanup() {
     let stalled = tokio::spawn({
         let operations = operations.clone();
         async move {
-            let invocation = operations
-                .submit_encoded(Observe::ID, delivered(0).encode_to_vec())
-                .unwrap();
+            let invocation = operations.submit_encoded(Observe::ID, delivered(0).encode_to_vec()).unwrap();
             Calling(invocation).await
         }
     });

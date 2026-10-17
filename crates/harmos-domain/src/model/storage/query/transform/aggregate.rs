@@ -54,24 +54,13 @@ pub struct Measure {
 impl MemorySize for Aggregate {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            + self
-                .groups
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.groups))
-            + self
-                .measures
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.measures))
+            + self.groups.memory_size().saturating_sub(std::mem::size_of_val(&self.groups))
+            + self.measures.memory_size().saturating_sub(std::mem::size_of_val(&self.measures))
     }
 }
 impl MemorySize for Measure {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
-            + self.name.capacity()
+        std::mem::size_of::<Self>() + self.field.memory_size().saturating_sub(std::mem::size_of_val(&self.field)) + self.name.capacity()
     }
 }
 

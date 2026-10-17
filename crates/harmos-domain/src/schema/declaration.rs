@@ -77,10 +77,7 @@ struct Plan {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
-    Schema {
-        name: String,
-        fields: Vec<Field<String>>,
-    },
+    Schema { name: String, fields: Vec<Field<String>> },
 }
 
 /* === Traits === */
@@ -95,10 +92,7 @@ impl Eq for Definition {}
 
 impl Name {
     pub const fn new(owner: &str, arguments: &[&str]) -> Self {
-        let mut name = Self {
-            bytes: [0; MAX_NAME_BYTES],
-            length: 0,
-        };
+        let mut name = Self { bytes: [0; MAX_NAME_BYTES], length: 0 };
         name.push(owner);
         if !arguments.is_empty() {
             name.push("<");
@@ -123,10 +117,7 @@ impl Name {
     }
 
     const fn push(&mut self, part: &str) {
-        assert!(
-            part.len() <= MAX_NAME_BYTES - self.length,
-            "schema name exceeds its bound"
-        );
+        assert!(part.len() <= MAX_NAME_BYTES - self.length, "schema name exceeds its bound");
         let mut index = 0;
         while index < part.len() {
             self.bytes[self.length] = part.as_bytes()[index];
@@ -138,21 +129,12 @@ impl Name {
 
 impl Definition {
     pub const fn of<T: super::Described + ?Sized>() -> Self {
-        Self {
-            name: T::NAME,
-            default_variant: T::DEFAULT_VARIANT,
-            identity: TypeId::of::<T>,
-            fields: fields::<T>,
-            marker: marker::<T>,
-        }
+        Self { name: T::NAME, default_variant: T::DEFAULT_VARIANT, identity: TypeId::of::<T>, fields: fields::<T>, marker: marker::<T> }
     }
 }
 
 impl Named {
-    pub fn decode<'a>(
-        fragments: impl IntoIterator<Item = &'a [u8]>,
-        settings: &SchemaSettings,
-    ) -> Result<Vec<Self>, Error> {
+    pub fn decode<'a>(fragments: impl IntoIterator<Item = &'a [u8]>, settings: &SchemaSettings) -> Result<Vec<Self>, Error> {
         let mut budget = Plan::new(settings);
         let mut declarations = Vec::new();
         for encoded in fragments {
@@ -160,14 +142,9 @@ impl Named {
                 return Err(Error::Budget);
             }
             // Flat JSON Input Bounds Parser Allocations Before Decoding Each Type.
-            budget.charge(
-                encoded.len().checked_mul(8).ok_or(Error::Budget)? + 4 * size_of::<Self>(),
-                encoded.len() + 1,
-            )?;
-            let declaration: Self = serde_json::from_slice(encoded).map_err(|_| Error::Field {
-                field: "schema fragment".into(),
-                reason: "invalid schema metadata",
-            })?;
+            budget.charge(encoded.len().checked_mul(8).ok_or(Error::Budget)? + 4 * size_of::<Self>(), encoded.len() + 1)?;
+            let declaration: Self = serde_json::from_slice(encoded)
+                .map_err(|_| Error::Field { field: "schema fragment".into(), reason: "invalid schema metadata" })?;
             declarations.push(declaration);
         }
         Ok(declarations)
@@ -182,57 +159,37 @@ impl From<Fragment> for Named {
 }
 impl From<Named> for Fragment {
     fn from(named: Named) -> Self {
-        Self::Schema {
-            name: named.name,
-            fields: named.fields,
-        }
+        Self::Schema { name: named.name, fields: named.fields }
     }
 }
 
 impl fmt::Debug for Definition {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Definition")
-            .field("name", &self.name)
-            .finish_non_exhaustive()
+        formatter.debug_struct("Definition").field("name", &self.name).finish_non_exhaustive()
     }
 }
 
 impl Schema {
     // Resolve Inert Named Metadata Without Executing Artifact Code.
-    pub fn from_named(
-        root: &str,
-        declarations: &[Named],
-        settings: &SchemaSettings,
-    ) -> Result<Self, Error> {
+    pub fn from_named(root: &str, declarations: &[Named], settings: &SchemaSettings) -> Result<Self, Error> {
         resolve_named(&[("", root)], declarations, settings, false)
     }
 
     // Resolve Multiple Contract Directions From One Inert Type Dictionary.
-    pub fn from_named_roots(
-        roots: &[(&str, &str)],
-        declarations: &[Named],
-        settings: &SchemaSettings,
-    ) -> Result<Self, Error> {
+    pub fn from_named_roots(roots: &[(&str, &str)], declarations: &[Named], settings: &SchemaSettings) -> Result<Self, Error> {
         resolve_named(roots, declarations, settings, true)
     }
 
     pub fn from_declaration(root: Definition, settings: &SchemaSettings) -> Result<Self, Error> {
         let mut plan = Plan::new(settings);
         plan.insert(root)?;
-        let schema = Self {
-            root: 0,
-            definitions: plan.compile()?,
-        };
+        let schema = Self { root: 0, definitions: plan.compile()? };
         schema.prepare(settings)?;
         Ok(schema)
     }
 
     // Share Each Message Definition Across A Set Of Contract Directions.
-    pub fn from_declarations(
-        roots: &[(&str, Definition)],
-        settings: &SchemaSettings,
-    ) -> Result<Self, Error> {
+    pub fn from_declarations(roots: &[(&str, Definition)], settings: &SchemaSettings) -> Result<Self, Error> {
         let mut plan = Plan::new(settings);
         plan.charge(4 * size_of::<Vec<Field>>() + size_of::<Self>(), 1)?;
         let mut fields = Vec::new();
@@ -242,9 +199,7 @@ impl Schema {
             fields.push(Field {
                 name: (*name).to_owned().into(),
                 tag,
-                kind: Kind::Message {
-                    definition: plan.insert(*declaration)?,
-                },
+                kind: Kind::Message { definition: plan.insert(*declaration)? },
                 cardinality: Cardinality::Required,
             });
         }
@@ -265,17 +220,9 @@ impl Plan {
             let declaration = self.declarations[index];
             let mut fields = Vec::new();
             for field in (declaration.fields)() {
-                self.charge(
-                    4 * size_of::<Field<usize>>() + field.name.len(),
-                    field.name.len() + 1,
-                )?;
+                self.charge(4 * size_of::<Field<usize>>() + field.name.len(), field.name.len() + 1)?;
                 let kind = field.kind.try_map(|definition| self.insert(definition))?;
-                fields.push(Field {
-                    name: field.name.to_string().into(),
-                    tag: field.tag,
-                    kind,
-                    cardinality: field.cardinality,
-                });
+                fields.push(Field { name: field.name.to_string().into(), tag: field.tag, kind, cardinality: field.cardinality });
             }
             definitions.push(fields);
             index += 1;
@@ -291,41 +238,23 @@ impl Plan {
         }
     }
     fn charge(&mut self, bytes: usize, work: usize) -> Result<(), Error> {
-        self.remaining_bytes = self
-            .remaining_bytes
-            .checked_sub(bytes)
-            .ok_or(Error::Budget)?;
+        self.remaining_bytes = self.remaining_bytes.checked_sub(bytes).ok_or(Error::Budget)?;
         self.remaining_work = self.remaining_work.checked_sub(work).ok_or(Error::Budget)?;
         Ok(())
     }
     fn insert(&mut self, definition: Definition) -> Result<usize, Error> {
         self.charge(0, definition.name.len() + 1)?;
-        if definition.name.is_empty()
-            || definition.name.len() > MAX_NAME_BYTES
-            || definition.name.chars().any(char::is_control)
-        {
-            return Err(Error::Field {
-                field: super::diagnostic_name(definition.name),
-                reason: "invalid schema definition name",
-            });
+        if definition.name.is_empty() || definition.name.len() > MAX_NAME_BYTES || definition.name.chars().any(char::is_control) {
+            return Err(Error::Field { field: super::diagnostic_name(definition.name), reason: "invalid schema definition name" });
         }
         if let Some(index) = self.indices.get(definition.name).copied() {
             let original = self.declarations[index];
             if (original.identity)() != (definition.identity)() {
-                return Err(Error::Field {
-                    field: definition.name.into(),
-                    reason: "schema definition name has multiple owners",
-                });
+                return Err(Error::Field { field: definition.name.into(), reason: "schema definition name has multiple owners" });
             }
             return Ok(index);
         }
-        self.charge(
-            4 * (size_of::<Definition>()
-                + size_of::<Vec<Field>>()
-                + size_of::<(&str, usize)>()
-                + 1),
-            1,
-        )?;
+        self.charge(4 * (size_of::<Definition>() + size_of::<Vec<Field>>() + size_of::<(&str, usize)>() + 1), 1)?;
         let index = self.declarations.len();
         self.declarations.push(definition);
         self.indices.insert(definition.name, index);
@@ -338,10 +267,7 @@ pub fn markers(root: Definition, settings: &SchemaSettings) -> Result<Vec<&'stat
     markers_many([root], settings)
 }
 
-pub fn markers_many(
-    roots: impl IntoIterator<Item = Definition>,
-    settings: &SchemaSettings,
-) -> Result<Vec<&'static [u8]>, Error> {
+pub fn markers_many(roots: impl IntoIterator<Item = Definition>, settings: &SchemaSettings) -> Result<Vec<&'static [u8]>, Error> {
     let mut plan = Plan::new(settings);
     for root in roots {
         plan.insert(root)?;
@@ -357,17 +283,9 @@ pub fn markers_many(
         }
         index += 1;
     }
-    let output_bytes = plan
-        .declarations
-        .len()
-        .checked_mul(std::mem::size_of::<&[u8]>())
-        .ok_or(Error::Budget)?;
+    let output_bytes = plan.declarations.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or(Error::Budget)?;
     plan.charge(output_bytes, 0)?;
-    Ok(plan
-        .declarations
-        .iter()
-        .map(|definition| (definition.marker)())
-        .collect())
+    Ok(plan.declarations.iter().map(|definition| (definition.marker)()).collect())
 }
 
 pub const fn encoded_len(name: &str, fields: &[Field<Definition>]) -> usize {
@@ -404,10 +322,7 @@ pub const fn encode<const N: usize>(name: &str, fields: &[Field<Definition>]) ->
 // Encode A Small Generic Shape Into Explicitly Bounded Static Storage.
 // The Caller Retains Only The `encoded_len` Prefix Of The Result.
 pub const fn encode_buffer<const N: usize>(name: &str, fields: &[Field<Definition>]) -> [u8; N] {
-    assert!(
-        N >= encoded_len(name, fields),
-        "schema marker exceeds its static storage"
-    );
+    assert!(N >= encoded_len(name, fields), "schema marker exceeds its static storage");
     let mut output = [0; N];
     let mut cursor = 0;
     write(&mut output, &mut cursor, crate::PREFIX);
@@ -431,11 +346,7 @@ pub const fn encode_buffer<const N: usize>(name: &str, fields: &[Field<Definitio
             quoted(&mut output, &mut cursor, definition.name);
         }
         write(&mut output, &mut cursor, CARDINALITY);
-        quoted(
-            &mut output,
-            &mut cursor,
-            cardinality_name(field.cardinality),
-        );
+        quoted(&mut output, &mut cursor, cardinality_name(field.cardinality));
         write(&mut output, &mut cursor, b"}");
         index += 1;
     }
@@ -453,28 +364,17 @@ fn marker<T: super::Described + ?Sized>() -> &'static [u8] {
     T::MARKER
 }
 
-fn resolve_named(
-    roots: &[(&str, &str)],
-    declarations: &[Named],
-    settings: &SchemaSettings,
-    composite: bool,
-) -> Result<Schema, Error> {
+fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &SchemaSettings, composite: bool) -> Result<Schema, Error> {
     let mut budget = Plan::new(settings);
     let mut dictionary = HashMap::new();
     for declaration in declarations {
         let name = declaration.name.as_str();
         budget.charge(4 * size_of::<(&str, &Named)>() + name.len(), name.len() + 1)?;
         if name.is_empty() || name.len() > MAX_NAME_BYTES || name.chars().any(char::is_control) {
-            return Err(Error::Field {
-                field: super::diagnostic_name(name),
-                reason: "invalid schema definition name",
-            });
+            return Err(Error::Field { field: super::diagnostic_name(name), reason: "invalid schema definition name" });
         }
         // Charge The Already Decoded Input Alongside Output And Lookup Scratch.
-        budget.charge(
-            declaration.fields.capacity() * size_of::<Field<String>>(),
-            1,
-        )?;
+        budget.charge(declaration.fields.capacity() * size_of::<Field<String>>(), 1)?;
         for field in &declaration.fields {
             budget.charge(field.name.len(), field.name.len() + 1)?;
             if let Kind::Message { definition } = &field.kind {
@@ -484,17 +384,11 @@ fn resolve_named(
         if let Some(original) = dictionary.insert(name, declaration) {
             budget.charge(0, declaration.fields.len() + 1)?;
             if original != declaration {
-                return Err(Error::Field {
-                    field: name.into(),
-                    reason: "schema definition name has conflicting metadata",
-                });
+                return Err(Error::Field { field: name.into(), reason: "schema definition name has conflicting metadata" });
             }
         }
     }
-    let missing = |name: &str| Error::Field {
-        field: super::diagnostic_name(name),
-        reason: "schema definition is absent",
-    };
+    let missing = |name: &str| Error::Field { field: super::diagnostic_name(name), reason: "schema definition is absent" };
     let mut names = Vec::new();
     let mut indices = HashMap::new();
     let mut directions = Vec::new();
@@ -505,20 +399,14 @@ fn resolve_named(
         let definition = if let Some(index) = indices.get(name) {
             *index
         } else {
-            budget.charge(
-                4 * (size_of::<&str>() + size_of::<(&str, usize)>()),
-                name.len() + 1,
-            )?;
+            budget.charge(4 * (size_of::<&str>() + size_of::<(&str, usize)>()), name.len() + 1)?;
             let index = names.len();
             names.push(name);
             indices.insert(name, index);
             index
         };
         if composite {
-            budget.charge(
-                4 * size_of::<Field<usize>>() + direction.len(),
-                direction.len() + 1,
-            )?;
+            budget.charge(4 * size_of::<Field<usize>>() + direction.len(), direction.len() + 1)?;
             directions.push(Field {
                 name: (*direction).to_owned().into(),
                 tag: u32::try_from(index + 1).map_err(|_| Error::Budget)?,
@@ -532,38 +420,22 @@ fn resolve_named(
     while index < names.len() {
         let declaration = dictionary[names[index]];
         let mut fields = Vec::new();
-        budget.charge(
-            4 * (size_of::<&str>() + size_of::<(&str, usize)>() + size_of::<Vec<Field>>()),
-            1,
-        )?;
+        budget.charge(4 * (size_of::<&str>() + size_of::<(&str, usize)>() + size_of::<Vec<Field>>()), 1)?;
         for field in &declaration.fields {
-            budget.charge(
-                4 * size_of::<Field<usize>>() + field.name.len(),
-                field.name.len() + 1,
-            )?;
+            budget.charge(4 * size_of::<Field<usize>>() + field.name.len(), field.name.len() + 1)?;
             let kind = field.kind.clone().try_map(|name| {
-                let declaration = dictionary
-                    .get(name.as_str())
-                    .ok_or_else(|| missing(&name))?;
+                let declaration = dictionary.get(name.as_str()).ok_or_else(|| missing(&name))?;
                 let name = declaration.name.as_str();
                 if let Some(index) = indices.get(name) {
                     return Ok(*index);
                 }
-                budget.charge(
-                    4 * (size_of::<&str>() + size_of::<(&str, usize)>()),
-                    name.len() + 1,
-                )?;
+                budget.charge(4 * (size_of::<&str>() + size_of::<(&str, usize)>()), name.len() + 1)?;
                 let index = names.len();
                 indices.insert(name, index);
                 names.push(name);
                 Ok(index)
             })?;
-            fields.push(Field {
-                name: field.name.clone(),
-                tag: field.tag,
-                kind,
-                cardinality: field.cardinality,
-            });
+            fields.push(Field { name: field.name.clone(), tag: field.tag, kind, cardinality: field.cardinality });
         }
         definitions.push(fields);
         index += 1;

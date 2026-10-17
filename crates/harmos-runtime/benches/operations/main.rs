@@ -93,21 +93,12 @@ impl Operation for Dispatching {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        signals: Arc<Waiting>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
-            signals,
-            waiting: false,
-        })
+    async fn initialize<'ctx>(signals: Arc<Waiting>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+        Ok(Self { signals, waiting: false })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Dispatch,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Dispatch, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.waiting = request.wait;
@@ -148,47 +139,27 @@ async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
 // Startup And Admission Are Outside Both Cancellation Measurements.
 async fn cancellation(load: u32) -> Cancellation {
     let (stopped, mut receipts) = mpsc::channel(load as usize);
-    let signals = Arc::new(Signals {
-        running: Semaphore::new(0),
-        stopped,
-    });
+    let signals = Arc::new(Signals { running: Semaphore::new(0), stopped });
     let runtime = runtime(Some(signals.clone())).await;
-    let instances: Vec<_> = (0..load)
-        .map(|_| runtime.operations.submit(Dispatch { wait: true }).unwrap())
-        .collect();
-    signals.running.acquire_many(load)
-        .await
-        .expect("all operations enter run before cancellation")
-        .forget();
+    let instances: Vec<_> = (0..load).map(|_| runtime.operations.submit(Dispatch { wait: true }).unwrap()).collect();
+    signals.running.acquire_many(load).await.expect("all operations enter run before cancellation").forget();
 
     let requested = Instant::now();
     runtime.stop().await.expect("runtime cancellation settles");
     let settled = requested.elapsed();
     let mut dispatched = Vec::with_capacity(load as usize);
     for _ in 0..load {
-        let stopped = receipts
-            .try_recv()
-            .expect("every running owner executes stop");
+        let stopped = receipts.try_recv().expect("every running owner executes stop");
         dispatched.push(stopped.duration_since(requested));
     }
     for instance in instances {
-        assert!(matches!(
-            instance.join().await,
-            Err(Error::OperationRefused(Refusal::Cancelled))
-        ));
+        assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     }
-    Cancellation {
-        stopped: dispatched,
-        settled,
-    }
+    Cancellation { stopped: dispatched, settled }
 }
 
 fn benchmarks(c: &mut Criterion) {
-    let executor = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let executor = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let runtime = executor.block_on(runtime(None));
     let mut dispatch = c.benchmark_group("operations/dispatch");
     dispatch.throughput(Throughput::Elements(1));
@@ -235,19 +206,13 @@ fn benchmarks(c: &mut Criterion) {
 
 fn main() {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    if let Some(index) = arguments
-        .iter()
-        .position(|argument| argument == "--latency-samples")
-    {
+    if let Some(index) = arguments.iter().position(|argument| argument == "--latency-samples") {
         let count: usize = arguments
             .get(index + 1)
             .expect("--latency-samples requires a count from 1 through 10000")
             .parse()
             .expect("sample count is an integer");
-        assert!(
-            (1..=10000).contains(&count),
-            "sample count must be from 1 through 10000"
-        );
+        assert!((1..=10000).contains(&count), "sample count must be from 1 through 10000");
         latency_samples(count);
     } else {
         benches();
@@ -256,11 +221,7 @@ fn main() {
 }
 
 fn latency_samples(count: usize) {
-    let executor = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let executor = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     println!(
         "{}",
         serde_json::json!({
@@ -276,11 +237,7 @@ fn latency_samples(count: usize) {
         let mut settlements = Vec::with_capacity(count);
         for sample in 0..count {
             let observation = executor.block_on(cancellation(load));
-            let stopped: Vec<_> = observation
-                .stopped
-                .iter()
-                .map(|duration| u64::try_from(duration.as_nanos()).unwrap())
-                .collect();
+            let stopped: Vec<_> = observation.stopped.iter().map(|duration| u64::try_from(duration.as_nanos()).unwrap()).collect();
             let settled = u64::try_from(observation.settled.as_nanos()).unwrap();
             println!(
                 "{}",
@@ -293,14 +250,9 @@ fn latency_samples(count: usize) {
             stops.extend(stopped);
             settlements.push(settled);
         }
-        for (metric, mut observations) in [
-            ("per_owner_stop_hook", stops),
-            ("last_stop_hook", last_stops),
-            ("settled", settlements),
-        ] {
+        for (metric, mut observations) in [("per_owner_stop_hook", stops), ("last_stop_hook", last_stops), ("settled", settlements)] {
             observations.sort_unstable();
-            let quantile =
-                |percent: usize| observations[(observations.len() * percent).div_ceil(100) - 1];
+            let quantile = |percent: usize| observations[(observations.len() * percent).div_ceil(100) - 1];
             println!(
                 "{}",
                 serde_json::json!({

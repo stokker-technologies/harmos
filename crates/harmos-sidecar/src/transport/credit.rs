@@ -59,10 +59,7 @@ impl Credit {
     }
 
     fn with_window(window: usize) -> Arc<Self> {
-        Arc::new(Self {
-            permits: Arc::new(Semaphore::new(window)),
-            ledger: Mutex::new(Ledger::default()),
-        })
+        Arc::new(Self { permits: Arc::new(Semaphore::new(window)), ledger: Mutex::new(Ledger::default()) })
     }
 
     pub async fn reserve(self: &Arc<Self>, packet: &Packet) -> io::Result<Reservation> {
@@ -73,32 +70,22 @@ impl Credit {
             .acquire_many_owned(charge as u32)
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "sidecar credit closed"))?;
-        Ok(Reservation {
-            credit: self.clone(),
-            permit,
-            charge,
-        })
+        Ok(Reservation { credit: self.clone(), permit, charge })
     }
 
     pub fn charge(packet: &Packet) -> io::Result<usize> {
         if packet.channel() != Role::Data {
-            return Err(invalid(
-                "reserved control packets do not consume data credit",
-            ));
+            return Err(invalid("reserved control packets do not consume data credit"));
         }
         Ok(packet.encoded_len()?.max(MINIMUM))
     }
 
     pub fn returned(&self, cumulative: u64) -> io::Result<()> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .map_err(|_| invalid("sidecar credit ledger poisoned"))?;
+        let mut ledger = self.ledger.lock().map_err(|_| invalid("sidecar credit ledger poisoned"))?;
         if cumulative <= ledger.returned || cumulative > ledger.issued {
             return Err(invalid("invalid cumulative sidecar credit"));
         }
-        let amount = usize::try_from(cumulative - ledger.returned)
-            .map_err(|_| invalid("sidecar credit exceeds addressable capacity"))?;
+        let amount = usize::try_from(cumulative - ledger.returned).map_err(|_| invalid("sidecar credit exceeds addressable capacity"))?;
         ledger.returned = cumulative;
         self.permits.add_permits(amount);
         Ok(())
@@ -112,21 +99,11 @@ impl Credit {
 
 impl Reservation {
     pub fn issued(self) -> io::Result<()> {
-        let mut ledger = self
-            .credit
-            .ledger
-            .lock()
-            .map_err(|_| invalid("sidecar credit ledger poisoned"))?;
+        let mut ledger = self.credit.ledger.lock().map_err(|_| invalid("sidecar credit ledger poisoned"))?;
         if self.credit.permits.is_closed() {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "sidecar credit closed",
-            ));
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "sidecar credit closed"));
         }
-        let issued = ledger
-            .issued
-            .checked_add(self.charge as u64)
-            .ok_or_else(|| invalid("sidecar cumulative credit overflow"))?;
+        let issued = ledger.issued.checked_add(self.charge as u64).ok_or_else(|| invalid("sidecar cumulative credit overflow"))?;
         ledger.issued = issued;
         self.permit.forget();
         Ok(())

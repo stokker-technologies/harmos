@@ -45,10 +45,8 @@ pub const CHILD_METHOD: &str = "harmos.operation.child.v2";
 /* === Type Aliases === */
 type Answer<'a> = Pin<Box<dyn Future<Output = Result<Vec<u8>, ServingError>> + Send + 'a>>;
 type Finished<'a> = Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'a>>;
-type Finalization<S> =
-    Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)> + Send + 'static>>;
-type Prepare<C> =
-    Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared<C>>, ServingError> + Send + Sync>;
+type Finalization<S> = Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)> + Send + 'static>>;
+type Prepare<C> = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared<C>>, ServingError> + Send + Sync>;
 type Install<H, C> = fn(&mut WireTable<C>, Arc<H>) -> Result<(), ServingError>;
 
 /* === Structs === */
@@ -150,63 +148,23 @@ pub enum WireChild {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
-    Prepare {
-        invocation: u64,
-        operation: String,
-        payload: Vec<u8>,
-    },
-    Initialize {
-        invocation: u64,
-        context: [u8; 32],
-    },
-    Attempt {
-        invocation: u64,
-        context: [u8; 32],
-        values: Vec<super::CallValue>,
-    },
-    Finalize {
-        invocation: u64,
-    },
-    StreamAttempt {
-        invocation: u64,
-        epoch: u64,
-        context: [u8; 32],
-        values: Vec<super::CallValue>,
-    },
-    StreamSend {
-        invocation: u64,
-        epoch: u64,
-        payload: Vec<u8>,
-    },
-    StreamFinish {
-        invocation: u64,
-        epoch: u64,
-    },
-    StreamReceive {
-        invocation: u64,
-        epoch: u64,
-    },
-    PrepareGrpc {
-        invocation: u64,
-        operation: String,
-        payload: Vec<u8>,
-    },
+    Prepare { invocation: u64, operation: String, payload: Vec<u8> },
+    Initialize { invocation: u64, context: [u8; 32] },
+    Attempt { invocation: u64, context: [u8; 32], values: Vec<super::CallValue> },
+    Finalize { invocation: u64 },
+    StreamAttempt { invocation: u64, epoch: u64, context: [u8; 32], values: Vec<super::CallValue> },
+    StreamSend { invocation: u64, epoch: u64, payload: Vec<u8> },
+    StreamFinish { invocation: u64, epoch: u64 },
+    StreamReceive { invocation: u64, epoch: u64 },
+    PrepareGrpc { invocation: u64, operation: String, payload: Vec<u8> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireAnswer {
-    Stream {
-        epoch: u64,
-        transferred: bool,
-        payload: Option<Vec<u8>>,
-    },
-    Ready {
-        payload: Vec<u8>,
-    },
-    Failed {
-        failure: crate::Failure,
-    },
+    Stream { epoch: u64, transferred: bool, payload: Option<Vec<u8>> },
+    Ready { payload: Vec<u8> },
+    Failed { failure: crate::Failure },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -233,9 +191,7 @@ pub enum ServingError {
     Declaration(#[from] crate::Error),
     #[error("operation `{operation}` has no bound carrier handler")]
     Unknown { operation: String },
-    #[error(
-        "operation `{operation}` requires streaming endpoints unsupported by this carrier binding"
-    )]
+    #[error("operation `{operation}` requires streaming endpoints unsupported by this carrier binding")]
     Streaming { operation: String },
     #[error("carrier invocation `{invocation}` is already prepared")]
     Duplicate { invocation: u64 },
@@ -305,8 +261,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         R: Send + Sync + 'static,
     {
         let definitions = AuthoredDeclarations::of::<T>()?;
-        <T as Catalog<Serves<R, C>>>::ENTRIES
-            .try_for_each(|binding| (binding.install)(&mut table, Arc::clone(&resources)))?;
+        <T as Catalog<Serves<R, C>>>::ENTRIES.try_for_each(|binding| (binding.install)(&mut table, Arc::clone(&resources)))?;
         table.validate(&definitions)?;
         Ok(table)
     }
@@ -324,11 +279,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     #[cfg(feature = "streaming")]
-    pub fn bind_streaming_operations<T, R>(
-        &mut self,
-        resources: Arc<R>,
-        limits: WireStreamLimits,
-    ) -> Result<(), ServingError>
+    pub fn bind_streaming_operations<T, R>(&mut self, resources: Arc<R>, limits: WireStreamLimits) -> Result<(), ServingError>
     where
         T: Catalog<AuthoredDeclarations> + Catalog<Serves<R, C>>,
         R: Send + Sync + 'static,
@@ -354,36 +305,19 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     pub fn definitions(&self) -> Vec<Definition> {
-        self.handlers
-            .values()
-            .filter(|handler| !handler.builtin)
-            .map(|handler| handler.definition.clone())
-            .collect()
+        self.handlers.values().filter(|handler| !handler.builtin).map(|handler| handler.definition.clone()).collect()
     }
 
     pub fn validate(&self, definitions: &[Definition]) -> Result<(), ServingError> {
-        if definitions.len()
-            != self
-                .handlers
-                .values()
-                .filter(|handler| !handler.builtin)
-                .count()
-        {
+        if definitions.len() != self.handlers.values().filter(|handler| !handler.builtin).count() {
             return Err(ServingError::Catalog);
         }
         for definition in definitions {
-            if self
-                .handlers
-                .get(definition.id.as_str())
-                .is_none_or(|bound| bound.builtin || bound.definition != *definition)
-            {
+            if self.handlers.get(definition.id.as_str()).is_none_or(|bound| bound.builtin || bound.definition != *definition) {
                 return Err(ServingError::Catalog);
             }
         }
-        let unique: std::collections::BTreeSet<_> = definitions
-            .iter()
-            .map(|definition| &definition.id)
-            .collect();
+        let unique: std::collections::BTreeSet<_> = definitions.iter().map(|definition| &definition.id).collect();
         if unique.len() != definitions.len() {
             return Err(ServingError::Catalog);
         }
@@ -391,23 +325,14 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     pub fn validate_contracts(&self, contracts: &[Contract]) -> Result<(), ServingError> {
-        if contracts.len()
-            != self
-                .handlers
-                .values()
-                .filter(|handler| !handler.builtin)
-                .count()
-        {
+        if contracts.len() != self.handlers.values().filter(|handler| !handler.builtin).count() {
             return Err(ServingError::Catalog);
         }
         let mut unique = std::collections::BTreeSet::new();
         for contract in contracts {
             let id = &contract.operation().id;
             if !unique.insert(id)
-                || self
-                    .handlers
-                    .get(id.as_str())
-                    .is_none_or(|bound| bound.builtin || bound.contract.as_ref() != Some(contract))
+                || self.handlers.get(id.as_str()).is_none_or(|bound| bound.builtin || bound.contract.as_ref() != Some(contract))
             {
                 return Err(ServingError::Catalog);
             }
@@ -416,22 +341,11 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     // Answers the request's grant as the Prepare payload.
-    pub fn prepare(
-        &mut self,
-        invocation: u64,
-        operation: &str,
-        payload: Vec<u8>,
-    ) -> Result<Vec<u8>, ServingError> {
+    pub fn prepare(&mut self, invocation: u64, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>, ServingError> {
         self.prepare_codec(invocation, operation, payload, false)
     }
 
-    fn prepare_codec(
-        &mut self,
-        invocation: u64,
-        operation: &str,
-        payload: Vec<u8>,
-        grpc: bool,
-    ) -> Result<Vec<u8>, ServingError> {
+    fn prepare_codec(&mut self, invocation: u64, operation: &str, payload: Vec<u8>, grpc: bool) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -439,45 +353,26 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if self.prepared.contains_key(&invocation) {
             return Err(ServingError::Duplicate { invocation });
         }
-        let handler = self
-            .handlers
-            .get(operation)
-            .ok_or_else(|| ServingError::Unknown {
-                operation: operation.to_owned(),
-            })?;
+        let handler = self.handlers.get(operation).ok_or_else(|| ServingError::Unknown { operation: operation.to_owned() })?;
         if self.ordinary_closed && !handler.lifecycle {
             return Err(ServingError::Closing);
         }
-        let occupied = self
-            .prepared
-            .values()
-            .filter(|slot| slot.lifecycle == handler.lifecycle && !slot.resident)
-            .count();
+        let occupied = self.prepared.values().filter(|slot| slot.lifecycle == handler.lifecycle && !slot.resident).count();
         // One accounted reserved lifecycle slot remains available even when
         // ordinary admission is full. Failed SDK finalization retains that slot.
-        let capacity = if handler.lifecycle {
-            1
-        } else {
-            self.capacity.get()
-        };
+        let capacity = if handler.lifecycle { 1 } else { self.capacity.get() };
         if occupied >= capacity && !handler.resident {
             return Err(ServingError::Capacity);
         }
-        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            (handler.prepare)(payload, grpc)
-        }))
-        .map_err(|_| ServingError::Panicked)??;
+        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (handler.prepare)(payload, grpc)))
+            .map_err(|_| ServingError::Panicked)??;
         let answer = encode_prepared_grant(prepared.grant().as_ref());
         let slot = Slot {
             lifecycle: handler.lifecycle,
             resident: handler.resident,
             #[cfg(feature = "streaming")]
             streams: prepared.streams(),
-            state: Mutex::new(SlotState {
-                prepared: Some(prepared),
-                finished: false,
-                waiters: Vec::new(),
-            }),
+            state: Mutex::new(SlotState { prepared: Some(prepared), finished: false, waiters: Vec::new() }),
         };
         self.prepared.insert(invocation, Arc::new(slot));
         Ok(answer)
@@ -485,10 +380,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
 
     #[cfg(feature = "streaming")]
     pub fn streams(&self, invocation: u64) -> Result<WireStreams, ServingError> {
-        let slot = self
-            .prepared
-            .get(&invocation)
-            .ok_or(ServingError::Missing { invocation })?;
+        let slot = self.prepared.get(&invocation).ok_or(ServingError::Missing { invocation })?;
         if self.closed || (self.ordinary_closed && !slot.lifecycle) || slot.is_finished() {
             return Err(ServingError::Closing);
         }
@@ -499,10 +391,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if self.closed {
             return Err(ServingError::Closing);
         }
-        let slot = self
-            .prepared
-            .get(&invocation)
-            .ok_or(ServingError::Missing { invocation })?;
+        let slot = self.prepared.get(&invocation).ok_or(ServingError::Missing { invocation })?;
         if self.ordinary_closed && !slot.lifecycle {
             return Err(ServingError::Closing);
         }
@@ -513,10 +402,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if self.closed {
             return Err(ServingError::Closing);
         }
-        let slot = self
-            .prepared
-            .get(&invocation)
-            .ok_or(ServingError::Missing { invocation })?;
+        let slot = self.prepared.get(&invocation).ok_or(ServingError::Missing { invocation })?;
         if self.ordinary_closed && !slot.lifecycle {
             return Err(ServingError::Closing);
         }
@@ -531,10 +417,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         Ok(())
     }
 
-    fn traffic(
-        &self,
-        command: WireCommand,
-    ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
+    fn traffic(&self, command: WireCommand) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
         #[cfg(not(feature = "streaming"))]
         {
             let _ = command;
@@ -555,34 +438,21 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                     Err(error) => return wire_answer(Err(error)),
                 };
                 match command {
-                    WireCommand::StreamSend { epoch, payload, .. } => wire_answer(
-                        guarded(async { streams.send(epoch, &payload).await.map(|()| Vec::new()) })
-                            .await,
-                    ),
-                    WireCommand::StreamFinish { epoch, .. } => {
-                        wire_answer(streams.finish_input(epoch).map(|()| Vec::new()))
+                    WireCommand::StreamSend { epoch, payload, .. } => {
+                        wire_answer(guarded(async { streams.send(epoch, &payload).await.map(|()| Vec::new()) }).await)
                     }
-                    WireCommand::StreamReceive { epoch, .. } => {
-                        match guarded(streams.receive(epoch)).await {
-                            Ok(payload) => WireAnswer::Stream {
-                                epoch,
-                                transferred: streams.transferred(),
-                                payload,
-                            },
-                            Err(error) => wire_answer(Err(error)),
-                        }
-                    }
+                    WireCommand::StreamFinish { epoch, .. } => wire_answer(streams.finish_input(epoch).map(|()| Vec::new())),
+                    WireCommand::StreamReceive { epoch, .. } => match guarded(streams.receive(epoch)).await {
+                        Ok(payload) => WireAnswer::Stream { epoch, transferred: streams.transferred(), payload },
+                        Err(error) => wire_answer(Err(error)),
+                    },
                     _ => unreachable!("only stream traffic bypasses the phase loan"),
                 }
             })
         }
     }
 
-    pub fn begin(
-        &mut self,
-        command: WireCommand,
-        context: Arc<C>,
-    ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
+    pub fn begin(&mut self, command: WireCommand, context: Arc<C>) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
         if command.is_stream_traffic() {
             return self.traffic(command);
         }
@@ -592,65 +462,40 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             | WireCommand::StreamAttempt { invocation, .. }
             | WireCommand::Finalize { invocation } => self.prepared.get(invocation).cloned(),
             WireCommand::Prepare { .. } | WireCommand::PrepareGrpc { .. } => None,
-            WireCommand::StreamSend { .. }
-            | WireCommand::StreamFinish { .. }
-            | WireCommand::StreamReceive { .. } => {
+            WireCommand::StreamSend { .. } | WireCommand::StreamFinish { .. } | WireCommand::StreamReceive { .. } => {
                 unreachable!("stream traffic already dispatched")
             }
         };
         let command = match command {
-            WireCommand::PrepareGrpc {
-                invocation,
-                operation,
-                payload,
-            } => {
+            WireCommand::PrepareGrpc { invocation, operation, payload } => {
                 let result = self.prepare_codec(invocation, &operation, payload, true);
                 return Box::pin(async move { wire_answer(result) });
             }
-            WireCommand::Prepare {
-                invocation,
-                operation,
-                payload,
-            } => {
+            WireCommand::Prepare { invocation, operation, payload } => {
                 let result = self.prepare(invocation, &operation, payload);
                 return Box::pin(async move { wire_answer(result) });
             }
             command => command,
         };
-        let refused = self.closed
-            || (self.ordinary_closed && slot.as_ref().is_some_and(|slot| !slot.lifecycle));
-        if refused
-            && matches!(
-                command,
-                WireCommand::Initialize { .. }
-                    | WireCommand::Attempt { .. }
-                    | WireCommand::StreamAttempt { .. }
-            )
-        {
+        let refused = self.closed || (self.ordinary_closed && slot.as_ref().is_some_and(|slot| !slot.lifecycle));
+        if refused && matches!(command, WireCommand::Initialize { .. } | WireCommand::Attempt { .. } | WireCommand::StreamAttempt { .. }) {
             return Box::pin(async { wire_answer(Err(ServingError::Closing)) });
         }
         Box::pin(async move {
             let result = match command {
                 WireCommand::Initialize { invocation, .. } => match slot {
-                    Some(slot) => slot
-                        .initialize(invocation, &context)
-                        .await
-                        .map(|()| Vec::new()),
+                    Some(slot) => slot.initialize(invocation, &context).await.map(|()| Vec::new()),
                     None => Err(ServingError::Missing { invocation }),
                 },
                 WireCommand::Attempt { invocation, .. } => match slot {
                     Some(slot) => slot.attempt(invocation, &context, None).await,
                     None => Err(ServingError::Missing { invocation }),
                 },
-                WireCommand::StreamAttempt {
-                    invocation, epoch, ..
-                } => match slot {
+                WireCommand::StreamAttempt { invocation, epoch, .. } => match slot {
                     Some(slot) => slot.attempt(invocation, &context, Some(epoch)).await,
                     None => Err(ServingError::Missing { invocation }),
                 },
-                WireCommand::StreamSend { .. }
-                | WireCommand::StreamFinish { .. }
-                | WireCommand::StreamReceive { .. } => {
+                WireCommand::StreamSend { .. } | WireCommand::StreamFinish { .. } | WireCommand::StreamReceive { .. } => {
                     unreachable!("stream traffic already dispatched")
                 }
                 WireCommand::Finalize { .. } => match slot {
@@ -665,16 +510,9 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         })
     }
 
-    pub fn close_ordinary(
-        &mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
+    pub fn close_ordinary(&mut self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
         self.ordinary_closed = true;
-        let slots: Vec<_> = self
-            .prepared
-            .values()
-            .filter(|slot| !slot.lifecycle)
-            .cloned()
-            .collect();
+        let slots: Vec<_> = self.prepared.values().filter(|slot| !slot.lifecycle).cloned().collect();
         #[cfg(feature = "streaming")]
         for slot in &slots {
             if let Some(streams) = &slot.streams {
@@ -690,23 +528,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     pub fn release_ordinary(&mut self) -> Result<impl Send + use<C>, ServingError> {
-        if !self.ordinary_closed
-            || self
-                .prepared
-                .values()
-                .any(|slot| !slot.lifecycle && !slot.is_finished())
-        {
+        if !self.ordinary_closed || self.prepared.values().any(|slot| !slot.lifecycle && !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
         // Hand Off Retired Owners So The Caller Can Drop Them Outside Its Lock
-        let retired_slots = self
-            .prepared
-            .extract_if(.., |_, slot| !slot.lifecycle)
-            .collect::<Vec<_>>();
-        let retired_handlers = self
-            .handlers
-            .extract_if(.., |_, handler| !handler.lifecycle)
-            .collect::<Vec<_>>();
+        let retired_slots = self.prepared.extract_if(.., |_, slot| !slot.lifecycle).collect::<Vec<_>>();
+        let retired_handlers = self.handlers.extract_if(.., |_, handler| !handler.lifecycle).collect::<Vec<_>>();
         Ok((retired_slots, retired_handlers))
     }
 
@@ -717,9 +544,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         Ok(())
     }
 
-    pub fn close(
-        &mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
+    pub fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
         self.closed = true;
         let slots: Vec<_> = self.prepared.values().cloned().collect();
         #[cfg(feature = "streaming")]
@@ -740,10 +565,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if !self.closed || self.prepared.values().any(|slot| !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
-        Ok((
-            std::mem::take(&mut self.prepared),
-            std::mem::take(&mut self.handlers),
-        ))
+        Ok((std::mem::take(&mut self.prepared), std::mem::take(&mut self.handlers)))
     }
 
     pub async fn settle(&mut self) -> Result<(), ServingError> {
@@ -765,17 +587,8 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if command.is_stream_traffic() {
             return self.traffic(command).await;
         }
-        if let WireCommand::StreamAttempt {
-            invocation, epoch, ..
-        } = command
-        {
-            if self.closed
-                || (self.ordinary_closed
-                    && self
-                        .prepared
-                        .get(&invocation)
-                        .is_some_and(|slot| !slot.lifecycle))
-            {
+        if let WireCommand::StreamAttempt { invocation, epoch, .. } = command {
+            if self.closed || (self.ordinary_closed && self.prepared.get(&invocation).is_some_and(|slot| !slot.lifecycle)) {
                 return wire_answer(Err(ServingError::Closing));
             }
             let Some(slot) = self.prepared.get(&invocation) else {
@@ -784,20 +597,9 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             return wire_answer(slot.attempt(invocation, context, Some(epoch)).await);
         }
         let result = match command {
-            WireCommand::PrepareGrpc {
-                invocation,
-                operation,
-                payload,
-            } => self.prepare_codec(invocation, &operation, payload, true),
-            WireCommand::Prepare {
-                invocation,
-                operation,
-                payload,
-            } => self.prepare(invocation, &operation, payload),
-            WireCommand::Initialize { invocation, .. } => self
-                .initialize(invocation, context)
-                .await
-                .map(|()| Vec::new()),
+            WireCommand::PrepareGrpc { invocation, operation, payload } => self.prepare_codec(invocation, &operation, payload, true),
+            WireCommand::Prepare { invocation, operation, payload } => self.prepare(invocation, &operation, payload),
+            WireCommand::Initialize { invocation, .. } => self.initialize(invocation, context).await.map(|()| Vec::new()),
             WireCommand::Attempt { invocation, .. } => self.attempt(invocation, context).await,
             WireCommand::StreamAttempt { .. }
             | WireCommand::StreamSend { .. }
@@ -805,9 +607,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             | WireCommand::StreamReceive { .. } => {
                 unreachable!("stream command already dispatched")
             }
-            WireCommand::Finalize { invocation } => {
-                self.finalize(invocation).await.map(|()| Vec::new())
-            }
+            WireCommand::Finalize { invocation } => self.finalize(invocation).await.map(|()| Vec::new()),
         };
         wire_answer(result)
     }
@@ -826,19 +626,11 @@ impl<C> Slot<C> {
                 return Poll::Ready(None);
             }
             if let Some(prepared) = state.prepared.take() {
-                return Poll::Ready(Some(Loan {
-                    slot: Arc::clone(self),
-                    prepared: Some(prepared),
-                    finished: false,
-                }));
+                return Poll::Ready(Some(Loan { slot: Arc::clone(self), prepared: Some(prepared), finished: false }));
             }
             *waiter.lock().expect("invocation waiter lock") = Some(context.waker().clone());
             state.waiters.retain(|entry| entry.strong_count() != 0);
-            if !state
-                .waiters
-                .iter()
-                .any(|entry| entry.ptr_eq(&Arc::downgrade(&waiter)))
-            {
+            if !state.waiters.iter().any(|entry| entry.ptr_eq(&Arc::downgrade(&waiter))) {
                 state.waiters.push(Arc::downgrade(&waiter));
             }
             Poll::Pending
@@ -848,32 +640,13 @@ impl<C> Slot<C> {
 }
 
 impl<C: Send + Sync + 'static> Slot<C> {
-    async fn initialize(
-        self: &Arc<Self>,
-        invocation: u64,
-        context: &C,
-    ) -> Result<(), ServingError> {
-        let mut loan = self
-            .borrow()
-            .await
-            .ok_or(ServingError::Missing { invocation })?;
-        loan.prepared
-            .as_mut()
-            .expect("loaned invocation state")
-            .initialize(context)
-            .await
+    async fn initialize(self: &Arc<Self>, invocation: u64, context: &C) -> Result<(), ServingError> {
+        let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
+        loan.prepared.as_mut().expect("loaned invocation state").initialize(context).await
     }
 
-    async fn attempt(
-        self: &Arc<Self>,
-        invocation: u64,
-        context: &C,
-        epoch: Option<u64>,
-    ) -> Result<Vec<u8>, ServingError> {
-        let mut loan = self
-            .borrow()
-            .await
-            .ok_or(ServingError::Missing { invocation })?;
+    async fn attempt(self: &Arc<Self>, invocation: u64, context: &C, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
+        let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
         #[cfg(feature = "streaming")]
         let attempt = match (&self.streams, epoch) {
             (Some(streams), Some(epoch)) => Some(streams.start(epoch)?),
@@ -884,12 +657,7 @@ impl<C: Send + Sync + 'static> Slot<C> {
         if epoch.is_some() {
             return Err(ServingError::StreamUnsupported);
         }
-        let result = loan
-            .prepared
-            .as_mut()
-            .expect("loaned invocation state")
-            .attempt(context)
-            .await;
+        let result = loan.prepared.as_mut().expect("loaned invocation state").attempt(context).await;
         #[cfg(feature = "streaming")]
         if let Some(attempt) = attempt {
             attempt.end();
@@ -905,11 +673,7 @@ impl<C: Send + Sync + 'static> Slot<C> {
         let Some(mut loan) = self.borrow().await else {
             return Ok(());
         };
-        loan.prepared
-            .as_mut()
-            .expect("loaned invocation state")
-            .finalize()
-            .await?;
+        loan.prepared.as_mut().expect("loaned invocation state").finalize().await?;
         // Drop Physical State Before Releasing Its Capacity
         loan.finished = true;
         let prepared = loan.prepared.take();
@@ -940,10 +704,7 @@ impl<C> Drop for Loan<C> {
 impl WireCommand {
     pub const LIMIT: usize = codec::LIMIT;
     fn is_stream_traffic(&self) -> bool {
-        matches!(
-            self,
-            Self::StreamSend { .. } | Self::StreamFinish { .. } | Self::StreamReceive { .. }
-        )
+        matches!(self, Self::StreamSend { .. } | Self::StreamFinish { .. } | Self::StreamReceive { .. })
     }
 }
 
@@ -952,12 +713,9 @@ impl ServingError {
         match self {
             Self::Handler(failure) => failure.code(),
             Self::Panicked => FailureKind::Ambiguous,
-            Self::Codec(_)
-            | Self::Declaration(_)
-            | Self::Lifecycle(_)
-            | Self::Contract(_)
-            | Self::Catalog
-            | Self::Streaming { .. } => FailureKind::Invalid,
+            Self::Codec(_) | Self::Declaration(_) | Self::Lifecycle(_) | Self::Contract(_) | Self::Catalog | Self::Streaming { .. } => {
+                FailureKind::Invalid
+            }
             _ => FailureKind::Permanent,
         }
     }
@@ -974,9 +732,7 @@ where
     R: Send + Sync + 'static,
     T: for<'a> Operation<Resources = R, Context<'a> = &'a C, Endpoints = ()>,
 {
-    const ENTRY: WireBinding<R, C> = WireBinding {
-        install: WireTable::<C>::bind_operation::<T>,
-    };
+    const ENTRY: WireBinding<R, C> = WireBinding { install: WireTable::<C>::bind_operation::<T> };
 }
 
 #[cfg(feature = "streaming")]
@@ -987,22 +743,16 @@ where
     T: for<'a> Operation<Resources = R, Context<'a> = &'a C>,
     T::Endpoints: WireEndpoints,
 {
-    const ENTRY: WireBinding<R, C> = WireBinding {
-        install: WireTable::<C>::bind_catalog_operation::<T>,
-    };
+    const ENTRY: WireBinding<R, C> = WireBinding { install: WireTable::<C>::bind_catalog_operation::<T> };
 }
 
 /* === Public Functions === */
 // A Prepare answer is empty when the request needs no grant, else the grant as JSON.
 pub fn encode_prepared_grant(grant: Option<&crate::plugin::Grant>) -> Vec<u8> {
-    grant.map_or_else(Vec::new, |grant| {
-        serde_json::to_vec(grant).expect("a grant serializes to JSON")
-    })
+    grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
 }
 
-pub fn decode_prepared_grant(
-    payload: &[u8],
-) -> Result<Option<crate::plugin::Grant>, serde_json::Error> {
+pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::plugin::Grant>, serde_json::Error> {
     if payload.is_empty() {
         return Ok(None);
     }
@@ -1014,27 +764,17 @@ fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
     match result {
         Ok(payload) => WireAnswer::Ready { payload },
         Err(ServingError::Handler(failure)) => WireAnswer::Failed { failure },
-        Err(error) => WireAnswer::Failed {
-            failure: crate::Failure::originate(
-                error.classification(),
-                &error,
-                crate::failure::Origin::Plugin,
-            ),
-        },
+        Err(error) => {
+            WireAnswer::Failed { failure: crate::Failure::originate(error.classification(), &error, crate::failure::Origin::Plugin) }
+        }
     }
 }
 
-async fn guarded<T>(
-    future: impl Future<Output = Result<T, ServingError>>,
-) -> Result<T, ServingError> {
+async fn guarded<T>(future: impl Future<Output = Result<T, ServingError>>) -> Result<T, ServingError> {
     let mut future = std::pin::pin!(future);
-    std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
-            Ok(result) => result,
-            Err(_) => std::task::Poll::Ready(Err(ServingError::Panicked)),
-        }
+    std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
+        Ok(result) => result,
+        Err(_) => std::task::Poll::Ready(Err(ServingError::Panicked)),
     })
     .await
 }

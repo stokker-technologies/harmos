@@ -36,11 +36,7 @@ use clap::Parser;
 
 /* === Structs === */
 #[derive(Parser)]
-#[command(
-    name = "cargo harmos",
-    version,
-    about = "Build And Inspect Harmos Plugin Artifacts"
-)]
+#[command(name = "cargo harmos", version, about = "Build And Inspect Harmos Plugin Artifacts")]
 struct Arguments {
     #[command(subcommand)]
     command: commands::Command,
@@ -57,10 +53,7 @@ struct Arguments {
 /* === Private Functions === */
 fn main() -> std::process::ExitCode {
     let mut arguments: Vec<_> = std::env::args_os().collect();
-    if arguments
-        .get(1)
-        .is_some_and(|argument| argument == "harmos")
-    {
+    if arguments.get(1).is_some_and(|argument| argument == "harmos") {
         arguments.remove(1);
     }
     let arguments = Arguments::parse_from(arguments);
@@ -73,9 +66,7 @@ fn main() -> std::process::ExitCode {
     };
     #[cfg(not(any(feature = "sidecar", feature = "guest")))]
     let startup: Result<(), harmos_packaging::Error> = Ok(());
-    let result = startup
-        .map_err(error::Error::from)
-        .and_then(|()| arguments.command.run(&cancellation));
+    let result = startup.map_err(error::Error::from).and_then(|()| arguments.command.run(&cancellation));
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {

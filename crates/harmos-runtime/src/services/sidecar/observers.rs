@@ -25,9 +25,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::{mpsc, watch};
 // Local Imports
 use super::{Arrival, SidecarError};
-use crate::observers::{
-    ChildSettlement, ObserverActivation, ObserverBackend, ObserverDefinition, ObserverRegistration,
-};
+use crate::observers::{ChildSettlement, ObserverActivation, ObserverBackend, ObserverDefinition, ObserverRegistration};
 use crate::operations::{OperationManager, OperationPhase};
 use harmos_sidecar::inventory::observers::{Activation, Declaration};
 
@@ -83,10 +81,7 @@ struct Closing {
 
 /* === Implementations === */
 impl Remote {
-    pub(super) fn new(
-        arrivals: mpsc::Sender<Arrival>,
-        provider: Option<Arc<crate::supervision::instance::Instance>>,
-    ) -> Arc<Self> {
+    pub(super) fn new(arrivals: mpsc::Sender<Arrival>, provider: Option<Arc<crate::supervision::instance::Instance>>) -> Arc<Self> {
         Arc::new(Self {
             provider,
             arrivals,
@@ -105,83 +100,46 @@ impl Remote {
         let Some(original) = self.retirement.get().and_then(Weak::upgrade) else {
             return Ok(());
         };
-        let retired = original
-            .operations
-            .retire_scope_of(&original.remote)
-            .await?;
-        *self.outcome.lock().expect("observer outcome is healthy") =
-            retired.and_then(|retired| retired.into_outcome().err());
+        let retired = original.operations.retire_scope_of(&original.remote).await?;
+        *self.outcome.lock().expect("observer outcome is healthy") = retired.and_then(|retired| retired.into_outcome().err());
         Ok(())
     }
 
-    pub(super) fn configure(
-        &self,
-        operations: OperationManager,
-        scope: crate::plugin::PluginScope,
-    ) -> crate::Result<()> {
+    pub(super) fn configure(&self, operations: OperationManager, scope: crate::plugin::PluginScope) -> crate::Result<()> {
         self.control
-            .set(ControlContext {
-                operations,
-                scope,
-                binding: OnceLock::new(),
-            })
-            .map_err(|_| crate::Error::InvalidInput {
-                field: "observer control",
-                reason: "original transport was already configured",
-            })
+            .set(ControlContext { operations, scope, binding: OnceLock::new() })
+            .map_err(|_| crate::Error::InvalidInput { field: "observer control", reason: "original transport was already configured" })
     }
 
     pub(super) fn capture_control(&self) -> crate::Result<()> {
-        let original = self.control.get().ok_or(crate::Error::NotReady {
-            domain: "observer control",
-        })?;
+        let original = self.control.get().ok_or(crate::Error::NotReady { domain: "observer control" })?;
         let Some(contract) = original.scope.observe_contract() else {
             return Ok(());
         };
         if original.binding.get().is_some() {
             return Ok(());
         }
-        let binding = original
-            .operations
-            .capture_host_control(&original.scope, contract)?;
+        let binding = original.operations.capture_host_control(&original.scope, contract)?;
         let _ = original.binding.set(binding);
         Ok(())
     }
 
     // Submit the observe control for one activation, owned by its children.
     fn observe(
-        &self,
-        children: &ChildSettlement,
-        control: &harmos_domain::observers::Control,
+        &self, children: &ChildSettlement, control: &harmos_domain::observers::Control,
     ) -> crate::Result<crate::operations::EncodedInvocation> {
-        let original = self.control.get().ok_or(crate::Error::NotReady {
-            domain: "observer control",
-        })?;
-        original
-            .scope
-            .observe_contract()
-            .ok_or(crate::Error::NotReady {
-                domain: "observer control",
-            })?;
+        let original = self.control.get().ok_or(crate::Error::NotReady { domain: "observer control" })?;
+        original.scope.observe_contract().ok_or(crate::Error::NotReady { domain: "observer control" })?;
         self.capture_control()?;
-        let binding = original
-            .binding
-            .get()
-            .expect("original captured observe control");
+        let binding = original.binding.get().expect("original captured observe control");
         let bytes = control
             .observer
             .len()
             .checked_mul(2)
             .and_then(|bytes| bytes.checked_add(64))
             .and_then(std::num::NonZeroUsize::new)
-            .ok_or(crate::Error::ResourceExhausted {
-                resource: "observer control encoding",
-            })?;
-        children.submit(false, || {
-            binding.submit_with(bytes, |_| {
-                Ok(harmos_domain::Message::encode_to_vec(control))
-            })
-        })
+            .ok_or(crate::Error::ResourceExhausted { resource: "observer control encoding" })?;
+        children.submit(false, || binding.submit_with(bytes, |_| Ok(harmos_domain::Message::encode_to_vec(control))))
     }
 
     async fn fence(&self) {
@@ -189,10 +147,7 @@ impl Remote {
     }
 
     async fn failed(&self, error: crate::Error) -> crate::Error {
-        let _ = self
-            .arrivals
-            .send(Arrival::ObserverFailed(error.to_string()))
-            .await;
+        let _ = self.arrivals.send(Arrival::ObserverFailed(error.to_string())).await;
         self.fence().await;
         error
     }
@@ -200,12 +155,7 @@ impl Remote {
 
 impl crate::supervision::cleanup::Resource for RetainedControl {
     fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
-        Box::pin(async move {
-            self.0
-                .settle()
-                .await
-                .map_err(|source| Arc::new(crate::Error::OperationSettlement { source }))
-        })
+        Box::pin(async move { self.0.settle().await.map_err(|source| Arc::new(crate::Error::OperationSettlement { source })) })
     }
 }
 
@@ -216,18 +166,11 @@ impl ObserverBackend for Backend {
         Ok(self.definition.clone())
     }
 
-    async fn run(
-        &self,
-        remote: Arc<Remote>,
-        mut activation: ObserverActivation,
-    ) -> crate::Result<()> {
+    async fn run(&self, remote: Arc<Remote>, mut activation: ObserverActivation) -> crate::Result<()> {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control = harmos_domain::observers::Control {
-            observer: self.definition.id.clone(),
-            generation: activation.id().value(),
-        };
+        let control = harmos_domain::observers::Control { observer: self.definition.id.clone(), generation: activation.id().value() };
         let children = activation.child_settlement();
         let mut invocation = match remote.observe(&children, &control) {
             Ok(invocation) => invocation,
@@ -272,10 +215,7 @@ impl ObserverBackend for Backend {
         if let Some(failure) = control.status().cleanup_failure().cloned() {
             children.forget(&control);
             activation.retain(RetainedControl(control), Arc::clone(&failure));
-            return Err(crate::Error::TaskFailed {
-                domain: "remote observer cleanup",
-                source: failure,
-            });
+            return Err(crate::Error::TaskFailed { domain: "remote observer cleanup", source: failure });
         }
         match result {
             Ok(_) => Ok(()),
@@ -288,41 +228,18 @@ impl ObserverBackend for Backend {
 }
 
 impl Session {
-    pub(super) fn new(
-        remote: Arc<Remote>,
-        operations: OperationManager,
-        end: Option<harmos_sidecar::attach::Ending>,
-    ) -> Self {
-        Self {
-            closing: Some(Closing {
-                remote,
-                operations,
-                scope: None,
-                end,
-                ending_failure: None,
-            }),
-            outcome: None,
-        }
+    pub(super) fn new(remote: Arc<Remote>, operations: OperationManager, end: Option<harmos_sidecar::attach::Ending>) -> Self {
+        Self { closing: Some(Closing { remote, operations, scope: None, end, ending_failure: None }), outcome: None }
     }
 
     // Bind retirement of this connection's observers to the session.
     pub(super) fn bind(&mut self) -> Result<(), String> {
-        let closing = self
-            .closing
-            .as_mut()
-            .ok_or("native session already ended")?;
+        let closing = self.closing.as_mut().ok_or("native session already ended")?;
         if closing.scope.is_some() {
             return Err("native observer scope already bound".to_owned());
         }
-        let original = Arc::new(Retirement {
-            operations: closing.operations.clone(),
-            remote: Arc::clone(&closing.remote),
-        });
-        closing
-            .remote
-            .retirement
-            .set(Arc::downgrade(&original))
-            .map_err(|_| "native observer retirement already bound".to_owned())?;
+        let original = Arc::new(Retirement { operations: closing.operations.clone(), remote: Arc::clone(&closing.remote) });
+        closing.remote.retirement.set(Arc::downgrade(&original)).map_err(|_| "native observer retirement already bound".to_owned())?;
         closing.scope = Some(original);
         Ok(())
     }
@@ -365,13 +282,9 @@ impl Closing {
         if let Some(end) = self.end.as_mut() {
             let mut ending = Box::pin(end.settle());
             let result = std::future::poll_fn(|context| {
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    ending.as_mut().poll(context)
-                })) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ending.as_mut().poll(context))) {
                     Ok(poll) => poll.map(Ok),
-                    Err(_) => {
-                        std::task::Poll::Ready(Err("native ending settlement panicked".to_owned()))
-                    }
+                    Err(_) => std::task::Poll::Ready(Err("native ending settlement panicked".to_owned())),
                 }
             })
             .await;
@@ -397,11 +310,7 @@ impl Closing {
             match retirement {
                 Ok(retirement) => {
                     let outcome = retirement.and_then(|retirement| retirement.into_outcome().err());
-                    *self
-                        .remote
-                        .outcome
-                        .lock()
-                        .expect("observer outcome is healthy") = outcome.clone();
+                    *self.remote.outcome.lock().expect("observer outcome is healthy") = outcome.clone();
                     return Ok(outcome);
                 }
                 Err(error) => {
@@ -415,10 +324,7 @@ impl Closing {
 
 /* === Public Functions === */
 pub(super) fn stage(
-    operations: &OperationManager,
-    remote: &Arc<Remote>,
-    plugin: Option<&crate::plugin::PluginScope>,
-    definitions: &[Declaration],
+    operations: &OperationManager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
 ) -> crate::Result<ObserverRegistration> {
     let backends = definitions.iter().map(|entry| Backend {
@@ -426,11 +332,7 @@ pub(super) fn stage(
             id: entry.id.clone(),
             interval: entry.interval,
             demand_keys: entry.demand_keys.clone(),
-            streams: publications
-                .iter()
-                .filter(|row| entry.streams.contains(&row.id))
-                .cloned()
-                .collect(),
+            streams: publications.iter().filter(|row| entry.streams.contains(&row.id)).cloned().collect(),
         },
     });
     match plugin {
@@ -441,12 +343,8 @@ pub(super) fn stage(
 
 // Hold one activation lease per observer whose plugin or demand wants it.
 pub(super) async fn demand(
-    operations: OperationManager,
-    remote: Arc<Remote>,
-    plugin: Option<crate::plugin::PluginScope>,
-    definitions: Vec<Declaration>,
-    mut changes: watch::Receiver<BTreeMap<String, bool>>,
-    arrivals: mpsc::Sender<Arrival>,
+    operations: OperationManager, remote: Arc<Remote>, plugin: Option<crate::plugin::PluginScope>, definitions: Vec<Declaration>,
+    mut changes: watch::Receiver<BTreeMap<String, bool>>, arrivals: mpsc::Sender<Arrival>,
 ) {
     if let Some(plugin) = plugin
         && plugin.ready().await.is_err()
@@ -459,26 +357,17 @@ pub(super) async fn demand(
         let wanted = changes.borrow_and_update().clone();
         for definition in &definitions {
             let active = definition.activation == Activation::Plugin
-                || definition
-                    .streams
-                    .iter()
-                    .chain(&definition.demand_keys)
-                    .any(|key| wanted.get(key).copied().unwrap_or(false));
+                || definition.streams.iter().chain(&definition.demand_keys).any(|key| wanted.get(key).copied().unwrap_or(false));
             if !active {
                 leases.remove(&definition.id);
             } else if !leases.contains_key(&definition.id) {
-                match operations
-                    .submit_with_resources_at(&definition.id, Arc::clone(&remote))
-                    .await
-                {
+                match operations.submit_with_resources_at(&definition.id, Arc::clone(&remote)).await {
                     Ok(lease) => {
                         leases.insert(definition.id.clone(), lease);
                     }
                     Err(crate::Error::Closing { .. }) => return,
                     Err(error) => {
-                        let _ = arrivals
-                            .send(Arrival::ObserverFailed(error.to_string()))
-                            .await;
+                        let _ = arrivals.send(Arrival::ObserverFailed(error.to_string())).await;
                         return;
                     }
                 }
@@ -492,10 +381,7 @@ pub(super) async fn demand(
 
 /* === Private Functions === */
 fn failure(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
-    crate::Error::TaskFailed {
-        domain: "remote observer",
-        source: Arc::new(error),
-    }
+    crate::Error::TaskFailed { domain: "remote observer", source: Arc::new(error) }
 }
 
 /* === Tests === */

@@ -30,24 +30,13 @@ use crate::{Application, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
-type StartupFuture<A> =
-    Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
+type StartupFuture<A> = Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type ReconcileFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
-type InitializeFuture = Pin<
-    Box<
-        dyn Future<Output = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>>
-            + Send,
-    >,
->;
+type InitializeFuture = Pin<Box<dyn Future<Output = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 type Initialize<A> = Box<dyn FnOnce(super::Handle<A>) -> InitializeFuture + Send>;
-pub(super) type Reconciliation<A> = Box<
-    dyn FnOnce(
-            super::StateManager<A>,
-            StorageManager<crate::storage::ErasedCatalog>,
-        ) -> ReconcileFuture
-        + Send,
->;
+pub(super) type Reconciliation<A> =
+    Box<dyn FnOnce(super::StateManager<A>, StorageManager<crate::storage::ErasedCatalog>) -> ReconcileFuture + Send>;
 
 /* === Structs === */
 pub(super) struct Initializer<A: Application> {
@@ -105,10 +94,7 @@ pub enum BootstrapStatus {
 
 /* === Implementations === */
 impl<A: Application> Startup<A> {
-    pub(super) fn new(
-        builder: super::Builder<A>,
-        storage: Option<StorageManager<crate::storage::ErasedCatalog>>,
-    ) -> Self {
+    pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager<crate::storage::ErasedCatalog>>) -> Self {
         let cleanup = BootstrapCleanup::new();
         let receipt = cleanup.clone();
         let future = Box::pin(async move {
@@ -116,10 +102,7 @@ impl<A: Application> Startup<A> {
             receipt.settle_unowned();
             outcome
         });
-        Self {
-            future: Some(future),
-            cleanup,
-        }
+        Self { future: Some(future), cleanup }
     }
 
     pub fn cleanup(&self) -> BootstrapCleanup {
@@ -130,10 +113,7 @@ impl<A: Application> Startup<A> {
 impl<A: Application> Future for Startup<A> {
     type Output = std::result::Result<Runtime<A>, super::Incompatible>;
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        let future = self
-            .future
-            .as_mut()
-            .expect("startup is polled before completion");
+        let future = self.future.as_mut().expect("startup is polled before completion");
         let outcome = future.as_mut().poll(context);
         if outcome.is_ready() {
             self.future.take();
@@ -153,15 +133,7 @@ impl<A: Application> Drop for Startup<A> {
 impl BootstrapCleanup {
     fn new() -> Self {
         let (status, _) = watch::channel(BootstrapStatus::Starting);
-        Self {
-            shared: Arc::new(CleanupState {
-                retained: Mutex::new(Retained {
-                    owner: None,
-                    failure: None,
-                }),
-                status,
-            }),
-        }
+        Self { shared: Arc::new(CleanupState { retained: Mutex::new(Retained { owner: None, failure: None }), status }) }
     }
 
     pub fn status(&self) -> BootstrapStatus {
@@ -169,12 +141,7 @@ impl BootstrapCleanup {
     }
 
     pub fn failure(&self) -> Option<Arc<crate::Error>> {
-        self.shared
-            .retained
-            .lock()
-            .expect("bootstrap cleanup lock")
-            .failure
-            .clone()
+        self.shared.retained.lock().expect("bootstrap cleanup lock").failure.clone()
     }
 
     pub async fn wait(&self) -> Result<()> {
@@ -189,22 +156,13 @@ impl BootstrapCleanup {
                         if self.status() != BootstrapStatus::Failed {
                             continue;
                         }
-                        retained
-                            .failure
-                            .clone()
-                            .expect("failed cleanup retains its cause")
+                        retained.failure.clone().expect("failed cleanup retains its cause")
                     };
-                    return Err(crate::Error::TaskFailed {
-                        domain: "bootstrap cleanup",
-                        source,
-                    });
+                    return Err(crate::Error::TaskFailed { domain: "bootstrap cleanup", source });
                 }
                 BootstrapStatus::Starting | BootstrapStatus::Cleaning => {}
             }
-            status
-                .changed()
-                .await
-                .expect("receipt retains its status owner");
+            status.changed().await.expect("receipt retains its status owner");
         }
     }
 
@@ -212,10 +170,7 @@ impl BootstrapCleanup {
         let owner = {
             let mut retained = self.shared.retained.lock().expect("bootstrap cleanup lock");
             if self.status() == BootstrapStatus::Failed {
-                let owner = retained
-                    .owner
-                    .clone()
-                    .expect("failed cleanup owns resources");
+                let owner = retained.owner.clone().expect("failed cleanup owns resources");
                 retained.failure = None;
                 self.shared.status.send_replace(BootstrapStatus::Cleaning);
                 Some(owner)
@@ -268,13 +223,7 @@ impl<A: Application> Initializer<A> {
     {
         Self {
             timeout,
-            initialize: Box::new(move |handle| {
-                Box::pin(async move {
-                    initialize(handle)
-                        .await
-                        .map_err(|source| Box::new(source) as _)
-                })
-            }),
+            initialize: Box::new(move |handle| Box::pin(async move { initialize(handle).await.map_err(|source| Box::new(source) as _) })),
         }
     }
 }
@@ -297,10 +246,7 @@ impl Cleanup {
                 let source = Arc::new(error);
                 retained.failure = Some(Arc::clone(&source));
                 receipt.status.send_replace(BootstrapStatus::Failed);
-                Err(crate::Error::TaskFailed {
-                    domain: "bootstrap cleanup",
-                    source,
-                })
+                Err(crate::Error::TaskFailed { domain: "bootstrap cleanup", source })
             }
         }
     }
@@ -313,10 +259,7 @@ impl std::fmt::Debug for Cleanup {
 }
 
 impl<A: Application> Boot<A> {
-    pub(super) fn new(
-        storage: Option<&StorageManager<crate::storage::ErasedCatalog>>,
-        cleanup: BootstrapCleanup,
-    ) -> Result<Self> {
+    pub(super) fn new(storage: Option<&StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup) -> Result<Self> {
         let identity = Arc::new(());
         if let Some(storage) = storage {
             // Refusal must precede installing a cleanup owner: another runtime's
@@ -324,15 +267,7 @@ impl<A: Application> Boot<A> {
             storage.claim_owner(identity.clone())?;
         }
 
-        Ok(Self {
-            identity,
-            storage: storage.cloned(),
-            runtime: None,
-            writer: None,
-            state: None,
-            armed: true,
-            cleanup,
-        })
+        Ok(Self { identity, storage: storage.cloned(), runtime: None, writer: None, state: None, armed: true, cleanup })
     }
 
     pub(super) async fn acquire(&self) -> Result<()> {
@@ -390,10 +325,7 @@ impl<A: Application> Boot<A> {
 
     pub(super) fn finish(mut self) -> Runtime<A> {
         self.armed = false;
-        self.cleanup
-            .shared
-            .status
-            .send_replace(BootstrapStatus::HandedOff);
+        self.cleanup.shared.status.send_replace(BootstrapStatus::HandedOff);
         self.runtime.take().expect("successful boot owns a runtime")
     }
 }

@@ -78,14 +78,11 @@ impl<'de> Visitor<'de> for Files {
                 return Err(serde::de::Error::custom("plugin file count limit exceeded"));
             }
             count += 1;
-            let file: File<'_> =
-                serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+            let file: File<'_> = serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
             if let Some(raw) = file.executable {
-                let executable: Executable<'_> =
-                    serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+                let executable: Executable<'_> = serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
                 let mut json = serde_json::Deserializer::from_str(executable.registrations.get());
-                json.deserialize_seq(Registrations(self.0.registrations))
-                    .map_err(serde::de::Error::custom)?;
+                json.deserialize_seq(Registrations(self.0.registrations)).map_err(serde::de::Error::custom)?;
                 json.end().map_err(serde::de::Error::custom)?;
             }
         }
@@ -102,9 +99,7 @@ impl<'de> Visitor<'de> for Registrations {
         let mut count = 0usize;
         while sequence.next_element::<IgnoredAny>()?.is_some() {
             if count >= self.0 {
-                return Err(serde::de::Error::custom(
-                    "plugin registration count limit exceeded",
-                ));
+                return Err(serde::de::Error::custom("plugin registration count limit exceeded"));
             }
             count += 1;
         }
@@ -121,13 +116,7 @@ pub(super) fn identity_size(identity: &Identity, limit: usize) -> Result<usize, 
     Ok(output.size)
 }
 
-pub(super) fn file_size(
-    source: &Source<'_>,
-    sha256: &str,
-    comma: bool,
-    size: &mut usize,
-    limit: usize,
-) -> Result<(), Error> {
+pub(super) fn file_size(source: &Source<'_>, sha256: &str, comma: bool, size: &mut usize, limit: usize) -> Result<(), Error> {
     // Same fields/order as File, borrowing the export instead of cloning it.
     #[derive(Serialize)]
     struct File<'a> {
@@ -143,12 +132,7 @@ pub(super) fn file_size(
     }
     serde_json::to_writer(
         &mut output,
-        &File {
-            path: source.path,
-            size: source.bytes.len() as u64,
-            sha256,
-            executable: source.executable.as_ref(),
-        },
+        &File { path: source.path, size: source.bytes.len() as u64, sha256, executable: source.executable.as_ref() },
     )?;
     *size = output.size;
     Ok(())

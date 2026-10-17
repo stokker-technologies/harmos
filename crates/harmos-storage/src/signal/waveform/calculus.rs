@@ -42,9 +42,7 @@ pub fn derivative(x: &[f64], y: &[f64]) -> Vec<f64> {
 
     let mut slope = Vec::with_capacity(length);
     slope.push((y[1] - y[0]) / (x[1] - x[0]));
-    slope.extend(
-        (1..length - 1).map(|index| (y[index + 1] - y[index - 1]) / (x[index + 1] - x[index - 1])),
-    );
+    slope.extend((1..length - 1).map(|index| (y[index + 1] - y[index - 1]) / (x[index + 1] - x[index - 1])));
     slope.push((y[length - 1] - y[length - 2]) / (x[length - 1] - x[length - 2]));
 
     slope

@@ -90,70 +90,34 @@ struct Payload<'a>(&'a [u8]);
 /* === Implementations === */
 impl<A: Application> StreamManager<A> {
     pub fn stage_listeners(
-        &self,
-        scope: &PluginScope,
-        operations: &OperationManager,
-        configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
+        &self, scope: &PluginScope, operations: &OperationManager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
     ) -> Result<PluginListenerRegistration> {
         if scope.is_closed() || scope.has_committed() || self.closed.load(Ordering::Acquire) {
-            return Err(Error::Closing {
-                domain: "stream listener staging",
-            });
+            return Err(Error::Closing { domain: "stream listener staging" });
         }
-        let mut bindings = PluginListenerBindings {
-            streams: self,
-            scope,
-            operations,
-            sources: Vec::new(),
-            entries: Vec::new(),
-        };
+        let mut bindings = PluginListenerBindings { streams: self, scope, operations, sources: Vec::new(), entries: Vec::new() };
         configure(&mut bindings)?;
-        let expected = scope
-            .listeners()
-            .iter()
-            .filter(|listener| matches!(listener.source(), Source::Stream { .. }))
-            .count();
+        let expected = scope.listeners().iter().filter(|listener| matches!(listener.source(), Source::Stream { .. })).count();
         if bindings.entries.len() != expected {
-            return Err(Error::InvalidInput {
-                field: "stream listeners",
-                reason: "the complete frozen source inventory must be bound",
-            });
+            return Err(Error::InvalidInput { field: "stream listeners", reason: "the complete frozen source inventory must be bound" });
         }
         if expected == 0 {
-            return Ok(PluginListenerRegistration {
-                table: Arc::clone(&self.windows),
-                listening: None,
-            });
+            return Ok(PluginListenerRegistration { table: Arc::clone(&self.windows), listening: None });
         }
         bindings.entries.sort_by_key(|entry| entry.ordinal);
-        let mut registry = self
-            .windows
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned");
+        let mut registry = self.windows.listeners.lock().expect("stream listener registry poisoned");
         registry.retain(|_, owner| !owner.delivery.cleaned());
         if registry.contains_key(scope.owner()) {
-            return Err(Error::AlreadyRegistered {
-                domain: "stream listeners",
-                name: scope.owner().to_owned(),
-            });
+            return Err(Error::AlreadyRegistered { domain: "stream listeners", name: scope.owner().to_owned() });
         }
         if registry.len() == REGISTRATIONS {
-            return Err(Error::ResourceExhausted {
-                resource: "stream listener registrations",
-            });
+            return Err(Error::ResourceExhausted { resource: "stream listener registrations" });
         }
         let held = Arc::new(Mutex::new(Vec::new()));
         let frontiers = bindings
             .sources
             .iter()
-            .map(|source| {
-                (
-                    Arc::<str>::from(source.wired.definition.id()),
-                    source.wired.definition.version(),
-                    Arc::clone(&source.frontier),
-                )
-            })
+            .map(|source| (Arc::<str>::from(source.wired.definition.id()), source.wired.definition.version(), Arc::clone(&source.frontier)))
             .collect();
         let delivery = Listener::spawn(scope, {
             let streams = self.clone();
@@ -174,17 +138,10 @@ impl<A: Application> StreamManager<A> {
                 }
             }
         });
-        let listening = Arc::new(Listening {
-            delivery,
-            frontiers,
-            held,
-        });
+        let listening = Arc::new(Listening { delivery, frontiers, held });
         registry.insert(scope.owner().to_owned(), Arc::clone(&listening));
         drop(registry);
-        let registration = PluginListenerRegistration {
-            table: Arc::clone(&self.windows),
-            listening: Some(listening),
-        };
+        let registration = PluginListenerRegistration { table: Arc::clone(&self.windows), listening: Some(listening) };
         if let Err(error) = scope.bind_stream_listeners() {
             registration.stop();
             return Err(error);
@@ -193,50 +150,26 @@ impl<A: Application> StreamManager<A> {
     }
 
     pub(crate) fn stop_listeners(&self) {
-        let owners: Vec<_> = self
-            .windows
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned")
-            .values()
-            .cloned()
-            .collect();
+        let owners: Vec<_> = self.windows.listeners.lock().expect("stream listener registry poisoned").values().cloned().collect();
         for owner in owners {
             owner.delivery.stop();
         }
     }
 
     pub async fn shutdown_listeners(&self) -> Result<()> {
-        let owners: Vec<_> = self
-            .windows
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned")
-            .values()
-            .cloned()
-            .collect();
+        let owners: Vec<_> = self.windows.listeners.lock().expect("stream listener registry poisoned").values().cloned().collect();
         for owner in &owners {
             owner.delivery.stop();
         }
         for owner in owners {
             owner.shutdown().await?;
         }
-        self.windows
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned")
-            .retain(|_, owner| !owner.delivery.cleaned());
+        self.windows.listeners.lock().expect("stream listener registry poisoned").retain(|_, owner| !owner.delivery.cleaned());
         Ok(())
     }
 
     pub async fn shutdown_listeners_for(&self, scope: &PluginScope) -> Result<()> {
-        let owner = self
-            .windows
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned")
-            .get(scope.owner())
-            .cloned();
+        let owner = self.windows.listeners.lock().expect("stream listener registry poisoned").get(scope.owner()).cloned();
         let Some(owner) = owner else {
             return Ok(());
         };
@@ -261,13 +194,8 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source differs from the compiled native catalog member",
             });
         }
-        let graph = Schema::from_declaration(
-            S::DEFINITION,
-            &harmos_domain::config::SchemaSettings::default(),
-        )
-        .map_err(|source| Error::RecordSchema {
-            source: source.into(),
-        })?;
+        let graph = Schema::from_declaration(S::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+            .map_err(|source| Error::RecordSchema { source: source.into() })?;
         self.bind(wired, &graph, after, submit_native::<S>)
     }
 
@@ -279,34 +207,21 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source has no original validated generation owner",
             });
         }
-        let graph = wired.definition.schema().ok_or(Error::InvalidInput {
-            field: "managed listener stream",
-            reason: "source has no admitted row schema",
-        })?;
+        let graph = wired
+            .definition
+            .schema()
+            .ok_or(Error::InvalidInput { field: "managed listener stream", reason: "source has no admitted row schema" })?;
         self.bind(Arc::clone(&wired), graph, after, submit_publication)
     }
 
     fn source(&self, id: &str, version: u32) -> Result<Arc<Wired>> {
-        let _visibility = self
-            .streams
-            .windows
-            .visibility
-            .read()
-            .expect("stream visibility poisoned");
-        let windows = self
-            .streams
-            .windows
-            .windows
-            .read()
-            .expect("stream registry poisoned");
+        let _visibility = self.streams.windows.visibility.read().expect("stream visibility poisoned");
+        let windows = self.streams.windows.windows.read().expect("stream registry poisoned");
         let wired = windows
             .get(id)
             .and_then(|versions| versions.get(&version))
             .cloned()
-            .ok_or_else(|| Error::NotRegistered {
-                domain: "listener stream",
-                name: id.to_owned(),
-            })?;
+            .ok_or_else(|| Error::NotRegistered { domain: "listener stream", name: id.to_owned() })?;
         if let Some(owner) = wired.definition.owner() {
             if owner != self.scope.owner() && !self.scope.allows(owner) {
                 return Err(Error::InvalidInput {
@@ -318,63 +233,35 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 && !staged.scope.same_activation(self.scope)
                 && !staged.scope.is_ready()
             {
-                return Err(Error::Closing {
-                    domain: "listener stream source",
-                });
+                return Err(Error::Closing { domain: "listener stream source" });
             }
         }
         Ok(wired)
     }
 
-    fn bind(
-        &mut self,
-        wired: Arc<Wired>,
-        graph: &Schema,
-        after: u64,
-        submit: Submit,
-    ) -> Result<()> {
+    fn bind(&mut self, wired: Arc<Wired>, graph: &Schema, after: u64, submit: Submit) -> Result<()> {
         if self.sources.len() == SOURCES {
-            return Err(Error::ResourceExhausted {
-                resource: "stream listener source windows",
-            });
+            return Err(Error::ResourceExhausted { resource: "stream listener source windows" });
         }
         if after > wired.window.logical_frontier() {
             return Err(Error::FrontierAhead);
         }
-        if self
-            .sources
-            .iter()
-            .any(|source| Arc::ptr_eq(&source.wired.window, &wired.window))
-        {
-            return Err(Error::AlreadyRegistered {
-                domain: "listener stream source",
-                name: wired.definition.id().into(),
-            });
+        if self.sources.iter().any(|source| Arc::ptr_eq(&source.wired.window, &wired.window)) {
+            return Err(Error::AlreadyRegistered { domain: "listener stream source", name: wired.definition.id().into() });
         }
         let index = self.sources.len();
         let mut selected = false;
         for (ordinal, listener) in self.scope.listeners().iter().enumerate() {
-            let Source::Stream {
-                id, schema_ordinal, ..
-            } = listener.source()
-            else {
+            let Source::Stream { id, schema_ordinal, .. } = listener.source() else {
                 continue;
             };
-            if id.as_ref() != wired.definition.id() || *schema_ordinal != wired.definition.version()
-            {
+            if id.as_ref() != wired.definition.id() || *schema_ordinal != wired.definition.version() {
                 continue;
             }
             let source_graph = listener.source().schema();
             if !graph
-                .equivalent(
-                    graph.root,
-                    source_graph,
-                    source_graph.root,
-                    &harmos_domain::config::SchemaSettings::default(),
-                )
-                .map_err(|source| Error::RecordSchema {
-                    source: source.into(),
-                })?
+                .equivalent(graph.root, source_graph, source_graph.root, &harmos_domain::config::SchemaSettings::default())
+                .map_err(|source| Error::RecordSchema { source: source.into() })?
             {
                 return Err(Error::InvalidInput {
                     field: "listener stream source",
@@ -384,23 +271,15 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             self.entries.push(Binding {
                 ordinal,
                 source: index,
-                callback: self
-                    .operations
-                    .capture_callback(self.scope, listener.callback())?,
+                callback: self.operations.capture_callback(self.scope, listener.callback())?,
                 submit,
             });
             selected = true;
         }
         if !selected {
-            return Err(Error::NotRegistered {
-                domain: "listener stream source",
-                name: wired.definition.id().into(),
-            });
+            return Err(Error::NotRegistered { domain: "listener stream source", name: wired.definition.id().into() });
         }
-        self.sources.push(Captured {
-            wired,
-            frontier: Arc::new(AtomicU64::new(after)),
-        });
+        self.sources.push(Captured { wired, frontier: Arc::new(AtomicU64::new(after)) });
         Ok(())
     }
 }
@@ -416,9 +295,7 @@ impl PluginListenerRegistration {
     }
 
     pub fn failure(&self) -> Option<Arc<Error>> {
-        self.listening
-            .as_ref()
-            .and_then(|owner| owner.delivery.failure())
+        self.listening.as_ref().and_then(|owner| owner.delivery.failure())
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
@@ -463,14 +340,8 @@ impl fmt::Debug for Listening {
 
 impl Table {
     fn remove_listening(&self, owner: &Arc<Listening>) {
-        let mut registry = self
-            .listeners
-            .lock()
-            .expect("stream listener registry poisoned");
-        if registry
-            .get(owner.delivery.scope().owner())
-            .is_some_and(|current| Arc::ptr_eq(current, owner))
-        {
+        let mut registry = self.listeners.lock().expect("stream listener registry poisoned");
+        if registry.get(owner.delivery.scope().owner()).is_some_and(|current| Arc::ptr_eq(current, owner)) {
             registry.remove(owner.delivery.scope().owner());
         }
     }
@@ -490,65 +361,37 @@ impl Message for Payload<'_> {
     }
 
     fn decode(_: &[u8]) -> std::result::Result<Self, MessageError> {
-        Err(MessageError::new(
-            "borrowed source payload is never decoded",
-        ))
+        Err(MessageError::new("borrowed source payload is never decoded"))
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn submit_native<S: Message + 'static>(
-    row: &Row,
-    context: Context,
-    callback: &PluginCallback,
-) -> Result<EncodedInvocation> {
-    let row = row.downcast_ref::<S>().ok_or(Error::InvalidInput {
-        field: "listener native row",
-        reason: "original window row type differs from its captured source",
-    })?;
+fn submit_native<S: Message + 'static>(row: &Row, context: Context, callback: &PluginCallback) -> Result<EncodedInvocation> {
+    let row = row
+        .downcast_ref::<S>()
+        .ok_or(Error::InvalidInput { field: "listener native row", reason: "original window row type differs from its captured source" })?;
     submit(row, context, callback)
 }
 
-fn submit_publication(
-    row: &Row,
-    context: Context,
-    callback: &PluginCallback,
-) -> Result<EncodedInvocation> {
+fn submit_publication(row: &Row, context: Context, callback: &PluginCallback) -> Result<EncodedInvocation> {
     let row = row
         .downcast_ref::<ManagedPublication>()
-        .ok_or(Error::InvalidInput {
-            field: "listener managed row",
-            reason: "original charged publication owner is absent",
-        })?;
+        .ok_or(Error::InvalidInput { field: "listener managed row", reason: "original charged publication owner is absent" })?;
     submit(&Payload(row.payload()), context, callback)
 }
 
-fn submit<R: Message>(
-    row: &R,
-    context: Context,
-    callback: &PluginCallback,
-) -> Result<EncodedInvocation> {
-    let encoding_error = |source| Error::OperationFailed {
-        operation: callback.contract().operation().id.to_string(),
-        source: Arc::new(source),
-    };
-    let bytes =
-        harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(encoding_error)?;
-    let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted {
-        resource: "stream callback encoding",
-    })?;
-    callback.submit_with(bytes, |budget| {
-        harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(encoding_error)
-    })
+fn submit<R: Message>(row: &R, context: Context, callback: &PluginCallback) -> Result<EncodedInvocation> {
+    let encoding_error =
+        |source| Error::OperationFailed { operation: callback.contract().operation().id.to_string(), source: Arc::new(source) };
+    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(encoding_error)?;
+    let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "stream callback encoding" })?;
+    callback.submit_with(bytes, |budget| harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(encoding_error))
 }
 
 async fn closed_provider(providers: &[PluginScope]) {
-    let mut closed: Vec<_> = providers
-        .iter()
-        .map(|provider| Box::pin(provider.closed()))
-        .collect();
+    let mut closed: Vec<_> = providers.iter().map(|provider| Box::pin(provider.closed())).collect();
     std::future::poll_fn(|context| {
         for provider in &mut closed {
             if provider.as_mut().poll(context).is_ready() {
@@ -562,51 +405,25 @@ async fn closed_provider(providers: &[PluginScope]) {
 
 fn page(table: &Table, sources: &[Captured], after: u64) -> Chunk {
     let _visibility = table.visibility.read().expect("stream visibility poisoned");
-    let cut = sources
-        .iter()
-        .map(|source| source.wired.window.latest_locked())
-        .max()
-        .unwrap_or(after)
-        .max(after);
+    let cut = sources.iter().map(|source| source.wired.window.latest_locked()).max().unwrap_or(after).max(after);
     let mut selected = Vec::with_capacity(PAGE_ROWS);
     for (index, source) in sources.iter().enumerate() {
-        source
-            .wired
-            .window
-            .listener_candidates(after, cut, index, PAGE_ROWS, &mut selected);
+        source.wired.window.listener_candidates(after, cut, index, PAGE_ROWS, &mut selected);
     }
-    let through = if selected.len() == PAGE_ROWS {
-        selected.last().unwrap().cursor
-    } else {
-        cut
-    };
+    let through = if selected.len() == PAGE_ROWS { selected.last().unwrap().cursor } else { cut };
     let rows = selected
         .into_iter()
-        .filter_map(|candidate| {
-            sources[candidate.source]
-                .wired
-                .window
-                .listener_row(candidate.cursor)
-                .map(|row| (candidate, row))
-        })
+        .filter_map(|candidate| sources[candidate.source].wired.window.listener_row(candidate.cursor).map(|row| (candidate, row)))
         .collect();
     Chunk { rows, through }
 }
 
 async fn deliver<A: Application>(
-    streams: &StreamManager<A>,
-    scope: &PluginScope,
-    sources: Vec<Captured>,
-    entries: Vec<Binding>,
-    delivery: &ListenerDelivery,
-    held: &Mutex<Vec<Holding>>,
-    mut stopping: watch::Receiver<bool>,
+    streams: &StreamManager<A>, scope: &PluginScope, sources: Vec<Captured>, entries: Vec<Binding>, delivery: &ListenerDelivery,
+    held: &Mutex<Vec<Holding>>, mut stopping: watch::Receiver<bool>,
 ) -> Result<()> {
     tokio::select! { biased; _ = stopping.changed() => return Ok(()), ready = scope.ready() => ready?, }
-    let demand = sources
-        .iter()
-        .map(|source| Holding::engage(Arc::clone(&source.wired.window)))
-        .collect();
+    let demand = sources.iter().map(|source| Holding::engage(Arc::clone(&source.wired.window))).collect();
     *held.lock().expect("listener demand poisoned") = demand;
     let mut changed = streams.delivery();
     let mut after = 0;
@@ -622,26 +439,15 @@ async fn deliver<A: Application>(
             if candidate.sequence <= previous {
                 continue;
             }
-            let context = Context::Stream {
-                sequence: candidate.sequence,
-                missed: candidate.sequence - previous - 1,
-            };
-            for binding in entries
-                .iter()
-                .filter(|binding| binding.source == candidate.source)
-            {
+            let context = Context::Stream { sequence: candidate.sequence, missed: candidate.sequence - previous - 1 };
+            for binding in entries.iter().filter(|binding| binding.source == candidate.source) {
                 if let Some(staged) = &source.wired.staged
                     && !staged.scope.is_ready()
                 {
-                    return Err(Error::Closing {
-                        domain: "listener stream source",
-                    });
+                    return Err(Error::Closing { domain: "listener stream source" });
                 }
                 let invocation = (binding.submit)(&row, context, &binding.callback)?;
-                if !delivery
-                    .invoke(invocation, Arc::clone(&row), scope, &mut stopping)
-                    .await?
-                {
+                if !delivery.invoke(invocation, Arc::clone(&row), scope, &mut stopping).await? {
                     return Ok(());
                 }
             }

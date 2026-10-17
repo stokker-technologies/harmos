@@ -47,28 +47,14 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = (StreamInput<DataBatch>, StreamOutput<WriteReceipt>);
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        ctx: Self::Context<'a>,
-        request: &mut WriteStreams,
-        endpoints: &mut Self::Endpoints,
+        &mut self, ctx: Self::Context<'a>, request: &mut WriteStreams, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<WriteCompletion>> {
-        let completion = exchange(
-            &self.storage,
-            &ctx,
-            request.scope.as_ref(),
-            endpoints,
-            WriteKind::Streams,
-            WriteStreams::ID,
-        )
-        .await?;
+        let completion = exchange(&self.storage, &ctx, request.scope.as_ref(), endpoints, WriteKind::Streams, WriteStreams::ID).await?;
         Ok(completion.into())
     }
 

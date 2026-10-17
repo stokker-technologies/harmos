@@ -53,10 +53,7 @@ pub struct GrpcMethod {
 /* === Implementations === */
 impl GrpcBinding {
     pub(crate) fn with_context(&self, context: CallContext) -> Self {
-        Self {
-            operations: self.operations.with_context(context),
-            entry: self.entry.clone(),
-        }
+        Self { operations: self.operations.with_context(context), entry: self.entry.clone() }
     }
 
     pub(crate) fn handler(&self) -> Option<crate::grpc::routing::Handler> {
@@ -64,21 +61,14 @@ impl GrpcBinding {
     }
 
     pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
-        &self,
-        request: StreamItem<O>,
-        endpoints: P,
+        &self, request: StreamItem<O>, endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.admit_entry::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
             &Source::Host.external()?,
-            Submission {
-                submitted: crate::supervision::executor::now(),
-                entry: self.entry.clone(),
-                cause: None,
-                preparation: None,
-            },
+            Submission { submitted: crate::supervision::executor::now(), entry: self.entry.clone(), cause: None, preparation: None },
         )
     }
 }

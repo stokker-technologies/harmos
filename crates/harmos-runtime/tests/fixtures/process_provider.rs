@@ -81,10 +81,7 @@ impl harmos_runtime::Plugin for Provider {
         Arc::clone(&self.resources)
     }
 
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Reading>(self.resources())
     }
 
@@ -107,17 +104,8 @@ impl Operation for Reading {
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Resources>,
-        _context: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        let constructed: Result<Self, Refusal> = async move {
-            Ok(Self {
-                resources,
-                phase: None,
-            })
-        }
-        .await;
+    async fn initialize<'ctx>(resources: Arc<Resources>, _context: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        let constructed: Result<Self, Refusal> = async move { Ok(Self { resources, phase: None }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
             let operation = &mut operation;
@@ -130,28 +118,19 @@ impl Operation for Reading {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Read,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Read, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.phase = Some(request.phase);
-            self.resources
-                .marks
-                .mark(&format!("read-prepared-{}", request.phase));
+            self.resources.marks.mark(&format!("read-prepared-{}", request.phase));
             if !self.resources.initialized.load(Ordering::SeqCst) {
                 return Err(Refusal::of("the original provider has retired"));
             }
-            self.resources
-                .marks
-                .mark(&format!("read-started-{}", request.phase));
+            self.resources.marks.mark(&format!("read-started-{}", request.phase));
             if request.phase == 2 && self.resources.marks.seen("hold-read-2") {
                 self.resources.marks.marked("release-read-2").await;
             }
-            Ok(Step {
-                phase: request.phase,
-            })
+            Ok(Step { phase: request.phase })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -159,15 +138,10 @@ impl Operation for Reading {
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         if !self.resources.initialized.load(Ordering::SeqCst) {
-            return Err(Refusal::of(
-                "the provider retired before child finalization",
-            ));
+            return Err(Refusal::of("the provider retired before child finalization"));
         }
         match self.phase {
-            Some(phase) => self
-                .resources
-                .marks
-                .mark(&format!("read-finalized-{phase}")),
+            Some(phase) => self.resources.marks.mark(&format!("read-finalized-{phase}")),
             None => self.resources.marks.mark("read-finalized-unstarted"),
         }
         Ok(())

@@ -109,38 +109,20 @@ impl DispatchError {
 
 impl Router {
     pub fn new(graph: PluginGraph) -> Self {
-        Self(Arc::new(Registry {
-            state: Mutex::new(RegistryState {
-                graph,
-                generations: BTreeMap::new(),
-                instances: BTreeMap::new(),
-            }),
-        }))
+        Self(Arc::new(Registry { state: Mutex::new(RegistryState { graph, generations: BTreeMap::new(), instances: BTreeMap::new() }) }))
     }
 
     pub fn graph(&self) -> PluginGraph {
-        self.0
-            .state
-            .lock()
-            .expect("plugin registry lock")
-            .graph
-            .clone()
+        self.0.state.lock().expect("plugin registry lock").graph.clone()
     }
 
     pub fn enter(&self, owner: &str) -> Result<PluginEndpoint, DispatchError> {
         let mut state = self.0.state.lock().expect("plugin registry lock");
         if !state.graph.knows(owner) {
-            return Err(DispatchError::UnknownOwner {
-                owner: owner.to_owned(),
-            });
+            return Err(DispatchError::UnknownOwner { owner: owner.to_owned() });
         }
 
-        if state
-            .instances
-            .get(owner)
-            .and_then(Weak::upgrade)
-            .is_some_and(|live| *live.alive.borrow())
-        {
+        if state.instances.get(owner).and_then(Weak::upgrade).is_some_and(|live| *live.alive.borrow()) {
             return Err(DispatchError::Occupied(owner.to_owned()));
         }
 
@@ -148,36 +130,20 @@ impl Router {
             Some(scope) => scope.generation(),
             None => PluginGeneration::fresh().map_err(|_| DispatchError::Unavailable)?,
         };
-        let live = Arc::new(Live {
-            generation,
-            scope: state.generations.get(owner).cloned(),
-            alive: watch::channel(true).0,
-        });
-        state
-            .instances
-            .insert(owner.to_owned(), Arc::downgrade(&live));
+        let live = Arc::new(Live { generation, scope: state.generations.get(owner).cloned(), alive: watch::channel(true).0 });
+        state.instances.insert(owner.to_owned(), Arc::downgrade(&live));
 
-        Ok(PluginEndpoint {
-            registry: Arc::downgrade(&self.0),
-            live,
-        })
+        Ok(PluginEndpoint { registry: Arc::downgrade(&self.0), live })
     }
 }
 
 impl Router {
     pub(super) fn prepare_generation(
-        &self,
-        definition: &super::PluginDefinition,
-        generation: PluginGeneration,
+        &self, definition: &super::PluginDefinition, generation: PluginGeneration,
     ) -> Result<PluginScope, DispatchError> {
         let owner = definition.id.as_str();
         let mut state = self.0.state.lock().expect("plugin registry lock");
-        if state
-            .instances
-            .get(owner)
-            .and_then(Weak::upgrade)
-            .is_some_and(|live| *live.alive.borrow())
-        {
+        if state.instances.get(owner).and_then(Weak::upgrade).is_some_and(|live| *live.alive.borrow()) {
             return Err(DispatchError::Occupied(owner.to_owned()));
         }
         let scope = PluginScope::with_dependencies(owner, generation, &definition.requires)
@@ -196,49 +162,28 @@ impl Router {
         Ok(scope)
     }
 
-    pub(super) fn commit_generation(
-        &self,
-        owner: &str,
-        generation: PluginGeneration,
-    ) -> Result<(), DispatchError> {
+    pub(super) fn commit_generation(&self, owner: &str, generation: PluginGeneration) -> Result<(), DispatchError> {
         let mut state = self.0.state.lock().expect("plugin registry lock");
-        let admission = state
-            .generations
-            .get_mut(owner)
-            .filter(|scope| scope.generation() == generation)
-            .ok_or(DispatchError::Unavailable)?;
+        let admission =
+            state.generations.get_mut(owner).filter(|scope| scope.generation() == generation).ok_or(DispatchError::Unavailable)?;
         if admission.commit() {
             Ok(())
         } else if admission.is_closed() {
             Err(DispatchError::Unavailable)
         } else if !admission.listeners_bound() {
-            Err(DispatchError::IncompleteListeners {
-                owner: owner.to_owned(),
-            })
+            Err(DispatchError::IncompleteListeners { owner: owner.to_owned() })
         } else if !admission.streams_bound() {
-            Err(DispatchError::IncompleteStreams {
-                owner: owner.to_owned(),
-            })
+            Err(DispatchError::IncompleteStreams { owner: owner.to_owned() })
         } else {
-            Err(DispatchError::IncompleteOperations {
-                owner: owner.to_owned(),
-            })
+            Err(DispatchError::IncompleteOperations { owner: owner.to_owned() })
         }
     }
 
     pub(super) fn caller(&self, owner: &str) -> Result<PluginCaller, DispatchError> {
         let state = self.0.state.lock().expect("plugin registry lock");
-        let live = state
-            .instances
-            .get(owner)
-            .and_then(Weak::upgrade)
-            .filter(|live| *live.alive.borrow())
-            .ok_or(DispatchError::Unavailable)?;
-        Ok(PluginCaller {
-            generation: live.generation,
-            registry: Arc::downgrade(&self.0),
-            live: Arc::downgrade(&live),
-        })
+        let live =
+            state.instances.get(owner).and_then(Weak::upgrade).filter(|live| *live.alive.borrow()).ok_or(DispatchError::Unavailable)?;
+        Ok(PluginCaller { generation: live.generation, registry: Arc::downgrade(&self.0), live: Arc::downgrade(&live) })
     }
 
     pub(super) fn quiesce(&self, owner: &str) {
@@ -261,15 +206,11 @@ impl Router {
     pub fn reconfigure(&self, graph: PluginGraph) -> Result<(), DispatchError> {
         let mut state = self.0.state.lock().expect("plugin registry lock");
         for (owner, live) in &state.instances {
-            if live.upgrade().is_some_and(|live| *live.alive.borrow())
-                && !state.graph.same_contract(owner, &graph)
-            {
+            if live.upgrade().is_some_and(|live| *live.alive.borrow()) && !state.graph.same_contract(owner, &graph) {
                 return Err(DispatchError::Occupied(owner.clone()));
             }
         }
-        state
-            .instances
-            .retain(|_, live| live.upgrade().is_some_and(|live| *live.alive.borrow()));
+        state.instances.retain(|_, live| live.upgrade().is_some_and(|live| *live.alive.borrow()));
         state.generations.retain(|owner, _| graph.knows(owner));
         state.graph = graph;
         Ok(())
@@ -287,11 +228,7 @@ impl PluginEndpoint {
     }
 
     pub fn caller(&self) -> PluginCaller {
-        PluginCaller {
-            generation: self.live.generation,
-            registry: self.registry.clone(),
-            live: Arc::downgrade(&self.live),
-        }
+        PluginCaller { generation: self.live.generation, registry: self.registry.clone(), live: Arc::downgrade(&self.live) }
     }
 
     pub fn quiesce(&mut self) {
@@ -318,10 +255,7 @@ impl PluginCaller {
         if live.generation != self.generation || !*live.alive.borrow() {
             return Err(DispatchError::Unavailable);
         }
-        live.scope
-            .as_ref()
-            .cloned()
-            .ok_or(DispatchError::Unavailable)
+        live.scope.as_ref().cloned().ok_or(DispatchError::Unavailable)
     }
 }
 

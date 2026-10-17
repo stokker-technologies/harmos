@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Supervision, Metadata And Teardown Over The In-Process Native Carrier.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 
@@ -240,20 +238,27 @@ async fn announced_exit_reason() {
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>("meter-publication-core", HostLanes::Open, Arc::new(resident.clone()))
+        .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
+            "meter-publication-core",
+            HostLanes::Open,
+            Arc::new(resident.clone()),
+        )
         .unwrap();
     runtime
         .operations
-        .register_service(harmos_runtime::services::ServiceDefinition { id: "meter".into(), policy: harmos_runtime::services::POLICY }, move |_: Arc<()>| {
-            harmos_runtime::sidecar::Managed::new(
-                resident.clone(),
-                definition.clone(),
-                HostLanes::Open,
-                NonZeroUsize::new(16).unwrap(),
-                NonZeroUsize::new(4096).unwrap(),
-            )
-            .unwrap()
-        })
+        .register_service(
+            harmos_runtime::services::ServiceDefinition { id: "meter".into(), policy: harmos_runtime::services::POLICY },
+            move |_: Arc<()>| {
+                harmos_runtime::sidecar::Managed::new(
+                    resident.clone(),
+                    definition.clone(),
+                    HostLanes::Open,
+                    NonZeroUsize::new(16).unwrap(),
+                    NonZeroUsize::new(4096).unwrap(),
+                )
+                .unwrap()
+            },
+        )
         .unwrap();
     let _lease = runtime.operations.submit_resident("meter").await.unwrap();
     service_status(runtime.operations.watch_residents(), "meter", |status| matches!(status, ServiceStatus::Running { .. })).await;
@@ -630,9 +635,10 @@ async fn graceful_stop_joins() {
 
 /* === Tests === */
 
-
 fn assert_transport_refusal(error: harmos_runtime::Error, code: i64, detail: &str) {
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("transport refusal preserves its operation cause: {error}") };
+    let harmos_runtime::Error::OperationFailed { source, .. } = error else {
+        panic!("transport refusal preserves its operation cause: {error}")
+    };
     assert!(
         matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
         Some(harmos_runtime::operations::NativeError::Transport(SidecarError::Refused { code: actual, failure }))
@@ -640,7 +646,6 @@ fn assert_transport_refusal(error: harmos_runtime::Error, code: i64, detail: &st
         "{source}"
     );
 }
-
 
 async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
     runtime
@@ -652,4 +657,3 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
         .filter(|fact| matches!(fact.source, FactSource::Work(_)))
         .collect()
 }
-

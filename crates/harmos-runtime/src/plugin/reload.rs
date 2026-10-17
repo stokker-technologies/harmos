@@ -38,11 +38,7 @@ pub(super) struct ReloadImpact {
 
 /* === Implementations === */
 impl PluginGraph {
-    pub(super) fn reload(
-        &self,
-        next: Self,
-        changed: impl IntoIterator<Item = String>,
-    ) -> Result<ReloadImpact, Error> {
+    pub(super) fn reload(&self, next: Self, changed: impl IntoIterator<Item = String>) -> Result<ReloadImpact, Error> {
         let before = by_id(self);
         let after = by_id(&next);
         let mut affected = BTreeSet::new();
@@ -70,19 +66,8 @@ impl PluginGraph {
             }
         }
 
-        let stopping = self
-            .ordered()
-            .iter()
-            .rev()
-            .filter(|artifact| affected.contains(&artifact.id))
-            .cloned()
-            .collect();
-        let starting = next
-            .ordered()
-            .iter()
-            .filter(|artifact| affected.contains(&artifact.id))
-            .cloned()
-            .collect();
+        let stopping = self.ordered().iter().rev().filter(|artifact| affected.contains(&artifact.id)).cloned().collect();
+        let starting = next.ordered().iter().filter(|artifact| affected.contains(&artifact.id)).cloned().collect();
 
         Ok(ReloadImpact { stopping, starting })
     }
@@ -90,10 +75,8 @@ impl PluginGraph {
 
 impl ReloadImpact {
     pub(super) fn select(&mut self, selected: &BTreeSet<String>) {
-        self.stopping
-            .retain(|definition| selected.contains(&definition.id));
-        self.starting
-            .retain(|definition| selected.contains(&definition.id));
+        self.stopping.retain(|definition| selected.contains(&definition.id));
+        self.starting.retain(|definition| selected.contains(&definition.id));
     }
 
     pub fn stopping(&self) -> &[PluginDefinition] {
@@ -109,10 +92,7 @@ impl ReloadImpact {
 
 /* === Private Functions === */
 fn by_id(plan: &PluginGraph) -> BTreeMap<&str, &PluginDefinition> {
-    plan.ordered()
-        .iter()
-        .map(|artifact| (artifact.id.as_str(), artifact))
-        .collect()
+    plan.ordered().iter().map(|artifact| (artifact.id.as_str(), artifact)).collect()
 }
 
 /* === Tests === */

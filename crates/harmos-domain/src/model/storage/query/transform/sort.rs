@@ -50,20 +50,12 @@ pub struct SortKey {
 /* === Implementations === */
 impl MemorySize for Sort {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .keys
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.keys))
+        std::mem::size_of::<Self>() + self.keys.memory_size().saturating_sub(std::mem::size_of_val(&self.keys))
     }
 }
 impl MemorySize for SortKey {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
+        std::mem::size_of::<Self>() + self.field.memory_size().saturating_sub(std::mem::size_of_val(&self.field))
     }
 }
 

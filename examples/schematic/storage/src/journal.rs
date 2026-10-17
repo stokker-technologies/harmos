@@ -76,12 +76,8 @@ mod wire {
 
         fn into_link(self) -> harmos::state::Link {
             match self {
-                Self::UndoOf(position) => {
-                    harmos::state::Link::UndoOf(harmos::state::Position(position))
-                }
-                Self::RedoOf(position) => {
-                    harmos::state::Link::RedoOf(harmos::state::Position(position))
-                }
+                Self::UndoOf(position) => harmos::state::Link::UndoOf(harmos::state::Position(position)),
+                Self::RedoOf(position) => harmos::state::Link::RedoOf(harmos::state::Position(position)),
             }
         }
     }
@@ -90,22 +86,14 @@ mod wire {
         pub(super) fn witnessing(metadata: &harmos::state::Metadata) -> Self {
             let at_us = match metadata.at.duration_since(UNIX_EPOCH) {
                 Ok(since) => i64::try_from(since.as_micros()).unwrap_or(i64::MAX),
-                Err(before) => {
-                    i64::try_from(before.duration().as_micros()).map_or(i64::MIN, |micros| -micros)
-                }
+                Err(before) => i64::try_from(before.duration().as_micros()).map_or(i64::MIN, |micros| -micros),
             };
 
             Self {
-                principal: metadata
-                    .principal
-                    .as_ref()
-                    .map(|principal| principal.as_str().to_owned()),
+                principal: metadata.principal.as_ref().map(|principal| principal.as_str().to_owned()),
                 correlation: metadata.correlation.0.0,
                 causation: metadata.causation.map(|causation| causation.0.0),
-                request: metadata
-                    .request
-                    .as_ref()
-                    .map(|request| request.as_str().to_owned()),
+                request: metadata.request.as_ref().map(|request| request.as_str().to_owned()),
                 link: metadata.link.map(Link::of),
                 at_us,
             }
@@ -130,11 +118,8 @@ mod wire {
                 "at": { "secs_since_epoch": 0, "nanos_since_epoch": 0 },
             }))?;
             metadata.principal = self.principal.map(harmos::state::PrincipalId::new);
-            metadata.correlation =
-                harmos::state::CorrelationId(harmos::state::Position(self.correlation));
-            metadata.causation = self
-                .causation
-                .map(|causation| harmos::state::CausationId(harmos::state::Position(causation)));
+            metadata.correlation = harmos::state::CorrelationId(harmos::state::Position(self.correlation));
+            metadata.causation = self.causation.map(|causation| harmos::state::CausationId(harmos::state::Position(causation)));
             metadata.request = self.request.map(harmos::state::RequestKey::new);
             metadata.link = self.link.map(Link::into_link);
             metadata.at = at;
@@ -158,9 +143,7 @@ mod wire {
             };
             use std::io::Read;
             let mut first = Vec::new();
-            BufReader::new(file)
-                .take((super::MAX_HEADER_BYTES + 2) as u64)
-                .read_until(b'\n', &mut first)?;
+            BufReader::new(file).take((super::MAX_HEADER_BYTES + 2) as u64).read_until(b'\n', &mut first)?;
             if first.is_empty() {
                 return Ok(None);
             }
@@ -172,9 +155,7 @@ mod wire {
             }
             let first = lf_only(first)?;
 
-            serde_json::from_str(&first)
-                .map(Some)
-                .map_err(io::Error::other)
+            serde_json::from_str(&first).map(Some).map_err(io::Error::other)
         }
 
         pub(super) fn write(&self, file: &mut File) -> io::Result<()> {
@@ -186,9 +167,7 @@ mod wire {
 
     pub(super) fn lf_only(line: Vec<u8>) -> io::Result<String> {
         if line.last() == Some(&b'\r') {
-            return Err(io::Error::other(
-                "the wire is LF-only: a stored line ends with a carriage return",
-            ));
+            return Err(io::Error::other("the wire is LF-only: a stored line ends with a carriage return"));
         }
         String::from_utf8(line).map_err(io::Error::other)
     }
@@ -208,9 +187,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use serde::{Deserialize, Deserializer, Serializer};
 // Local Imports
 use harmos::{
-    Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope,
-    state::Kind, state::Position, state::Recorded, state::SystemFact, storage::JournalConsumer,
-    storage::Payload, storage::Recovery, storage::Source,
+    Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Recorded,
+    state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -276,10 +254,7 @@ pub trait Wire: Application + Sized {
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error>;
 
     fn decode<'de, D: Deserializer<'de> + Copy>(
-        kind: Kind,
-        id: &DefinitionId,
-        version: u32,
-        payload: D,
+        kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error>;
 }
 
@@ -299,10 +274,7 @@ impl<A: Wire> Jsonl<A> {
 
     pub fn sidecar(path: impl AsRef<Path>, generation: u64, at: Position) -> io::Result<Self> {
         Ok(Self {
-            log: Arc::new(Mutex::new(Log::open(
-                path.as_ref(),
-                Some(Document { generation, at }),
-            )?)),
+            log: Arc::new(Mutex::new(Log::open(path.as_ref(), Some(Document { generation, at }))?)),
             batch: 1,
             after: None,
             forward: BTreeMap::new(),
@@ -322,24 +294,17 @@ impl<A: Wire> Jsonl<A> {
     }
 
     pub fn sidecars(&self) -> Sidecar {
-        Sidecar {
-            log: Arc::clone(&self.log),
-        }
+        Sidecar { log: Arc::clone(&self.log) }
     }
 
     fn encode(&self, entry: &Entry<Recorded<A>>) -> Result<String, serde_json::Error> {
         let (id, version, payload) = if let Some(prepared) = &entry.prepared {
-            (
-                prepared.id.clone(),
-                prepared.version,
-                prepared.payload.clone(),
-            )
+            (prepared.id.clone(), prepared.version, prepared.payload.clone())
         } else {
             match &entry.value {
                 Recorded::System(fact) => {
                     let (id, version) = fact.identify();
-                    let payload =
-                        serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
+                    let payload = serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
 
                     (id, version, payload)
                 }
@@ -363,9 +328,7 @@ impl<A: Wire> Jsonl<A> {
     }
 
     fn log(&self) -> MutexGuard<'_, Log> {
-        self.log
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -374,11 +337,7 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
         self.log().written
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        _applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, _applied: Position) -> Position {
         // A halted copy refuses to advance: the stalled checkpoint is the
         // loud form of the gap it refused to write across.
         if self.halted {
@@ -397,52 +356,35 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
         let mut index = 0;
         while index < entries.len() {
             let entry = &entries[index];
-            if frames
-                .range(..=entry.position)
-                .next_back()
-                .is_some_and(|(_, (end, _))| *end >= entry.position)
-            {
+            if frames.range(..=entry.position).next_back().is_some_and(|(_, (end, _))| *end >= entry.position) {
                 index += 1;
                 continue;
             }
-            let (first, end) = entry
-                .metadata
-                .commit
-                .unwrap_or((entry.position, entry.position));
+            let (first, end) = entry.metadata.commit.unwrap_or((entry.position, entry.position));
             if first != entry.position {
                 self.halted = true;
                 return self.log().checkpoint;
             }
             let count = usize::try_from(end.0 - first.0 + 1).unwrap_or(usize::MAX);
-            let Some(group) = entries
-                .get(index..)
-                .and_then(|remaining| remaining.get(..count))
-            else {
+            let Some(group) = entries.get(index..).and_then(|remaining| remaining.get(..count)) else {
                 self.halted = true;
                 return self.log().checkpoint;
             };
-            if group.iter().enumerate().any(|(offset, member)| {
-                member.position.0 != first.0 + offset as u64
-                    || member.metadata.commit != entry.metadata.commit
-            }) {
+            if group
+                .iter()
+                .enumerate()
+                .any(|(offset, member)| member.position.0 != first.0 + offset as u64 || member.metadata.commit != entry.metadata.commit)
+            {
                 self.halted = true;
                 return self.log().checkpoint;
             }
-            let encoded = group
-                .iter()
-                .map(|member| self.encode(member))
-                .collect::<Result<Vec<_>, _>>();
+            let encoded = group.iter().map(|member| self.encode(member)).collect::<Result<Vec<_>, _>>();
             let Ok(encoded) = encoded else {
                 self.halted = true;
                 return self.log().checkpoint;
             };
             let line = if entry.metadata.commit.is_some() {
-                format!(
-                    "{{\"group\":1,\"first\":{},\"frontier\":{},\"entries\":[{}]}}",
-                    first.0,
-                    end.0,
-                    encoded.join(",")
-                )
+                format!("{{\"group\":1,\"first\":{},\"frontier\":{},\"entries\":[{}]}}", first.0, end.0, encoded.join(","))
             } else {
                 encoded.into_iter().next().expect("one standalone entry")
             };
@@ -517,9 +459,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
             let first = Position(group[0].position);
             let end = Position(group.last().expect("validated group").position);
             if first <= origin && origin < end {
-                return Err(Incompatible::unreadable(
-                    "recovery origin splits a logical commit",
-                ));
+                return Err(Incompatible::unreadable("recovery origin splits a logical commit"));
             }
             if end <= origin {
                 continue;
@@ -544,12 +484,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
         log.written = log.written.max(origin);
         log.checkpoint = log.checkpoint.max(origin);
 
-        Ok(Recovery {
-            commits,
-            frontier: log.written,
-            entries,
-            encoded,
-        })
+        Ok(Recovery { commits, frontier: log.written, entries, encoded })
     }
 
     async fn read(&mut self, after: Position, through: Position) -> Result<Recovery<A>, Error> {
@@ -595,12 +530,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
             }
         }
 
-        Ok(Recovery {
-            commits,
-            frontier: through,
-            entries,
-            encoded,
-        })
+        Ok(Recovery { commits, frontier: through, entries, encoded })
     }
 
     async fn prune(&mut self, beneath: Position) {
@@ -610,10 +540,7 @@ impl<A: Wire> Source<A> for Jsonl<A> {
 
 impl Sidecar {
     pub fn save(&self, export: impl FnOnce(u64, Position) -> io::Result<()>) -> io::Result<u64> {
-        let mut log = self
-            .log
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut log = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let generation = log.generation + 1;
         let at = log.written;
 
@@ -624,10 +551,7 @@ impl Sidecar {
     }
 
     pub fn generation(&self) -> u64 {
-        self.log
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .generation
+        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).generation
     }
 }
 
@@ -643,15 +567,10 @@ impl<'de> serde::de::Visitor<'de> for Members {
     fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "exactly {} commit members", self.0)
     }
-    fn visit_seq<A: serde::de::SeqAccess<'de>>(
-        self,
-        mut sequence: A,
-    ) -> Result<Self::Value, A::Error> {
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
         let mut members = Vec::with_capacity(self.0);
         for _ in 0..self.0 {
-            let member = sequence
-                .next_element()?
-                .ok_or_else(|| serde::de::Error::custom("missing commit member"))?;
+            let member = sequence.next_element()?.ok_or_else(|| serde::de::Error::custom("missing commit member"))?;
             members.push(member);
         }
         if sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
@@ -708,11 +627,7 @@ impl Log {
     }
 
     fn create(path: &Path, generation: u64, origin: Position) -> io::Result<Self> {
-        let header = wire::Header {
-            schema: SCHEMA,
-            generation,
-            origin: origin.0,
-        };
+        let header = wire::Header { schema: SCHEMA, generation, origin: origin.0 };
         let mut file = File::create(path)?;
         header.write(&mut file)?;
         file.sync_all()?;
@@ -740,9 +655,7 @@ impl Log {
         let mut line = Vec::new();
         {
             use std::io::Read;
-            (&mut reader)
-                .take((MAX_HEADER_BYTES + 2) as u64)
-                .read_until(b'\n', &mut line)?;
+            (&mut reader).take((MAX_HEADER_BYTES + 2) as u64).read_until(b'\n', &mut line)?;
             if line.len() > MAX_HEADER_BYTES + 1 {
                 return Err(io::Error::other("journal header exceeds byte limit"));
             }
@@ -754,9 +667,7 @@ impl Log {
             line.clear();
             // Take bounds allocation even for a file with no terminator.
             use std::io::Read;
-            (&mut reader)
-                .take((MAX_FRAME_BYTES + 2) as u64)
-                .read_until(b'\n', &mut line)?;
+            (&mut reader).take((MAX_FRAME_BYTES + 2) as u64).read_until(b'\n', &mut line)?;
             if line.is_empty() {
                 break;
             }
@@ -765,10 +676,7 @@ impl Log {
             }
             let terminated = line.last() == Some(&b'\n');
             let prefix = b"{\"group\":";
-            if !terminated
-                && self.schema == SCHEMA
-                && (line.starts_with(prefix) || prefix.starts_with(&line))
-            {
+            if !terminated && self.schema == SCHEMA && (line.starts_with(prefix) || prefix.starts_with(&line)) {
                 break;
             }
             if terminated {
@@ -782,11 +690,7 @@ impl Log {
             if Some(group[0].position) != expected {
                 return Err(io::Error::other("journal position gap"));
             }
-            expected = group
-                .last()
-                .expect("validated group")
-                .position
-                .checked_add(1);
+            expected = group.last().expect("validated group").position.checked_add(1);
             valid += line.len() as u64 + u64::from(terminated);
             result.push(text);
         }
@@ -823,12 +727,7 @@ impl Log {
         }
         let temporary = self.path.with_extension("upgrade~");
         let mut fresh = File::create(&temporary)?;
-        wire::Header {
-            schema: SCHEMA,
-            generation: self.generation,
-            origin: self.origin.0,
-        }
-        .write(&mut fresh)?;
+        wire::Header { schema: SCHEMA, generation: self.generation, origin: self.origin.0 }.write(&mut fresh)?;
         for line in lines {
             writeln!(fresh, "{line}")?;
         }
@@ -850,10 +749,7 @@ impl Log {
     }
 
     fn truncate(&self, length: u64) -> io::Result<()> {
-        OpenOptions::new()
-            .write(true)
-            .open(&self.path)?
-            .set_len(length)
+        OpenOptions::new().write(true).open(&self.path)?.set_len(length)
     }
     fn persist(&mut self) {
         if self.pending.is_empty() || self.failed {
@@ -910,11 +806,7 @@ impl Log {
         let mut temporary = self.path.as_os_str().to_owned();
         temporary.push(".prune~");
         let temporary = PathBuf::from(temporary);
-        let header = wire::Header {
-            schema: SCHEMA,
-            generation: self.generation,
-            origin: beneath.0,
-        };
+        let header = wire::Header { schema: SCHEMA, generation: self.generation, origin: beneath.0 };
         let mut fresh = File::create(&temporary)?;
         header.write(&mut fresh)?;
         for line in retained {
@@ -962,34 +854,23 @@ fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
         return Err(io::Error::other("journal frame exceeds byte limit"));
     }
     if !is_group(line) {
-        return serde_json::from_str(line)
-            .map(|entry| vec![entry])
-            .map_err(io::Error::other);
+        return serde_json::from_str(line).map(|entry| vec![entry]).map_err(io::Error::other);
     }
     let group: Group<'_> = serde_json::from_str(line).map_err(io::Error::other)?;
-    let count = group
-        .frontier
-        .checked_sub(group.first)
-        .and_then(|n| n.checked_add(1));
-    let Some(count) = count
-        .filter(|count| *count > 0 && *count <= (harmos::state::Records::MAX_RECORDS + 1) as u64)
-    else {
+    let count = group.frontier.checked_sub(group.first).and_then(|n| n.checked_add(1));
+    let Some(count) = count.filter(|count| *count > 0 && *count <= (harmos::state::Records::MAX_RECORDS + 1) as u64) else {
         return Err(io::Error::other("invalid logical commit bounds"));
     };
     if group.group != 1 || group.first == 0 {
         return Err(io::Error::other("invalid logical commit bounds"));
     }
     use serde::de::DeserializeSeed;
-    let entries = Members(count as usize)
-        .deserialize(&mut serde_json::Deserializer::from_str(group.entries.get()))
-        .map_err(io::Error::other)?;
+    let entries =
+        Members(count as usize).deserialize(&mut serde_json::Deserializer::from_str(group.entries.get())).map_err(io::Error::other)?;
     let witness = &entries[0].metadata;
     for (index, member) in entries.iter().enumerate() {
         if member.position != group.first + index as u64
-            || !matches!(
-                (index, member.kind),
-                (0, wire::Kind::Transaction) | (1.., wire::Kind::Record)
-            )
+            || !matches!((index, member.kind), (0, wire::Kind::Transaction) | (1.., wire::Kind::Record))
         {
             return Err(io::Error::other("invalid logical commit member"));
         }
@@ -1007,25 +888,18 @@ fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
     Ok(entries)
 }
 
-fn migrated_member(
-    stored: wire::Line<serde_json::Value>,
-) -> Result<Envelope<serde_json::Value>, Incompatible> {
+fn migrated_member(stored: wire::Line<serde_json::Value>) -> Result<Envelope<serde_json::Value>, Incompatible> {
     Ok(Envelope {
         position: Position(stored.position),
         kind: stored.kind.into_kind(),
         id: DefinitionId::new(stored.id),
         version: stored.version,
-        metadata: stored
-            .metadata
-            .witnessed()
-            .map_err(Incompatible::unreadable)?,
+        metadata: stored.metadata.witnessed().map_err(Incompatible::unreadable)?,
         payload: stored.payload,
     })
 }
 
-fn decoded<A: Wire>(
-    envelope: Envelope<serde_json::Value>,
-) -> Result<Option<Envelope<Payload<A>>>, Incompatible> {
+fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Envelope<Payload<A>>>, Incompatible> {
     if envelope.kind == Kind::Record {
         match SystemFact::restore(&envelope.id, envelope.version, &envelope.payload) {
             Ok(Some(fact)) => {
@@ -1038,13 +912,7 @@ fn decoded<A: Wire>(
                     id: id.clone(),
                     version,
                     metadata: envelope.metadata,
-                    payload: Payload {
-                        prepared: None,
-                        id,
-                        version,
-                        value: Recorded::System(fact),
-                        apply: None,
-                    },
+                    payload: Payload { prepared: None, id, version, value: Recorded::System(fact), apply: None },
                 }));
             }
             Ok(None) => {}
@@ -1057,17 +925,8 @@ fn decoded<A: Wire>(
         }
     }
 
-    let prepared = harmos::state::Prepared {
-        id: envelope.id.clone(),
-        version: envelope.version,
-        payload: envelope.payload.clone(),
-    };
-    let read = A::decode(
-        envelope.kind,
-        &envelope.id,
-        envelope.version,
-        &envelope.payload,
-    );
+    let prepared = harmos::state::Prepared { id: envelope.id.clone(), version: envelope.version, payload: envelope.payload.clone() };
+    let read = A::decode(envelope.kind, &envelope.id, envelope.version, &envelope.payload);
     let mut payload = match (envelope.kind, read) {
         (_, Ok(Some(payload))) => payload,
         (Kind::Record, _) => return Ok(None),

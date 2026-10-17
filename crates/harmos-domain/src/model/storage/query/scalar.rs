@@ -23,8 +23,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::MessageError;
 use crate::model::storage::codec::{
-    Flag, Float, Nested, Percent, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero,
-    WideSigned, coded, product, variants,
+    Flag, Float, Nested, Percent, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero, WideSigned, coded, product, variants,
 };
 use crate::{Aggregate, Error, MemorySize, Result};
 
@@ -95,49 +94,23 @@ impl ExactNumber {
         let common = gcd(self.denominator.get(), other.denominator.get());
         let a = other.denominator.get() / common;
         let b = self.denominator.get() / common;
-        let left = self
-            .numerator
-            .checked_mul(a)
-            .ok_or(invalid("exact arithmetic overflow"))?;
-        let right = other
-            .numerator
-            .checked_mul(b)
-            .ok_or(invalid("exact arithmetic overflow"))?;
+        let left = self.numerator.checked_mul(a).ok_or(invalid("exact arithmetic overflow"))?;
+        let right = other.numerator.checked_mul(b).ok_or(invalid("exact arithmetic overflow"))?;
         let (negative, numerator) = if self.negative == other.negative {
-            (
-                self.negative,
-                left.checked_add(right)
-                    .ok_or(invalid("exact arithmetic overflow"))?,
-            )
+            (self.negative, left.checked_add(right).ok_or(invalid("exact arithmetic overflow"))?)
         } else if left >= right {
             (self.negative, left - right)
         } else {
             (other.negative, right - left)
         };
-        let denominator = self
-            .denominator
-            .get()
-            .checked_mul(a)
-            .ok_or(invalid("exact arithmetic overflow"))?;
-        Ok(Self::new(
-            negative,
-            numerator,
-            NonZeroU128::new(denominator).unwrap(),
-        ))
+        let denominator = self.denominator.get().checked_mul(a).ok_or(invalid("exact arithmetic overflow"))?;
+        Ok(Self::new(negative, numerator, NonZeroU128::new(denominator).unwrap()))
     }
 
     pub fn divide(self, count: u128) -> Result<Self> {
         let factor = gcd(self.numerator, count);
-        let denominator = self
-            .denominator
-            .get()
-            .checked_mul(count / factor)
-            .ok_or(invalid("exact arithmetic overflow"))?;
-        Ok(Self::new(
-            self.negative,
-            self.numerator / factor,
-            NonZeroU128::new(denominator).unwrap(),
-        ))
+        let denominator = self.denominator.get().checked_mul(count / factor).ok_or(invalid("exact arithmetic overflow"))?;
+        Ok(Self::new(self.negative, self.numerator / factor, NonZeroU128::new(denominator).unwrap()))
     }
 
     fn compare(self, other: Self) -> Ordering {
@@ -145,17 +118,8 @@ impl ExactNumber {
             (true, false) => Ordering::Less,
             (false, true) => Ordering::Greater,
             _ => {
-                let order = ratio_cmp(
-                    self.numerator,
-                    self.denominator.get(),
-                    other.numerator,
-                    other.denominator.get(),
-                );
-                if self.negative {
-                    order.reverse()
-                } else {
-                    order
-                }
+                let order = ratio_cmp(self.numerator, self.denominator.get(), other.numerator, other.denominator.get());
+                if self.negative { order.reverse() } else { order }
             }
         }
     }
@@ -190,21 +154,13 @@ impl ScalarValue {
         self.check()?;
         other.check()?;
         if matches!(self, Self::Missing) {
-            return Ok(if matches!(other, Self::Missing) {
-                Ordering::Equal
-            } else {
-                Ordering::Less
-            });
+            return Ok(if matches!(other, Self::Missing) { Ordering::Equal } else { Ordering::Less });
         }
         if matches!(other, Self::Missing) {
             return Ok(Ordering::Greater);
         }
         if matches!(self, Self::Null) {
-            return Ok(if matches!(other, Self::Null) {
-                Ordering::Equal
-            } else {
-                Ordering::Less
-            });
+            return Ok(if matches!(other, Self::Null) { Ordering::Equal } else { Ordering::Less });
         }
         if matches!(other, Self::Null) {
             return Ok(Ordering::Greater);
@@ -216,9 +172,7 @@ impl ScalarValue {
             (Self::Float(a), Self::Float(b)) => a.partial_cmp(b).unwrap(),
             (Self::Text(a), Self::Text(b)) => a.cmp(b),
             (Self::Datetime(a), Self::Datetime(b)) => a.cmp(b),
-            (a, b) if exact(a).is_some() && exact(b).is_some() => {
-                exact(a).unwrap().compare(exact(b).unwrap())
-            }
+            (a, b) if exact(a).is_some() && exact(b).is_some() => exact(a).unwrap().compare(exact(b).unwrap()),
             _ => return Err(invalid("incompatible scalar comparison")),
         })
     }
@@ -274,15 +228,7 @@ product!(
     }
 );
 
-coded!(ScalarKind {
-    Bool,
-    Signed,
-    Unsigned,
-    Float,
-    Text,
-    Datetime,
-    Exact
-});
+coded!(ScalarKind { Bool, Signed, Unsigned, Float, Text, Datetime, Exact });
 variants!(Agg {
     0, 1, "len": Self::Len => {} => Self::Len;
     1, 2, "last": Self::Last => {} => Self::Last;
@@ -313,10 +259,7 @@ variants!(ScalarValue {
 
 /* === Private Functions === */
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "storage reduce",
-        reason,
-    }
+    Error::InvalidInput { field: "storage reduce", reason }
 }
 fn gcd(mut a: u128, mut b: u128) -> u128 {
     while b != 0 {
@@ -326,14 +269,8 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
 }
 pub fn exact(value: &ScalarValue) -> Option<ExactNumber> {
     Some(match value {
-        ScalarValue::Signed(value) => ExactNumber::new(
-            *value < 0,
-            u128::from(value.unsigned_abs()),
-            NonZeroU128::MIN,
-        ),
-        ScalarValue::Unsigned(value) => {
-            ExactNumber::new(false, u128::from(*value), NonZeroU128::MIN)
-        }
+        ScalarValue::Signed(value) => ExactNumber::new(*value < 0, u128::from(value.unsigned_abs()), NonZeroU128::MIN),
+        ScalarValue::Unsigned(value) => ExactNumber::new(false, u128::from(*value), NonZeroU128::MIN),
         ScalarValue::Exact(value) => *value,
         _ => return None,
     })

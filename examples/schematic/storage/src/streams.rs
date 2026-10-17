@@ -21,10 +21,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 // Local Imports
-use harmos::{
-    Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition,
-    streams::Stream,
-};
+use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
 
 /* === Constants === */
 const CHECKPOINT: &str = ".harmos-jsonl.cursor";
@@ -71,20 +68,11 @@ impl<A: Application> JsonlStreams<A> {
         std::fs::create_dir_all(&directory)?;
         heal(&directory)?;
 
-        Ok(Self {
-            cursor: read_checkpoint(&directory)?,
-            directory,
-            selections: Vec::new(),
-            faulted: false,
-        })
+        Ok(Self { cursor: read_checkpoint(&directory)?, directory, selections: Vec::new(), faulted: false })
     }
 
     pub fn select<S: Stream<A>>(mut self) -> Self {
-        if self
-            .selections
-            .iter()
-            .any(|selected| selected.definition.id() == S::ID)
-        {
+        if self.selections.iter().any(|selected| selected.definition.id() == S::ID) {
             return self;
         }
         self.selections.push(Selection::of::<S>());
@@ -135,19 +123,14 @@ impl<A: Application> StreamConsumer<A> for JsonlStreams<A> {
     }
 
     fn selections(&self) -> Vec<Definition> {
-        self.selections
-            .iter()
-            .map(|selected| selected.definition.clone())
-            .collect()
+        self.selections.iter().map(|selected| selected.definition.clone()).collect()
     }
 
     async fn drain(&mut self, batch: Batch<A>) -> Cursor {
         if self.faulted {
             return self.cursor;
         }
-        if self.capture(&batch).is_err()
-            || persist_checkpoint(&self.directory, batch.reaches()).is_err()
-        {
+        if self.capture(&batch).is_err() || persist_checkpoint(&self.directory, batch.reaches()).is_err() {
             self.faulted = true;
             return self.cursor;
         }
@@ -165,13 +148,7 @@ impl<A: Application> StreamConsumer<A> for JsonlStreams<A> {
 
 impl<A: Application> Selection<A> {
     fn of<S: Stream<A>>() -> Self {
-        Self {
-            definition: S::definition(),
-            encode: encode::<A, S>,
-            writer: None,
-            pending_gap: 0,
-            application: PhantomData,
-        }
+        Self { definition: S::definition(), encode: encode::<A, S>, writer: None, pending_gap: 0, application: PhantomData }
     }
 
     fn write(&mut self, directory: &Path, rows: &[Map<String, Value>]) -> io::Result<()> {
@@ -217,18 +194,11 @@ pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<
 fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
     let mut rows = Vec::new();
     for row in batch.select::<S>() {
-        let Value::Object(mut members) = serde_json::to_value(&row.value).map_err(json_error)?
-        else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "a stream row does not serialize as a JSON object",
-            ));
+        let Value::Object(mut members) = serde_json::to_value(&row.value).map_err(json_error)? else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "a stream row does not serialize as a JSON object"));
         };
         if members.contains_key(POSITION) || members.contains_key(GAP) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "a stream row uses a JSON Lines technical member name",
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "a stream row uses a JSON Lines technical member name"));
         }
         members.insert(POSITION.to_owned(), Value::from(row.position.0));
         // Present on every line, and null unless rows were lost before it: a
@@ -243,11 +213,7 @@ fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<
 fn heal(directory: &Path) -> io::Result<()> {
     for entry in std::fs::read_dir(directory)? {
         let path = entry?.path();
-        if path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(SUFFIX))
-        {
+        if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(SUFFIX)) {
             truncate_partial(&path)?;
         }
     }
@@ -292,20 +258,12 @@ fn read_checkpoint(directory: &Path) -> io::Result<Cursor> {
     let mut stored = String::new();
     File::open(path)?.read_to_string(&mut stored)?;
 
-    stored
-        .trim()
-        .parse::<u64>()
-        .map(Cursor)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    stored.trim().parse::<u64>().map(Cursor).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 fn persist_checkpoint(directory: &Path, cursor: Cursor) -> io::Result<()> {
     let temporary = directory.join(CHECKPOINT_TEMP);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(&temporary)?;
+    let mut file = OpenOptions::new().create(true).truncate(true).write(true).open(&temporary)?;
     writeln!(file, "{}", cursor.0)?;
     file.sync_all()?;
     std::fs::rename(temporary, directory.join(CHECKPOINT))?;

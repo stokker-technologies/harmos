@@ -213,7 +213,11 @@ impl Fixture {
             .unwrap();
         runtime
             .operations
-            .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>("native-publication", Lanes::Open, Arc::new(resident.clone()))
+            .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
+                "native-publication",
+                Lanes::Open,
+                Arc::new(resident.clone()),
+            )
             .unwrap();
         runtime
             .operations
@@ -240,8 +244,10 @@ impl Fixture {
         let lease = runtime.operations.submit_resident("producer").await.unwrap();
         let mut statuses = runtime.operations.watch_residents();
         loop {
-            let status =
-                statuses.borrow_and_update().get(&harmos_runtime::operations::resident::Key::root("producer")).and_then(|item| item.health.clone());
+            let status = statuses
+                .borrow_and_update()
+                .get(&harmos_runtime::operations::resident::Key::root("producer"))
+                .and_then(|item| item.health.clone());
             match status {
                 Some(ServiceStatus::Running { .. }) => break,
                 Some(ServiceStatus::Stopped) => {

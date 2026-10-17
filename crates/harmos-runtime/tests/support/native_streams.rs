@@ -146,8 +146,10 @@ impl Fixture {
         let lease = runtime.operations.submit_resident("consumer").await.unwrap();
         let mut statuses = runtime.operations.watch_residents();
         loop {
-            let status =
-                statuses.borrow_and_update().get(&harmos_runtime::operations::resident::Key::root("consumer")).and_then(|item| item.health.clone());
+            let status = statuses
+                .borrow_and_update()
+                .get(&harmos_runtime::operations::resident::Key::root("consumer"))
+                .and_then(|item| item.health.clone());
             match status {
                 Some(ServiceStatus::Running { .. }) => break,
                 Some(ServiceStatus::Stopped) => {

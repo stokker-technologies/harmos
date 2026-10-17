@@ -66,18 +66,12 @@ impl Spectrum {
 /* === Public Functions === */
 #[must_use]
 pub fn magnitude(real: &[f64], imag: &[f64]) -> Vec<f64> {
-    real.iter()
-        .zip(imag)
-        .map(|(real, imag)| real.hypot(*imag))
-        .collect()
+    real.iter().zip(imag).map(|(real, imag)| real.hypot(*imag)).collect()
 }
 
 #[must_use]
 pub fn phase(real: &[f64], imag: &[f64]) -> Vec<f64> {
-    real.iter()
-        .zip(imag)
-        .map(|(real, imag)| imag.atan2(*real))
-        .collect()
+    real.iter().zip(imag).map(|(real, imag)| imag.atan2(*real)).collect()
 }
 
 #[must_use]

@@ -21,8 +21,8 @@ use heck::{ToSnakeCase, ToUpperCamelCase};
 use prost_reflect::{
     DescriptorPool, ServiceDescriptor,
     prost_types::{
-        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
-        MethodDescriptorProto, OneofDescriptorProto, ServiceDescriptorProto,
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, MethodDescriptorProto, OneofDescriptorProto,
+        ServiceDescriptorProto,
         field_descriptor_proto::{Label, Type},
     },
 };
@@ -60,19 +60,11 @@ pub enum DescriptorError {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn descriptor(
-    package: &str,
-    name: &str,
-    methods: &[(&str, &Contract)],
-) -> Result<ServiceDescriptor, DescriptorError> {
+pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> Result<ServiceDescriptor, DescriptorError> {
     if !identifier(name) || !package.split('.').all(identifier) {
         return Err(DescriptorError::Name);
     }
-    if name.to_upper_camel_case().is_empty()
-        || package
-            .split('.')
-            .any(|part| part.to_snake_case().is_empty())
-    {
+    if name.to_upper_camel_case().is_empty() || package.split('.').any(|part| part.to_snake_case().is_empty()) {
         return Err(DescriptorError::Name);
     }
     let mut names = BTreeSet::new();
@@ -97,19 +89,14 @@ pub fn descriptor(
             )
             || !generated.insert(rust_name)
         {
-            return Err(DescriptorError::GeneratedName {
-                method: (*method).into(),
-            });
+            return Err(DescriptorError::GeneratedName { method: (*method).into() });
         }
         if !operations.insert(contract.operation().id.as_str()) {
             return Err(DescriptorError::DuplicateOperation);
         }
     }
     let mut files = Vec::new();
-    let mut service = ServiceDescriptorProto {
-        name: Some(name.into()),
-        ..Default::default()
-    };
+    let mut service = ServiceDescriptorProto { name: Some(name.into()), ..Default::default() };
     let mut file = FileDescriptorProto {
         name: Some(format!("{}/{name}.proto", package.replace('.', "/"))),
         package: Some(package.into()),
@@ -118,19 +105,12 @@ pub fn descriptor(
     };
     for (method, contract) in methods {
         let namespace = format!("{package}.{name}Messages.{method}");
-        let root = reflection::descriptor_schema(
-            contract.schema(),
-            &namespace,
-            &SchemaSettings::default(),
-        )?;
+        let root = reflection::descriptor_schema(contract.schema(), &namespace, &SchemaSettings::default())?;
         let messages = root.parent_file_descriptor_proto().clone();
-        file.dependency
-            .push(messages.name.clone().expect("projected file is named"));
+        file.dependency.push(messages.name.clone().expect("projected file is named"));
         files.push(messages);
         let direction = |name: &str| {
-            let field = root
-                .get_field_by_name(name)
-                .expect("validated contract direction");
+            let field = root.get_field_by_name(name).expect("validated contract direction");
             let prost_reflect::Kind::Message(message) = field.kind() else {
                 unreachable!("contract directions are message references");
             };
@@ -141,22 +121,14 @@ pub fn descriptor(
         let input = match contract.input() {
             Some(_) => {
                 let item = direction("input");
-                envelope(
-                    &mut file,
-                    &format!("{name}{method}Input"),
-                    [("request", request), ("item", item)],
-                )
+                envelope(&mut file, &format!("{name}{method}Input"), [("request", request), ("item", item)])
             }
             None => request,
         };
         let output = match contract.output() {
             Some(_) => {
                 let item = direction("output");
-                envelope(
-                    &mut file,
-                    &format!("{name}{method}Output"),
-                    [("item", item), ("response", response)],
-                )
+                envelope(&mut file, &format!("{name}{method}Output"), [("item", item), ("response", response)])
             }
             None => response,
         };
@@ -172,25 +144,17 @@ pub fn descriptor(
     file.service.push(service);
     files.push(file);
     let pool = DescriptorPool::from_file_descriptor_set(FileDescriptorSet { file: files })?;
-    Ok(pool
-        .get_service_by_name(&format!("{package}.{name}"))
-        .expect("validated service was inserted"))
+    Ok(pool.get_service_by_name(&format!("{package}.{name}")).expect("validated service was inserted"))
 }
 
 /* === Private Functions === */
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+    bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
-fn envelope(
-    file: &mut FileDescriptorProto,
-    name: &str,
-    alternatives: [(&str, String); 2],
-) -> String {
+fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: [(&str, String); 2]) -> String {
     let fields = alternatives
         .into_iter()
         .enumerate()
@@ -207,18 +171,10 @@ fn envelope(
     file.message_type.push(DescriptorProto {
         name: Some(name.into()),
         field: fields,
-        oneof_decl: vec![OneofDescriptorProto {
-            name: Some("value".into()),
-            ..Default::default()
-        }],
+        oneof_decl: vec![OneofDescriptorProto { name: Some("value".into()), ..Default::default() }],
         ..Default::default()
     });
-    format!(
-        ".{}.{name}",
-        file.package
-            .as_deref()
-            .expect("service package is explicit")
-    )
+    format!(".{}.{name}", file.package.as_deref().expect("service package is explicit"))
 }
 
 /* === Tests === */

@@ -32,9 +32,8 @@ macro_rules! shape {
         impl Described for $ty {
             const NAME: &'static str = $name;
             const FIELDS: &'static [Field<Definition>] = $fields;
-            const MARKER: &'static [u8] = &declaration::encode::<
-                { declaration::encoded_len(Self::NAME, Self::FIELDS) },
-            >(Self::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] =
+                &declaration::encode::<{ declaration::encoded_len(Self::NAME, Self::FIELDS) }>(Self::NAME, Self::FIELDS);
         }
     };
 }
@@ -44,27 +43,13 @@ shape!(
     "harmos::schema::Graph",
     &[
         described("root", 1, declaration::Kind::U64, Cardinality::Required),
-        described(
-            "definitions",
-            2,
-            declaration::Kind::Message {
-                definition: DefinitionShape::DEFINITION
-            },
-            Cardinality::Repeated
-        ),
+        described("definitions", 2, declaration::Kind::Message { definition: DefinitionShape::DEFINITION }, Cardinality::Repeated),
     ]
 );
 shape!(
     DefinitionShape,
     "harmos::schema::Definition",
-    &[described(
-        "fields",
-        1,
-        declaration::Kind::Message {
-            definition: FieldShape::DEFINITION
-        },
-        Cardinality::Repeated
-    ),]
+    &[described("fields", 1, declaration::Kind::Message { definition: FieldShape::DEFINITION }, Cardinality::Repeated),]
 );
 shape!(
     FieldShape,
@@ -73,18 +58,8 @@ shape!(
         described("name", 1, declaration::Kind::String, Cardinality::Required),
         described("tag", 2, declaration::Kind::U32, Cardinality::Required),
         described("kind", 3, declaration::Kind::U32, Cardinality::Required),
-        described(
-            "cardinality",
-            4,
-            declaration::Kind::U32,
-            Cardinality::Required
-        ),
-        described(
-            "definition",
-            5,
-            declaration::Kind::U64,
-            Cardinality::Optional
-        ),
+        described("cardinality", 4, declaration::Kind::U32, Cardinality::Required),
+        described("definition", 5, declaration::Kind::U64, Cardinality::Optional),
     ]
 );
 
@@ -116,19 +91,13 @@ struct Budget {
 /* === Implementations === */
 impl Budget {
     fn new() -> Self {
-        Self {
-            bytes: size_of::<Schema>(),
-            work: 0,
-            settings: SchemaSettings::default(),
-        }
+        Self { bytes: size_of::<Schema>(), work: 0, settings: SchemaSettings::default() }
     }
 
     fn charge(&mut self, bytes: usize, work: usize) -> Result<()> {
         self.bytes = self.bytes.checked_add(bytes).ok_or_else(invalid)?;
         self.work = self.work.checked_add(work).ok_or_else(invalid)?;
-        if self.bytes > self.settings.preparation_bytes.get()
-            || self.work > self.settings.preparation_work.get()
-        {
+        if self.bytes > self.settings.preparation_bytes.get() || self.work > self.settings.preparation_work.get() {
             return Err(invalid());
         }
         Ok(())
@@ -137,18 +106,12 @@ impl Budget {
     fn definition(&mut self, fields: usize) -> Result<()> {
         let bits = usize::BITS as usize - fields.leading_zeros() as usize;
         let work = fields.checked_mul(2 * bits + 3).ok_or_else(invalid)?;
-        self.charge(
-            4 * size_of::<Vec<Field>>() + size_of::<usize>() + size_of::<bool>(),
-            work + 1,
-        )
+        self.charge(4 * size_of::<Vec<Field>>() + size_of::<usize>() + size_of::<bool>(), work + 1)
     }
 
     fn field(&mut self, node: &Node<'_>) -> Result<()> {
         node.check()?;
-        self.charge(
-            4 * size_of::<Field>() + 2 * node.name.len() + size_of::<&str>() + size_of::<u32>(),
-            node.name.len() + 1,
-        )
+        self.charge(4 * size_of::<Field>() + 2 * node.name.len() + size_of::<&str>() + size_of::<u32>(), node.name.len() + 1)
     }
 }
 
@@ -181,9 +144,7 @@ impl Node<'_> {
             6 => Kind::F64,
             7 => Kind::String,
             8 => Kind::Bytes,
-            9 => Kind::Message {
-                definition: self.definition.ok_or_else(invalid)?,
-            },
+            9 => Kind::Message { definition: self.definition.ok_or_else(invalid)? },
             _ => return Err(invalid()),
         };
         let cardinality = match self.cardinality {
@@ -193,12 +154,7 @@ impl Node<'_> {
             3 => Cardinality::Variant,
             _ => return Err(invalid()),
         };
-        Ok(Field {
-            name: self.name.to_owned().into(),
-            tag: self.tag,
-            kind,
-            cardinality,
-        })
+        Ok(Field { name: self.name.to_owned().into(), tag: self.tag, kind, cardinality })
     }
 }
 
@@ -222,13 +178,7 @@ impl<'a> From<&'a Field> for Node<'a> {
             Cardinality::Repeated => 2,
             Cardinality::Variant => 3,
         };
-        Self {
-            name: &field.name,
-            tag: field.tag,
-            kind,
-            cardinality,
-            definition,
-        }
+        Self { name: &field.name, tag: field.tag, kind, cardinality, definition }
     }
 }
 
@@ -257,10 +207,7 @@ impl PostcardValue for Schema {
     }
 
     fn size(&self) -> usize {
-        let mut size = self
-            .root
-            .size()
-            .saturating_add(self.definitions.len().size());
+        let mut size = self.root.size().saturating_add(self.definitions.len().size());
         for fields in &self.definitions {
             size = size.saturating_add(fields.len().size());
             for field in fields {
@@ -323,9 +270,7 @@ impl PostcardValue for Schema {
                 definitions.push(fields);
             }
             let schema = Self { root, definitions };
-            schema
-                .prepare(&SchemaSettings::default())
-                .map_err(|_| invalid())?;
+            schema.prepare(&SchemaSettings::default()).map_err(|_| invalid())?;
             Ok(schema)
         })
     }
@@ -334,18 +279,8 @@ impl PostcardValue for Schema {
 /* === Public Functions === */
 
 /* === Private Functions === */
-const fn described(
-    name: &'static str,
-    tag: u32,
-    kind: declaration::Kind,
-    cardinality: Cardinality,
-) -> Field<Definition> {
-    Field {
-        name: Cow::Borrowed(name),
-        tag,
-        kind,
-        cardinality,
-    }
+const fn described(name: &'static str, tag: u32, kind: declaration::Kind, cardinality: Cardinality) -> Field<Definition> {
+    Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }
 
 fn postcard_node<'a>(input: &mut PostcardReader<'a>) -> Result<Node<'a>> {
@@ -362,13 +297,7 @@ fn postcard_node<'a>(input: &mut PostcardReader<'a>) -> Result<Node<'a>> {
         1 => Some(input.value()?),
         _ => return Err(invalid()),
     };
-    Ok(Node {
-        name,
-        tag,
-        kind,
-        cardinality,
-        definition,
-    })
+    Ok(Node { name, tag, kind, cardinality, definition })
 }
 
 fn invalid() -> MessageError {

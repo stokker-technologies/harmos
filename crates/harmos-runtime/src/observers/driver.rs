@@ -66,13 +66,7 @@ impl<B: ObserverBackend> Runner for Backend<B> {
     }
 
     fn spawn(self: Arc<Self>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
-        let Start {
-            resources,
-            lifecycle,
-            stopping,
-            report,
-            ..
-        } = start;
+        let Start { resources, lifecycle, stopping, report, .. } = start;
         let children = Arc::new(ChildSettlement {
             pending: Mutex::new(Vec::new()),
             lifecycle,
@@ -96,13 +90,10 @@ impl<B: ObserverBackend> Runner for Backend<B> {
                 if !admitted {
                     return Ok(());
                 }
-                let resources =
-                    resources
-                        .downcast::<B::Resources>()
-                        .map_err(|_| Error::InvalidInput {
-                            field: "observer scope",
-                            reason: "resource type differs from the registered backend",
-                        })?;
+                let resources = resources.downcast::<B::Resources>().map_err(|_| Error::InvalidInput {
+                    field: "observer scope",
+                    reason: "resource type differs from the registered backend",
+                })?;
                 self.0.run(resources, activation).await
             })
             .await;
@@ -111,15 +102,9 @@ impl<B: ObserverBackend> Runner for Backend<B> {
                     completion.backend_returned.store(true, Ordering::Release);
                     outcome.map_err(Arc::new)
                 }
-                Err(source) => Err(Arc::new(Error::TaskFailed {
-                    domain: "observer backend",
-                    source: Arc::new(source),
-                })),
+                Err(source) => Err(Arc::new(Error::TaskFailed { domain: "observer backend", source: Arc::new(source) })),
             };
-            *completion
-                .outcome
-                .lock()
-                .expect("observer outcome is healthy") = Some(outcome.clone());
+            *completion.outcome.lock().expect("observer outcome is healthy") = Some(outcome.clone());
             if !completion.backend_returned.load(Ordering::Acquire) {
                 report.complete(&outcome);
             }
@@ -137,12 +122,7 @@ impl Settlement for ChildSettlement {
     }
 
     fn retry(self: Arc<Self>, report: Report) -> Option<Completion> {
-        let retry = self
-            .outcome
-            .lock()
-            .expect("observer outcome is healthy")
-            .is_some()
-            && !self.lifecycle.is_settled();
+        let retry = self.outcome.lock().expect("observer outcome is healthy").is_some() && !self.lifecycle.is_settled();
         retry.then(|| {
             Box::pin(async move {
                 let outcome = self.finish(true).await;
@@ -158,23 +138,12 @@ impl ChildSettlement {
     // settles; nothing new is admitted once the backend has returned.
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn submit(
-        &self,
-        retirement: bool,
-        submit: impl FnOnce() -> Result<crate::operations::EncodedInvocation>,
+        &self, retirement: bool, submit: impl FnOnce() -> Result<crate::operations::EncodedInvocation>,
     ) -> Result<crate::operations::EncodedInvocation> {
         let mut pending = self.pending.lock().expect("observer children are healthy");
         pending.retain(|control| !control.is_settled());
-        if pending.len() >= 64
-            || (!retirement
-                && self
-                    .outcome
-                    .lock()
-                    .expect("observer outcome is healthy")
-                    .is_some())
-        {
-            return Err(Error::ResourceExhausted {
-                resource: "observer physical children",
-            });
+        if pending.len() >= 64 || (!retirement && self.outcome.lock().expect("observer outcome is healthy").is_some()) {
+            return Err(Error::ResourceExhausted { resource: "observer physical children" });
         }
         let invocation = submit()?;
         pending.push(Arc::clone(&invocation.control));
@@ -184,10 +153,7 @@ impl ChildSettlement {
     // Stop settling a child whose failed cleanup the backend retains itself.
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn forget(&self, control: &Arc<Instance>) {
-        self.pending
-            .lock()
-            .expect("observer children are healthy")
-            .retain(|pending| !Arc::ptr_eq(pending, control));
+        self.pending.lock().expect("observer children are healthy").retain(|pending| !Arc::ptr_eq(pending, control));
     }
 
     async fn finish(&self, recover: bool) -> Outcome {
@@ -200,9 +166,7 @@ impl ChildSettlement {
             .clone();
         if self.lifecycle.status().outcome().is_none() {
             let terminal = match &outcome {
-                Ok(()) if self.lifecycle.status().cancellation_requested() => {
-                    supervision::instance::Outcome::Cancelled
-                }
+                Ok(()) if self.lifecycle.status().cancellation_requested() => supervision::instance::Outcome::Cancelled,
                 Ok(()) => supervision::instance::Outcome::Succeeded,
                 Err(_) => supervision::instance::Outcome::Failed,
             };
@@ -211,39 +175,24 @@ impl ChildSettlement {
         if !self.backend_cleanup.load(Ordering::Acquire) {
             self.lifecycle.transition(OperationPhase::Finalizing);
         }
-        let pending = self
-            .pending
-            .lock()
-            .expect("observer children are healthy")
-            .clone();
+        let pending = self.pending.lock().expect("observer children are healthy").clone();
         if !self.backend_returned.load(Ordering::Acquire) {
             for control in &pending {
                 control.cancel();
             }
         }
-        let joining = pending.into_iter().map(|control| async move {
-            control
-                .settle()
-                .await
-                .map_err(|source| Arc::new(Error::OperationSettlement { source }))
-        });
+        let joining = pending
+            .into_iter()
+            .map(|control| async move { control.settle().await.map_err(|source| Arc::new(Error::OperationSettlement { source })) });
         if let Err(failure) = supervision::settle_all(joining).await {
             self.lifecycle.interrupted(failure.clone());
             return Err(failure);
         }
-        self.pending
-            .lock()
-            .expect("observer children are healthy")
-            .clear();
+        self.pending.lock().expect("observer children are healthy").clear();
         if self.backend_returned.load(Ordering::Acquire) {
             if self.backend_cleanup.load(Ordering::Acquire) && !self.lifecycle.is_settled() {
                 if !recover {
-                    return Err(self
-                        .lifecycle
-                        .status()
-                        .cleanup_failure()
-                        .cloned()
-                        .expect("retained backend failure"));
+                    return Err(self.lifecycle.status().cleanup_failure().cloned().expect("retained backend failure"));
                 }
                 self.lifecycle.settle().await?;
             } else {
@@ -297,11 +246,7 @@ impl ObserverActivation {
 
     // Keep a failed physical cleanup owned by this activation for a later retry.
     #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn retain<R: supervision::cleanup::Resource>(
-        &self,
-        resource: R,
-        failure: Arc<Error>,
-    ) {
+    pub(crate) fn retain<R: supervision::cleanup::Resource>(&self, resource: R, failure: Arc<Error>) {
         self.children.backend_cleanup.store(true, Ordering::Release);
         self.children.lifecycle.retain(resource, failure);
         self.report.publish();

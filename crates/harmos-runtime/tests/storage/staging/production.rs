@@ -44,8 +44,13 @@ use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 /* === Private Functions === */
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", crate::storage::operations::Lanes::Open, Arc::new(f.storage.clone()))
-        .unwrap();
+    harmos_runtime::storage::operations::register(
+        &f.runtime.operations,
+        "storage",
+        crate::storage::operations::Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
     f
 }
 fn key(f: &Fixture, key: &str) -> MutationId {
@@ -215,8 +220,13 @@ async fn finish_reconciles_lost() {
 #[tokio::test]
 async fn retries_never_multiply() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", crate::storage::operations::Lanes::Open, Arc::new(f.storage.clone()))
-        .unwrap();
+    harmos_runtime::storage::operations::register(
+        &f.runtime.operations,
+        "storage",
+        crate::storage::operations::Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
     let request = CreateFile { mutation: key(&f, "create"), metadata: metadata("retry-budget") };
     f.data.control.create_failures.store(5, Ordering::SeqCst);
     assert!(f.runtime.operations.call(request.clone()).await.is_err());

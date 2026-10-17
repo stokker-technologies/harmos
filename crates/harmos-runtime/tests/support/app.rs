@@ -53,14 +53,8 @@ pub async fn runtime_from(origin: Ledger) -> Runtime<Bank> {
     booted(origin, |builder| builder).await
 }
 
-pub async fn booted(
-    origin: Ledger,
-    attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>,
-) -> Runtime<Bank> {
-    attach(Runtime::<Bank>::builder(origin, ()).register(catalog()))
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing")
+pub async fn booted(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Runtime<Bank> {
+    attach(Runtime::<Bank>::builder(origin, ()).register(catalog())).runtime().await.expect("a memory-only boot recovers nothing")
 }
 
 /* === Private Functions === */

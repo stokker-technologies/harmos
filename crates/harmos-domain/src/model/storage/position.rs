@@ -56,36 +56,20 @@ pub struct RecoveryPosition {
 impl MemorySize for StoreHistory {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.store
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
-            .saturating_add(
-                self.epoch
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
+            .saturating_add(self.store.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
+            .saturating_add(self.epoch.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
     }
 }
 
 impl MemorySize for StorageCursor {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.history
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<StoreHistory>()),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
     }
 }
 
 impl StoreHistory {
     pub fn check(&self, other: &Self) -> Result<()> {
-        if self == other {
-            Ok(())
-        } else {
-            Err(Error::DifferentHistory)
-        }
+        if self == other { Ok(()) } else { Err(Error::DifferentHistory) }
     }
 }
 

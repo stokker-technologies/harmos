@@ -58,16 +58,8 @@ pub struct DeleteFile {
 impl MemorySize for DeleteFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.mutation
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.mutation)),
-            )
-            .saturating_add(
-                self.file
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.file)),
-            )
+            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
+            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
     }
 }
 

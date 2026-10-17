@@ -52,22 +52,13 @@ pub struct Requirements;
 /* === Implementations === */
 impl Requirement {
     pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
-        Self {
-            declaration: WireDeclaration::of::<O>(),
-            grants,
-        }
+        Self { declaration: WireDeclaration::of::<O>(), grants }
     }
 }
 
 impl Grant {
-    pub fn of(
-        operation: impl Into<Cow<'static, str>>,
-        scope: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        Self {
-            operation: operation.into(),
-            scope: Some(scope.into()),
-        }
+    pub fn of(operation: impl Into<Cow<'static, str>>, scope: impl Into<Cow<'static, str>>) -> Self {
+        Self { operation: operation.into(), scope: Some(scope.into()) }
     }
 
     pub fn operation(&self) -> &str {

@@ -45,7 +45,8 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 /* === Private Functions === */
 async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, FollowFile) {
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone())).unwrap();
+    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+        .unwrap();
     let mut producer = fixture
         .storage
         .produce_file(FileMetadata {

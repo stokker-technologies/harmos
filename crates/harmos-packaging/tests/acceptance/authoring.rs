@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Compile And Test Each Generated Starter Against Staged Offline Inputs.
 
 /* === Modules === */
@@ -19,16 +18,15 @@
 // Standard Library Imports
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use std::process::{Child, Command, ExitStatus, Output, Stdio};
 
 // Third Party Imports
 use serde_json::Value;
 
 // Local Imports
 use super::fixtures;
-
 
 /* === Constants === */
 
@@ -59,14 +57,24 @@ impl Project {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join(format!("starter-{kind}"));
         let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
-        let result = Command::new(fixtures::artifact("cargo-harmos")).current_dir(checkout)
-            .args(["harmos", "new", kind]).arg(&root).arg("--harmos-path").arg(checkout).output().unwrap();
+        let result = Command::new(fixtures::artifact("cargo-harmos"))
+            .current_dir(checkout)
+            .args(["harmos", "new", kind])
+            .arg(&root)
+            .arg("--harmos-path")
+            .arg(checkout)
+            .output()
+            .unwrap();
         succeeded(&result);
         let project = Self { directory, root };
         let home = project.directory.path().join("cargo-home");
         std::fs::create_dir(&home).unwrap();
         let vendor = serde_json::to_string(&fixtures::input("vendor")).unwrap();
-        std::fs::write(home.join("config.toml"), format!("[net]\noffline = true\n[source.crates-io]\nreplace-with = \"vendored\"\n[source.vendored]\ndirectory = {vendor}\n")).unwrap();
+        std::fs::write(
+            home.join("config.toml"),
+            format!("[net]\noffline = true\n[source.crates-io]\nreplace-with = \"vendored\"\n[source.vendored]\ndirectory = {vendor}\n"),
+        )
+        .unwrap();
         let wheels = serde_json::to_string(&fixtures::input("wheels")).unwrap();
         std::fs::write(project.directory.path().join("uv.toml"), format!("no-index = true\nfind-links = [{wheels}]\n")).unwrap();
         project.run("git", &["init", "--initial-branch=feat/starter"]);
@@ -74,13 +82,17 @@ impl Project {
         project.run("cargo", &["generate-lockfile", "--offline"]);
         project.run("uv", &["sync", "--locked", "--offline", "--all-groups", "--project", "tools/python"]);
         project.run("git", &["add", "."]);
-        project.run("git", &["-c", "user.name=Harmos Fixture", "-c", "user.email=fixture@harmos.invalid", "commit", "-m", "feat: create authored plugin"]);
+        project.run(
+            "git",
+            &["-c", "user.name=Harmos Fixture", "-c", "user.email=fixture@harmos.invalid", "commit", "-m", "feat: create authored plugin"],
+        );
         project
     }
 
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = Command::new(program);
-        command.current_dir(&self.root)
+        command
+            .current_dir(&self.root)
             .env("CARGO_HOME", self.directory.path().join("cargo-home"))
             .env("CARGO_TARGET_DIR", self.root.join("target"))
             .env("CARGO_NET_OFFLINE", "true")
@@ -107,8 +119,10 @@ impl Watching {
     fn start(project: &Project, kind: &str) -> Self {
         let log = project.directory.path().join("watch.log");
         let mut command = project.command(fixtures::artifact("cargo-harmos"));
-        command.args(["harmos", kind, "dev", "--json", "--debounce-ms", "1000"])
-            .stdin(Stdio::null()).stdout(Stdio::piped())
+        command
+            .args(["harmos", kind, "dev", "--json", "--debounce-ms", "1000"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(std::fs::File::create(&log).unwrap());
         #[cfg(windows)]
         {
@@ -121,7 +135,9 @@ impl Watching {
         let reader = std::thread::spawn(move || {
             for line in BufReader::new(output).lines() {
                 let value: Value = serde_json::from_str(&line.unwrap()).unwrap();
-                if sender.send(value).is_err() { break; }
+                if sender.send(value).is_err() {
+                    break;
+                }
             }
         });
         Self { child: Some(child), reader: Some(reader), events, log }
@@ -156,10 +172,14 @@ impl Watching {
 impl Drop for Watching {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            if child.try_wait().ok().flatten().is_none() { interrupt(child.id()); }
+            if child.try_wait().ok().flatten().is_none() {
+                interrupt(child.id());
+            }
             let _ = child.wait();
         }
-        if let Some(reader) = self.reader.take() { let _ = reader.join(); }
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
     }
 }
 
@@ -179,7 +199,9 @@ fn interrupt(pid: u32) {
 
 #[cfg(windows)]
 fn interrupt(pid: u32) {
-    let code = format!("Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Signal {{ [DllImport(\"kernel32.dll\", SetLastError=true)] public static extern bool GenerateConsoleCtrlEvent(uint kind, uint group); }}'; if (-not [Signal]::GenerateConsoleCtrlEvent(1, {pid})) {{ exit 1 }}");
+    let code = format!(
+        "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Signal {{ [DllImport(\"kernel32.dll\", SetLastError=true)] public static extern bool GenerateConsoleCtrlEvent(uint kind, uint group); }}'; if (-not [Signal]::GenerateConsoleCtrlEvent(1, {pid})) {{ exit 1 }}"
+    );
     let _ = Command::new("powershell").args(["-NoProfile", "-Command", &code]).status();
 }
 
@@ -192,7 +214,8 @@ fn dev_rebuilds(kind: &str) {
     let project = Project::new(kind);
     let dependency = project.directory.path().join("dependency");
     std::fs::create_dir_all(dependency.join("src")).unwrap();
-    std::fs::write(dependency.join("Cargo.toml"), "[package]\nname = \"watch-dependency\"\nversion = \"0.0.0\"\nedition = \"2024\"\n").unwrap();
+    std::fs::write(dependency.join("Cargo.toml"), "[package]\nname = \"watch-dependency\"\nversion = \"0.0.0\"\nedition = \"2024\"\n")
+        .unwrap();
     let dependent = dependency.join("src/lib.rs");
     std::fs::write(&dependent, "pub fn value() -> u32 { 10 }\n").unwrap();
     let manifest = project.root.join("Cargo.toml");
@@ -203,7 +226,9 @@ fn dev_rebuilds(kind: &str) {
     let source = project.root.join("src/domain/model/greeting/mod.rs");
     let original = std::fs::read_to_string(&source).unwrap();
     assert!(original.contains("format!(\"Hello, {name}!\")"), "the starter greeting remains the authored build input");
-    let authored = original.replace("format!(\"Hello, {name}!\")", "format!(\"Hello, {name}! {}\", WATCH_SOURCE + watch_dependency::value())") + "\nconst WATCH_SOURCE: u32 = 1;\n";
+    let authored = original
+        .replace("format!(\"Hello, {name}!\")", "format!(\"Hello, {name}! {}\", WATCH_SOURCE + watch_dependency::value())")
+        + "\nconst WATCH_SOURCE: u32 = 1;\n";
     std::fs::write(&source, &authored).unwrap();
     let mut watcher = Watching::start(&project, kind);
     let (artifact, initial) = watcher.built(1);
@@ -233,7 +258,10 @@ fn dev_rebuilds(kind: &str) {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let address = listener.local_addr().unwrap();
     let python = project.root.join(".venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
-    let program = format!("import json,os,socket; s=socket.create_connection(('127.0.0.1',{})); s.sendall(json.dumps([os.getppid(),os.getpid()]).encode()+b'\\n'); s.recv(1)", address.port());
+    let program = format!(
+        "import json,os,socket; s=socket.create_connection(('127.0.0.1',{})); s.sendall(json.dumps([os.getppid(),os.getpid()]).encode()+b'\\n'); s.recv(1)",
+        address.port()
+    );
     let script = format!("fn main() {{ std::process::Command::new({:?}).args([\"-c\", {:?}]).status().unwrap(); }}\n", python, program);
     std::fs::write(project.root.join("build.rs"), script).unwrap();
     assert_eq!(watcher.event("started")["attempt"], 6);

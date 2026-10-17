@@ -26,9 +26,7 @@ use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
-use crate::operations::{
-    Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand,
-};
+use crate::operations::{Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
 
 /* === Constants === */
@@ -131,14 +129,8 @@ impl ComponentError {
 
 impl super::StreamPeer for Component {
     type Error = ComponentError;
-    async fn stream_phase(
-        &self,
-        command: WireCommand,
-    ) -> std::result::Result<WireAnswer, Self::Error> {
-        self.endpoint
-            .phase(command, None)
-            .await
-            .map_err(ComponentError::from)
+    async fn stream_phase(&self, command: WireCommand) -> std::result::Result<WireAnswer, Self::Error> {
+        self.endpoint.phase(command, None).await.map_err(ComponentError::from)
     }
 }
 
@@ -159,24 +151,12 @@ where
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        component: Arc<Component>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, ComponentError> {
-        Ok(Self {
-            component,
-            state: None,
-            epoch: 0,
-            transferred: AtomicBool::new(false),
-            _operation: PhantomData,
-        })
+    async fn initialize<'ctx>(component: Arc<Component>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+        Ok(Self { component, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut O,
-        endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
@@ -205,19 +185,10 @@ where
             }
 
             let answer = if E::item_types() == (None, None) {
-                self.component
-                    .phase_encoded(state, &context, Phase::Attempt)
-                    .await?
+                self.component.phase_encoded(state, &context, Phase::Attempt).await?
             } else {
-                self.epoch =
-                    self.epoch
-                        .checked_add(1)
-                        .ok_or(super::RemoteStreamError::Protocol(
-                            "stream attempt counter exhausted",
-                        ))?;
-                let running =
-                    self.component
-                        .phase_encoded(state, &context, Phase::Stream(self.epoch));
+                self.epoch = self.epoch.checked_add(1).ok_or(super::RemoteStreamError::Protocol("stream attempt counter exhausted"))?;
+                let running = self.component.phase_encoded(state, &context, Phase::Stream(self.epoch));
                 super::remote::attempt(
                     &*self.component,
                     endpoints,
@@ -232,9 +203,7 @@ where
             O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
         }
         .await;
-        result
-            .map(::core::convert::Into::into)
-            .map_err(|error| error.in_operation(O::ID))
+        result.map(::core::convert::Into::into).map_err(|error| error.in_operation(O::ID))
     }
 
     async fn cleanup(&mut self) -> Result<(), ComponentError> {
@@ -242,10 +211,7 @@ where
             return Ok(());
         };
 
-        self.component
-            .finalize_encoded(state)
-            .await
-            .map_err(|error| error.in_operation(O::ID))
+        self.component.finalize_encoded(state).await.map_err(|error| error.in_operation(O::ID))
     }
 
     fn transferred(&self) -> bool {
@@ -265,28 +231,18 @@ impl<O> Member<O> for ComponentBindings
 where
     O: crate::operations::OperationDeclaration,
 {
-    const ENTRY: super::Binding<Component> = super::Binding {
-        register: register::<O>,
-    };
+    const ENTRY: super::Binding<Component> = super::Binding { register: register::<O> };
 }
 
 impl super::Bindings<'_> {
-    pub fn register_component_catalog<C>(
-        &mut self,
-        lane: impl Lane,
-        component: Arc<Component>,
-    ) -> crate::Result<()>
+    pub fn register_component_catalog<C>(&mut self, lane: impl Lane, component: Arc<Component>) -> crate::Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings>,
     {
-        let scope = self.scope.ok_or(Error::InvalidInput {
-            field: "component operation scope",
-            reason: "component inventory requires stage_plugin",
-        })?;
-        if !component
-            .scope()
-            .is_some_and(|selected| selected.same_activation(scope))
-        {
+        let scope = self
+            .scope
+            .ok_or(Error::InvalidInput { field: "component operation scope", reason: "component inventory requires stage_plugin" })?;
+        if !component.scope().is_some_and(|selected| selected.same_activation(scope)) {
             return Err(Error::InvalidInput {
                 field: "component operation scope",
                 reason: "component endpoint belongs to a different plugin generation",
@@ -297,21 +253,13 @@ impl super::Bindings<'_> {
 }
 
 impl Component {
-    async fn initialize_encoded<'ctx>(
-        &self,
-        state: &mut ComponentState,
-        context: &Context<'ctx>,
-    ) -> Result<(), ComponentError> {
+    async fn initialize_encoded<'ctx>(&self, state: &mut ComponentState, context: &Context<'ctx>) -> Result<(), ComponentError> {
         if state.invocation.is_none() {
             let invocation = context.id().value();
             // Record Ownership Before Sending: A Lost Ack May Still Own Remote State
             state.invocation = Some(invocation);
             let payload = state.payload.take().expect("one inert request is owned");
-            let command = WireCommand::Prepare {
-                invocation,
-                operation: state.operation.to_string(),
-                payload,
-            };
+            let command = WireCommand::Prepare { invocation, operation: state.operation.to_string(), payload };
             let answer = self.endpoint.phase(command, None).await?;
             let answer = match answer {
                 WireAnswer::Failed { failure } => {
@@ -321,20 +269,13 @@ impl Component {
             };
             // The guest decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
-            let grant =
-                harmos_sdk::operations::decode_prepared_grant(&payload).map_err(|error| {
-                    GuestError::Malformed {
-                        method: "operate".to_owned(),
-                        message: format!("prepared grant is malformed: {error}"),
-                    }
-                })?;
-            context
-                .admit_grant(grant.as_ref())
-                .map_err(ComponentError::Unauthorized)?;
+            let grant = harmos_sdk::operations::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
+                method: "operate".to_owned(),
+                message: format!("prepared grant is malformed: {error}"),
+            })?;
+            context.admit_grant(grant.as_ref()).map_err(ComponentError::Unauthorized)?;
         }
-        let answer = self
-            .phase_encoded(state, context, Phase::Initialize)
-            .await?;
+        let answer = self.phase_encoded(state, context, Phase::Initialize).await?;
         match answer {
             WireAnswer::Failed { failure } => Err(ComponentError::Preparation(failure)),
             answer => acknowledged(answer),
@@ -342,36 +283,17 @@ impl Component {
     }
 
     async fn phase_encoded<'ctx>(
-        &self,
-        state: &ComponentState,
-        context: &Context<'ctx>,
-        phase: Phase,
+        &self, state: &ComponentState, context: &Context<'ctx>, phase: Phase,
     ) -> Result<WireAnswer, ComponentError> {
         let invocation = state.invocation.expect("prepared identity is retained");
         let mut token = [0; 32];
         getrandom::fill(&mut token)?;
         let (requests, mut incoming) = mpsc::channel::<ChildRequest>(CHILD_REQUESTS);
-        let children = Children {
-            context: token,
-            requests,
-            submitted: Default::default(),
-        };
+        let children = Children { context: token, requests, submitted: Default::default() };
         let command = match phase {
-            Phase::Initialize => WireCommand::Initialize {
-                invocation,
-                context: token,
-            },
-            Phase::Stream(epoch) => WireCommand::StreamAttempt {
-                invocation,
-                epoch,
-                context: token,
-                values: context.context().portable(),
-            },
-            Phase::Attempt => WireCommand::Attempt {
-                invocation,
-                context: token,
-                values: context.context().portable(),
-            },
+            Phase::Initialize => WireCommand::Initialize { invocation, context: token },
+            Phase::Stream(epoch) => WireCommand::StreamAttempt { invocation, epoch, context: token, values: context.context().portable() },
+            Phase::Attempt => WireCommand::Attempt { invocation, context: token, values: context.context().portable() },
         };
         let running = self.endpoint.phase(command, Some(children));
         tokio::pin!(running);
@@ -418,38 +340,24 @@ impl Component {
         self.endpoint.scope()
     }
 
-    pub fn stage_sdk(
-        &self,
-        operations: &super::OperationManager,
-        lane: impl Lane,
-    ) -> crate::Result<super::PluginSdkRegistration> {
-        let scope = self.scope().ok_or(Error::InvalidInput {
-            field: "SDK lifecycle",
-            reason: "guest endpoint has no original plugin generation",
-        })?;
-        let pair = scope.lifecycle().ok_or(Error::InvalidInput {
-            field: "SDK lifecycle",
-            reason: "generation has no frozen SDK pair",
-        })?;
-        let component = Arc::new(Self {
-            endpoint: Arc::clone(&self.endpoint),
-        });
+    pub fn stage_sdk(&self, operations: &super::OperationManager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
+        let scope = self
+            .scope()
+            .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "guest endpoint has no original plugin generation" })?;
+        let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
+        let component = Arc::new(Self { endpoint: Arc::clone(&self.endpoint) });
         let entries = pair
             .iter()
             .map(|descriptor| {
-                let handler = Arc::new(SdkBinding {
-                    component: Arc::clone(&component),
-                    definition: descriptor.contract().operation().clone(),
-                });
+                let handler =
+                    Arc::new(SdkBinding { component: Arc::clone(&component), definition: descriptor.contract().operation().clone() });
                 let mut definition = descriptor.contract().operation().clone();
                 let suffix = match descriptor.action() {
                     harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
                     harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
                 };
                 definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
-                    .map_err(|source| Error::OperationDeclaration {
-                    source: harmos_domain::Error::from(source),
-                })?;
+                    .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
                 let mut entry = operations.binding_owned_definition::<SdkOperation>(
                     scope.owner(),
                     lane.name(),
@@ -458,22 +366,13 @@ impl Component {
                     Some(sdk_dispatch),
                     Some(scope.clone()),
                 )?;
-                Arc::get_mut(&mut entry)
-                    .expect("new SDK entry has one owner")
-                    .contract = Some(descriptor.contract().clone());
+                Arc::get_mut(&mut entry).expect("new SDK entry has one owner").contract = Some(descriptor.contract().clone());
                 Ok(entry)
             })
             .collect::<crate::Result<Vec<_>>>()?;
-        let entries = entries.try_into().map_err(|_| Error::InvalidInput {
-            field: "SDK lifecycle",
-            reason: "expected exactly two entries",
-        })?;
-        super::PluginSdkRegistration::new(
-            operations.clone(),
-            scope,
-            entries,
-            crate::plugin::PluginKind::Guest,
-        )
+        let entries =
+            entries.try_into().map_err(|_| Error::InvalidInput { field: "SDK lifecycle", reason: "expected exactly two entries" })?;
+        super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::plugin::PluginKind::Guest)
     }
 }
 
@@ -484,21 +383,12 @@ impl Operation for SdkOperation {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        binding: Arc<SdkBinding>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, ComponentError> {
-        Ok(Self {
-            binding,
-            state: None,
-        })
+    async fn initialize<'ctx>(binding: Arc<SdkBinding>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+        Ok(Self { binding, state: None })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        payload: &mut super::sdk::Encoded,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
             if self.state.is_none() {
@@ -511,15 +401,9 @@ impl Operation for SdkOperation {
                     .component
                     .scope()
                     .and_then(|scope| scope.lifecycle())
-                    .is_some_and(|pair| {
-                        pair.iter().any(|descriptor| {
-                            descriptor.contract().operation() == &binding.definition
-                        })
-                    });
+                    .is_some_and(|pair| pair.iter().any(|descriptor| descriptor.contract().operation() == &binding.definition));
                 if !matches {
-                    return Err(ComponentError::Catalog {
-                        operation: "SDK lifecycle",
-                    });
+                    return Err(ComponentError::Catalog { operation: "SDK lifecycle" });
                 }
                 let state = ComponentState {
                     initialized: false,
@@ -532,25 +416,16 @@ impl Operation for SdkOperation {
             }
             let state = self.state.as_mut().expect("original remote state");
             if !state.initialized {
-                self.binding
-                    .component
-                    .initialize_encoded(state, &context)
-                    .await?;
+                self.binding.component.initialize_encoded(state, &context).await?;
                 state.initialized = true;
             }
 
-            let answer = self
-                .binding
-                .component
-                .phase_encoded(state, &context, Phase::Attempt)
-                .await?;
+            let answer = self.binding.component.phase_encoded(state, &context, Phase::Attempt).await?;
             ready(answer)
         }
         .await;
         let operation = self.binding.definition.id.as_str();
-        result
-            .map(::core::convert::Into::into)
-            .map_err(|error| error.in_operation(operation))
+        result.map(::core::convert::Into::into).map_err(|error| error.in_operation(operation))
     }
 
     async fn cleanup(&mut self) -> Result<(), ComponentError> {
@@ -559,11 +434,7 @@ impl Operation for SdkOperation {
         };
 
         let operation = self.binding.definition.id.as_str();
-        self.binding
-            .component
-            .finalize_encoded(state)
-            .await
-            .map_err(|error| error.in_operation(operation))
+        self.binding.component.finalize_encoded(state).await.map_err(|error| error.in_operation(operation))
     }
 
     fn classify(error: &ComponentError) -> FailureKind {
@@ -574,50 +445,27 @@ impl Operation for SdkOperation {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn register<O>(
-    bindings: &mut super::Bindings<'_>,
-    lane: &'static str,
-    component: Arc<Component>,
-) -> crate::Result<()>
+fn register<O>(bindings: &mut super::Bindings<'_>, lane: &'static str, component: Arc<Component>) -> crate::Result<()>
 where
     O: crate::operations::OperationDeclaration,
 {
     use crate::operations::Direction;
-    type In<O> = super::StreamInput<
-        <<O as crate::operations::OperationDeclaration>::Input as Direction>::Item,
-    >;
-    type Out<O> = super::StreamOutput<
-        <<O as crate::operations::OperationDeclaration>::Output as Direction>::Item,
-    >;
-    match (
-        <O::Input as Direction>::STREAMED,
-        <O::Output as Direction>::STREAMED,
-    ) {
-        (false, false) => {
-            bindings.register_owned_wire_at::<ComponentOperation<O, ()>>(lane, component)
-        }
-        (true, false) => {
-            bindings.register_owned_wire_at::<ComponentOperation<O, In<O>>>(lane, component)
-        }
-        (false, true) => {
-            bindings.register_owned_wire_at::<ComponentOperation<O, Out<O>>>(lane, component)
-        }
-        (true, true) => bindings
-            .register_owned_wire_at::<ComponentOperation<O, (In<O>, Out<O>)>>(lane, component),
+    type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
+    type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
+    match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
+        (false, false) => bindings.register_owned_wire_at::<ComponentOperation<O, ()>>(lane, component),
+        (true, false) => bindings.register_owned_wire_at::<ComponentOperation<O, In<O>>>(lane, component),
+        (false, true) => bindings.register_owned_wire_at::<ComponentOperation<O, Out<O>>>(lane, component),
+        (true, true) => bindings.register_owned_wire_at::<ComponentOperation<O, (In<O>, Out<O>)>>(lane, component),
     }
 }
 
 fn sdk_dispatch(
-    operations: &super::OperationManager,
-    mut submission: super::manager::Submission,
-    source: super::caller::Source,
-    parent: Option<super::wire::Parent<'_>>,
-    input: super::wire::EncodedInput,
+    operations: &super::OperationManager, mut submission: super::manager::Submission, source: super::caller::Source,
+    parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> crate::Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;
-    let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| {
-        (Some(parent.scope), parent.ancestors)
-    });
+    let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let invocation = operations.admit_entry::<super::sdk::Encoded, ()>(
         (super::sdk::Encoded(input.payload).into(), ()),
         scope,
@@ -631,17 +479,9 @@ fn sdk_dispatch(
     let invocation = invocation.unguarded();
     let outcome = Box::pin(async move {
         let payload = invocation.await?;
-        payload.try_unwrap().map_err(|_| Error::InvalidInput {
-            field: "SDK response",
-            reason: "uncached SDK response unexpectedly shared",
-        })
+        payload.try_unwrap().map_err(|_| Error::InvalidInput { field: "SDK response", reason: "uncached SDK response unexpectedly shared" })
     });
-    Ok(super::EncodedInvocation {
-        id,
-        generation,
-        outcome,
-        control,
-    })
+    Ok(super::EncodedInvocation { id, generation, outcome, control })
 }
 
 fn classify(error: &ComponentError) -> FailureKind {
@@ -650,14 +490,10 @@ fn classify(error: &ComponentError) -> FailureKind {
         ComponentError::Remote(failure) => failure.code(),
         ComponentError::Unauthorized(_) => FailureKind::Unauthorized,
         ComponentError::Preparation(failure) => match failure.code() {
-            code @ (FailureKind::Invalid | FailureKind::Unauthorized | FailureKind::Cancelled) => {
-                code
-            }
+            code @ (FailureKind::Invalid | FailureKind::Unauthorized | FailureKind::Cancelled) => code,
             _ => FailureKind::Permanent,
         },
-        ComponentError::Transport(
-            GuestError::Unavailable { .. } | GuestError::Execution { .. },
-        ) => FailureKind::Ambiguous,
+        ComponentError::Transport(GuestError::Unavailable { .. } | GuestError::Execution { .. }) => FailureKind::Ambiguous,
         ComponentError::Payload(_)
         | ComponentError::Declaration(_)
         | ComponentError::Catalog { .. }
@@ -670,11 +506,10 @@ fn ready(answer: WireAnswer) -> Result<Vec<u8>, ComponentError> {
     match answer {
         WireAnswer::Ready { payload } => Ok(payload),
         WireAnswer::Failed { failure } => Err(ComponentError::Remote(failure)),
-        WireAnswer::Stream { .. } => Err(GuestError::Malformed {
-            method: "operate".to_owned(),
-            message: "unexpected stream response to unary phase".to_owned(),
+        WireAnswer::Stream { .. } => {
+            Err(GuestError::Malformed { method: "operate".to_owned(), message: "unexpected stream response to unary phase".to_owned() }
+                .into())
         }
-        .into()),
     }
 }
 

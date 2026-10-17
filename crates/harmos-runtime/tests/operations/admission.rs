@@ -26,7 +26,9 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Context, Operation, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy, Settings};
+use harmos_runtime::operations::{
+    Context, Operation, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy, Settings,
+};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -151,10 +153,7 @@ async fn queue_refuses_construction() {
     let first = runtime.operations.submit(first_request).unwrap();
     started.notified().await;
     let second = runtime.operations.submit(request(true)).unwrap();
-    assert!(matches!(
-        runtime.operations.submit(request(false)),
-        Err(Error::ResourceExhausted { resource: "operation admission queue" })
-    ));
+    assert!(matches!(runtime.operations.submit(request(false)), Err(Error::ResourceExhausted { resource: "operation admission queue" })));
 
     runtime.stop().await.unwrap();
     drop((first, second));

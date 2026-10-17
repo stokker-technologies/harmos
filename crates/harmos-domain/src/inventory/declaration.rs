@@ -132,16 +132,9 @@ enum Fragment {
     Contributions(Box<contributions::Manifest>),
     Listeners(Box<listeners::NamedManifest>),
     Observers(Box<observers::Manifest>),
-    Restart {
-        facility: String,
-        owner: String,
-        policy: RestartPolicy,
-    },
+    Restart { facility: String, owner: String, policy: RestartPolicy },
     Publications(publications::NamedManifest),
-    Schema {
-        name: String,
-        fields: Vec<crate::schema::declaration::Field<String>>,
-    },
+    Schema { name: String, fields: Vec<crate::schema::declaration::Field<String>> },
 }
 
 /* === Traits === */
@@ -168,9 +161,7 @@ impl Declaration {
         let mut publications = Vec::new();
         let mut restart_policies = Vec::new();
         let mut settings = crate::config::SchemaSettings::default();
-        for fragment in
-            crate::artifacts::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)?
-        {
+        for fragment in crate::artifacts::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)? {
             match fragment {
                 Fragment::Plugin(common) => {
                     if common.facility != name {
@@ -182,23 +173,16 @@ impl Declaration {
                     if !artifact_subset(&common.id) {
                         return Err(DeclarationError::InvalidId { id: common.id });
                     }
-                    let version = Version::parse(&common.version)
-                        .map_err(|source| DeclarationError::Version { source })?;
+                    let version = Version::parse(&common.version).map_err(|source| DeclarationError::Version { source })?;
                     identity = Some((common.id, version, common.description, common.config));
                 }
                 Fragment::Contracts(manifest) => contract_manifests.push(*manifest),
                 Fragment::Contributions(manifest) => contribution_manifests.push(*manifest),
                 Fragment::Listeners(manifest) => listener_manifests.push(*manifest),
                 Fragment::Observers(manifest) => observer_manifests.push(*manifest),
-                Fragment::Restart {
-                    facility,
-                    owner,
-                    policy,
-                } => restart_policies.push((facility, owner, policy)),
+                Fragment::Restart { facility, owner, policy } => restart_policies.push((facility, owner, policy)),
                 Fragment::Publications(manifest) => publications.push(manifest),
-                Fragment::Schema { name, fields } => {
-                    schemas.push(crate::schema::declaration::Named { name, fields })
-                }
+                Fragment::Schema { name, fields } => schemas.push(crate::schema::declaration::Named { name, fields }),
             }
         }
         let Some((id, version, description, config)) = identity else {
@@ -220,13 +204,8 @@ impl Declaration {
             .collect::<Result<_, publications::Error>>()?;
         let contracts = contracts::select(contract_manifests, name, &id)?;
         let sections = contributions::select(contribution_manifests, name, &id)?;
-        let listeners = listeners::select(listener_manifests, name, &id, &contracts.provides)?
-            .unwrap_or_default();
-        let operations = contracts
-            .provides
-            .iter()
-            .map(|contract| contract.operation().clone())
-            .collect();
+        let listeners = listeners::select(listener_manifests, name, &id, &contracts.provides)?.unwrap_or_default();
+        let operations = contracts.provides.iter().map(|contract| contract.operation().clone()).collect();
         let streams = publications::select(publications, name, &id)?;
 
         // Select The CarrierSection Section
@@ -238,12 +217,8 @@ impl Declaration {
                 (selected.observers, carrier)
             }
             Facility::Guest => {
-                if observer_manifests
-                    .iter()
-                    .any(|manifest| manifest.facility == name && manifest.owner == id)
-                {
-                    let selected =
-                        observers::select_manifest(observer_manifests, name, &id, &streams)?;
+                if observer_manifests.iter().any(|manifest| manifest.facility == name && manifest.owner == id) {
+                    let selected = observers::select_manifest(observer_manifests, name, &id, &streams)?;
                     if !selected.observers.is_empty() {
                         return Err(DeclarationError::UnsupportedObservers);
                     }
@@ -251,25 +226,11 @@ impl Declaration {
                 (Vec::new(), CarrierSection::Guest)
             }
         };
-        Ok(Self {
-            id,
-            version,
-            description,
-            config,
-            operations,
-            contracts,
-            listeners,
-            streams,
-            observers,
-            sections,
-            carrier,
-        })
+        Ok(Self { id, version, description, config, operations, contracts, listeners, streams, observers, sections, carrier })
     }
 
     pub fn section(&self, namespace: &str) -> Option<&Section> {
-        self.sections
-            .iter()
-            .find(|section| section.namespace == namespace)
+        self.sections.iter().find(|section| section.namespace == namespace)
     }
 
     pub fn restart(&self) -> Option<RestartPolicy> {
@@ -304,10 +265,7 @@ impl RestartPolicy {
     }
 
     fn validate(self) -> Result<(), DeclarationError> {
-        if self.sustained_health_ms == 0
-            || self.backoff_base_ms == 0
-            || self.backoff_cap_ms < self.backoff_base_ms
-        {
+        if self.sustained_health_ms == 0 || self.backoff_base_ms == 0 || self.backoff_cap_ms < self.backoff_base_ms {
             return Err(DeclarationError::InvalidRestartPolicy);
         }
         Ok(())
@@ -341,13 +299,8 @@ impl From<ScanError> for DeclarationError {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn restart(
-    policies: Vec<(String, String, RestartPolicy)>,
-    owner: &str,
-) -> Result<Option<RestartPolicy>, DeclarationError> {
-    let mut selected = policies
-        .into_iter()
-        .filter(|(facility, candidate, _)| facility == "sidecar" && candidate == owner);
+fn restart(policies: Vec<(String, String, RestartPolicy)>, owner: &str) -> Result<Option<RestartPolicy>, DeclarationError> {
+    let mut selected = policies.into_iter().filter(|(facility, candidate, _)| facility == "sidecar" && candidate == owner);
     let Some((_, _, policy)) = selected.next() else {
         return Ok(None);
     };

@@ -23,8 +23,8 @@ use std::sync::{
 
 // Local Imports
 use super::{
-    OperationGeneration, OperationInstance, OperationInstanceId, OperationManager, OperationStatus,
-    StreamInput, StreamItem, StreamOutput, StreamSettings, stream,
+    OperationGeneration, OperationInstance, OperationInstanceId, OperationManager, OperationStatus, StreamInput, StreamItem, StreamOutput,
+    StreamSettings, stream,
 };
 use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
@@ -36,16 +36,8 @@ use harmos_domain::MemorySize;
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Upload<O> = Session<
-    O,
-    SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-    (),
->;
-pub type Download<O> = Session<
-    O,
-    (),
-    SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
->;
+pub type Upload<O> = Session<O, SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>, ()>;
+pub type Download<O> = Session<O, (), SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>>;
 pub type Exchange<O> = Session<
     O,
     SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
@@ -159,9 +151,7 @@ impl<T: MemorySize> SessionInput<T> {
     }
 
     pub async fn send_with(&self, bytes: usize, make: impl FnOnce() -> Result<T>) -> Result<()> {
-        let sender = self.sender.as_ref().ok_or(Error::NotReady {
-            domain: "operation input closed",
-        })?;
+        let sender = self.sender.as_ref().ok_or(Error::NotReady { domain: "operation input closed" })?;
         tokio::select! {
             biased;
             error = ended(&self.control) => Err(error),
@@ -267,106 +257,51 @@ impl<O: OperationDeclaration> Drop for Completion<O> {
 }
 
 impl OperationManager {
-    pub fn upload<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Upload<O>> {
-        upload(request, settings, |request, input| {
-            self.submit_endpoints::<O, _>(request, input)
-        })
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+        upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Download<O>> {
-        download(request, settings, |request, output| {
-            self.submit_endpoints::<O, _>(request, output)
-        })
+    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+        download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        input: StreamSettings,
-        output: StreamSettings,
+        &self, request: O, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
-        exchange(request, input, output, |request, endpoints| {
-            self.submit_endpoints::<O, _>(request, endpoints)
-        })
+        exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
 }
 
 impl super::Context<'_> {
-    pub fn upload<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Upload<O>> {
-        upload(request, settings, |request, input| {
-            self.submit_endpoints::<O, _>(request, input)
-        })
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+        upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Download<O>> {
-        download(request, settings, |request, output| {
-            self.submit_endpoints::<O, _>(request, output)
-        })
+    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+        download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        input: StreamSettings,
-        output: StreamSettings,
+        &self, request: O, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
-        exchange(request, input, output, |request, endpoints| {
-            self.submit_endpoints::<O, _>(request, endpoints)
-        })
+        exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
 }
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl super::Caller {
-    pub fn upload<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Upload<O>> {
-        upload(request, settings, |request, input| {
-            self.submit_endpoints::<O, _>(request, input)
-        })
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+        upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        settings: StreamSettings,
-    ) -> Result<Download<O>> {
-        download(request, settings, |request, output| {
-            self.submit_endpoints::<O, _>(request, output)
-        })
+    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+        download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self,
-        request: O,
-        input: StreamSettings,
-        output: StreamSettings,
+        &self, request: O, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
-        exchange(request, input, output, |request, endpoints| {
-            self.submit_endpoints::<O, _>(request, endpoints)
-        })
+        exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
 }
 
@@ -374,8 +309,7 @@ impl super::Caller {
 
 /* === Private Functions === */
 fn upload<O: crate::operations::OperationDeclaration>(
-    request: O,
-    settings: StreamSettings,
+    request: O, settings: StreamSettings,
     submit: impl FnOnce(
         O,
         StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
@@ -383,27 +317,15 @@ fn upload<O: crate::operations::OperationDeclaration>(
 ) -> Result<Upload<O>> {
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
-    let ends = Arc::new(Ends {
-        input: AtomicBool::new(false),
-        output: AtomicBool::new(true),
-    });
+    let ends = Arc::new(Ends { input: AtomicBool::new(false), output: AtomicBool::new(true) });
     Ok(Session {
-        input: SessionInput {
-            sender: Some(sender),
-            ends: ends.clone(),
-            control: instance.control.clone(),
-        },
+        input: SessionInput { sender: Some(sender), ends: ends.clone(), control: instance.control.clone() },
         output: (),
-        completion: Completion {
-            instance,
-            ends,
-            delivered: false,
-        },
+        completion: Completion { instance, ends, delivered: false },
     })
 }
 fn download<O: crate::operations::OperationDeclaration>(
-    request: O,
-    settings: StreamSettings,
+    request: O, settings: StreamSettings,
     submit: impl FnOnce(
         O,
         StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
@@ -411,61 +333,31 @@ fn download<O: crate::operations::OperationDeclaration>(
 ) -> Result<Download<O>> {
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
-    let ends = Arc::new(Ends {
-        input: AtomicBool::new(true),
-        output: AtomicBool::new(false),
-    });
+    let ends = Arc::new(Ends { input: AtomicBool::new(true), output: AtomicBool::new(false) });
     Ok(Session {
         input: (),
-        output: SessionOutput {
-            receiver,
-            ends: ends.clone(),
-            control: instance.control.clone(),
-        },
-        completion: Completion {
-            instance,
-            ends,
-            delivered: false,
-        },
+        output: SessionOutput { receiver, ends: ends.clone(), control: instance.control.clone() },
+        completion: Completion { instance, ends, delivered: false },
     })
 }
 fn exchange<O: crate::operations::OperationDeclaration>(
-    request: O,
-    input: StreamSettings,
-    output: StreamSettings,
+    request: O, input: StreamSettings, output: StreamSettings,
     submit: impl FnOnce(
         O,
         (
             StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-            StreamOutput<
-                <<O as OperationDeclaration>::Output as crate::operations::Direction>::Item,
-            >,
+            StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
         ),
     ) -> Result<OperationInstance<O>>,
 ) -> Result<Exchange<O>> {
     let (sender, input) = stream(input)?;
     let (output, receiver) = stream(output)?;
     let instance = submit(request, (input, output))?;
-    let ends = Arc::new(Ends {
-        input: AtomicBool::new(false),
-        output: AtomicBool::new(false),
-    });
+    let ends = Arc::new(Ends { input: AtomicBool::new(false), output: AtomicBool::new(false) });
     Ok(Session {
-        input: SessionInput {
-            sender: Some(sender),
-            ends: ends.clone(),
-            control: instance.control.clone(),
-        },
-        output: SessionOutput {
-            receiver,
-            ends: ends.clone(),
-            control: instance.control.clone(),
-        },
-        completion: Completion {
-            instance,
-            ends,
-            delivered: false,
-        },
+        input: SessionInput { sender: Some(sender), ends: ends.clone(), control: instance.control.clone() },
+        output: SessionOutput { receiver, ends: ends.clone(), control: instance.control.clone() },
+        completion: Completion { instance, ends, delivered: false },
     })
 }
 fn cancel_unsettled(control: &Instance) {
@@ -481,9 +373,7 @@ async fn ended(control: &Instance) -> Error {
             return Refusal::Cancelled.into();
         }
         if current.outcome().is_some() {
-            return Error::NotReady {
-                domain: "operation completed",
-            };
+            return Error::NotReady { domain: "operation completed" };
         }
         if status.changed().await.is_err() {
             return Refusal::Unavailable.into();

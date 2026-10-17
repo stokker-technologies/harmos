@@ -54,26 +54,15 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut DeleteFile,
-        _: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut DeleteFile, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StagedFile>> {
-        let result: ::core::result::Result<StagedFile, Self::Error> = async move {
-            self.storage
-                .delete_file_once(&request.mutation, &request.file)
-                .await
-                .map_err(Into::into)
-        }
-        .await;
+        let result: ::core::result::Result<StagedFile, Self::Error> =
+            async move { self.storage.delete_file_once(&request.mutation, &request.file).await.map_err(Into::into) }.await;
         result.map(::core::convert::Into::into)
     }
 

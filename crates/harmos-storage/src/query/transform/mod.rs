@@ -32,9 +32,8 @@ use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array,
-    Int32Array, Int64Array, NullArray, RecordBatch, StringArray, StructArray,
-    TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, NullArray,
+    RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
@@ -64,11 +63,7 @@ pub trait FieldPathExecution {
 pub trait TransformExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
@@ -82,10 +77,7 @@ impl FieldPathExecution for FieldPath {
         let mut found = None;
         let mut nullable = false;
         for (index, name) in self.fields.iter().enumerate() {
-            let field = fields
-                .iter()
-                .find(|field| field.name() == name)
-                .ok_or_else(|| invalid("query field does not exist"))?;
+            let field = fields.iter().find(|field| field.name() == name).ok_or_else(|| invalid("query field does not exist"))?;
             nullable |= field.is_nullable();
             found = Some(field.as_ref().clone().with_nullable(nullable));
             if index + 1 < self.fields.len() {
@@ -99,44 +91,26 @@ impl FieldPathExecution for FieldPath {
     }
 
     fn array<'a>(&self, batch: &'a RecordBatch) -> Result<&'a ArrayRef> {
-        let first = self
-            .fields
-            .first()
-            .ok_or_else(|| invalid("empty field path"))?;
-        let mut array = batch
-            .column_by_name(first)
-            .ok_or_else(|| invalid("query field does not exist"))?;
+        let first = self.fields.first().ok_or_else(|| invalid("empty field path"))?;
+        let mut array = batch.column_by_name(first).ok_or_else(|| invalid("query field does not exist"))?;
         for name in self.fields.iter().skip(1) {
-            let structure = array
-                .as_any()
-                .downcast_ref::<StructArray>()
-                .ok_or_else(|| invalid("field path traverses a non-struct value"))?;
-            array = structure
-                .column_by_name(name)
-                .ok_or_else(|| invalid("query child field does not exist"))?;
+            let structure =
+                array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("field path traverses a non-struct value"))?;
+            array = structure.column_by_name(name).ok_or_else(|| invalid("query child field does not exist"))?;
         }
         Ok(array)
     }
 
     fn value(&self, batch: &RecordBatch, row: usize) -> Result<ScalarValue> {
-        let first = self
-            .fields
-            .first()
-            .ok_or_else(|| invalid("empty field path"))?;
-        let mut array = batch
-            .column_by_name(first)
-            .ok_or_else(|| invalid("query field does not exist"))?;
+        let first = self.fields.first().ok_or_else(|| invalid("empty field path"))?;
+        let mut array = batch.column_by_name(first).ok_or_else(|| invalid("query field does not exist"))?;
         if array.is_null(row) {
             return Ok(ScalarValue::Null);
         }
         for name in self.fields.iter().skip(1) {
-            let structure = array
-                .as_any()
-                .downcast_ref::<StructArray>()
-                .ok_or_else(|| invalid("field path traverses a non-struct value"))?;
-            array = structure
-                .column_by_name(name)
-                .ok_or_else(|| invalid("query child field does not exist"))?;
+            let structure =
+                array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("field path traverses a non-struct value"))?;
+            array = structure.column_by_name(name).ok_or_else(|| invalid("query child field does not exist"))?;
             if array.is_null(row) {
                 return Ok(ScalarValue::Null);
             }
@@ -157,11 +131,7 @@ impl TransformExecution for Transform {
         }
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         match self {
             Self::Filter(value) => value.apply(input, check),
             Self::Project(value) => value.apply(input, check),
@@ -177,10 +147,7 @@ impl TransformExecution for Transform {
 
 /* === Private Functions === */
 pub(crate) fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "storage query transform",
-        reason,
-    }
+    Error::InvalidInput { field: "storage query transform", reason }
 }
 
 pub(super) fn take(input: &RecordBatch, indices: Vec<u64>) -> Result<RecordBatch> {
@@ -188,17 +155,10 @@ pub(super) fn take(input: &RecordBatch, indices: Vec<u64>) -> Result<RecordBatch
     let columns = input
         .columns()
         .iter()
-        .map(|column| {
-            arrow_select::take::take(column.as_ref(), &indices, None)
-                .map_err(|_| invalid("Arrow row selection failed"))
-        })
+        .map(|column| arrow_select::take::take(column.as_ref(), &indices, None).map_err(|_| invalid("Arrow row selection failed")))
         .collect::<Result<Vec<_>>>()?;
-    RecordBatch::try_new_with_options(
-        input.schema(),
-        columns,
-        &arrow_array::RecordBatchOptions::new().with_row_count(Some(indices.len())),
-    )
-    .map_err(|_| invalid("Arrow selected batch is invalid"))
+    RecordBatch::try_new_with_options(input.schema(), columns, &arrow_array::RecordBatchOptions::new().with_row_count(Some(indices.len())))
+        .map_err(|_| invalid("Arrow selected batch is invalid"))
 }
 
 pub(super) fn scalar(array: &dyn Array, row: usize) -> Result<ScalarValue> {
@@ -246,40 +206,14 @@ fn exact_value(value: &StructArray, row: usize) -> Result<ScalarValue> {
     if value.data_type() != &exact_type() {
         return Err(invalid("struct is not an exact number"));
     }
-    let sign = value
-        .column(0)
-        .as_any()
-        .downcast_ref::<BooleanArray>()
-        .expect("validated exact sign");
-    let numerator = value
-        .column(1)
-        .as_any()
-        .downcast_ref::<BinaryArray>()
-        .expect("validated exact numerator");
-    let denominator = value
-        .column(2)
-        .as_any()
-        .downcast_ref::<BinaryArray>()
-        .expect("validated exact denominator");
-    let numerator = u128::from_le_bytes(
-        numerator
-            .value(row)
-            .try_into()
-            .map_err(|_| invalid("exact numerator requires 16 bytes"))?,
-    );
-    let denominator = u128::from_le_bytes(
-        denominator
-            .value(row)
-            .try_into()
-            .map_err(|_| invalid("exact denominator requires 16 bytes"))?,
-    );
-    let denominator =
-        std::num::NonZeroU128::new(denominator).ok_or_else(|| invalid("zero exact denominator"))?;
+    let sign = value.column(0).as_any().downcast_ref::<BooleanArray>().expect("validated exact sign");
+    let numerator = value.column(1).as_any().downcast_ref::<BinaryArray>().expect("validated exact numerator");
+    let denominator = value.column(2).as_any().downcast_ref::<BinaryArray>().expect("validated exact denominator");
+    let numerator = u128::from_le_bytes(numerator.value(row).try_into().map_err(|_| invalid("exact numerator requires 16 bytes"))?);
+    let denominator = u128::from_le_bytes(denominator.value(row).try_into().map_err(|_| invalid("exact denominator requires 16 bytes"))?);
+    let denominator = std::num::NonZeroU128::new(denominator).ok_or_else(|| invalid("zero exact denominator"))?;
     let exact = ExactNumber::new(sign.value(row), numerator, denominator);
-    if exact.numerator != numerator
-        || exact.denominator != denominator
-        || exact.negative != sign.value(row)
-    {
+    if exact.numerator != numerator || exact.denominator != denominator || exact.negative != sign.value(row) {
         return Err(invalid("noncanonical exact number"));
     }
     Ok(ScalarValue::Exact(exact))
@@ -327,10 +261,9 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
             let values = values
                 .iter()
                 .map(|value| match value {
-                    ScalarValue::$variant(value) => <$native>::try_from(*value)
-                        .ok()
-                        .map(Some)
-                        .ok_or_else(|| invalid("aggregate output width overflow")),
+                    ScalarValue::$variant(value) => {
+                        <$native>::try_from(*value).ok().map(Some).ok_or_else(|| invalid("aggregate output width overflow"))
+                    }
                     ScalarValue::Null | ScalarValue::Missing => Ok(None),
                     _ => Err(invalid("aggregate output type mismatch")),
                 })
@@ -388,9 +321,7 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
             let values = values
                 .iter()
                 .map(|value| match value {
-                    ScalarValue::Datetime(value) => i64::try_from(*value)
-                        .map(Some)
-                        .map_err(|_| invalid("timestamp output overflow")),
+                    ScalarValue::Datetime(value) => i64::try_from(*value).map(Some).map_err(|_| invalid("timestamp output overflow")),
                     ScalarValue::Null | ScalarValue::Missing => Ok(None),
                     _ => Err(invalid("timestamp output type mismatch")),
                 })
@@ -407,43 +338,15 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
                         .ok_or_else(|| invalid("exact output type mismatch")),
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let signs = BooleanArray::from(
-                values
-                    .iter()
-                    .map(|value| value.is_some_and(|value| value.negative))
-                    .collect::<Vec<_>>(),
-            );
-            let numerators = values
-                .iter()
-                .map(|value| value.map_or(0, |value| value.numerator).to_le_bytes())
-                .collect::<Vec<_>>();
-            let denominators = values
-                .iter()
-                .map(|value| {
-                    value
-                        .map_or(1, |value| value.denominator.get())
-                        .to_le_bytes()
-                })
-                .collect::<Vec<_>>();
-            let numerators =
-                BinaryArray::from_iter_values(numerators.iter().map(|value| value.as_slice()));
+            let signs = BooleanArray::from(values.iter().map(|value| value.is_some_and(|value| value.negative)).collect::<Vec<_>>());
+            let numerators = values.iter().map(|value| value.map_or(0, |value| value.numerator).to_le_bytes()).collect::<Vec<_>>();
             let denominators =
-                BinaryArray::from_iter_values(denominators.iter().map(|value| value.as_slice()));
-            let DataType::Struct(fields) = exact_type() else {
-                unreachable!()
-            };
-            let nulls = arrow_buffer::NullBuffer::from(
-                values.iter().map(Option::is_some).collect::<Vec<_>>(),
-            );
-            Arc::new(StructArray::new(
-                fields,
-                vec![
-                    Arc::new(signs),
-                    Arc::new(numerators),
-                    Arc::new(denominators),
-                ],
-                Some(nulls),
-            ))
+                values.iter().map(|value| value.map_or(1, |value| value.denominator.get()).to_le_bytes()).collect::<Vec<_>>();
+            let numerators = BinaryArray::from_iter_values(numerators.iter().map(|value| value.as_slice()));
+            let denominators = BinaryArray::from_iter_values(denominators.iter().map(|value| value.as_slice()));
+            let DataType::Struct(fields) = exact_type() else { unreachable!() };
+            let nulls = arrow_buffer::NullBuffer::from(values.iter().map(Option::is_some).collect::<Vec<_>>());
+            Arc::new(StructArray::new(fields, vec![Arc::new(signs), Arc::new(numerators), Arc::new(denominators)], Some(nulls)))
         }
         _ => return Err(invalid("unsupported scalar output type")),
     })

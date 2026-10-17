@@ -39,10 +39,7 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     #[error("invalid {field}: {reason}")]
-    InvalidInput {
-        field: &'static str,
-        reason: &'static str,
-    },
+    InvalidInput { field: &'static str, reason: &'static str },
     #[error("{resource} capacity is exhausted")]
     ResourceExhausted { resource: &'static str },
     #[error("retained data begins at {available}, but {requested} was requested")]
@@ -71,15 +68,7 @@ impl Error {
         }
     }
 
-    pub fn backend(
-        operation: &'static str,
-        kind: BackendFailure,
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> Self {
-        Self::Backend {
-            operation,
-            kind,
-            source: Box::new(source),
-        }
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Backend { operation, kind, source: Box::new(source) }
     }
 }

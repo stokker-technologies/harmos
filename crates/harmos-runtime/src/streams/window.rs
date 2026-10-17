@@ -61,11 +61,7 @@ struct Ring {
     standing: bool,
 }
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(super) struct ListenerCandidate {
     pub(super) cursor: u64,
     pub(super) sequence: u64,
@@ -89,10 +85,7 @@ struct Parts {
     doorbell: watch::Receiver<u64>,
     frontier: u64,
     closed: Arc<AtomicBool>,
-    #[allow(
-        dead_code,
-        reason = "held for its drop, which releases the demand count"
-    )]
+    #[allow(dead_code, reason = "held for its drop, which releases the demand count")]
     held: Holding,
 }
 
@@ -131,12 +124,7 @@ enum Turn {
 
 /* === Implementations === */
 impl Window {
-    pub(crate) fn wired(
-        capacity: usize,
-        floor: Position,
-        sequence: Arc<AtomicU64>,
-        pump: watch::Sender<()>,
-    ) -> Self {
+    pub(crate) fn wired(capacity: usize, floor: Position, sequence: Arc<AtomicU64>, pump: watch::Sender<()>) -> Self {
         let (doorbell, _) = watch::channel(0);
         let (demand, _) = watch::channel(0);
 
@@ -166,18 +154,13 @@ impl Window {
     }
 
     pub(crate) fn batching(self, definition: Option<super::BatchDefinition>) -> Self {
-        self.ring.write().expect("ring is healthy").batches =
-            definition.map(super::batches::State::new);
+        self.ring.write().expect("ring is healthy").batches = definition.map(super::batches::State::new);
         self
     }
 
     pub(crate) fn batches<S>(&self, held: Holding) -> super::Batches<S> {
         let ring = self.ring.read().expect("ring is healthy");
-        ring.batches
-            .as_ref()
-            .expect("stream declared batching")
-            .feed
-            .following(held)
+        ring.batches.as_ref().expect("stream declared batching").feed.following(held)
     }
 
     pub(crate) fn close_batches(&self) {
@@ -187,16 +170,10 @@ impl Window {
     }
 
     pub(crate) fn publish(&self, at: Position, row: Row) {
-        self.append(at, row, 0)
-            .expect("native stream cursor exhausted");
+        self.append(at, row, 0).expect("native stream cursor exhausted");
     }
 
-    pub(super) fn append(
-        &self,
-        at: Position,
-        row: Row,
-        missed: u64,
-    ) -> Result<(), super::StreamPublicationError> {
+    pub(super) fn append(&self, at: Position, row: Row, missed: u64) -> Result<(), super::StreamPublicationError> {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let evicted = self.append_locked(at, row, missed)?;
         drop(_visibility);
@@ -207,27 +184,15 @@ impl Window {
     }
 
     // Caller holds the facility visibility fence. Notifications follow scope commit.
-    pub(super) fn append_locked(
-        &self,
-        at: Position,
-        row: Row,
-        missed: u64,
-    ) -> Result<Option<Row>, super::StreamPublicationError> {
+    pub(super) fn append_locked(&self, at: Position, row: Row, missed: u64) -> Result<Option<Row>, super::StreamPublicationError> {
         let evicted;
         {
             let mut ring = self.ring.write().expect("the ring is never poisoned");
-            let advance = missed
-                .checked_add(1)
-                .ok_or(super::StreamPublicationError::Sequence)?;
-            let next = ring
-                .next
-                .checked_add(advance)
-                .ok_or(super::StreamPublicationError::Sequence)?;
+            let advance = missed.checked_add(1).ok_or(super::StreamPublicationError::Sequence)?;
+            let next = ring.next.checked_add(advance).ok_or(super::StreamPublicationError::Sequence)?;
             let previous = self
                 .sequence
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| {
-                    cursor.checked_add(advance)
-                })
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| cursor.checked_add(advance))
                 .map_err(|_| super::StreamPublicationError::Sequence)?;
             let cursor = previous + advance;
             if missed > 0 {
@@ -261,26 +226,12 @@ impl Window {
     // Pool admission is serialized, and the caller owns facility visibility.
     // Preflight the whole prefix so a refused row changes no retention or gaps.
     pub(super) fn can_advance(&self, count: u64) -> bool {
-        self.sequence
-            .load(Ordering::Relaxed)
-            .checked_add(count)
-            .is_some()
-            && self
-                .ring
-                .read()
-                .expect("the ring is never poisoned")
-                .next
-                .checked_add(count)
-                .is_some()
+        self.sequence.load(Ordering::Relaxed).checked_add(count).is_some()
+            && self.ring.read().expect("the ring is never poisoned").next.checked_add(count).is_some()
     }
 
     // Rows past `taken` are not in every feed's hands yet and stay retained.
-    pub(super) fn reclaim(
-        &self,
-        needed_bytes: usize,
-        needed_rows: usize,
-        taken: u64,
-    ) -> Option<()> {
+    pub(super) fn reclaim(&self, needed_bytes: usize, needed_rows: usize, taken: u64) -> Option<()> {
         let mut ring = self.ring.write().expect("the ring is never poisoned");
         let mut bytes = 0usize;
         let mut rows = 0usize;
@@ -305,8 +256,7 @@ impl Window {
             return None;
         }
         for _ in 0..prefix {
-            let (cursor, _, position, row) =
-                ring.rows.pop_front().expect("validated retention prefix");
+            let (cursor, _, position, row) = ring.rows.pop_front().expect("validated retention prefix");
             ring.evicted = cursor;
             ring.floor = position;
             ring.standing = true;
@@ -320,19 +270,11 @@ impl Window {
     // Appending one row would evict a row some live feed has not taken in.
     pub(super) fn evicts_unread(&self, taken: u64) -> bool {
         let ring = self.ring.read().expect("the ring is never poisoned");
-        ring.rows.len() == ring.capacity
-            && ring
-                .rows
-                .front()
-                .is_some_and(|(cursor, ..)| *cursor > taken)
+        ring.rows.len() == ring.capacity && ring.rows.front().is_some_and(|(cursor, ..)| *cursor > taken)
     }
 
     // Rows the window still takes without evicting one past `taken`.
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) fn room(&self, taken: u64) -> usize {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let read = ring.rows.partition_point(|(cursor, ..)| *cursor <= taken);
@@ -349,15 +291,10 @@ impl Window {
         let published;
         {
             let mut ring = self.ring.write().expect("the ring is never poisoned");
-            let next = ring
-                .next
-                .checked_add(count)
-                .expect("native stream cursor exhausted");
+            let next = ring.next.checked_add(count).expect("native stream cursor exhausted");
             let previous = self
                 .sequence
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| {
-                    cursor.checked_add(count)
-                })
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| cursor.checked_add(count))
                 .expect("native stream cursor exhausted");
             let cursor = previous + count;
             if let Some(batches) = &mut ring.batches {
@@ -381,22 +318,11 @@ impl Window {
         ring.standing = true;
     }
 
-    pub(crate) fn snapshot(
-        &self,
-        start: Bound<Position>,
-        end: Bound<Position>,
-        as_of: Option<Position>,
-    ) -> Retained {
+    pub(crate) fn snapshot(&self, start: Bound<Position>, end: Bound<Position>, as_of: Option<Position>) -> Retained {
         self.snapshot_scope(start, end, as_of, true)
     }
 
-    pub(crate) fn snapshot_scope(
-        &self,
-        start: Bound<Position>,
-        end: Bound<Position>,
-        as_of: Option<Position>,
-        history: bool,
-    ) -> Retained {
+    pub(crate) fn snapshot_scope(&self, start: Bound<Position>, end: Bound<Position>, as_of: Option<Position>, history: bool) -> Retained {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let ring = self.ring.read().expect("the ring is never poisoned");
         let beneath = history && ring.standing && reaches_beneath(start, ring.floor);
@@ -416,10 +342,7 @@ impl Window {
     }
 
     pub(crate) fn reader<S: serde::Serialize + 'static>(
-        &self,
-        start: Bound<Position>,
-        end: Bound<Position>,
-        limits: super::ReadLimits,
+        &self, start: Bound<Position>, end: Bound<Position>, limits: super::ReadLimits,
     ) -> Result<Box<dyn super::RowSource>, super::ReadError> {
         struct Frozen {
             cut: super::ReadCut,
@@ -429,17 +352,11 @@ impl Window {
             fn cut(&self) -> super::ReadCut {
                 self.cut
             }
-            fn next(
-                &mut self,
-                cancelled: &AtomicBool,
-            ) -> Result<Option<crate::state::At<Row>>, super::ReadError> {
+            fn next(&mut self, cancelled: &AtomicBool) -> Result<Option<crate::state::At<Row>>, super::ReadError> {
                 if cancelled.load(Ordering::Acquire) {
                     return Err(super::ReadError::Closed);
                 }
-                Ok(self
-                    .rows
-                    .next()
-                    .map(|(position, value)| crate::state::At { position, value }))
+                Ok(self.rows.next().map(|(position, value)| crate::state::At { position, value }))
             }
         }
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
@@ -459,8 +376,8 @@ impl Window {
             if !admitted(start, end, *position) {
                 continue;
             }
-            let typed = super::row_value::<S>(row.as_ref())
-                .ok_or_else(|| super::ReadError::Unreadable("window row type mismatch".into()))?;
+            let typed =
+                super::row_value::<S>(row.as_ref()).ok_or_else(|| super::ReadError::Unreadable("window row type mismatch".into()))?;
             bytes = bytes
                 .checked_add(super::reader::encoded_size(typed, limits.row_bytes)?)
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<(Position, Row)>()))
@@ -468,43 +385,23 @@ impl Window {
                 .ok_or(super::ReadError::Limit("pinned bytes"))?;
             rows.push_back((*position, Arc::clone(row)));
         }
-        Ok(Box::new(Frozen {
-            cut: super::ReadCut::Window {
-                delivered: crate::storage::Cursor(ring.last),
-            },
-            rows: rows.into_iter(),
-        }))
+        Ok(Box::new(Frozen { cut: super::ReadCut::Window { delivered: crate::storage::Cursor(ring.last) }, rows: rows.into_iter() }))
     }
 
     pub(crate) fn since(&self, frontier: u64) -> Advanced {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let ring = self.ring.read().expect("the ring is never poisoned");
-        let rows: Vec<_> = ring
-            .rows
-            .iter()
-            .filter(|(_, sequence, ..)| *sequence > frontier)
-            .map(|(_, _, stamp, row)| (*stamp, Arc::clone(row)))
-            .collect();
-        let missed = ring
-            .next
-            .saturating_sub(frontier)
-            .saturating_sub(rows.len() as u64);
-        Advanced {
-            missed,
-            rows,
-            frontier: ring.next.max(frontier),
-        }
+        let rows: Vec<_> =
+            ring.rows.iter().filter(|(_, sequence, ..)| *sequence > frontier).map(|(_, _, stamp, row)| (*stamp, Arc::clone(row))).collect();
+        let missed = ring.next.saturating_sub(frontier).saturating_sub(rows.len() as u64);
+        Advanced { missed, rows, frontier: ring.next.max(frontier) }
     }
 
     pub(super) fn latest_locked(&self) -> u64 {
         self.ring.read().expect("the ring is never poisoned").last
     }
 
-    pub(super) fn recorded_after_locked(
-        &self,
-        resume: u64,
-        reaches: u64,
-    ) -> (Vec<(u64, Position, Row)>, bool) {
+    pub(super) fn recorded_after_locked(&self, resume: u64, reaches: u64) -> (Vec<(u64, Position, Row)>, bool) {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let rows = ring
             .rows
@@ -518,19 +415,8 @@ impl Window {
         (rows, ring.evicted > resume || ring.missed > resume)
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    pub(super) fn listener_candidates(
-        &self,
-        after: u64,
-        through: u64,
-        source: usize,
-        limit: usize,
-        selected: &mut Vec<ListenerCandidate>,
-    ) {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(super) fn listener_candidates(&self, after: u64, through: u64, source: usize, limit: usize, selected: &mut Vec<ListenerCandidate>) {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
         let mut upper = ring.rows.len();
@@ -543,31 +429,18 @@ impl Window {
             }
         }
         for (cursor, sequence, ..) in ring.rows.iter().skip(lower).take(limit) {
-            if *cursor > through
-                || selected.len() == limit && *cursor >= selected.last().unwrap().cursor
-            {
+            if *cursor > through || selected.len() == limit && *cursor >= selected.last().unwrap().cursor {
                 break;
             }
             let index = selected.partition_point(|candidate| candidate.cursor < *cursor);
             if selected.len() == limit {
                 selected.pop();
             }
-            selected.insert(
-                index,
-                ListenerCandidate {
-                    cursor: *cursor,
-                    sequence: *sequence,
-                    source,
-                },
-            );
+            selected.insert(index, ListenerCandidate { cursor: *cursor, sequence: *sequence, source });
         }
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) fn listener_row(&self, cursor: u64) -> Option<Row> {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -580,17 +453,10 @@ impl Window {
                 upper = mid;
             }
         }
-        ring.rows
-            .get(lower)
-            .filter(|row| row.0 == cursor)
-            .map(|row| Arc::clone(&row.3))
+        ring.rows.get(lower).filter(|row| row.0 == cursor).map(|row| Arc::clone(&row.3))
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) fn logical_frontier(&self) -> u64 {
         self.ring.read().expect("the ring is never poisoned").next
     }
@@ -636,9 +502,7 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
                 return Poll::Ready(Some(Item::Gap { missed }));
             }
             if let Some((position, row)) = following.pending.pop_front() {
-                let value = super::row_value::<S>(row.as_ref())
-                    .expect("a window holds only its own stream's rows")
-                    .clone();
+                let value = super::row_value::<S>(row.as_ref()).expect("a window holds only its own stream's rows").clone();
                 return Poll::Ready(Some(Item::Row(At { value, position })));
             }
             if following.done {
@@ -677,27 +541,16 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
 
 /* === Public Functions === */
 pub(crate) fn following<S: Clone + 'static>(
-    window: Arc<Window>,
-    closed: Arc<AtomicBool>,
-    held: Holding,
+    window: Arc<Window>, closed: Arc<AtomicBool>, held: Holding,
 ) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin {
     let doorbell = window.doorbell.subscribe();
     let frontier = {
-        let _visibility = window
-            .visibility
-            .read()
-            .expect("stream visibility poisoned");
+        let _visibility = window.visibility.read().expect("stream visibility poisoned");
         window.ring.read().expect("the ring is never poisoned").next
     };
 
     Following {
-        parts: Some(Parts {
-            window,
-            doorbell,
-            frontier,
-            closed,
-            held,
-        }),
+        parts: Some(Parts { window, doorbell, frontier, closed, held }),
         step: None,
         gap: 0,
         pending: VecDeque::new(),

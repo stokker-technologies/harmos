@@ -8,14 +8,12 @@
  */
 
 /* === Modules === */
-#[cfg(test)]
-mod arrow_tests;
-#[cfg(test)]
-mod policy_tests;
 mod admissions;
 #[doc(hidden)]
 pub mod aggregate;
 pub mod arrow;
+#[cfg(test)]
+mod arrow_tests;
 mod backend;
 mod batch;
 mod batching;
@@ -32,6 +30,8 @@ mod manager;
 mod memory;
 mod object_admissions;
 mod objects;
+#[cfg(test)]
+mod policy_tests;
 pub mod query;
 mod queue;
 mod receipts;
@@ -45,9 +45,7 @@ mod worker;
 pub mod writes;
 
 /* === Re-Exports === */
-pub use backend::{
-    BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture,
-};
+pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
 pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use error::{BackendFailure, Error, Result};
@@ -56,13 +54,11 @@ pub use file_follow::FileFollower;
 pub use file_reads::FileReader;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
-    ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress,
-    FileReference, FileSession, IdentityKind, IdentitySelection, MutationId, MutationWindow,
-    ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint,
-    ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken,
-    PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput,
-    SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredIdentity, StoredObject,
-    StoredRecord, StoredRow, StreamInput, StreamWrite,
+    ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress, FileReference, FileSession, IdentityKind,
+    IdentitySelection, MutationId, MutationWindow, ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint,
+    ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput,
+    RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory,
+    StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;

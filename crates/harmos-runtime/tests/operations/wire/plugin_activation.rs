@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Portable Plugin Registration And Generation Replacement.
 
 /* === Modules === */
@@ -21,9 +20,8 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_sdk::grpc::{self, DecodeInput};
 use super::*;
-
+use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 
@@ -56,7 +54,8 @@ async fn callback_requires_budget() {
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
     let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
-    let target: harmos_runtime::operations::PluginCallback = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
+    let target: harmos_runtime::operations::PluginCallback =
+        runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
     let encoded = AtomicBool::new(false);
     let refused = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
         encoded.store(true, Ordering::SeqCst);
@@ -450,7 +449,10 @@ async fn commit_requires_operation() {
         };
         if missing == 1 {
             assert!(
-                matches!(source.as_ref(), harmos_runtime::plugin::PluginFailure::Routing(harmos_runtime::plugin::DispatchError::Unavailable)),
+                matches!(
+                    source.as_ref(),
+                    harmos_runtime::plugin::PluginFailure::Routing(harmos_runtime::plugin::DispatchError::Unavailable)
+                ),
                 "dropping the original receipt closes staging: {error:?}"
             );
         } else {
@@ -551,7 +553,10 @@ where
         output: channel,
         opening_timeout: std::time::Duration::from_secs(1),
     };
-    let mut codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Text, harmos_runtime::operations::Response<Text>>::new(decode, encode).unwrap();
+    let mut codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Text, harmos_runtime::operations::Response<Text>>::new(
+        decode, encode,
+    )
+    .unwrap();
     let message = futures_util::stream::iter([Ok(harmos_runtime::operations::Response::new(Text::from("grpc")))]);
     let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
     let request =
@@ -560,4 +565,3 @@ where
 }
 
 /* === Tests === */
-

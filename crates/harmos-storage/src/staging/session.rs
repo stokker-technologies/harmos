@@ -40,33 +40,15 @@ pub(super) struct Session {
 /* === Implementations === */
 impl Session {
     pub(super) fn new(execution: crate::execution::Execution) -> Self {
-        Self {
-            execution,
-            generation: 1,
-            disconnected: false,
-            deadline: None,
-            reason: "producer abandoned",
-        }
+        Self { execution, generation: 1, disconnected: false, deadline: None, reason: "producer abandoned" }
     }
 
     pub(super) fn token(timeout: Duration, execution: crate::execution::Execution) -> Self {
-        Self {
-            deadline: Some(execution.now() + timeout),
-            ..Self::new(execution)
-        }
+        Self { deadline: Some(execution.now() + timeout), ..Self::new(execution) }
     }
 
-    pub(super) fn recovered(
-        generation: u64,
-        timeout: Duration,
-        execution: crate::execution::Execution,
-    ) -> Self {
-        Self {
-            generation,
-            disconnected: true,
-            deadline: Some(execution.now() + timeout),
-            ..Self::new(execution)
-        }
+    pub(super) fn recovered(generation: u64, timeout: Duration, execution: crate::execution::Execution) -> Self {
+        Self { generation, disconnected: true, deadline: Some(execution.now() + timeout), ..Self::new(execution) }
     }
 
     pub(super) fn resumed(&mut self, generation: u64, timeout: Duration, disconnected: bool) {
@@ -98,10 +80,7 @@ impl Session {
 impl<C> StorageManager<C> {
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         if !self.inner.primary.supports_file_sessions() {
-            return Err(Error::InvalidInput {
-                field: "file session",
-                reason: "backend does not support resumable file sessions",
-            });
+            return Err(Error::InvalidInput { field: "file session", reason: "backend does not support resumable file sessions" });
         }
         self.create(metadata, true).await
     }
@@ -121,64 +100,36 @@ impl<C> StorageManager<C> {
                 match admission(&state) {
                     // The Original Worker Still Owns This Admitted Transition.
                     Err(Error::Persistence { .. })
-                        if claimed
-                            && state
-                                .files
-                                .values()
-                                .any(|file| file.staging.id == token.id && file.retrying) => {}
+                        if claimed && state.files.values().any(|file| file.staging.id == token.id && file.retrying) => {}
                     result => result?,
                 }
                 state.expire_files();
-                let Some((id, file)) = state
-                    .files
-                    .iter_mut()
-                    .find(|(_, file)| file.staging.id == token.id)
-                else {
+                let Some((id, file)) = state.files.iter_mut().find(|(_, file)| file.staging.id == token.id) else {
                     tracing::error!(file = %token.id, generation = token.generation, reason = "session unavailable or expired", "file resume rejected");
-                    return Err(Error::InvalidInput {
-                        field: "file resume",
-                        reason: "session unavailable or expired",
-                    });
+                    return Err(Error::InvalidInput { field: "file resume", reason: "session unavailable or expired" });
                 };
-                let session = file.session.as_mut().ok_or(Error::InvalidInput {
-                    field: "file resume",
-                    reason: "private staging is not resumable",
-                })?;
+                let session = file
+                    .session
+                    .as_mut()
+                    .ok_or(Error::InvalidInput { field: "file resume", reason: "private staging is not resumable" })?;
                 if claimed && session.generation == next && !file.abandoned {
                     session.connect();
                     let mut token = token.clone();
                     token.generation = next;
-                    Some(StorageFile {
-                        manager: self.erased(),
-                        id: *id,
-                        progress: file.progress.clone(),
-                        session: Some(token),
-                    })
+                    Some(StorageFile { manager: self.erased(), id: *id, progress: file.progress.clone(), session: Some(token) })
                 } else {
                     if session.generation != token.generation || file.abandoned {
                         tracing::error!(file = %token.id, generation = token.generation, offset = file.length, reason = "expired or fenced producer", "file resume rejected");
-                        return Err(Error::InvalidInput {
-                            field: "file resume",
-                            reason: "expired or fenced producer",
-                        });
+                        return Err(Error::InvalidInput { field: "file resume", reason: "expired or fenced producer" });
                     }
                     if matches!(file.command, Some(Command::Finish { .. } | Command::Abort)) {
-                        return Err(Error::InvalidInput {
-                            field: "file resume",
-                            reason: "production is ending",
-                        });
+                        return Err(Error::InvalidInput { field: "file resume", reason: "production is ending" });
                     }
                     if !claimed && matches!(file.command, Some(Command::Resume { .. })) {
-                        return Err(Error::InvalidInput {
-                            field: "file resume",
-                            reason: "another resume owns the transition",
-                        });
+                        return Err(Error::InvalidInput { field: "file resume", reason: "another resume owns the transition" });
                     }
                     if file.command.is_none() && !file.in_flight {
-                        file.command = Some(Command::Resume {
-                            expected: token.generation,
-                            next,
-                        });
+                        file.command = Some(Command::Resume { expected: token.generation, next });
                         // Fence Old Handles At Admission, Before The Durable Transition.
                         file.progress.lock().unwrap().generation = next;
                         claimed = true;
@@ -208,10 +159,7 @@ impl StorageFile {
             && token.generation != self.progress.lock().unwrap().generation
         {
             tracing::error!(file = %token.id, generation = token.generation, reason = "producer fenced", "file operation rejected");
-            return Err(Error::InvalidInput {
-                field: "file session",
-                reason: "producer fenced",
-            });
+            return Err(Error::InvalidInput { field: "file session", reason: "producer fenced" });
         }
         Ok(())
     }
@@ -224,19 +172,14 @@ impl FileState {
             (Some(session), Some(token))
                 if session.generation == token.generation
                     && !session.disconnected
-                    && session
-                        .deadline
-                        .is_none_or(|deadline| deadline > session.execution.now())
+                    && session.deadline.is_none_or(|deadline| deadline > session.execution.now())
                     && !self.abandoned =>
             {
                 Ok(())
             }
             _ => {
                 tracing::error!(file = %self.staging.id, offset = self.length, reason = "producer disconnected, expired or fenced", "file operation rejected");
-                Err(Error::InvalidInput {
-                    field: "file session",
-                    reason: "producer disconnected, expired or fenced",
-                })
+                Err(Error::InvalidInput { field: "file session", reason: "producer disconnected, expired or fenced" })
             }
         }
     }
@@ -258,11 +201,8 @@ impl State {
                 && !matches!(file.command, Some(Command::Finish { .. }))
             {
                 file.abandoned = true;
-                session.reason = if session.disconnected {
-                    "disconnected producer resume timeout"
-                } else {
-                    "token producer inactivity timeout"
-                };
+                session.reason =
+                    if session.disconnected { "disconnected producer resume timeout" } else { "token producer inactivity timeout" };
                 file.progress.lock().unwrap().closed = true;
                 tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = session.reason, "file production abandoned; partial bytes retained");
             }
@@ -275,11 +215,7 @@ impl State {
         }
         self.files
             .values()
-            .filter(|file| {
-                !file.abandoned
-                    && !file.in_flight
-                    && !matches!(file.command, Some(Command::Finish { .. }))
-            })
+            .filter(|file| !file.abandoned && !file.in_flight && !matches!(file.command, Some(Command::Finish { .. })))
             .filter_map(|file| file.session.as_ref().and_then(|session| session.deadline))
             .min()
     }

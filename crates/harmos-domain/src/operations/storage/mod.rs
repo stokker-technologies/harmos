@@ -76,11 +76,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 
 pub const EVERY_SCHEMA: &str = "*";
 
-pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
-    attempt_timeout: POLICY.timeout,
-    retries: RetryPolicy::Never,
-    ..POLICY
-};
+pub const STREAM_POLICY: OperationPolicy = OperationPolicy { attempt_timeout: POLICY.timeout, retries: RetryPolicy::Never, ..POLICY };
 
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
     timeout: crate::operations::UNBOUNDED,

@@ -185,16 +185,9 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
     let harmos = &declared.harmos;
     let kind = sort.kind(harmos);
     let count = declared.history.len();
-    let history = declared
-        .history
-        .iter()
-        .map(|historical| quote!((#kind, #id, <#historical>::VERSION)));
+    let history = declared.history.iter().map(|historical| quote!((#kind, #id, <#historical>::VERSION)));
     let restore = restore(&declared, sort);
-    let undoing = declared
-        .undo
-        .as_ref()
-        .map(|undo| undoing(name, undo, harmos))
-        .unwrap_or_default();
+    let undoing = declared.undo.as_ref().map(|undo| undoing(name, undo, harmos)).unwrap_or_default();
 
     let historical_apply = &declared.history;
     let record_marker = match sort {
@@ -355,9 +348,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
             }
             Meta::NameValue(named) if named.path.is_ident("inverse") => {
                 answered(&undo, named.span())?;
-                undo = Some(Undo::Inverse(syn::parse2::<Path>(
-                    named.value.to_token_stream(),
-                )?));
+                undo = Some(Undo::Inverse(syn::parse2::<Path>(named.value.to_token_stream())?));
             }
             Meta::Path(marker) if marker.is_ident("irreversible") => {
                 answered(&undo, marker.span())?;
@@ -393,33 +384,16 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
     }
 
     let Some(version) = version else {
-        return Err(Error::new(
-            span,
-            format!("a {} declares the version it is written with", sort.noun()),
-        ));
+        return Err(Error::new(span, format!("a {} declares the version it is written with", sort.noun())));
     };
     if id.is_none() && !history.is_empty() {
-        return Err(Error::new(
-            span,
-            "a historical shape carries no history of its own; the family root owns the catalog",
-        ));
+        return Err(Error::new(span, "a historical shape carries no history of its own; the family root owns the catalog"));
     }
 
-    Ok(Declaration {
-        id,
-        version,
-        history,
-        undo,
-        harmos: HarmosPath::resolve(harmos_path),
-    })
+    Ok(Declaration { id, version, history, undo, harmos: HarmosPath::resolve(harmos_path) })
 }
 
-fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }
@@ -444,9 +418,7 @@ fn catalogued(listed: &syn::MetaList) -> Result<Vec<Path>, Error> {
         // A `::` separator is two colon tokens, the first joined to the second.
         // A colon that neither joins the token after it nor follows one that
         // did is a lone `:`, which no path spelling produces.
-        TokenTree::Punct(punctuation) if punctuation.as_char() == ':' => {
-            punctuation.spacing() == Spacing::Alone && !separates(&tokens, at)
-        }
+        TokenTree::Punct(punctuation) if punctuation.as_char() == ':' => punctuation.spacing() == Spacing::Alone && !separates(&tokens, at),
         TokenTree::Punct(punctuation) => matches!(punctuation.as_char(), '-' | '>' | '=' | '|'),
         _ => false,
     });
@@ -458,10 +430,7 @@ fn catalogued(listed: &syn::MetaList) -> Result<Vec<Path>, Error> {
         ));
     }
 
-    Ok(Punctuated::<Path, Token![,]>::parse_terminated
-        .parse2(listed.tokens.clone())?
-        .into_iter()
-        .collect())
+    Ok(Punctuated::<Path, Token![,]>::parse_terminated.parse2(listed.tokens.clone())?.into_iter().collect())
 }
 
 fn separates(tokens: &[TokenTree], at: usize) -> bool {
@@ -476,10 +445,7 @@ fn named(item: &Item) -> Result<&Ident, Error> {
     match item {
         Item::Struct(shape) => Ok(&shape.ident),
         Item::Enum(shape) => Ok(&shape.ident),
-        other => Err(Error::new(
-            other.span(),
-            "an authoring attribute belongs on the struct or enum the definition is",
-        )),
+        other => Err(Error::new(other.span(), "an authoring attribute belongs on the struct or enum the definition is")),
     }
 }
 

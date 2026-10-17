@@ -55,37 +55,18 @@ pub(crate) struct Lease {
 impl Driving {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn retain(
-        &self,
-        owner: String,
-        generation: PluginGeneration,
-        poll: impl Fn(&mut Context<'_>) + Send + Sync + 'static,
+        &self, owner: String, generation: PluginGeneration, poll: impl Fn(&mut Context<'_>) + Send + Sync + 'static,
     ) -> Lease {
         let key = (owner, generation);
         let poller: Poller = Arc::new(poll);
-        let mut transports = self
-            .transports
-            .lock()
-            .expect("plugin transport owner is healthy");
-        assert!(
-            !transports.contains_key(&key),
-            "plugin generation has one physical transport"
-        );
+        let mut transports = self.transports.lock().expect("plugin transport owner is healthy");
+        assert!(!transports.contains_key(&key), "plugin generation has one physical transport");
         transports.insert(key.clone(), poller.clone());
-        Lease {
-            transports: self.transports.clone(),
-            key,
-            poller,
-        }
+        Lease { transports: self.transports.clone(), key, poller }
     }
 
     pub(crate) fn tick(&self, context: &mut Context<'_>) {
-        let pollers: Vec<_> = self
-            .transports
-            .lock()
-            .expect("plugin transport owner is healthy")
-            .values()
-            .cloned()
-            .collect();
+        let pollers: Vec<_> = self.transports.lock().expect("plugin transport owner is healthy").values().cloned().collect();
         for poll in pollers {
             poll(context);
         }
@@ -95,14 +76,8 @@ impl Driving {
 #[cfg(feature = "plugin-sidecar")]
 impl Drop for Lease {
     fn drop(&mut self) {
-        let mut transports = self
-            .transports
-            .lock()
-            .expect("plugin transport owner is healthy");
-        if transports
-            .get(&self.key)
-            .is_some_and(|poller| Arc::ptr_eq(poller, &self.poller))
-        {
+        let mut transports = self.transports.lock().expect("plugin transport owner is healthy");
+        if transports.get(&self.key).is_some_and(|poller| Arc::ptr_eq(poller, &self.poller)) {
             transports.remove(&self.key);
         }
     }

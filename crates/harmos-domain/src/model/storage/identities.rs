@@ -49,18 +49,8 @@ pub enum IdentityKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StoredIdentity {
-    Stream {
-        schema: SchemaKey,
-        scope: Option<Identifier>,
-        item: Identifier,
-        stream: Identifier,
-        first: StorageCursor,
-    },
-    Object {
-        schema: SchemaKey,
-        key: ObjectKey,
-        first: StorageCursor,
-    },
+    Stream { schema: SchemaKey, scope: Option<Identifier>, item: Identifier, stream: Identifier, first: StorageCursor },
+    Object { schema: SchemaKey, key: ObjectKey, first: StorageCursor },
 }
 
 /* === Traits === */
@@ -89,11 +79,7 @@ impl StoredIdentity {
 
 impl IdentitySelection {
     pub fn matches(&self, identity: &StoredIdentity) -> bool {
-        identity.kind() == self.kind
-            && self
-                .schema
-                .as_ref()
-                .is_none_or(|schema| schema == &identity.schema().id)
+        identity.kind() == self.kind && self.schema.as_ref().is_none_or(|schema| schema == &identity.schema().id)
     }
 }
 

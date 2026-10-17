@@ -70,13 +70,8 @@ pub fn validate(mut entries: Vec<Registration>) -> Result<Vec<Registration>, Err
     let mut namespaces = BTreeSet::new();
     let mut size = 0usize;
     for entry in &entries {
-        if !harmos_domain::artifact_subset(&entry.namespace)
-            || entry.schema == 0
-            || !namespaces.insert(entry.namespace.clone())
-        {
-            return Err(invalid(
-                "catalog has an invalid or duplicate namespace/schema",
-            ));
+        if !harmos_domain::artifact_subset(&entry.namespace) || entry.schema == 0 || !namespaces.insert(entry.namespace.clone()) {
+            return Err(invalid("catalog has an invalid or duplicate namespace/schema"));
         }
         size = size
             .checked_add(entry.namespace.len())
@@ -92,33 +87,16 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
     let runtime = Runtime::<Collection>::builder((), ())
         .runtime()
         .await
-        .map_err(|error| Error::Guest {
-            message: format!("catalog runtime could not start: {error}"),
-        })?;
-    let mut cleanup = Cleanup {
-        runtime: Some(runtime),
-        executor: tokio::runtime::Handle::current(),
-    };
+        .map_err(|error| Error::Guest { message: format!("catalog runtime could not start: {error}") })?;
+    let mut cleanup = Cleanup { runtime: Some(runtime), executor: tokio::runtime::Handle::current() };
     let result = async {
-        let host = Host::new(
-            cleanup
-                .runtime
-                .as_ref()
-                .expect("runtime is owned until cleanup"),
-        )?;
-        let guest = host
-            .load(bytes)?
-            .register_with_limits(Some(super::host::store_limits(
-                crate::config::PluginGuestSettings::default(),
-            )))
-            .await?;
+        let host = Host::new(cleanup.runtime.as_ref().expect("runtime is owned until cleanup"))?;
+        let guest =
+            host.load(bytes)?.register_with_limits(Some(super::host::store_limits(crate::config::PluginGuestSettings::default()))).await?;
         validate(guest.registrations().to_vec())
     }
     .await;
-    let runtime = cleanup
-        .runtime
-        .take()
-        .expect("runtime has not been stopped");
+    let runtime = cleanup.runtime.take().expect("runtime has not been stopped");
     // The task retains shutdown ownership even if this final await is cancelled,
     // so the runtime is moved into it rather than borrowed across the spawn.
     cleanup
@@ -132,9 +110,7 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
 
 /* === Private Functions === */
 fn invalid(message: &str) -> Error {
-    Error::Guest {
-        message: message.to_owned(),
-    }
+    Error::Guest { message: message.to_owned() }
 }
 
 /* === Tests === */

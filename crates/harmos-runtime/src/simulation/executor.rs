@@ -43,17 +43,11 @@ pub(crate) struct Executor {
 /* === Implementations === */
 impl Executor {
     pub(crate) fn seeded(seed: u64) -> Self {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("the simulation current-thread executor builds");
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("the simulation current-thread executor builds");
         runtime.block_on(async { tokio::time::pause() });
 
-        Self {
-            runtime,
-            clock: Clock::new(),
-            entropy: entropy::Context::seeded(seed),
-        }
+        Self { runtime, clock: Clock::new(), entropy: entropy::Context::seeded(seed) }
     }
 
     pub(crate) fn block_on<F: Future>(&self, future: F) -> F::Output {

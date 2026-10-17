@@ -46,43 +46,20 @@ pub struct StorageSchema {
 impl MemorySize for StorageSchema {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.position
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
-            .saturating_add(
-                self.key
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<SchemaKey>()),
-            )
-            .saturating_add(
-                self.schema
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Schema>()),
-            )
+            .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.key.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
+            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of::<Schema>()))
     }
 }
 
 impl StorageSchema {
     pub fn new(position: StorageCursor, key: SchemaKey, schema: Schema) -> Self {
-        Self {
-            position,
-            key,
-            schema,
-        }
+        Self { position, key, schema }
     }
 
-    pub(super) fn resident_bytes(
-        key: &SchemaKey,
-        schema: &Schema,
-        history: &StoreHistory,
-    ) -> Result<usize> {
-        let allocations = schema
-            .clone_memory_bytes()
-            .map_err(|_| size_error())?
-            .checked_sub(std::mem::size_of::<Schema>())
-            .ok_or_else(size_error)?;
+    pub(super) fn resident_bytes(key: &SchemaKey, schema: &Schema, history: &StoreHistory) -> Result<usize> {
+        let allocations =
+            schema.clone_memory_bytes().map_err(|_| size_error())?.checked_sub(std::mem::size_of::<Schema>()).ok_or_else(size_error)?;
         [
             std::mem::size_of::<Self>(),
             ENTRY_OVERHEAD,
@@ -101,10 +78,7 @@ impl StorageSchema {
 
 /* === Private Functions === */
 fn size_error() -> Error {
-    Error::InvalidInput {
-        field: "storage schema",
-        reason: "size overflow",
-    }
+    Error::InvalidInput { field: "storage schema", reason: "size overflow" }
 }
 
 /* === Tests === */

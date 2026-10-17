@@ -24,10 +24,7 @@ pub mod proto;
 pub mod python;
 
 /* === Re-Exports === */
-pub use build::{
-    Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package,
-    package_with_cancellation,
-};
+pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
 #[cfg(feature = "guest")]
 pub use component::componentize;
 pub use dev::{DevEvent, dev};
@@ -97,22 +94,14 @@ pub enum Error {
 pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     let bytes = std::fs::read(path)?;
     let guest = bytes.starts_with(b"\0asm");
-    let facility = if guest {
-        Facility::Guest
-    } else {
-        Facility::Sidecar
-    };
+    let facility = if guest { Facility::Guest } else { Facility::Sidecar };
     let declaration = Declaration::inspect(&bytes, facility)?;
     Ok(Inspection {
         id: declaration.id,
         version: declaration.version.to_string(),
         description: declaration.description,
         config: declaration.config,
-        operations: declaration
-            .operations
-            .iter()
-            .map(|operation| operation.id.to_string())
-            .collect(),
+        operations: declaration.operations.iter().map(|operation| operation.id.to_string()).collect(),
         sha256: digest(&bytes),
         facility: if guest { "guest" } else { "sidecar" },
     })

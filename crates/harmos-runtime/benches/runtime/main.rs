@@ -60,16 +60,8 @@ async fn in_place_writer_against_deleted_clone_and_publish_path() {
 
     report("write-heavy, in-place writer", quiet_writer, None);
     report("write-heavy, clone-and-publish", quiet_baseline, None);
-    report(
-        "concurrent-read, in-place writer",
-        busy_writer,
-        Some(writer_reads),
-    );
-    report(
-        "concurrent-read, clone-and-publish",
-        busy_baseline,
-        Some(baseline_reads),
-    );
+    report("concurrent-read, in-place writer", busy_writer, Some(writer_reads));
+    report("concurrent-read, clone-and-publish", busy_baseline, Some(baseline_reads));
     println!(
         "  read contention: in-place commits are {:.2}x slower with {READERS} readers, \
          clone-and-publish {:.2}x",
@@ -120,12 +112,7 @@ async fn concurrent_in_place() -> (Duration, u64) {
 
             tokio::spawn(async move {
                 while !stop.load(Ordering::Relaxed) {
-                    if journal
-                        .state()
-                        .read(|ledger| ledger.balance(HOUSE))
-                        .await
-                        .is_ok()
-                    {
+                    if journal.state().read(|ledger| ledger.balance(HOUSE)).await.is_ok() {
                         reads.fetch_add(1, Ordering::Relaxed);
                     }
                 }
@@ -189,10 +176,7 @@ async fn publish(slot: &RwLock<Arc<Ledger>>, change: &Change) {
 }
 
 fn signals() -> (Arc<AtomicBool>, Arc<AtomicU64>) {
-    (
-        Arc::new(AtomicBool::new(false)),
-        Arc::new(AtomicU64::new(0)),
-    )
+    (Arc::new(AtomicBool::new(false)), Arc::new(AtomicU64::new(0)))
 }
 
 fn report(what: &str, elapsed: Duration, reads: Option<u64>) {
@@ -207,21 +191,12 @@ fn ratio(measured: Duration, against: Duration) -> f64 {
 }
 
 fn benchmarks(c: &mut criterion::Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     runtime.block_on(in_place_writer_against_deleted_clone_and_publish_path());
     let mut group = c.benchmark_group("writer");
     group.sample_size(20);
     group.throughput(criterion::Throughput::Elements(COMMITS as u64));
-    for mode in [
-        "quiet_in_place",
-        "quiet_clone",
-        "readers_in_place",
-        "readers_clone",
-    ] {
+    for mode in ["quiet_in_place", "quiet_clone", "readers_in_place", "readers_clone"] {
         group.bench_function(mode, |b| {
             b.iter_custom(|iterations| {
                 runtime.block_on(async {

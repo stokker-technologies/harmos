@@ -46,20 +46,14 @@ pub(crate) struct Projection {
 /* === Traits === */
 pub trait RecordProjection: Send + Sync + 'static {
     fn project<'a>(
-        &'a self,
-        record: &'a Envelope<&serde_json::Value>,
-        output: &'a mut ProjectedRecords<'_>,
+        &'a self, record: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 }
 
 /* === Implementations === */
 impl<'a> ProjectedRecords<'a> {
     pub(crate) fn new(permit: &'a mut Permit, limits: ReadLimits) -> Self {
-        Self {
-            permit,
-            limits,
-            refused: false,
-        }
+        Self { permit, limits, refused: false }
     }
 
     pub async fn push(&mut self, record: RecordWrite<'_>) -> Result<()> {
@@ -78,10 +72,7 @@ impl<'a> ProjectedRecords<'a> {
         }
         for entry in self.permit.projected() {
             if encoded_size(entry)? > maximum.get() {
-                return Err(Error::InvalidInput {
-                    field: "record projection",
-                    reason: "one entry exceeds max_batch_bytes",
-                });
+                return Err(Error::InvalidInput { field: "record projection", reason: "one entry exceeds max_batch_bytes" });
             }
         }
         Ok(())
@@ -92,10 +83,7 @@ impl<'a> ProjectedRecords<'a> {
 
 /* === Private Functions === */
 fn limit() -> Error {
-    Error::InvalidInput {
-        field: "record projection",
-        reason: "capture limit exceeded",
-    }
+    Error::InvalidInput { field: "record projection", reason: "capture limit exceeded" }
 }
 
 /* === Tests === */

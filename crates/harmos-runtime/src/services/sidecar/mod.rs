@@ -55,15 +55,9 @@ const ARRIVALS: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type Ingest<A> =
-    Arc<dyn Fn(&Service<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
+type Ingest<A> = Arc<dyn Fn(&Service<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
 
-type Delivery = Pin<
-    Box<
-        dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>>
-            + Send,
-    >,
->;
+type Delivery = Pin<Box<dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>> + Send>>;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -238,8 +232,7 @@ enum Absorbed {
 impl SidecarError {
     // A refusal the host raises itself, before any plugin answered.
     pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
-        let failure =
-            harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
+        let failure = harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
         Self::Refused { code, failure }
     }
 }
@@ -268,12 +261,7 @@ fn normalized_observers(
 }
 
 async fn converse<A, H>(
-    attached: Attached,
-    context: &mut Service<A>,
-    notice: &H,
-    ingress: &Inbound<A>,
-    settling: Settling<'_>,
-    calls: &Calls,
+    attached: Attached, context: &mut Service<A>, notice: &H, ingress: &Inbound<A>, settling: Settling<'_>, calls: &Calls,
     cleanup: &mut Cleanup,
 ) -> Result<(), Fault<String>>
 where
@@ -288,39 +276,18 @@ where
     let (arrivals, inbound) = mpsc::channel(ARRIVALS);
     let operations = context.operations.clone();
     let remote = observers::Remote::new(arrivals.clone(), Some(context.provider.clone()));
-    cleanup.session = Some(observers::Session::new(
-        remote.clone(),
-        operations.clone(),
-        end,
-    ));
+    cleanup.session = Some(observers::Session::new(remote.clone(), operations.clone(), end));
     cleanup.ended = Some(ended);
-    cleanup
-        .session
-        .as_mut()
-        .expect("the attempt owns its session")
-        .bind()
-        .map_err(Fault::Application)?;
-    let plugin = cleanup
-        .instance
-        .as_ref()
-        .and_then(|endpoint| endpoint.scope())
-        .cloned();
-    let candidate = observers::stage(
-        &operations,
-        &remote,
-        plugin.as_ref(),
-        settling.observers,
-        settling.publications,
-    )
-    .map_err(|error| Fault::Application(error.to_string()))?;
+    cleanup.session.as_mut().expect("the attempt owns its session").bind().map_err(Fault::Application)?;
+    let plugin = cleanup.instance.as_ref().and_then(|endpoint| endpoint.scope()).cloned();
+    let candidate = observers::stage(&operations, &remote, plugin.as_ref(), settling.observers, settling.publications)
+        .map_err(|error| Fault::Application(error.to_string()))?;
     let (demand, changes) = tokio::sync::watch::channel(BTreeMap::new());
 
     let connected = executor::timeout(settling.handshake, connecting.connect())
         .await
         .map_err(|_| "the sidecar did not open inside its handshake".to_owned())
-        .and_then(|result| {
-            result.map_err(|error| format!("the sidecar gRPC transport failed: {error}"))
-        });
+        .and_then(|result| result.map_err(|error| format!("the sidecar gRPC transport failed: {error}")));
     let peer = match connected {
         Ok(peer) => peer,
         Err(error) => {
@@ -329,13 +296,9 @@ where
     };
     let (outgoing, incoming) = peer;
 
-    cleanup
-        .readers
-        .push(Reader(executor::task(protocol(incoming, arrivals.clone()))));
+    cleanup.readers.push(Reader(executor::task(protocol(incoming, arrivals.clone()))));
     if let Some(stream) = diagnostics {
-        cleanup
-            .readers
-            .push(Reader(executor::task(diagnostic(stream, arrivals.clone()))));
+        cleanup.readers.push(Reader(executor::task(diagnostic(stream, arrivals.clone()))));
     }
     // One demand watcher per admitted stream, combining plugin readers with
     // any typed host projection. Restart re-reads counts held across attempts.
@@ -343,25 +306,16 @@ where
     let mut leases: Vec<Reader> = admitted
         .iter()
         .map(|(stream, lease)| {
-            let native = ingress
-                .demands
-                .get(stream.as_str())
-                .map(|demand| demand(context.streams()));
-            Reader(executor::task(leasing(
-                stream.clone(),
-                lease.stream().demand(),
-                native,
-                arrivals.clone(),
-            )))
+            let native = ingress.demands.get(stream.as_str()).map(|demand| demand(context.streams()));
+            Reader(executor::task(leasing(stream.clone(), lease.stream().demand(), native, arrivals.clone())))
         })
         .collect();
-    leases.extend(settling.demand_keys.iter().map(|(key, count)| {
-        Reader(executor::task(key_leasing(
-            key.clone(),
-            count.subscribe(),
-            arrivals.clone(),
-        )))
-    }));
+    leases.extend(
+        settling
+            .demand_keys
+            .iter()
+            .map(|(key, count)| Reader(executor::task(key_leasing(key.clone(), count.subscribe(), arrivals.clone())))),
+    );
     cleanup.readers.extend(leases);
     let caller = cleanup
         .instance
@@ -370,9 +324,7 @@ where
         .transpose()
         .map_err(|error| Fault::Application(error.to_string()))?;
     if let (Some(plugin), Some(_)) = (&plugin, &caller) {
-        remote
-            .configure(context.operations.clone(), plugin.clone())
-            .map_err(|error| Fault::Application(error.to_string()))?;
+        remote.configure(context.operations.clone(), plugin.clone()).map_err(|error| Fault::Application(error.to_string()))?;
     }
     let (returns, returned) = mpsc::channel(CHILD_REQUESTS);
     let observing = Arc::clone(&remote);
@@ -423,25 +375,19 @@ where
                     .map(|scope| (scope, Arc::clone(&exchange.remote_observers))),
             ),
         );
-        let initialized = cleanup
-            .endpoint
-            .as_ref()
-            .expect("the original endpoint is retained")
-            .initialized();
+        let initialized = cleanup.endpoint.as_ref().expect("the original endpoint is retained").initialized();
         let manager_owned_stop = exchange.manager_owned_stop;
         stopped = exchange
             .serve(&mut requests, initialized, |context| {
                 candidate.commit().map_err(|error| error.to_string())?;
-                cleanup
-                    .readers
-                    .push(Reader(executor::task(observers::demand(
-                        operations,
-                        observing,
-                        plugin,
-                        settling.observers.to_vec(),
-                        changes,
-                        arrivals,
-                    ))));
+                cleanup.readers.push(Reader(executor::task(observers::demand(
+                    operations,
+                    observing,
+                    plugin,
+                    settling.observers.to_vec(),
+                    changes,
+                    arrivals,
+                ))));
                 calls.ready.send_replace(true);
                 if !manager_owned_stop {
                     context.ready();
@@ -465,30 +411,17 @@ where
         (false, Err(fault), _, _) => Err(fault),
         (false, Ok(()), Some(failure), _) => Err(Fault::Environmental(failure)),
         (false, Ok(()), None, Some(reason)) => Err(Fault::Application(reason)),
-        (false, Ok(()), None, None) => Err(Fault::Environmental(
-            "the sidecar exited without announcing it".to_owned(),
-        )),
+        (false, Ok(()), None, None) => Err(Fault::Environmental("the sidecar exited without announcing it".to_owned())),
     }
 }
 
-async fn key_leasing(
-    key: String,
-    mut count: tokio::sync::watch::Receiver<usize>,
-    arrivals: mpsc::Sender<Arrival>,
-) {
+async fn key_leasing(key: String, mut count: tokio::sync::watch::Receiver<usize>, arrivals: mpsc::Sender<Arrival>) {
     let mut held = false;
     loop {
         let wanted = *count.borrow_and_update() > 0;
         if wanted != held {
             held = wanted;
-            if arrivals
-                .send(Arrival::Demanded {
-                    stream: key.clone(),
-                    wanted,
-                })
-                .await
-                .is_err()
-            {
+            if arrivals.send(Arrival::Demanded { stream: key.clone(), wanted }).await.is_err() {
                 return;
             }
         }
@@ -498,28 +431,15 @@ async fn key_leasing(
     }
 }
 
-async fn leasing(
-    stream: String,
-    mut demand: Demand,
-    mut native: Option<Demand>,
-    arrivals: mpsc::Sender<Arrival>,
-) {
-    let wanted = |demand: &Demand, native: &Option<Demand>| {
-        *demand.borrow() > 0 || native.as_ref().is_some_and(|value| *value.borrow() > 0)
-    };
+async fn leasing(stream: String, mut demand: Demand, mut native: Option<Demand>, arrivals: mpsc::Sender<Arrival>) {
+    let wanted =
+        |demand: &Demand, native: &Option<Demand>| *demand.borrow() > 0 || native.as_ref().is_some_and(|value| *value.borrow() > 0);
     let mut held = false;
     loop {
         let now = wanted(&demand, &native);
         if now != held {
             held = now;
-            if arrivals
-                .send(Arrival::Demanded {
-                    stream: stream.clone(),
-                    wanted: now,
-                })
-                .await
-                .is_err()
-            {
+            if arrivals.send(Arrival::Demanded { stream: stream.clone(), wanted: now }).await.is_err() {
                 return;
             }
         }

@@ -79,21 +79,12 @@ pub enum ScanError {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn fragments<F: DeserializeOwned>(
-    artifact: &[u8],
-    owned: &[&str],
-) -> Result<Vec<F>, ScanError> {
-    fragments_with_settings(
-        artifact,
-        owned,
-        &mut crate::config::SchemaSettings::default(),
-    )
+pub fn fragments<F: DeserializeOwned>(artifact: &[u8], owned: &[&str]) -> Result<Vec<F>, ScanError> {
+    fragments_with_settings(artifact, owned, &mut crate::config::SchemaSettings::default())
 }
 
 pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
-    artifact: &[u8],
-    owned: &[&str],
-    settings: &mut crate::config::SchemaSettings,
+    artifact: &[u8], owned: &[&str], settings: &mut crate::config::SchemaSettings,
 ) -> Result<Vec<F>, ScanError> {
     // Keep Complete Search Markers Out Of Reader Binaries Themselves.
     let family = &FAMILY[..FAMILY.len() - 1];
@@ -126,19 +117,11 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
         let encoded = &bounded[..length];
         cursor = start + length + 1;
 
-        remaining_work = remaining_work
-            .checked_sub(encoded.len())
-            .ok_or(ScanError::Budget)?;
-        let charge = encoded
-            .len()
-            .checked_mul(16)
-            .and_then(|bytes| bytes.checked_add(4 * std::mem::size_of::<F>()))
-            .ok_or(ScanError::Budget)?;
-        remaining_bytes = remaining_bytes
-            .checked_sub(charge)
-            .ok_or(ScanError::Budget)?;
-        let Kinded { kind } =
-            serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?;
+        remaining_work = remaining_work.checked_sub(encoded.len()).ok_or(ScanError::Budget)?;
+        let charge =
+            encoded.len().checked_mul(16).and_then(|bytes| bytes.checked_add(4 * std::mem::size_of::<F>())).ok_or(ScanError::Budget)?;
+        remaining_bytes = remaining_bytes.checked_sub(charge).ok_or(ScanError::Budget)?;
+        let Kinded { kind } = serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?;
         if !KINDS.contains(&kind.as_str()) {
             return Err(ScanError::UnknownKind { kind });
         }
@@ -146,15 +129,11 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
             continue;
         }
 
-        found.push(
-            serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?,
-        );
+        found.push(serde_json::from_slice(encoded).map_err(|source| ScanError::Malformed { source })?);
     }
 
-    settings.preparation_bytes =
-        std::num::NonZeroUsize::new(remaining_bytes).ok_or(ScanError::Budget)?;
-    settings.preparation_work =
-        std::num::NonZeroUsize::new(remaining_work).ok_or(ScanError::Budget)?;
+    settings.preparation_bytes = std::num::NonZeroUsize::new(remaining_bytes).ok_or(ScanError::Budget)?;
+    settings.preparation_work = std::num::NonZeroUsize::new(remaining_work).ok_or(ScanError::Budget)?;
     Ok(found)
 }
 

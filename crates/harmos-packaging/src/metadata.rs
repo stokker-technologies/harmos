@@ -77,25 +77,12 @@ pub(super) struct Inputs {
 
 /* === Implementations === */
 impl Metadata {
-    pub(super) fn read(
-        settings: &BuildSettings,
-        cancellation: &BuildCancellation,
-    ) -> Result<Self, Error> {
+    pub(super) fn read(settings: &BuildSettings, cancellation: &BuildCancellation) -> Result<Self, Error> {
         let manifest = settings.manifest.canonicalize()?;
-        let directory = manifest
-            .parent()
-            .ok_or_else(|| Error::Settings("manifest has no project directory".into()))?;
+        let directory = manifest.parent().ok_or_else(|| Error::Settings("manifest has no project directory".into()))?;
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut command = Command::new(cargo);
-        command
-            .current_dir(directory)
-            .args([
-                "metadata",
-                "--locked",
-                "--format-version=1",
-                "--manifest-path",
-            ])
-            .arg(&manifest);
+        command.current_dir(directory).args(["metadata", "--locked", "--format-version=1", "--manifest-path"]).arg(&manifest);
         if !settings.default_features {
             command.arg("--no-default-features");
         }
@@ -106,62 +93,33 @@ impl Metadata {
         let output = Process::spawn(command, cancellation)?.output()?;
         cancellation.check()?;
         if !output.status.success() {
-            return Err(Error::Cargo(
-                String::from_utf8_lossy(&output.stderr).into_owned(),
-            ));
+            return Err(Error::Cargo(String::from_utf8_lossy(&output.stderr).into_owned()));
         }
         Ok(serde_json::from_slice(&output.stdout)?)
     }
 
-    pub(super) fn select(
-        &self,
-        settings: &BuildSettings,
-    ) -> Result<BTreeMap<String, String>, Error> {
+    pub(super) fn select(&self, settings: &BuildSettings) -> Result<BTreeMap<String, String>, Error> {
         let members: BTreeSet<_> = self.workspace_members.iter().collect();
-        let defaults: BTreeSet<_> = self
-            .resolve
-            .root
-            .iter()
-            .chain(
-                self.workspace_default_members
-                    .iter()
-                    .filter(|_| self.resolve.root.is_none()),
-            )
-            .collect();
+        let defaults: BTreeSet<_> =
+            self.resolve.root.iter().chain(self.workspace_default_members.iter().filter(|_| self.resolve.root.is_none())).collect();
         let selected: BTreeMap<_, _> = self
             .packages
             .iter()
             .filter(|package| {
                 members.contains(&package.id)
-                    && if settings.packages.is_empty() {
-                        defaults.contains(&package.id)
-                    } else {
-                        settings.packages.contains(&package.name)
-                    }
+                    && if settings.packages.is_empty() { defaults.contains(&package.id) } else { settings.packages.contains(&package.name) }
             })
             .map(|package| (package.id.clone(), package.name.clone()))
             .collect();
-        if selected.is_empty()
-            || settings
-                .packages
-                .iter()
-                .any(|name| !selected.values().any(|selected| selected == name))
-        {
-            return Err(Error::Settings(
-                "packages must select workspace members".into(),
-            ));
+        if selected.is_empty() || settings.packages.iter().any(|name| !selected.values().any(|selected| selected == name)) {
+            return Err(Error::Settings("packages must select workspace members".into()));
         }
         Ok(selected)
     }
 
     pub(super) fn inputs(&self, settings: &BuildSettings) -> Result<Inputs, Error> {
         let selected = self.select(settings)?;
-        let graph: BTreeMap<_, _> = self
-            .resolve
-            .nodes
-            .iter()
-            .map(|node| (&node.id, &node.dependencies))
-            .collect();
+        let graph: BTreeMap<_, _> = self.resolve.nodes.iter().map(|node| (&node.id, &node.dependencies)).collect();
         let mut pending: Vec<_> = selected.keys().cloned().collect();
         let mut dependencies = BTreeSet::new();
         while let Some(id) = pending.pop() {
@@ -175,30 +133,17 @@ impl Metadata {
             .packages
             .iter()
             .filter(|package| package.source.is_none() && dependencies.contains(&package.id))
-            .map(|package| {
-                package
-                    .manifest_path
-                    .parent()
-                    .expect("Cargo package manifest has a parent")
-                    .to_owned()
-            })
+            .map(|package| package.manifest_path.parent().expect("Cargo package manifest has a parent").to_owned())
             .collect();
         let mut inputs = Inputs {
             roots,
             files: BTreeSet::new(),
-            excluded: BTreeSet::from([
-                self.target_directory.clone(),
-                self.output_directory(settings)?,
-            ]),
+            excluded: BTreeSet::from([self.target_directory.clone(), self.output_directory(settings)?]),
         };
         inputs.files.insert(self.workspace_root.join("Cargo.toml"));
         inputs.files.insert(self.workspace_root.join("Cargo.lock"));
         let manifest = settings.manifest.canonicalize()?;
-        for parent in manifest
-            .parent()
-            .expect("manifest has a parent")
-            .ancestors()
-        {
+        for parent in manifest.parent().expect("manifest has a parent").ancestors() {
             inputs.files.insert(parent.join(".cargo/config"));
             inputs.files.insert(parent.join(".cargo/config.toml"));
         }
@@ -211,13 +156,7 @@ impl Metadata {
         Ok(settings
             .target_directory
             .as_ref()
-            .map(|path| {
-                if path.is_absolute() {
-                    path.clone()
-                } else {
-                    directory.join(path)
-                }
-            })
+            .map(|path| if path.is_absolute() { path.clone() } else { directory.join(path) })
             .unwrap_or_else(|| self.target_directory.clone()))
     }
 }
@@ -231,16 +170,8 @@ impl Inputs {
             .clone()
             .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from))
             .unwrap_or_else(|| directory.join("target"));
-        let target = if target.is_absolute() {
-            target
-        } else {
-            directory.join(target)
-        };
-        Ok(Self {
-            roots: BTreeSet::from([directory]),
-            files: BTreeSet::from([manifest]),
-            excluded: BTreeSet::from([target]),
-        })
+        let target = if target.is_absolute() { target } else { directory.join(target) };
+        Ok(Self { roots: BTreeSet::from([directory]), files: BTreeSet::from([manifest]), excluded: BTreeSet::from([target]) })
     }
 
     pub(super) fn relevant(&self, path: &Path) -> bool {
@@ -253,10 +184,7 @@ impl Inputs {
         self.roots.iter().any(|root| {
             path.strip_prefix(root).is_ok_and(|relative| {
                 !relative.components().any(|component| {
-                    matches!(
-                        component.as_os_str().to_str(),
-                        Some("target" | "dist" | ".git" | ".stkr" | ".venv" | "node_modules")
-                    )
+                    matches!(component.as_os_str().to_str(), Some("target" | "dist" | ".git" | ".stkr" | ".venv" | "node_modules"))
                 })
             })
         })

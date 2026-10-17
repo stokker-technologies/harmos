@@ -98,16 +98,8 @@ struct Watching<A: Application, X> {
 
 /* === Enums === */
 pub(crate) enum ReadRequest<A: Application> {
-    Entries {
-        after: Position,
-        through: Position,
-        reply: oneshot::Sender<Result<Vec<Entry<Recorded<A>>>, Error>>,
-    },
-    State {
-        origin: Origin<A::State>,
-        at: Position,
-        reply: oneshot::Sender<Result<At<A::State>, Error>>,
-    },
+    Entries { after: Position, through: Position, reply: oneshot::Sender<Result<Vec<Entry<Recorded<A>>>, Error>> },
+    State { origin: Origin<A::State>, at: Position, reply: oneshot::Sender<Result<At<A::State>, Error>> },
 }
 
 /* === Traits === */
@@ -118,19 +110,14 @@ pub(crate) trait ReplayPayload<A: Application>: Sized {
 
     fn forward(&self) -> Option<Arc<A::Transaction>>;
     fn restore(
-        envelope: Envelope<Self>,
-        catalog: Option<&Dispatch<A, Self>>,
-        state: &mut A::State,
+        envelope: Envelope<Self>, catalog: Option<&Dispatch<A, Self>>, state: &mut A::State,
     ) -> Result<Option<Recorded<A>>, DecodeError>;
 }
 
 /* === Implementations === */
 impl<S> Origin<S> {
     pub fn initial(value: S) -> Self {
-        Self {
-            value,
-            position: Position::ORIGIN,
-        }
+        Self { value, position: Position::ORIGIN }
     }
 
     pub fn at(value: S, position: Position) -> Self {
@@ -157,44 +144,23 @@ impl<A: Application> Reads<A> {
         (Self { sender }, receiver)
     }
 
-    pub(crate) async fn entries(
-        &self,
-        after: Position,
-        through: Position,
-    ) -> Result<Vec<Entry<Recorded<A>>>, Error> {
+    pub(crate) async fn entries(&self, after: Position, through: Position) -> Result<Vec<Entry<Recorded<A>>>, Error> {
         let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(ReadRequest::Entries {
-                after,
-                through,
-                reply,
-            })
-            .await
-            .map_err(|_| Error::BeyondTail)?;
+        self.sender.send(ReadRequest::Entries { after, through, reply }).await.map_err(|_| Error::BeyondTail)?;
 
         answer.await.map_err(|_| Error::Unavailable)?
     }
 
-    pub(crate) async fn state(
-        &self,
-        origin: Origin<A::State>,
-        at: Position,
-    ) -> Result<At<A::State>, Error> {
+    pub(crate) async fn state(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {
         if origin.position > at {
             return Err(Error::OriginAhead);
         }
         if origin.position == at {
-            return Ok(At {
-                value: origin.value,
-                position: at,
-            });
+            return Ok(At { value: origin.value, position: at });
         }
 
         let (reply, answer) = oneshot::channel();
-        self.sender
-            .send(ReadRequest::State { origin, at, reply })
-            .await
-            .map_err(|_| Error::BeyondTail)?;
+        self.sender.send(ReadRequest::State { origin, at, reply }).await.map_err(|_| Error::BeyondTail)?;
 
         answer.await.map_err(|_| Error::Unavailable)?
     }
@@ -202,9 +168,7 @@ impl<A: Application> Reads<A> {
 
 impl<A: Application> Clone for Reads<A> {
     fn clone(&self) -> Self {
-        Self {
-            sender: self.sender.clone(),
-        }
+        Self { sender: self.sender.clone() }
     }
 }
 
@@ -214,23 +178,17 @@ impl<A: Application> Focus<A> {
     }
 
     pub fn matching(predicate: impl Fn(&A::Transaction) -> bool + Send + Sync + 'static) -> Self {
-        Self {
-            predicate: Some(Arc::new(predicate)),
-        }
+        Self { predicate: Some(Arc::new(predicate)) }
     }
 
     fn admits(&self, transaction: &A::Transaction) -> bool {
-        self.predicate
-            .as_ref()
-            .is_none_or(|predicate| predicate(transaction))
+        self.predicate.as_ref().is_none_or(|predicate| predicate(transaction))
     }
 }
 
 impl<A: Application> Clone for Focus<A> {
     fn clone(&self) -> Self {
-        Self {
-            predicate: self.predicate.clone(),
-        }
+        Self { predicate: self.predicate.clone() }
     }
 }
 
@@ -245,11 +203,7 @@ impl<A: Application> fmt::Debug for Focus<A> {
 
 impl<A: Application> Undos<A> {
     pub(crate) fn record(
-        &mut self,
-        position: Position,
-        principal: Option<&PrincipalId>,
-        link: Option<Link>,
-        forward: &Arc<A::Transaction>,
+        &mut self, position: Position, principal: Option<&PrincipalId>, link: Option<Link>, forward: &Arc<A::Transaction>,
         inverse: Option<A::Transaction>,
     ) {
         match link {
@@ -276,26 +230,16 @@ impl<A: Application> Undos<A> {
                 // restore, so redoing onto it would be a lie. The truncation is
                 // personal — undo is per principal, and another principal's
                 // redo is still guarded by the inverse's re-check on commit.
-                self.entries
-                    .retain(|_, entry| entry.principal != *principal || entry.undone.is_none());
+                self.entries.retain(|_, entry| entry.principal != *principal || entry.undone.is_none());
                 self.entries.insert(
                     position,
-                    Undoable {
-                        principal: principal.clone(),
-                        forward: Arc::clone(forward),
-                        inverse: inverse.map(Arc::new),
-                        undone: None,
-                    },
+                    Undoable { principal: principal.clone(), forward: Arc::clone(forward), inverse: inverse.map(Arc::new), undone: None },
                 );
             }
         }
     }
 
-    pub(crate) fn undoable(
-        &self,
-        principal: &PrincipalId,
-        focus: &Focus<A>,
-    ) -> Option<(Position, Arc<A::Transaction>)> {
+    pub(crate) fn undoable(&self, principal: &PrincipalId, focus: &Focus<A>) -> Option<(Position, Arc<A::Transaction>)> {
         for (position, entry) in self.entries.iter().rev() {
             if entry.principal != *principal {
                 continue;
@@ -309,83 +253,46 @@ impl<A: Application> Undos<A> {
         None
     }
 
-    pub(crate) fn redoable(
-        &self,
-        principal: &PrincipalId,
-        focus: &Focus<A>,
-    ) -> Option<(Position, Arc<A::Transaction>)> {
+    pub(crate) fn redoable(&self, principal: &PrincipalId, focus: &Focus<A>) -> Option<(Position, Arc<A::Transaction>)> {
         self.entries
             .iter()
             .filter(|(_, entry)| entry.principal == *principal && focus.admits(&entry.forward))
-            .filter_map(|(position, entry)| {
-                entry
-                    .undone
-                    .map(|at| (at, *position, Arc::clone(&entry.forward)))
-            })
+            .filter_map(|(position, entry)| entry.undone.map(|at| (at, *position, Arc::clone(&entry.forward))))
             .max_by_key(|(at, _position, _forward)| *at)
             .map(|(_at, position, forward)| (position, forward))
     }
 
     pub(crate) fn reversals(&self, principal: &PrincipalId, focus: &Focus<A>) -> Reversals {
-        Reversals {
-            undoable: self.undoable(principal, focus).is_some(),
-            redoable: self.redoable(principal, focus).is_some(),
-        }
+        Reversals { undoable: self.undoable(principal, focus).is_some(), redoable: self.redoable(principal, focus).is_some() }
     }
 }
 
 impl<A: Application> Default for Undos<A> {
     fn default() -> Self {
-        Self {
-            entries: BTreeMap::new(),
-        }
+        Self { entries: BTreeMap::new() }
     }
 }
 
 impl<A: Application> Tail<A> {
     pub(crate) fn new(origin: Position, capacity: usize) -> Self {
-        Self {
-            entries: VecDeque::new(),
-            capacity: capacity.max(1),
-            floor: origin,
-        }
+        Self { entries: VecDeque::new(), capacity: capacity.max(1), floor: origin }
     }
 
-    pub(crate) fn recovered(
-        frontier: Position,
-        capacity: usize,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-    ) -> Self {
+    pub(crate) fn recovered(frontier: Position, capacity: usize, entries: Vec<Arc<Entry<Recorded<A>>>>) -> Self {
         if entries.is_empty() {
             return Self::new(frontier, capacity);
         }
-        let floor = entries.first().map_or(frontier, |entry| {
-            Position(entry.position.0.saturating_sub(1))
-        });
+        let floor = entries.first().map_or(frontier, |entry| Position(entry.position.0.saturating_sub(1)));
 
-        Self {
-            entries: entries.into(),
-            capacity: capacity.max(1),
-            floor,
-        }
+        Self { entries: entries.into(), capacity: capacity.max(1), floor }
     }
 
-    pub(crate) fn push_group(
-        &mut self,
-        entries: Vec<Entry<Recorded<A>>>,
-    ) -> Vec<Arc<Entry<Recorded<A>>>> {
+    pub(crate) fn push_group(&mut self, entries: Vec<Entry<Recorded<A>>>) -> Vec<Arc<Entry<Recorded<A>>>> {
         while self.entries.len() + entries.len() > self.capacity && !self.entries.is_empty() {
             let evicted = self.entries.pop_front().expect("nonempty tail");
-            let frontier = evicted
-                .metadata
-                .commit
-                .map_or(evicted.position, |(_, end)| end);
+            let frontier = evicted.metadata.commit.map_or(evicted.position, |(_, end)| end);
             self.floor = frontier;
-            while self
-                .entries
-                .front()
-                .is_some_and(|entry| entry.position <= frontier)
-            {
+            while self.entries.front().is_some_and(|entry| entry.position <= frontier) {
                 self.entries.pop_front();
             }
         }
@@ -395,12 +302,7 @@ impl<A: Application> Tail<A> {
     }
 
     pub(crate) fn splits_commit(&self, position: Position) -> bool {
-        self.entries.iter().any(|entry| {
-            entry
-                .metadata
-                .commit
-                .is_some_and(|(first, end)| first <= position && position < end)
-        })
+        self.entries.iter().any(|entry| entry.metadata.commit.is_some_and(|(first, end)| first <= position && position < end))
     }
 
     pub(crate) fn since(&self, after: Position) -> Result<Vec<Arc<Entry<Recorded<A>>>>, Error> {
@@ -408,26 +310,14 @@ impl<A: Application> Tail<A> {
             return Err(Error::BeyondTail);
         }
 
-        Ok(self
-            .entries
-            .iter()
-            .filter(|entry| entry.position > after)
-            .map(Arc::clone)
-            .collect())
+        Ok(self.entries.iter().filter(|entry| entry.position > after).map(Arc::clone).collect())
     }
 
-    pub(crate) fn scan<X: Clone + 'static>(
-        &self,
-        after: Position,
-    ) -> Result<(Vec<Entry<X>>, Position), Error> {
+    pub(crate) fn scan<X: Clone + 'static>(&self, after: Position) -> Result<(Vec<Entry<X>>, Position), Error> {
         self.scan_through(after, Position(u64::MAX))
     }
 
-    pub(crate) fn scan_through<X: Clone + 'static>(
-        &self,
-        after: Position,
-        through: Position,
-    ) -> Result<(Vec<Entry<X>>, Position), Error> {
+    pub(crate) fn scan_through<X: Clone + 'static>(&self, after: Position, through: Position) -> Result<(Vec<Entry<X>>, Position), Error> {
         let mut frontier = after;
         let mut found = Vec::new();
         loop {
@@ -438,12 +328,7 @@ impl<A: Application> Tail<A> {
             frontier = page.reaches;
             for entry in page.entries {
                 if let Some(value) = entry.value.select::<X>() {
-                    found.push(Entry {
-                        prepared: None,
-                        position: entry.position,
-                        metadata: entry.metadata.clone(),
-                        value,
-                    });
+                    found.push(Entry { prepared: None, position: entry.position, metadata: entry.metadata.clone(), value });
                 }
             }
         }
@@ -451,18 +336,11 @@ impl<A: Application> Tail<A> {
         Ok((found, frontier))
     }
 
-    pub(crate) fn shared_page(
-        &self,
-        after: Position,
-        through: Position,
-        max_rows: NonZeroUsize,
-    ) -> Result<SharedPage<A>, Error> {
+    pub(crate) fn shared_page(&self, after: Position, through: Position, max_rows: NonZeroUsize) -> Result<SharedPage<A>, Error> {
         if after < self.floor {
             return Err(Error::BeyondTail);
         }
-        let start = self
-            .entries
-            .partition_point(|entry| entry.position <= after);
+        let start = self.entries.partition_point(|entry| entry.position <= after);
         let count = max_rows.get().min(self.entries.len() - start);
         let mut entries = Vec::with_capacity(count);
         let mut reaches = after;
@@ -534,11 +412,7 @@ where
 
 /* === Public Functions === */
 pub(crate) fn replay<A, W>(
-    catalog: Option<&Dispatch<A, W>>,
-    recorded: Vec<Envelope<W>>,
-    state: &mut At<A::State>,
-    undos: &mut Undos<A>,
-    inverses: Inverting<A>,
+    catalog: Option<&Dispatch<A, W>>, recorded: Vec<Envelope<W>>, state: &mut At<A::State>, undos: &mut Undos<A>, inverses: Inverting<A>,
     tail: usize,
 ) -> Result<Vec<Arc<Entry<Recorded<A>>>>, DecodeError>
 where
@@ -554,9 +428,7 @@ where
         let link = metadata.link;
         let principal = metadata.principal.clone();
         let forward = envelope.payload.forward();
-        let inverse = forward
-            .as_ref()
-            .and_then(|change| inverses(change, &state.value));
+        let inverse = forward.as_ref().and_then(|change| inverses(change, &state.value));
         let recovered = W::restore(envelope, catalog, &mut state.value)?;
 
         if let Some(forward) = &forward {
@@ -567,28 +439,13 @@ where
         {
             // Keep a complete newest group, even when it exceeds the target window.
             let first = metadata.commit.map_or(position, |(first, _)| first);
-            while redelivered.len() >= tail
-                && redelivered
-                    .front()
-                    .is_some_and(|entry: &Arc<Entry<Recorded<A>>>| entry.position < first)
-            {
-                let end = redelivered
-                    .front()
-                    .map(|entry| entry.metadata.commit.map_or(entry.position, |(_, end)| end))
-                    .expect("nonempty");
-                while redelivered
-                    .front()
-                    .is_some_and(|entry| entry.position <= end)
-                {
+            while redelivered.len() >= tail && redelivered.front().is_some_and(|entry: &Arc<Entry<Recorded<A>>>| entry.position < first) {
+                let end = redelivered.front().map(|entry| entry.metadata.commit.map_or(entry.position, |(_, end)| end)).expect("nonempty");
+                while redelivered.front().is_some_and(|entry| entry.position <= end) {
                     redelivered.pop_front();
                 }
             }
-            redelivered.push_back(Arc::new(Entry {
-                prepared,
-                position,
-                metadata,
-                value,
-            }));
+            redelivered.push_back(Arc::new(Entry { prepared, position, metadata, value }));
         }
         state.position = position;
     }
@@ -596,26 +453,14 @@ where
     Ok(redelivered.into())
 }
 
-pub(crate) fn watching<A, X>(
-    tracked: Arc<TrackedState<A>>,
-    after: Position,
-) -> impl Stream<Item = Result<Entry<X>, Error>>
+pub(crate) fn watching<A, X>(tracked: Arc<TrackedState<A>>, after: Position) -> impl Stream<Item = Result<Entry<X>, Error>>
 where
     A: Application,
     X: Clone + Send + 'static,
 {
     let doorbell = tracked.applied.subscribe();
 
-    Watching {
-        parts: Some(Parts {
-            tracked,
-            frontier: after,
-            doorbell,
-        }),
-        step: None,
-        pending: VecDeque::new(),
-        done: false,
-    }
+    Watching { parts: Some(Parts { tracked, frontier: after, doorbell }), step: None, pending: VecDeque::new(), done: false }
 }
 
 /* === Private Functions === */

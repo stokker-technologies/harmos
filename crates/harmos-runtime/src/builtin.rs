@@ -25,9 +25,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::MemorySize;
-use crate::operations::{
-    Context, Lane, Operation, OperationInstanceId, OperationManager, Response, StreamOutput,
-};
+use crate::operations::{Context, Lane, Operation, OperationInstanceId, OperationManager, Response, StreamOutput};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -58,11 +56,7 @@ pub struct Watching;
 
 /* === Implementations === */
 impl Catalog {
-    pub fn register(
-        operations: &OperationManager,
-        owner: impl Into<String>,
-        lane: impl Lane + Copy,
-    ) -> Result<()> {
+    pub fn register(operations: &OperationManager, owner: impl Into<String>, lane: impl Lane + Copy) -> Result<()> {
         let owner = owner.into();
         operations.register_wire_operation::<Reporting>(owner.clone(), lane, Arc::new(()))?;
         operations.register_wire_operation::<Cancelling>(owner.clone(), lane, Arc::new(()))?;
@@ -82,10 +76,7 @@ impl Operation for Reporting {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Status,
-        _: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Status, _: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
@@ -106,10 +97,7 @@ impl Operation for Cancelling {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Cancel,
-        _: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Cancel, _: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
@@ -131,10 +119,7 @@ impl Operation for Watching {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Watch,
-        output: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Watch, output: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
@@ -144,9 +129,7 @@ impl Operation for Watching {
         loop {
             let status = changes.borrow_and_update().portable();
             let state = InstanceState::from(status);
-            output
-                .send_with(state.memory_size(), || Ok(state.clone()))
-                .await?;
+            output.send_with(state.memory_size(), || Ok(state.clone())).await?;
             if status.is_settled() {
                 return Ok(state.into());
             }
@@ -161,10 +144,7 @@ impl Operation for Watching {
 
 /* === Private Functions === */
 fn unknown(id: OperationInstanceId) -> Error {
-    Error::NotRegistered {
-        domain: "operation instance",
-        name: id.to_string(),
-    }
+    Error::NotRegistered { domain: "operation instance", name: id.to_string() }
 }
 
 /* === Tests === */

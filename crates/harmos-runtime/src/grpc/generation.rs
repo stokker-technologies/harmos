@@ -55,29 +55,18 @@ pub enum GenerateError {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn generate_server(
-    package: &str,
-    service: &str,
-    harmos_path: &str,
-    methods: &[Method<'_>],
-) -> Result<GeneratedService, GenerateError> {
+pub fn generate_server(package: &str, service: &str, harmos_path: &str, methods: &[Method<'_>]) -> Result<GeneratedService, GenerateError> {
     path(harmos_path)?;
     for method in methods {
         path(method.declaration)?;
     }
-    let declarations: Vec<_> = methods
-        .iter()
-        .map(|method| (method.name, method.contract))
-        .collect();
+    let declarations: Vec<_> = methods.iter().map(|method| (method.name, method.contract)).collect();
     let descriptor = descriptor(package, service, &declarations)?;
     let name = format!("{}Server", service.to_upper_camel_case());
     let identity = format!("{package}.{service}");
     let mut routes = String::new();
     for method in methods {
-        let handler = match (
-            method.contract.input().is_some(),
-            method.contract.output().is_some(),
-        ) {
+        let handler = match (method.contract.input().is_some(), method.contract.output().is_some()) {
             (false, false) => "unary",
             (true, false) => "upload",
             (false, true) => "download",
@@ -138,16 +127,10 @@ fn path(value: &str) -> Result<(), GenerateError> {
             let segment = segment.strip_prefix("r#").unwrap_or(segment);
             let mut chars = segment.chars();
             segment != "_"
-                && chars
-                    .next()
-                    .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+                && chars.next().is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
                 && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
         });
-    if valid {
-        Ok(())
-    } else {
-        Err(GenerateError::Path(value.into()))
-    }
+    if valid { Ok(()) } else { Err(GenerateError::Path(value.into())) }
 }
 
 /* === Tests === */

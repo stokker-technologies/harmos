@@ -84,17 +84,10 @@ macro_rules! postcard_field {
         fn postcard_size(value: &Self::Native) -> usize {
             crate::__private::PostcardValue::size(value)
         }
-        fn postcard_memory(
-            input: &mut crate::__private::PostcardReader<'_>,
-        ) -> std::result::Result<usize, crate::MessageError> {
-            Ok(
-                <Self::Native as crate::__private::PostcardValue>::memory(input)?
-                    .saturating_sub(std::mem::size_of::<Self::Native>()),
-            )
+        fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, crate::MessageError> {
+            Ok(<Self::Native as crate::__private::PostcardValue>::memory(input)?.saturating_sub(std::mem::size_of::<Self::Native>()))
         }
-        fn postcard_read(
-            input: &mut crate::__private::PostcardReader<'_>,
-        ) -> std::result::Result<Self::Native, crate::MessageError> {
+        fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<Self::Native, crate::MessageError> {
             <Self::Native as crate::__private::PostcardValue>::read(input)
         }
     };
@@ -249,11 +242,7 @@ pub trait Value: 'static {
 
 /* === Implementations === */
 impl<T: Native> Value for Repeated<T> {
-    const NAME: &'static str = declaration::Name::new(
-        concat!(module_path!(), "::", stringify!(Repeated)),
-        &[T::NAME],
-    )
-    .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Repeated)), &[T::NAME]).as_str();
     postcard_field!();
     type Native = Vec<T>;
     const KIND: Kind = Nested::<T>::KIND;
@@ -261,24 +250,14 @@ impl<T: Native> Value for Repeated<T> {
 }
 
 impl<T: Native> Value for Nested<T> {
-    const NAME: &'static str = declaration::Name::new(
-        concat!(module_path!(), "::", stringify!(Nested)),
-        &[T::NAME],
-    )
-    .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Nested)), &[T::NAME]).as_str();
     postcard_field!();
     type Native = T;
-    const KIND: Kind = Kind::Message {
-        definition: T::DEFINITION,
-    };
+    const KIND: Kind = Kind::Message { definition: T::DEFINITION };
 }
 
 impl<T: Value> Value for Optional<T> {
-    const NAME: &'static str = declaration::Name::new(
-        concat!(module_path!(), "::", stringify!(Optional)),
-        &[T::NAME],
-    )
-    .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Optional)), &[T::NAME]).as_str();
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         PostcardValue::write(&value.is_some(), bytes);
         if let Some(value) = value {
@@ -291,23 +270,11 @@ impl<T: Value> Value for Optional<T> {
     }
 
     fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize> {
-        input.nested(|input| {
-            if input.value::<bool>()? {
-                T::postcard_memory(input)
-            } else {
-                Ok(0)
-            }
-        })
+        input.nested(|input| if input.value::<bool>()? { T::postcard_memory(input) } else { Ok(0) })
     }
 
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<Self::Native> {
-        input.nested(|input| {
-            if input.value::<bool>()? {
-                T::postcard_read(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        })
+        input.nested(|input| if input.value::<bool>()? { T::postcard_read(input).map(Some) } else { Ok(None) })
     }
 
     type Native = Option<T::Native>;
@@ -385,9 +352,7 @@ impl Value for Text {
 }
 
 impl<E: Coded> Value for Code<E> {
-    const NAME: &'static str =
-        declaration::Name::new(concat!(module_path!(), "::", stringify!(Code)), &[E::NAME])
-            .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Code)), &[E::NAME]).as_str();
     type Native = E;
     const KIND: Kind = Kind::U32;
     fn postcard_write(value: &E, bytes: &mut Vec<u8>) {
@@ -454,16 +419,15 @@ macro_rules! wide {
                     cardinality: Cardinality::Required,
                 },
             ];
-            const MARKER: &'static [u8] = &declaration::encode::<
-                { declaration::encoded_len(<Self as Described>::NAME, Self::FIELDS) },
-            >(<Self as Described>::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] = &declaration::encode::<{ declaration::encoded_len(<Self as Described>::NAME, Self::FIELDS) }>(
+                <Self as Described>::NAME,
+                Self::FIELDS,
+            );
         }
         impl Value for $adapter {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!($adapter));
             type Native = $native;
-            const KIND: Kind = Kind::Message {
-                definition: <Self as Described>::DEFINITION,
-            };
+            const KIND: Kind = Kind::Message { definition: <Self as Described>::DEFINITION };
             fn postcard_write(value: &$native, bytes: &mut Vec<u8>) {
                 let (high, low): ($high, u64) = ($split)(*value);
                 PostcardValue::write(&high, bytes);
@@ -486,14 +450,9 @@ macro_rules! wide {
     };
 }
 
-wide!(
-    Wide,
-    u128,
-    u64,
-    Unsigned,
-    |value: u128| ((value >> 64) as u64, value as u64),
-    |high: u64, low: u64| Ok::<_, MessageError>((u128::from(high) << 64) | u128::from(low))
-);
+wide!(Wide, u128, u64, Unsigned, |value: u128| ((value >> 64) as u64, value as u64), |high: u64, low: u64| Ok::<_, MessageError>(
+    (u128::from(high) << 64) | u128::from(low)
+));
 wide!(
     WideNonZero,
     std::num::NonZeroU128,
@@ -503,40 +462,23 @@ wide!(
     |high: u64, low: u64| std::num::NonZeroU128::new((u128::from(high) << 64) | u128::from(low))
         .ok_or_else(|| MessageError::borrowed("wide value must be nonzero"))
 );
-wide!(
-    WideSigned,
-    i128,
-    i64,
-    Signed,
-    |value: i128| ((value >> 64) as i64, value as u64),
-    |high: i64, low: u64| Ok::<_, MessageError>((i128::from(high) << 64) | i128::from(low))
-);
+wide!(WideSigned, i128, i64, Signed, |value: i128| ((value >> 64) as i64, value as u64), |high: i64, low: u64| Ok::<_, MessageError>(
+    (i128::from(high) << 64) | i128::from(low)
+));
 
 // One Message Holding A Single Field At Tag 1; Absence Reads As Empty.
 impl<A: Value> Described for Wrap<A> {
     const NAME: &'static str = <Self as Value>::NAME;
-    const FIELDS: &'static [Field] = &[crate::schema::declaration::Field {
-        name: Cow::Borrowed("value"),
-        tag: 1,
-        kind: A::KIND,
-        cardinality: A::CARDINALITY,
-    }];
-    const MARKER: &'static [u8] =
-        declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
-            .split_at(declaration::encoded_len(
-                <Self as Described>::NAME,
-                Self::FIELDS,
-            ))
-            .0;
+    const FIELDS: &'static [Field] =
+        &[crate::schema::declaration::Field { name: Cow::Borrowed("value"), tag: 1, kind: A::KIND, cardinality: A::CARDINALITY }];
+    const MARKER: &'static [u8] = declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
+        .split_at(declaration::encoded_len(<Self as Described>::NAME, Self::FIELDS))
+        .0;
 }
 impl<A: Value> Value for Wrap<A> {
-    const NAME: &'static str =
-        declaration::Name::new(concat!(module_path!(), "::", stringify!(Wrap)), &[A::NAME])
-            .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Wrap)), &[A::NAME]).as_str();
     type Native = A::Native;
-    const KIND: Kind = Kind::Message {
-        definition: <Self as Described>::DEFINITION,
-    };
+    const KIND: Kind = Kind::Message { definition: <Self as Described>::DEFINITION };
     fn postcard_write(value: &A::Native, bytes: &mut Vec<u8>) {
         A::postcard_write(value, bytes);
     }
@@ -556,9 +498,7 @@ impl<A: Value> Value for Wrap<A> {
 
 // Repeated Messages, Each Holding One Element At Tag 1.
 impl<A: Value> Value for Many<A> {
-    const NAME: &'static str =
-        declaration::Name::new(concat!(module_path!(), "::", stringify!(Many)), &[A::NAME])
-            .as_str();
+    const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Many)), &[A::NAME]).as_str();
     type Native = Vec<A::Native>;
     const KIND: Kind = Wrap::<A>::KIND;
     const CARDINALITY: Cardinality = Cardinality::Repeated;
@@ -570,17 +510,13 @@ impl<A: Value> Value for Many<A> {
     }
 
     fn postcard_size(values: &Vec<A::Native>) -> usize {
-        values.iter().fold(
-            PostcardValue::size(&(values.len() as u64)),
-            |size, value| size.saturating_add(A::postcard_size(value)),
-        )
+        values.iter().fold(PostcardValue::size(&(values.len() as u64)), |size, value| size.saturating_add(A::postcard_size(value)))
     }
 
     fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize> {
         let count = host_width(input.value::<u64>()?)?;
         input.claim(count)?;
-        let mut memory =
-            crate::__private::decoding_multiply(count, std::mem::size_of::<A::Native>())?;
+        let mut memory = crate::__private::decoding_multiply(count, std::mem::size_of::<A::Native>())?;
         for _ in 0..count {
             memory = crate::__private::decoding_add(memory, A::postcard_memory(input)?)?;
         }

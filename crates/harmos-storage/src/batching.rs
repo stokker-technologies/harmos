@@ -17,9 +17,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::manager::{
-    Domain, ENTRY_OVERHEAD, Inner, Operation, Pending, Target, recovery_resident_bytes,
-};
+use super::manager::{Domain, ENTRY_OVERHEAD, Inner, Operation, Pending, Target, recovery_resident_bytes};
 use super::{StorageBatch, StorageCursor, StoragePart};
 use crate::storage::capacity::{Pool, Reservation};
 use crate::{Error, Result};
@@ -57,10 +55,7 @@ enum Kind {
 /* === Implementations === */
 impl Progress {
     pub(super) fn include(&mut self, entry: &Pending) {
-        let target = Target {
-            index: entry.index,
-            sequence: entry.operation.sequence(),
-        };
+        let target = Target { index: entry.index, sequence: entry.operation.sequence() };
         match entry.operation.domain() {
             Domain::Data => self.data = Some(target),
             Domain::Recovery => self.recovery = Some(target),
@@ -73,11 +68,7 @@ impl Batch {
         let kind = kind(&first.operation)?;
         let mut state = inner.state.lock().unwrap();
         // Ready State Writes May Bypass An Earlier Unrelated Primary Barrier.
-        let boundary = if kind == Kind::Recovery {
-            state.recovery_request?.index
-        } else {
-            state.write_boundary()?
-        };
+        let boundary = if kind == Kind::Recovery { state.recovery_request?.index } else { state.write_boundary()? };
         let available = inner
             .settings
             .request
@@ -90,9 +81,7 @@ impl Batch {
         let mut operations = 0;
         let mut encoded_bytes = 0usize;
         for entry in state.queue.iter().filter(|entry| {
-            entry.index >= first.index
-                && state.needs_write(entry)
-                && (kind == Kind::Recovery || entry.operation.domain() == Domain::Data)
+            entry.index >= first.index && state.needs_write(entry) && (kind == Kind::Recovery || entry.operation.domain() == Domain::Data)
         }) {
             if entry.index > boundary {
                 break;
@@ -101,23 +90,17 @@ impl Batch {
                 break;
             }
             if kind == Kind::Recovery
-                && entry
-                    .operation
-                    .required_data()
-                    .is_some_and(|required| !state.status.saved.covers(required).unwrap_or(false))
+                && entry.operation.required_data().is_some_and(|required| !state.status.saved.covers(required).unwrap_or(false))
             {
                 break;
             }
             let (length, charge) = charge(&entry.operation)?;
-            let next_encoded =
-                encoded_bytes.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
+            let next_encoded = encoded_bytes.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
             if next_encoded > inner.settings.max_batch_bytes().get() {
                 break;
             }
             let next_count = count.checked_add(length)?;
-            let next_bytes = bytes
-                .checked_add(charge)?
-                .checked_add(std::mem::size_of::<Arc<Pending>>())?;
+            let next_bytes = bytes.checked_add(charge)?.checked_add(std::mem::size_of::<Arc<Pending>>())?;
             if next_count > super::config::WRITE_BATCH_ENTRIES.get() || next_bytes > available {
                 break;
             }
@@ -148,10 +131,7 @@ impl Batch {
                 .cloned(),
         );
         drop(state);
-        Some(Self {
-            entries,
-            _reservation: Reservation::charged(inner, Pool::Write, bytes),
-        })
+        Some(Self { entries, _reservation: Reservation::charged(inner, Pool::Write, bytes) })
     }
 
     pub(super) async fn write(&self, inner: &Inner) -> Result<Progress> {
@@ -160,9 +140,7 @@ impl Batch {
         let mut progress = Progress::default();
         for entry in &self.entries {
             match &entry.operation {
-                Operation::ObjectGroup {
-                    schemas, objects, ..
-                } => {
+                Operation::ObjectGroup { schemas, objects, .. } => {
                     for (schema, object) in schemas.iter().zip(objects) {
                         parts.push(StoragePart::Schemas(std::slice::from_ref(schema)));
                         parts.push(StoragePart::Objects(std::slice::from_ref(object)));
@@ -192,9 +170,7 @@ impl Batch {
                     });
                 }
             }
-            inner
-                .bounded(inner.recovery.write_entries(&recovery))
-                .await?;
+            inner.bounded(inner.recovery.write_entries(&recovery)).await?;
         }
         Ok(progress)
     }
@@ -240,12 +216,9 @@ fn compatible(entry: &Pending, first: Kind) -> bool {
 
 fn charge(operation: &Operation) -> Option<(usize, usize)> {
     let (count, bytes) = match operation {
-        Operation::ObjectGroup { objects, .. } => (
-            objects.len().checked_mul(2)?,
-            objects
-                .len()
-                .checked_mul(std::mem::size_of::<StoragePart<'_>>() * 8)?,
-        ),
+        Operation::ObjectGroup { objects, .. } => {
+            (objects.len().checked_mul(2)?, objects.len().checked_mul(std::mem::size_of::<StoragePart<'_>>() * 8)?)
+        }
         // Data parts borrow admitted owners. Only span/vector metadata coexists;
         // neither payload copies nor a temporary JSON encoding are retained.
         Operation::Records(values) => (values.len(), std::mem::size_of::<StoragePart<'_>>() * 4),
@@ -256,14 +229,7 @@ fn charge(operation: &Operation) -> Option<(usize, usize)> {
             values.len(),
             values.iter().try_fold(0usize, |bytes, value| {
                 bytes
-                    .checked_add(
-                        recovery_resident_bytes(
-                            value.payload.len(),
-                            &value.position.history,
-                            &value.required_data.history,
-                        )
-                        .ok()?,
-                    )?
+                    .checked_add(recovery_resident_bytes(value.payload.len(), &value.position.history, &value.required_data.history).ok()?)?
                     .checked_add(std::mem::size_of::<super::state::RecoveryEntry>() * 3)
             })?,
         ),

@@ -31,8 +31,8 @@ use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{
-    CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response,
-    WireChildAction, WireChildCall, WireChildControl,
+    CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction, WireChildCall,
+    WireChildControl,
 };
 
 /* === Constants === */
@@ -57,22 +57,16 @@ pub struct OperationInstance<O> {
 /* === Implementations === */
 impl Context {
     async fn child(&self, payload: Vec<u8>) -> Result<Vec<u8>, OperationRefusal> {
-        super::plugin::__bindings::harmos::guest::operation_context::child(payload)
-            .await
-            .map_err(|error| {
-                let code = error.code.parse().unwrap_or(UNKNOWN);
-                match harmos_domain::Failure::decode(&error.failure) {
-                    Ok(failure) => OperationRefusal::failed(code, failure),
-                    Err(source) => OperationRefusal::new(code, source),
-                }
-            })
+        super::plugin::__bindings::harmos::guest::operation_context::child(payload).await.map_err(|error| {
+            let code = error.code.parse().unwrap_or(UNKNOWN);
+            match harmos_domain::Failure::decode(&error.failure) {
+                Ok(failure) => OperationRefusal::failed(code, failure),
+                Err(source) => OperationRefusal::new(code, source),
+            }
+        })
     }
 
-    async fn child_call<O: OperationDeclaration>(
-        &self,
-        request: &O,
-        submit: bool,
-    ) -> Result<Vec<u8>, OperationRefusal> {
+    async fn child_call<O: OperationDeclaration>(&self, request: &O, submit: bool) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
         let call = WireChildCall {
             context,
@@ -87,22 +81,12 @@ impl Context {
     }
 
     fn control(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, OperationRefusal> {
-        let context = self
-            .context
-            .ok_or_else(|| OperationRefusal::new(UNKNOWN, "no guest attempt context"))?;
-        let control = WireChildControl {
-            context,
-            instance: instance.value(),
-            action,
-        };
+        let context = self.context.ok_or_else(|| OperationRefusal::new(UNKNOWN, "no guest attempt context"))?;
+        let control = WireChildControl { context, instance: instance.value(), action };
         control.encode().map_err(OperationRefusal::of)
     }
 
-    async fn child_control(
-        &self,
-        instance: Id,
-        action: WireChildAction,
-    ) -> Result<Vec<u8>, OperationRefusal> {
+    async fn child_control(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, OperationRefusal> {
         let payload = self.control(instance, action)?;
         self.child(payload).await
     }
@@ -125,26 +109,18 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     }
 
     pub async fn status(&self) -> Result<Status, OperationRefusal> {
-        let bytes = self
-            .host
-            .child_control(self.id, WireChildAction::Status)
-            .await?;
+        let bytes = self.host.child_control(self.id, WireChildAction::Status).await?;
         let state = InstanceState::decode(&bytes).map_err(OperationRefusal::of)?;
         Status::try_from(&state).map_err(OperationRefusal::of)
     }
 
     pub async fn cancel(&self) -> Result<(), OperationRefusal> {
-        self.host
-            .child_control(self.id, WireChildAction::Cancel)
-            .await?;
+        self.host.child_control(self.id, WireChildAction::Cancel).await?;
         Ok(())
     }
 
     pub async fn join(mut self) -> Result<Response<O::Response>, OperationRefusal> {
-        let joined = self
-            .host
-            .child_control(self.id, WireChildAction::Join)
-            .await;
+        let joined = self.host.child_control(self.id, WireChildAction::Join).await;
         self.released = true;
         let bytes = joined?;
         let response = O::Response::decode(&bytes).map_err(OperationRefusal::of)?;
@@ -160,8 +136,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     // attempt ends, which cancels and settles it like any other child.
     pub fn detach(mut self) -> Id {
         self.released = true;
-        self.host
-            .child_control_detached(self.id, WireChildAction::Detach);
+        self.host.child_control_detached(self.id, WireChildAction::Detach);
         self.id
     }
 }
@@ -169,8 +144,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
 impl<O> Drop for OperationInstance<O> {
     fn drop(&mut self) {
         if !self.released {
-            self.host
-                .child_control_detached(self.id, WireChildAction::Release);
+            self.host.child_control_detached(self.id, WireChildAction::Release);
         }
     }
 }
@@ -211,39 +185,20 @@ impl Host for Context {
         Context::with_value(self, value)
     }
 
-    async fn submit<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> Result<OperationInstance<O>, OperationRefusal> {
+    async fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(&bytes).map_err(OperationRefusal::of)?;
-        Ok(OperationInstance {
-            host: self.clone(),
-            id: Id::new(id),
-            released: false,
-            _operation: PhantomData,
-        })
+        Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
     // Resident resources live in the host process; a guest cannot lend them.
-    async fn submit_with_resources<
-        O: OperationDeclaration<Response = ()>,
-        R: Send + Sync + 'static,
-    >(
-        &self,
-        _: O,
-        _: std::sync::Arc<R>,
+    async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
+        &self, _: O, _: std::sync::Arc<R>,
     ) -> Result<OperationInstance<O>, OperationRefusal> {
-        Err(OperationRefusal::of(format!(
-            "`{}` needs process-local resources a guest cannot carry",
-            O::ID
-        )))
+        Err(OperationRefusal::of(format!("`{}` needs process-local resources a guest cannot carry", O::ID)))
     }
 
-    async fn call<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> Result<Response<O::Response>, OperationRefusal> {
+    async fn call<O: OperationDeclaration>(&self, request: O) -> Result<Response<O::Response>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, false).await?;
         let response = O::Response::decode(&bytes).map_err(OperationRefusal::of)?;
         Ok(Response::new(response))

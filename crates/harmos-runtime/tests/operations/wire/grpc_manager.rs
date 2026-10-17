@@ -108,7 +108,9 @@ struct CrashExchange;
 #[harmos_runtime::message]
 #[harmos_runtime::operation(id = "grpc.upload", version = 1, response = Reply, input = Reply, policy = WHO_POLICY)]
 struct Upload {}
-struct Uploading { started: Arc<tokio::sync::Notify> }
+struct Uploading {
+    started: Arc<tokio::sync::Notify>,
+}
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "grpc.exchange",
@@ -204,8 +206,8 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
     fn required(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Required>> {
-        use harmos_runtime::operations::authorization::Required;
         use harmos_domain::plugin::Grant;
+        use harmos_runtime::operations::authorization::Required;
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);
         assert!(provider.generation.value() > 0);
@@ -293,13 +295,41 @@ impl Service<http::Request<Body>> for Endpoint {
         let authority = self.authority.clone();
         Box::pin(async move {
             Ok(match request.uri().path() {
-                "/fixture.Identity/Hold" => harmos_runtime::grpc::server::download::<Hold, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Download" => harmos_runtime::grpc::server::download::<Download, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Upload" => harmos_runtime::grpc::server::upload::<Upload, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Exchange" => harmos_runtime::grpc::server::exchange::<Exchange, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Guarded" => harmos_runtime::grpc::server::unary::<Guarded, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Descendant" => harmos_runtime::grpc::server::unary::<Descendant, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
-                _ => harmos_runtime::grpc::server::unary::<Who, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Hold" => {
+                    harmos_runtime::grpc::server::download::<Hold, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
+                        .await
+                }
+                "/fixture.Identity/Download" => {
+                    harmos_runtime::grpc::server::download::<Download, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
+                }
+                "/fixture.Identity/Upload" => {
+                    harmos_runtime::grpc::server::upload::<Upload, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
+                        .await
+                }
+                "/fixture.Identity/Exchange" => {
+                    harmos_runtime::grpc::server::exchange::<Exchange, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
+                }
+                "/fixture.Identity/Guarded" => {
+                    harmos_runtime::grpc::server::unary::<Guarded, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
+                        .await
+                }
+                "/fixture.Identity/Descendant" => {
+                    harmos_runtime::grpc::server::unary::<Descendant, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
+                        .await
+                }
+                _ => {
+                    harmos_runtime::grpc::server::unary::<Who, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await
+                }
             })
         })
     }
@@ -603,7 +633,11 @@ async fn external_call(
     }
     let (decode, encode) = limits();
     let response = client
-        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?)
+        .unary(
+            request,
+            http::uri::PathAndQuery::from_static(path),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?,
+        )
         .await?;
     Ok(response.into_inner().actor.clone())
 }
@@ -619,7 +653,11 @@ where
     let request = tonic::Request::new(harmos_runtime::operations::Response::new(request));
     let (decode, encode) = limits();
     let response: tonic::Response<harmos_runtime::operations::StreamItem<R>> = client
-        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<harmos_runtime::grpc::Transcoded, R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?)
+        .unary(
+            request,
+            http::uri::PathAndQuery::from_static(path),
+            Codec::<harmos_runtime::grpc::Transcoded, R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?,
+        )
         .await?;
     Ok((*response.into_inner()).clone())
 }
@@ -630,7 +668,13 @@ async fn external_catalog(
     use harmos_runtime::operations::host::{Catalog, CatalogKind, CatalogPage};
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Catalog { kind: CatalogKind::Operations, schema: None, after: None, rows: None, bytes: None }));
+    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Catalog {
+        kind: CatalogKind::Operations,
+        schema: None,
+        after: None,
+        rows: None,
+        bytes: None,
+    }));
     if let Some(token) = token {
         request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
@@ -682,7 +726,10 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
     {
@@ -690,27 +737,39 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
         Err(status) => status,
     };
     client.ready().await.unwrap();
-    let mut request =
-        tonic::Request::new(futures_util::stream::iter([harmos_runtime::operations::Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {}))]));
+    let mut request = tonic::Request::new(futures_util::stream::iter([harmos_runtime::operations::Response::new(InputEnvelope::<
+        Ask,
+        Reply,
+    >::Request(Ask {}))]));
     request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
     let upload = client
         .client_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
         .err()
         .expect("upload fails");
     client.ready().await.unwrap();
-    let mut request =
-        tonic::Request::new(futures_util::stream::iter([harmos_runtime::operations::Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {}))]));
+    let mut request = tonic::Request::new(futures_util::stream::iter([harmos_runtime::operations::Response::new(InputEnvelope::<
+        Ask,
+        Reply,
+    >::Request(Ask {}))]));
     request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
     let exchange = match client
         .streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+            Codec::<
+                harmos_runtime::grpc::Transcoded,
+                OutputEnvelope<Reply, Reply>,
+                harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>,
+            >::new(decode, encode)
+            .unwrap(),
         )
         .await
     {
@@ -723,4 +782,3 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
 }
 
 /* === Tests === */
-

@@ -35,22 +35,10 @@ use crate::signal::{Error, Result};
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn fft_in_place(
-    real: &mut [f64],
-    imag: &mut [f64],
-    mut check: impl FnMut() -> bool,
-) -> Result<()> {
+pub fn fft_in_place(real: &mut [f64], imag: &mut [f64], mut check: impl FnMut() -> bool) -> Result<()> {
     let length = real.len();
-    if !length.is_power_of_two()
-        || length != imag.len()
-        || real
-            .iter()
-            .chain(imag.iter())
-            .any(|value| !value.is_finite())
-    {
-        return Err(Error::InvalidInput {
-            reason: "FFT requires equal finite power-of-two buffers",
-        });
+    if !length.is_power_of_two() || length != imag.len() || real.iter().chain(imag.iter()).any(|value| !value.is_finite()) {
+        return Err(Error::InvalidInput { reason: "FFT requires equal finite power-of-two buffers" });
     }
     let mut reversed = 0;
     for index in 1..length {
@@ -86,10 +74,7 @@ pub fn fft_in_place(
                 imag[right] = imag[left] - i;
                 real[left] += r;
                 imag[left] += i;
-                (phase_real, phase_imag) = (
-                    phase_real * cos - phase_imag * sin,
-                    phase_real * sin + phase_imag * cos,
-                );
+                (phase_real, phase_imag) = (phase_real * cos - phase_imag * sin, phase_real * sin + phase_imag * cos);
             }
         }
         if width == length {
@@ -97,14 +82,8 @@ pub fn fft_in_place(
         }
         width *= 2;
     }
-    if real
-        .iter()
-        .chain(imag.iter())
-        .any(|value| !value.is_finite())
-    {
-        return Err(Error::InvalidInput {
-            reason: "FFT exceeds finite range",
-        });
+    if real.iter().chain(imag.iter()).any(|value| !value.is_finite()) {
+        return Err(Error::InvalidInput { reason: "FFT exceeds finite range" });
     }
     Ok(())
 }

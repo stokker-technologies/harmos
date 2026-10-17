@@ -17,9 +17,9 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_domain::MemorySize;
 use harmos_domain::operations::streams::{FollowingRow, Publish};
-use harmos_domain::{MemorySize};
+use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 
@@ -97,88 +97,69 @@ fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + Memo
 
 #[test]
 fn publication_keeps_tags() {
-            for value in [
-                Publish::default(),
-                Publish {
-                    stream: "records".into(),
-                    schema: u32::MAX,
-                    sequence: Some(0),
-                    published_unix_micros: Some(i64::MIN),
-                    context: Some(String::new()),
-                    payload: vec![0, 128, 255],
-                    following: Vec::new(),
-                },
-            ] {
-                let previous = PreviousPublication {
-                    stream: value.stream.clone(),
-                    schema: value.schema,
-                    sequence: value.sequence,
-                    published_unix_micros: value.published_unix_micros,
-                    context: value.context.clone(),
-                    payload: value.payload.clone(),
-                };
-                let bytes = prost::Message::encode_to_vec(&previous);
-                assert_eq!(crate::encode(&value), bytes);
-                assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
-                assert_eq!(
-                    <PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(),
-                    previous
-                );
-                roundtrip(value);
-            }
-        }
+    for value in [
+        Publish::default(),
+        Publish {
+            stream: "records".into(),
+            schema: u32::MAX,
+            sequence: Some(0),
+            published_unix_micros: Some(i64::MIN),
+            context: Some(String::new()),
+            payload: vec![0, 128, 255],
+            following: Vec::new(),
+        },
+    ] {
+        let previous = PreviousPublication {
+            stream: value.stream.clone(),
+            schema: value.schema,
+            sequence: value.sequence,
+            published_unix_micros: value.published_unix_micros,
+            context: value.context.clone(),
+            payload: value.payload.clone(),
+        };
+        let bytes = prost::Message::encode_to_vec(&previous);
+        assert_eq!(crate::encode(&value), bytes);
+        assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
+        assert_eq!(<PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(), previous);
+        roundtrip(value);
+    }
+}
 
 #[test]
 fn batch_rows_follow() {
-            // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
-            // Following Row A Short Delta; A Backwards Row Stays Encodable.
-            let deltas = [Some(1_000), Some(1_000), Some(-1), None];
-            let value = Publish {
-                stream: "records".into(),
-                sequence: Some(7),
-                published_unix_micros: Some(1_760_000_000_000_000),
-                payload: vec![1],
-                following: deltas
-                    .iter()
-                    .zip(2_u8..)
-                    .map(|(&published_delta_micros, payload)| FollowingRow {
-                        payload: vec![payload],
-                        published_delta_micros,
-                    })
-                    .collect(),
-                ..Publish::default()
-            };
-            let oracle = BatchedPublication {
-                stream: value.stream.clone(),
-                sequence: value.sequence,
-                published_unix_micros: value.published_unix_micros,
-                payload: value.payload.clone(),
-                following: deltas
-                    .iter()
-                    .zip(2_u8..)
-                    .map(|(&published_delta_micros, payload)| BatchedRow {
-                        payload: vec![payload],
-                        published_delta_micros,
-                    })
-                    .collect(),
-            };
-            let bytes = prost::Message::encode_to_vec(&oracle);
-            assert_eq!(crate::encode(&value), bytes);
-            assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
-            // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
-            let steady = FollowingRow {
-                payload: vec![0],
-                published_delta_micros: Some(1_000),
-            };
-            let oracle = BatchedRow {
-                payload: vec![0],
-                published_delta_micros: Some(1_000),
-            };
-            assert_eq!(
-                crate::encode(&steady),
-                prost::Message::encode_to_vec(&oracle)
-            );
-            assert_eq!(crate::encode(&steady).len(), 6);
-            roundtrip(value);
-        }
-
+    // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
+    // Following Row A Short Delta; A Backwards Row Stays Encodable.
+    let deltas = [Some(1_000), Some(1_000), Some(-1), None];
+    let value = Publish {
+        stream: "records".into(),
+        sequence: Some(7),
+        published_unix_micros: Some(1_760_000_000_000_000),
+        payload: vec![1],
+        following: deltas
+            .iter()
+            .zip(2_u8..)
+            .map(|(&published_delta_micros, payload)| FollowingRow { payload: vec![payload], published_delta_micros })
+            .collect(),
+        ..Publish::default()
+    };
+    let oracle = BatchedPublication {
+        stream: value.stream.clone(),
+        sequence: value.sequence,
+        published_unix_micros: value.published_unix_micros,
+        payload: value.payload.clone(),
+        following: deltas
+            .iter()
+            .zip(2_u8..)
+            .map(|(&published_delta_micros, payload)| BatchedRow { payload: vec![payload], published_delta_micros })
+            .collect(),
+    };
+    let bytes = prost::Message::encode_to_vec(&oracle);
+    assert_eq!(crate::encode(&value), bytes);
+    assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
+    // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
+    let steady = FollowingRow { payload: vec![0], published_delta_micros: Some(1_000) };
+    let oracle = BatchedRow { payload: vec![0], published_delta_micros: Some(1_000) };
+    assert_eq!(crate::encode(&steady), prost::Message::encode_to_vec(&oracle));
+    assert_eq!(crate::encode(&steady).len(), 6);
+    roundtrip(value);
+}

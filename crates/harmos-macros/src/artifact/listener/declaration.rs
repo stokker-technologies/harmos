@@ -43,10 +43,7 @@ use crate::path::{self, HarmosPath};
 pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let declaration: ItemStruct = syn::parse2(item)?;
     if !declaration.generics.params.is_empty() || !matches!(declaration.fields, Fields::Unit) {
-        return Err(Error::new(
-            declaration.span(),
-            "a portable listener is a nongeneric unit descriptor struct",
-        ));
+        return Err(Error::new(declaration.span(), "a portable listener is a nongeneric unit descriptor struct"));
     }
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attributes)?;
     let mut id = None;
@@ -72,10 +69,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         if named.path.is_ident("id") || named.path.is_ident("record") {
             let value: LitStr = syn::parse2(tokens)?;
             if value.value().trim().is_empty() || value.value().chars().any(char::is_control) {
-                return Err(Error::new(
-                    value.span(),
-                    "listener and source identities must be nonempty without control characters",
-                ));
+                return Err(Error::new(value.span(), "listener and source identities must be nonempty without control characters"));
             }
             if named.path.is_ident("id") {
                 set_once(&mut id, value, named.span(), "id")?;
@@ -85,10 +79,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         } else if named.path.is_ident("version") {
             let value: LitInt = syn::parse2(tokens)?;
             if value.base10_parse::<u32>()? == 0 {
-                return Err(Error::new(
-                    value.span(),
-                    "record semantic version must be positive",
-                ));
+                return Err(Error::new(value.span(), "record semantic version must be positive"));
             }
             set_once(&mut version, value, named.span(), "version")?;
         } else if named.path.is_ident("callback") {
@@ -113,14 +104,8 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     }
     let span = declaration.span();
     let id = id.ok_or_else(|| Error::new(span, "a portable listener requires id"))?;
-    let callback = callback.ok_or_else(|| {
-        Error::new(
-            span,
-            "a portable listener requires its callback operation id",
-        )
-    })?;
-    let policy = policy
-        .ok_or_else(|| Error::new(span, "a portable listener requires its callback policy"))?;
+    let callback = callback.ok_or_else(|| Error::new(span, "a portable listener requires its callback operation id"))?;
+    let policy = policy.ok_or_else(|| Error::new(span, "a portable listener requires its callback policy"))?;
     let harmos = HarmosPath::resolve(facade);
     let (source, row) = match (record, version, row, stream) {
         (Some(record), Some(version), Some(row), None) => {
@@ -140,10 +125,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             (source, row)
         }
         _ => {
-            return Err(Error::new(
-                span,
-                "select exactly record/version/row or a typed stream declaration",
-            ));
+            return Err(Error::new(span, "select exactly record/version/row or a typed stream declaration"));
         }
     };
     let name = &declaration.ident;

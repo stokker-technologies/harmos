@@ -86,9 +86,7 @@ pub trait Described: 'static {
 impl Described for () {
     const NAME: &'static str = "harmos::unit";
     const FIELDS: &'static [graph::Field<declaration::Definition>] = &[];
-    const MARKER: &'static [u8] = &declaration::encode::<
-        { declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
+    const MARKER: &'static [u8] = &declaration::encode::<{ declaration::encoded_len(Self::NAME, Self::FIELDS) }>(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

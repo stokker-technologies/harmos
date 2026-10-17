@@ -51,10 +51,7 @@ impl Listing {
         for entry in entries {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
-                let name = entry
-                    .file_name()
-                    .into_string()
-                    .map_err(Error::DirectoryName)?;
+                let name = entry.file_name().into_string().map_err(Error::DirectoryName)?;
                 directories.push(name);
             }
         }

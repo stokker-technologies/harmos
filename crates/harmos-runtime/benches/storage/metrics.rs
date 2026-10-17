@@ -49,11 +49,7 @@ impl Probe {
     pub fn start<C: 'static>(storage: StorageManager<C>) -> Self {
         Self::begin(move || {
             let status = storage.status();
-            (
-                status.read_bytes,
-                status.pending_bytes,
-                status.mutation_bytes,
-            )
+            (status.read_bytes, status.pending_bytes, status.mutation_bytes)
         })
     }
 
@@ -65,20 +61,14 @@ impl Probe {
         let stop = Arc::new((Mutex::new(false), Condvar::new()));
         let signal = Arc::clone(&stop);
         let thread = thread::spawn(move || {
-            let mut observed = Observed {
-                rss_baseline_bytes: rss(),
-                ..Observed::default()
-            };
+            let mut observed = Observed { rss_baseline_bytes: rss(), ..Observed::default() };
             loop {
                 let (read, write, mutation) = sample();
                 observed.read_bytes = observed.read_bytes.max(read);
                 observed.pending_write_bytes = observed.pending_write_bytes.max(write);
-                observed.accounted_bytes = observed
-                    .accounted_bytes
-                    .max(read.saturating_add(write).saturating_add(mutation));
+                observed.accounted_bytes = observed.accounted_bytes.max(read.saturating_add(write).saturating_add(mutation));
                 if let Some(bytes) = rss() {
-                    observed.sampled_peak_rss_bytes =
-                        Some(observed.sampled_peak_rss_bytes.unwrap_or(0).max(bytes));
+                    observed.sampled_peak_rss_bytes = Some(observed.sampled_peak_rss_bytes.unwrap_or(0).max(bytes));
                 }
                 observed.samples += 1;
                 let (lock, wake) = &*signal;
@@ -93,10 +83,7 @@ impl Probe {
             }
             observed
         });
-        Self {
-            stop,
-            thread: Some(thread),
-        }
+        Self { stop, thread: Some(thread) }
     }
 
     pub fn finish(mut self) -> Observed {
@@ -134,13 +121,7 @@ impl Observed {
         self.samples += other.samples;
     }
 
-    pub fn report(
-        &self,
-        story: &str,
-        dataset: usize,
-        concurrency: usize,
-        settings: Option<&StorageSettings>,
-    ) {
+    pub fn report(&self, story: &str, dataset: usize, concurrency: usize, settings: Option<&StorageSettings>) {
         println!(
             "{}",
             json!({
@@ -159,25 +140,24 @@ impl Observed {
 /* === Public Functions === */
 pub fn provenance() -> &'static Value {
     static VALUE: OnceLock<Value> = OnceLock::new();
-    VALUE.get_or_init(|| json!({
-        "revision": command("git", &["rev-parse", "HEAD"]),
-        "worktree_status": command("git", &["status", "--porcelain"]),
-        "rustc": command("rustc", &["--version", "--verbose"]),
-        "lock_sha256": file_hash(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock")),
-        "tracked_diff_sha256": command("git", &["diff", "HEAD", "--binary"]).map(|diff| digest(diff.as_bytes())),
-        "package_version": env!("CARGO_PKG_VERSION"), "grpc_enabled": cfg!(feature = "grpc"),
-        "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
-        "available_parallelism": std::thread::available_parallelism().ok().map(|count| count.get()),
-        "generator": "balanced-three-phase-sine-v1", "amplitude": super::waveforms::AMPLITUDE,
-        "samples_per_period": super::waveforms::SAMPLES_PER_PERIOD,
-    }))
+    VALUE.get_or_init(|| {
+        json!({
+            "revision": command("git", &["rev-parse", "HEAD"]),
+            "worktree_status": command("git", &["status", "--porcelain"]),
+            "rustc": command("rustc", &["--version", "--verbose"]),
+            "lock_sha256": file_hash(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock")),
+            "tracked_diff_sha256": command("git", &["diff", "HEAD", "--binary"]).map(|diff| digest(diff.as_bytes())),
+            "package_version": env!("CARGO_PKG_VERSION"), "grpc_enabled": cfg!(feature = "grpc"),
+            "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
+            "available_parallelism": std::thread::available_parallelism().ok().map(|count| count.get()),
+            "generator": "balanced-three-phase-sine-v1", "amplitude": super::waveforms::AMPLITUDE,
+            "samples_per_period": super::waveforms::SAMPLES_PER_PERIOD,
+        })
+    })
 }
 /* === Private Functions === */
 fn digest(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn file_hash(path: std::path::PathBuf) -> Option<String> {
@@ -185,26 +165,15 @@ fn file_hash(path: std::path::PathBuf) -> Option<String> {
 }
 
 fn command(binary: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(binary)
-        .args(args)
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    let output = Command::new(binary).args(args).current_dir(env!("CARGO_MANIFEST_DIR")).output().ok()?;
+    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 #[cfg(target_os = "linux")]
 fn rss() -> Option<usize> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let row = status.lines().find(|line| line.starts_with("VmRSS:"))?;
-    row.split_whitespace()
-        .nth(1)?
-        .parse::<usize>()
-        .ok()?
-        .checked_mul(1024)
+    row.split_whitespace().nth(1)?.parse::<usize>().ok()?.checked_mul(1024)
 }
 #[cfg(not(target_os = "linux"))]
 fn rss() -> Option<usize> {

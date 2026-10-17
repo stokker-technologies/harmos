@@ -20,18 +20,10 @@ mod endpoints;
 mod grpc;
 #[cfg(feature = "grpc")]
 mod grpc_manager;
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod host;
 mod owned_wire;
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod plugin;
 
 /* === Re-Exports === */

@@ -23,8 +23,13 @@ license = "Apache-2.0"
 
 [dependencies]
 # Git
-harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive"] }
-harmos-sidecar = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive", "kit"] }
+harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = [
+  "derive",
+] }
+harmos-sidecar = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = [
+  "derive",
+  "kit",
+] }
 
 # Async
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

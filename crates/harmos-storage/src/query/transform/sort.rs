@@ -41,11 +41,7 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 pub trait SortExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
@@ -62,11 +58,7 @@ impl SortExecution for Sort {
         Ok(input.clone())
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         let mut indices = (0..input.num_rows() as u64).collect::<Vec<_>>();
         sort_values(&mut indices, |left, right| {
             check()?;
@@ -95,11 +87,7 @@ impl SortExecution for Sort {
                     }
                     (false, false) => {
                         let order = left.compare(&right)?;
-                        if key.descending {
-                            order.reverse()
-                        } else {
-                            order
-                        }
+                        if key.descending { order.reverse() } else { order }
                     }
                 };
                 if !null_order.is_eq() {

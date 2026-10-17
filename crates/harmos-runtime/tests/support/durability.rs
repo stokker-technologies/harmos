@@ -23,9 +23,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
 use harmos_runtime::{
-    Application, Builder, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible,
-    runtime::Registration, state::DecodeError, state::Entry, state::Invert, state::Kind,
-    state::Position, state::PrincipalId, state::Recorded, state::Transaction,
+    Application, Builder, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError,
+    state::Entry, state::Invert, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
     storage::JournalConsumer, storage::Payload,
 };
 use journal::Wire;
@@ -157,9 +156,7 @@ impl Transaction<Ledger> for Deposit {
 
 impl Invert<Ledger> for Deposit {
     fn invert(&self, _before: &Ledger) -> Withdraw {
-        Withdraw {
-            amount: self.amount,
-        }
+        Withdraw { amount: self.amount }
     }
 }
 
@@ -170,9 +167,7 @@ impl Transaction<Ledger> for Withdraw {
         if self.amount <= 0 {
             return Err(Refusal::NotPositive);
         }
-        (ledger.balance >= self.amount)
-            .then_some(())
-            .ok_or(Refusal::Overdrawn)
+        (ledger.balance >= self.amount).then_some(()).ok_or(Refusal::Overdrawn)
     }
 
     fn apply(&self, ledger: &mut Ledger) {
@@ -183,9 +178,7 @@ impl Transaction<Ledger> for Withdraw {
 
 impl Invert<Ledger> for Withdraw {
     fn invert(&self, _before: &Ledger) -> Deposit {
-        Deposit {
-            amount: self.amount,
-        }
+        Deposit { amount: self.amount }
     }
 }
 
@@ -193,9 +186,7 @@ impl Transaction<Ledger> for Pay {
     type Error = Refusal;
 
     fn check(&self, ledger: &Ledger) -> Result<(), Self::Error> {
-        (ledger.balance >= self.amount)
-            .then_some(())
-            .ok_or(Refusal::Overdrawn)
+        (ledger.balance >= self.amount).then_some(()).ok_or(Refusal::Overdrawn)
     }
 
     fn apply(&self, ledger: &mut Ledger) {
@@ -295,21 +286,16 @@ impl Wire for Bank {
     }
 
     fn decode<'de, D: Deserializer<'de> + Copy>(
-        kind: Kind,
-        id: &DefinitionId,
-        version: u32,
-        payload: D,
+        kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error> {
         Ok(match kind {
-            Kind::Transaction => {
-                Change::restore(id, version, payload)?.map(|(change, apply)| Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Transaction(Arc::new(change)),
-                    apply,
-                })
-            }
+            Kind::Transaction => Change::restore(id, version, payload)?.map(|(change, apply)| Payload {
+                prepared: None,
+                id: id.clone(),
+                version,
+                value: Recorded::Transaction(Arc::new(change)),
+                apply,
+            }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),
@@ -323,36 +309,21 @@ impl Wire for Bank {
 
 impl Registration<Bank> for Definitions {
     fn register(self) -> Catalog<Bank> {
-        fn decode(
-            _id: &DefinitionId,
-            _version: u32,
-            _bytes: &[u8],
-        ) -> Result<Option<Change>, DecodeError> {
+        fn decode(_id: &DefinitionId, _version: u32, _bytes: &[u8]) -> Result<Option<Change>, DecodeError> {
             Ok(None)
         }
 
-        Catalog::Transactions {
-            definitions: self.0,
-            decode,
-            inverses: Some(Change::__harmos_inverses),
-        }
+        Catalog::Transactions { definitions: self.0, decode, inverses: Some(Change::__harmos_inverses) }
     }
 }
 
 impl Payouts {
     pub fn resuming(watched: &Dispatched) -> Self {
-        Self {
-            checkpoint: Arc::clone(&watched.0),
-            dispatched: Arc::clone(&watched.1),
-            holding: None,
-        }
+        Self { checkpoint: Arc::clone(&watched.0), dispatched: Arc::clone(&watched.1), holding: None }
     }
 
     pub fn new() -> (Self, Dispatched) {
-        let watched = (
-            Arc::new(AtomicU64::new(0)),
-            Arc::new(std::sync::Mutex::new(Vec::new())),
-        );
+        let watched = (Arc::new(AtomicU64::new(0)), Arc::new(std::sync::Mutex::new(Vec::new())));
 
         (Self::resuming(&watched), watched)
     }
@@ -368,11 +339,7 @@ impl JournalConsumer<Bank> for Payouts {
         Position(self.checkpoint.load(Ordering::Acquire))
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        _applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, _applied: Position) -> Position {
         let mut reached = self.resume();
 
         for entry in &entries {
@@ -385,10 +352,7 @@ impl JournalConsumer<Bank> for Payouts {
 
                     return reached;
                 }
-                self.dispatched
-                    .lock()
-                    .expect("the listener is never poisoned")
-                    .push(payout.effect);
+                self.dispatched.lock().expect("the listener is never poisoned").push(payout.effect);
             }
             reached = entry.position;
         }
@@ -403,12 +367,7 @@ impl JournalConsumer<Bank> for Payouts {
 
 /* === Public Functions === */
 pub fn catalog() -> impl Registration<Bank> {
-    Definitions(
-        definitions_of::<Bank>(Change::catalog())
-            .into_iter()
-            .chain(definitions_of::<Bank>(Fact::catalog()))
-            .collect(),
-    )
+    Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
 }
 
 pub fn deposit(amount: i64) -> Deposit {
@@ -423,34 +382,16 @@ pub fn pay(effect: u64, amount: i64) -> Pay {
     Pay { effect, amount }
 }
 
-pub async fn booted(
-    origin: Ledger,
-    attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>,
-) -> Runtime<Bank> {
+pub async fn booted(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Runtime<Bank> {
     opened(origin, attach).await.expect("the copy replays")
 }
 
-pub async fn opened(
-    origin: Ledger,
-    attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>,
-) -> Result<Runtime<Bank>, Incompatible> {
-    attach(
-        Runtime::<Bank>::builder(origin, ())
-            .register(Change::catalog())
-            .register(Fact::catalog()),
-    )
-    .runtime()
-    .await
+pub async fn opened(origin: Ledger, attach: impl FnOnce(Builder<Bank>) -> Builder<Bank>) -> Result<Runtime<Bank>, Incompatible> {
+    attach(Runtime::<Bank>::builder(origin, ()).register(Change::catalog()).register(Fact::catalog())).runtime().await
 }
 
 pub async fn ledger(runtime: &Runtime<Bank>) -> Ledger {
-    runtime
-        .state
-        .state()
-        .read(Clone::clone)
-        .await
-        .expect("reads are open")
-        .value
+    runtime.state.state().read(Clone::clone).await.expect("reads are open").value
 }
 
 pub fn alice() -> PrincipalId {

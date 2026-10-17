@@ -22,18 +22,15 @@ use std::{
 };
 // Third Party Imports
 use arrow_array::{
-    ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array,
-    ListArray, RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt32Array,
-    UInt64Array,
+    ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, ListArray, RecordBatch, StringArray,
+    StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::storage::memory::{MemoryBank, MemoryScope as Budget};
-use crate::storage::{
-    FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow,
-};
+use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -74,103 +71,56 @@ pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
 
-pub(super) fn records(
-    schema: &StorageSchema,
-    rows: &[StoredRecord],
-    bank: &MemoryBank,
-) -> Result<RecordBatch> {
+pub(super) fn records(schema: &StorageSchema, rows: &[StoredRecord], bank: &MemoryBank) -> Result<RecordBatch> {
     let mut budget = bank.scope();
-    budget.claim(
-        rows.len()
-            .checked_mul(std::mem::size_of::<&StoredRecord>())
-            .ok_or_else(exhausted)?,
-    )?;
+    budget.claim(rows.len().checked_mul(std::mem::size_of::<&StoredRecord>()).ok_or_else(exhausted)?)?;
     let refs = rows.iter().collect::<Vec<_>>();
     record_batch(schema, &refs, None, bank)
 }
 
-pub(super) fn stream(
-    schema: &StorageSchema,
-    rows: &[StoredRow],
-    bank: &MemoryBank,
-) -> Result<RecordBatch> {
+pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow], bank: &MemoryBank) -> Result<RecordBatch> {
     let mut budget = bank.scope();
-    budget.claim(
-        rows.len()
-            .checked_mul(std::mem::size_of::<&StoredRecord>())
-            .ok_or_else(exhausted)?,
-    )?;
+    budget.claim(rows.len().checked_mul(std::mem::size_of::<&StoredRecord>()).ok_or_else(exhausted)?)?;
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
     record_batch(schema, &refs, Some(rows), bank)
 }
 
-pub(super) fn objects(
-    schema: &StorageSchema,
-    rows: &[ObjectEntry],
-    bank: &MemoryBank,
-) -> Result<RecordBatch> {
+pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry], bank: &MemoryBank) -> Result<RecordBatch> {
     // The caller resolves every selected schema and establishes compatibility.
     // Equivalent payload graphs may have different logical schema identifiers.
     for row in rows {
         row.value.schema.require_postcard()?;
     }
     let mut budget = bank.scope();
-    budget.claim(
-        rows.len()
-            .checked_mul(std::mem::size_of::<&[u8]>())
-            .ok_or_else(exhausted)?,
-    )?;
-    let payloads = rows
-        .iter()
-        .map(|row| row.value.payload.as_slice())
-        .collect::<Vec<_>>();
+    budget.claim(rows.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or_else(exhausted)?)?;
+    let payloads = rows.iter().map(|row| row.value.payload.as_slice()).collect::<Vec<_>>();
     let payload = payload(schema, &payloads, &mut budget)?;
     metadata_budget(
         rows.len(),
         rows.iter()
             .map(|row| {
-                row.value.item.as_str().len()
-                    + row.position.history.store.as_str().len()
-                    + row.position.history.epoch.as_str().len()
+                row.value.item.as_str().len() + row.position.history.store.as_str().len() + row.position.history.epoch.as_str().len()
             })
             .fold(0usize, usize::saturating_add),
         &mut budget,
     )?;
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
-    columns.push((
-        Field::new("item", DataType::Utf8, false),
-        strings(rows.iter().map(|row| Some(row.value.item.as_str()))),
-    ));
+    columns.push((Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.item.as_str())))));
     columns.push((
         Field::new("revision", DataType::UInt64, false),
-        Arc::new(UInt64Array::from(
-            rows.iter()
-                .map(|row| row.version.revision().get())
-                .collect::<Vec<_>>(),
-        )),
+        Arc::new(UInt64Array::from(rows.iter().map(|row| row.version.revision().get()).collect::<Vec<_>>())),
     ));
-    let schema_text = rows.iter().try_fold(0usize, |bytes, row| {
-        bytes
-            .checked_add(row.value.schema.id.as_str().len().saturating_add(32))
-            .ok_or_else(exhausted)
-    })?;
+    let schema_text = rows
+        .iter()
+        .try_fold(0usize, |bytes, row| bytes.checked_add(row.value.schema.id.as_str().len().saturating_add(32)).ok_or_else(exhausted))?;
     budget.claim(schema_text.checked_mul(4).ok_or_else(exhausted)?)?;
-    columns.push((
-        Field::new("schema_id", DataType::Utf8, false),
-        strings(rows.iter().map(|row| Some(row.value.schema.id.as_str()))),
-    ));
+    columns.push((Field::new("schema_id", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.schema.id.as_str())))));
     columns.push((
         Field::new("schema_version", DataType::UInt32, false),
-        Arc::new(UInt32Array::from(
-            rows.iter()
-                .map(|row| row.value.schema.version.get())
-                .collect::<Vec<_>>(),
-        )),
+        Arc::new(UInt32Array::from(rows.iter().map(|row| row.value.schema.version.get()).collect::<Vec<_>>())),
     ));
-    columns.push((
-        Field::new("payload_encoding", DataType::Utf8, false),
-        strings(rows.iter().map(|row| Some(encoding(&row.value.schema)))),
-    ));
+    columns
+        .push((Field::new("payload_encoding", DataType::Utf8, false), strings(rows.iter().map(|row| Some(encoding(&row.value.schema))))));
     assemble(columns, payload)
 }
 
@@ -192,56 +142,26 @@ pub(super) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordB
     )?;
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
-        (
-            Field::new("item", DataType::Utf8, false),
-            strings(rows.iter().map(|row| Some(row.metadata.id.as_str()))),
-        ),
-        (
-            Field::new("scope", DataType::Utf8, true),
-            strings(
-                rows.iter()
-                    .map(|row| row.metadata.scope.as_ref().map(|v| v.as_str())),
-            ),
-        ),
-        (
-            Field::new("media_type", DataType::Utf8, false),
-            strings(
-                rows.iter()
-                    .map(|row| Some(row.metadata.media_type.as_str())),
-            ),
-        ),
+        (Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.metadata.id.as_str())))),
+        (Field::new("scope", DataType::Utf8, true), strings(rows.iter().map(|row| row.metadata.scope.as_ref().map(|v| v.as_str())))),
+        (Field::new("media_type", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.metadata.media_type.as_str())))),
         (
             Field::new("expected_length", DataType::UInt64, true),
-            Arc::new(UInt64Array::from(
-                rows.iter()
-                    .map(|row| row.metadata.expected_length)
-                    .collect::<Vec<_>>(),
-            )) as ArrayRef,
+            Arc::new(UInt64Array::from(rows.iter().map(|row| row.metadata.expected_length).collect::<Vec<_>>())) as ArrayRef,
         ),
         (
             Field::new("expected_sha256", DataType::Binary, true),
             Arc::new(BinaryArray::from(
-                rows.iter()
-                    .map(|row| {
-                        row.metadata
-                            .expected_sha256
-                            .as_ref()
-                            .map(|value| value.as_slice())
-                    })
-                    .collect::<Vec<_>>(),
+                rows.iter().map(|row| row.metadata.expected_sha256.as_ref().map(|value| value.as_slice())).collect::<Vec<_>>(),
             )) as ArrayRef,
         ),
         (
             Field::new("length", DataType::UInt64, false),
-            Arc::new(UInt64Array::from(
-                rows.iter().map(|row| row.length).collect::<Vec<_>>(),
-            )) as ArrayRef,
+            Arc::new(UInt64Array::from(rows.iter().map(|row| row.length).collect::<Vec<_>>())) as ArrayRef,
         ),
         (
             Field::new("sha256", DataType::Binary, false),
-            Arc::new(BinaryArray::from_iter_values(
-                rows.iter().map(|row| row.sha256.as_slice()),
-            )) as ArrayRef,
+            Arc::new(BinaryArray::from_iter_values(rows.iter().map(|row| row.sha256.as_slice()))) as ArrayRef,
         ),
     ]);
     flat(columns)
@@ -252,11 +172,7 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
     metadata_budget(
         rows.len(),
         rows.iter()
-            .map(|row| {
-                row.key.id.as_str().len()
-                    + row.position.history.store.as_str().len()
-                    + row.position.history.epoch.as_str().len()
-            })
+            .map(|row| row.key.id.as_str().len() + row.position.history.store.as_str().len() + row.position.history.epoch.as_str().len())
             .fold(0usize, usize::saturating_add),
         &mut budget,
     )?;
@@ -268,58 +184,31 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
     }
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
-        (
-            Field::new("schema_id", DataType::Utf8, false),
-            strings(rows.iter().map(|row| Some(row.key.id.as_str()))),
-        ),
+        (Field::new("schema_id", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.key.id.as_str())))),
         (
             Field::new("schema_version", DataType::UInt32, false),
-            Arc::new(UInt32Array::from(
-                rows.iter()
-                    .map(|row| row.key.version.get())
-                    .collect::<Vec<_>>(),
-            )) as ArrayRef,
+            Arc::new(UInt32Array::from(rows.iter().map(|row| row.key.version.get()).collect::<Vec<_>>())) as ArrayRef,
         ),
-        (
-            Field::new("payload_encoding", DataType::Utf8, false),
-            strings(rows.iter().map(|row| Some(encoding(&row.key)))),
-        ),
-        (
-            Field::new("schema_encoding", DataType::Utf8, false),
-            strings(rows.iter().map(|_| Some("harmos.graph.postcard.v1"))),
-        ),
+        (Field::new("payload_encoding", DataType::Utf8, false), strings(rows.iter().map(|row| Some(encoding(&row.key))))),
+        (Field::new("schema_encoding", DataType::Utf8, false), strings(rows.iter().map(|_| Some("harmos.graph.postcard.v1")))),
         (
             Field::new("definition", DataType::Binary, false),
-            Arc::new(BinaryArray::from_iter_values(
-                encoded.iter().map(Vec::as_slice),
-            )) as ArrayRef,
+            Arc::new(BinaryArray::from_iter_values(encoded.iter().map(Vec::as_slice))) as ArrayRef,
         ),
     ]);
     flat(columns)
 }
 
 /* === Private Functions === */
-fn record_batch(
-    schema: &StorageSchema,
-    rows: &[&StoredRecord],
-    streams: Option<&[StoredRow]>,
-    bank: &MemoryBank,
-) -> Result<RecordBatch> {
+fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>, bank: &MemoryBank) -> Result<RecordBatch> {
     for row in rows {
         if row.schema != schema.key {
             return Err(invalid("record batch has incompatible schemas"));
         }
     }
     let mut budget = bank.scope();
-    budget.claim(
-        rows.len()
-            .checked_mul(std::mem::size_of::<&[u8]>())
-            .ok_or_else(exhausted)?,
-    )?;
-    let payloads = rows
-        .iter()
-        .map(|row| row.payload.as_slice())
-        .collect::<Vec<_>>();
+    budget.claim(rows.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or_else(exhausted)?)?;
+    let payloads = rows.iter().map(|row| row.payload.as_slice()).collect::<Vec<_>>();
     let payload = payload(schema, &payloads, &mut budget)?;
     metadata_budget(
         rows.len(),
@@ -334,57 +223,25 @@ fn record_batch(
             .fold(0usize, usize::saturating_add),
         &mut budget,
     )?;
-    let times = rows
-        .iter()
-        .map(|row| row.source_time.map(timestamp).transpose())
-        .collect::<Result<Vec<_>>>()?;
+    let times = rows.iter().map(|row| row.source_time.map(timestamp).transpose()).collect::<Result<Vec<_>>>()?;
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
+        (Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.item.as_str())))),
+        (Field::new("scope", DataType::Utf8, true), strings(rows.iter().map(|row| row.scope.as_ref().map(|v| v.as_str())))),
+        (Field::new("source", DataType::Utf8, true), strings(rows.iter().map(|row| row.source.as_ref().map(|v| v.as_str())))),
         (
-            Field::new("item", DataType::Utf8, false),
-            strings(rows.iter().map(|row| Some(row.item.as_str()))),
-        ),
-        (
-            Field::new("scope", DataType::Utf8, true),
-            strings(
-                rows.iter()
-                    .map(|row| row.scope.as_ref().map(|v| v.as_str())),
-            ),
-        ),
-        (
-            Field::new("source", DataType::Utf8, true),
-            strings(
-                rows.iter()
-                    .map(|row| row.source.as_ref().map(|v| v.as_str())),
-            ),
-        ),
-        (
-            Field::new(
-                "source_time",
-                DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
-                true,
-            ),
+            Field::new("source_time", DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())), true),
             Arc::new(TimestampNanosecondArray::from(times).with_timezone("UTC")) as ArrayRef,
         ),
     ]);
     if let Some(streams) = streams {
         budget.claim(
-            streams
-                .iter()
-                .map(|row| row.stream.as_str().len())
-                .fold(0usize, usize::saturating_add)
-                .checked_mul(4)
-                .ok_or_else(exhausted)?,
+            streams.iter().map(|row| row.stream.as_str().len()).fold(0usize, usize::saturating_add).checked_mul(4).ok_or_else(exhausted)?,
         )?;
-        columns.push((
-            Field::new("stream", DataType::Utf8, false),
-            strings(streams.iter().map(|row| Some(row.stream.as_str()))),
-        ));
+        columns.push((Field::new("stream", DataType::Utf8, false), strings(streams.iter().map(|row| Some(row.stream.as_str())))));
         columns.push((
             Field::new("sequence", DataType::UInt64, false),
-            Arc::new(UInt64Array::from(
-                streams.iter().map(|row| row.sequence).collect::<Vec<_>>(),
-            )),
+            Arc::new(UInt64Array::from(streams.iter().map(|row| row.sequence).collect::<Vec<_>>())),
         ));
     }
     append_schema_columns(&mut columns, &schema.key, rows.len(), &mut budget)?;
@@ -395,21 +252,13 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
     if depth >= MAX_DEPTH {
         return Err(invalid("recursive or excessive Arrow payload nesting"));
     }
-    let definition = schema
-        .definitions
-        .get(root)
-        .ok_or_else(|| invalid("missing schema definition"))?;
-    *count = count
-        .checked_add(definition.len() + 1)
-        .ok_or_else(exhausted)?;
+    let definition = schema.definitions.get(root).ok_or_else(|| invalid("missing schema definition"))?;
+    *count = count.checked_add(definition.len() + 1).ok_or_else(exhausted)?;
     if *count > super::super::arrow::MAX_FIELDS {
         return Err(invalid("expanded Arrow schema exceeds field limit"));
     }
     let mut output = Vec::with_capacity(definition.len() + 1);
-    if definition
-        .first()
-        .is_some_and(|field| field.cardinality == Cardinality::Variant)
-    {
+    if definition.first().is_some_and(|field| field.cardinality == Cardinality::Variant) {
         if definition.iter().any(|field| field.name == "__variant") {
             return Err(invalid("enum variant uses reserved discriminant name"));
         }
@@ -426,50 +275,25 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
             graph::Kind::F64 => DataType::Float64,
             graph::Kind::String => DataType::Utf8,
             graph::Kind::Bytes => DataType::Binary,
-            graph::Kind::Message { definition } => {
-                DataType::Struct(fields(schema, definition, depth + 1, count)?)
-            }
+            graph::Kind::Message { definition } => DataType::Struct(fields(schema, definition, depth + 1, count)?),
         };
-        let kind = if field.cardinality == Cardinality::Repeated {
-            DataType::List(Arc::new(Field::new("item", kind, false)))
-        } else {
-            kind
-        };
+        let kind =
+            if field.cardinality == Cardinality::Repeated { DataType::List(Arc::new(Field::new("item", kind, false))) } else { kind };
         output.push(
-            Field::new(
-                field.name.as_ref(),
-                kind,
-                matches!(
-                    field.cardinality,
-                    Cardinality::Optional | Cardinality::Variant
-                ),
-            )
-            .with_metadata(HashMap::from([(
-                "harmos.tag".to_owned(),
-                field.tag.to_string(),
-            )])),
+            Field::new(field.name.as_ref(), kind, matches!(field.cardinality, Cardinality::Optional | Cardinality::Variant))
+                .with_metadata(HashMap::from([("harmos.tag".to_owned(), field.tag.to_string())])),
         );
     }
     Ok(output.into())
 }
 
 // Account For Reused Graph Definitions Expanding Into Independent Arrow Fields.
-fn expanded_schema_bytes(
-    schema: &graph::Schema,
-    root: usize,
-    depth: usize,
-    count: &mut usize,
-) -> Result<usize> {
+fn expanded_schema_bytes(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) -> Result<usize> {
     if depth >= MAX_DEPTH {
         return Err(invalid("recursive or excessive Arrow payload nesting"));
     }
-    let definition = schema
-        .definitions
-        .get(root)
-        .ok_or_else(|| invalid("missing schema definition"))?;
-    *count = count
-        .checked_add(definition.len() + 1)
-        .ok_or_else(exhausted)?;
+    let definition = schema.definitions.get(root).ok_or_else(|| invalid("missing schema definition"))?;
+    *count = count.checked_add(definition.len() + 1).ok_or_else(exhausted)?;
     if *count > super::super::arrow::MAX_FIELDS {
         return Err(invalid("expanded Arrow schema exceeds field limit"));
     }
@@ -477,39 +301,25 @@ fn expanded_schema_bytes(
     for field in definition {
         bytes = bytes
             .checked_add(1024)
-            .and_then(|bytes| {
-                field
-                    .name
-                    .len()
-                    .checked_mul(4)
-                    .and_then(|name| bytes.checked_add(name))
-            })
+            .and_then(|bytes| field.name.len().checked_mul(4).and_then(|name| bytes.checked_add(name)))
             .ok_or_else(exhausted)?;
         if let graph::Kind::Message { definition } = field.kind {
-            bytes = bytes
-                .checked_add(expanded_schema_bytes(schema, definition, depth + 1, count)?)
-                .ok_or_else(exhausted)?;
+            bytes = bytes.checked_add(expanded_schema_bytes(schema, definition, depth + 1, count)?).ok_or_else(exhausted)?;
         }
     }
     Ok(bytes)
 }
 
-fn payload(
-    schema: &StorageSchema,
-    payloads: &[&[u8]],
-    budget: &mut Budget<'_>,
-) -> Result<ArrayRef> {
+fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) -> Result<ArrayRef> {
     schema.key.require_postcard()?;
     let mut expanded_fields = 0;
-    let expanded_bytes =
-        expanded_schema_bytes(&schema.schema, schema.schema.root, 0, &mut expanded_fields)?;
+    let expanded_bytes = expanded_schema_bytes(&schema.schema, schema.schema.root, 0, &mut expanded_fields)?;
     budget.claim(expanded_bytes)?;
     let settings = harmos_domain::config::SchemaSettings::default();
-    let construction = schema::Validator::construction_memory_bytes(&schema.schema, &settings)
-        .map_err(|_| invalid("invalid payload schema"))?;
+    let construction =
+        schema::Validator::construction_memory_bytes(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     budget.claim(construction)?;
-    let validator = schema::Validator::from_schema(&schema.schema, &settings)
-        .map_err(|_| invalid("invalid payload schema"))?;
+    let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     // Count Expansion Before Allocating Trees Or Arrow Buffers.
     for bytes in payloads {
         budget.claim(bytes.len().checked_mul(4).ok_or_else(exhausted)?)?;
@@ -538,15 +348,10 @@ fn payload(
             .visit(bytes, |path, event| {
                 match event {
                     Event::BeginMessage => *node_at(&mut root, path)? = Node::Message(Vec::new()),
-                    Event::BeginRepeated { length } => {
-                        *node_at(&mut root, path)? =
-                            Node::List((0..length).map(|_| Node::Null).collect())
-                    }
+                    Event::BeginRepeated { length } => *node_at(&mut root, path)? = Node::List((0..length).map(|_| Node::Null).collect()),
                     Event::Scalar(value) => *node_at(&mut root, path)? = Node::Scalar(value),
                     Event::Variant { index } => {
-                        let parent = path
-                            .get(..path.len().saturating_sub(1))
-                            .ok_or_else(|| invalid("invalid enum path"))?;
+                        let parent = path.get(..path.len().saturating_sub(1)).ok_or_else(|| invalid("invalid enum path"))?;
                         let Node::Message(fields) = node_at(&mut root, parent)? else {
                             return Err(invalid("invalid enum parent"));
                         };
@@ -579,12 +384,9 @@ fn node_at<'n, 'a>(root: &'n mut Node<'a>, path: &[PathElement<'_>]) -> Result<&
             };
             node_at(&mut fields[index].1, rest)
         }
-        (Node::List(values), PathElement::Index(index)) => node_at(
-            values
-                .get_mut(*index)
-                .ok_or_else(|| invalid("list index exceeds declaration"))?,
-            rest,
-        ),
+        (Node::List(values), PathElement::Index(index)) => {
+            node_at(values.get_mut(*index).ok_or_else(|| invalid("list index exceeds declaration"))?, rest)
+        }
         _ => Err(invalid("payload path differs from schema")),
     }
 }
@@ -626,25 +428,16 @@ fn array(kind: &DataType, values: &[Option<&Node<'_>>]) -> Result<ArrayRef> {
                 let members = values
                     .iter()
                     .map(|value| match value {
-                        Some(Node::Message(entries)) => Ok(entries
-                            .iter()
-                            .find(|(name, _)| name == field.name())
-                            .map(|(_, value)| value)),
+                        Some(Node::Message(entries)) => Ok(entries.iter().find(|(name, _)| name == field.name()).map(|(_, value)| value)),
                         None | Some(Node::Null) => Ok(None),
                         _ => Err(invalid("expected nested message payload")),
                     })
                     .collect::<Result<Vec<_>>>()?;
                 children.push(array(field.data_type(), &members)?);
             }
-            let valid = values
-                .iter()
-                .map(|value| matches!(value, Some(Node::Message(_))))
-                .collect::<Vec<_>>();
+            let valid = values.iter().map(|value| matches!(value, Some(Node::Message(_)))).collect::<Vec<_>>();
             if fields.is_empty() {
-                Arc::new(StructArray::new_empty_fields(
-                    values.len(),
-                    Some(NullBuffer::from(valid)),
-                ))
+                Arc::new(StructArray::new_empty_fields(values.len(), Some(NullBuffer::from(valid))))
             } else {
                 Arc::new(
                     StructArray::try_new(fields.clone(), children, Some(NullBuffer::from(valid)))
@@ -666,10 +459,7 @@ fn array(kind: &DataType, values: &[Option<&Node<'_>>]) -> Result<ArrayRef> {
                     None | Some(Node::Null) => valid.push(false),
                     _ => return Err(invalid("expected repeated payload")),
                 }
-                offsets.push(
-                    i32::try_from(elements.len())
-                        .map_err(|_| invalid("list exceeds Arrow offset range"))?,
-                );
+                offsets.push(i32::try_from(elements.len()).map_err(|_| invalid("list exceeds Arrow offset range"))?);
             }
             Arc::new(
                 ListArray::try_new(
@@ -685,49 +475,20 @@ fn array(kind: &DataType, values: &[Option<&Node<'_>>]) -> Result<ArrayRef> {
     })
 }
 
-fn cursor_columns<'a>(
-    rows: impl Iterator<Item = &'a StorageCursor> + Clone,
-) -> Vec<(Field, ArrayRef)> {
+fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> Vec<(Field, ArrayRef)> {
     vec![
-        (
-            Field::new("store", DataType::Utf8, false),
-            strings(rows.clone().map(|row| Some(row.history.store.as_str()))),
-        ),
-        (
-            Field::new("epoch", DataType::Utf8, false),
-            strings(rows.clone().map(|row| Some(row.history.epoch.as_str()))),
-        ),
-        (
-            Field::new("position", DataType::UInt64, false),
-            Arc::new(UInt64Array::from(
-                rows.map(|row| row.sequence).collect::<Vec<_>>(),
-            )),
-        ),
+        (Field::new("store", DataType::Utf8, false), strings(rows.clone().map(|row| Some(row.history.store.as_str())))),
+        (Field::new("epoch", DataType::Utf8, false), strings(rows.clone().map(|row| Some(row.history.epoch.as_str())))),
+        (Field::new("position", DataType::UInt64, false), Arc::new(UInt64Array::from(rows.map(|row| row.sequence).collect::<Vec<_>>()))),
     ]
 }
 fn append_schema_columns(
-    columns: &mut Vec<(Field, ArrayRef)>,
-    key: &crate::storage::SchemaKey,
-    rows: usize,
-    budget: &mut Budget<'_>,
+    columns: &mut Vec<(Field, ArrayRef)>, key: &crate::storage::SchemaKey, rows: usize, budget: &mut Budget<'_>,
 ) -> Result<()> {
-    budget.claim(
-        rows.checked_mul(key.id.as_str().len().saturating_add(32))
-            .and_then(|n| n.checked_mul(4))
-            .ok_or_else(exhausted)?,
-    )?;
-    columns.push((
-        Field::new("schema_id", DataType::Utf8, false),
-        strings((0..rows).map(|_| Some(key.id.as_str()))),
-    ));
-    columns.push((
-        Field::new("schema_version", DataType::UInt32, false),
-        Arc::new(UInt32Array::from(vec![key.version.get(); rows])),
-    ));
-    columns.push((
-        Field::new("payload_encoding", DataType::Utf8, false),
-        strings((0..rows).map(|_| Some(encoding(key)))),
-    ));
+    budget.claim(rows.checked_mul(key.id.as_str().len().saturating_add(32)).and_then(|n| n.checked_mul(4)).ok_or_else(exhausted)?)?;
+    columns.push((Field::new("schema_id", DataType::Utf8, false), strings((0..rows).map(|_| Some(key.id.as_str())))));
+    columns.push((Field::new("schema_version", DataType::UInt32, false), Arc::new(UInt32Array::from(vec![key.version.get(); rows]))));
+    columns.push((Field::new("payload_encoding", DataType::Utf8, false), strings((0..rows).map(|_| Some(encoding(key))))));
     Ok(())
 }
 fn encoding(key: &crate::storage::SchemaKey) -> &'static str {
@@ -741,14 +502,12 @@ fn strings<'a>(values: impl Iterator<Item = Option<&'a str>>) -> ArrayRef {
 }
 fn flat(columns: Vec<(Field, ArrayRef)>) -> Result<RecordBatch> {
     let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
-    RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|_| invalid("Arrow metadata batch mismatch"))
+    RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).map_err(|_| invalid("Arrow metadata batch mismatch"))
 }
 fn assemble(columns: Vec<(Field, ArrayRef)>, payload: ArrayRef) -> Result<RecordBatch> {
     let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
     let fields: Fields = fields.into();
-    let metadata = StructArray::try_new(fields.clone(), arrays, None)
-        .map_err(|_| invalid("Arrow metadata mismatch"))?;
+    let metadata = StructArray::try_new(fields.clone(), arrays, None).map_err(|_| invalid("Arrow metadata mismatch"))?;
     RecordBatch::try_new(
         Arc::new(Schema::new(vec![
             Field::new("_storage", DataType::Struct(fields), false),
@@ -769,21 +528,15 @@ fn metadata_budget(rows: usize, text: usize, budget: &mut Budget<'_>) -> Result<
 fn timestamp(value: SystemTime) -> Result<i64> {
     let value = match value.duration_since(UNIX_EPOCH) {
         Ok(value) => i128::try_from(value.as_nanos()).map_err(|_| invalid("timestamp overflow"))?,
-        Err(error) => -i128::try_from(error.duration().as_nanos())
-            .map_err(|_| invalid("timestamp overflow"))?,
+        Err(error) => -i128::try_from(error.duration().as_nanos()).map_err(|_| invalid("timestamp overflow"))?,
     };
     i64::try_from(value).map_err(|_| invalid("timestamp outside Arrow nanosecond range"))
 }
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "storage Arrow source",
-        reason,
-    }
+    Error::InvalidInput { field: "storage Arrow source", reason }
 }
 fn exhausted() -> Error {
-    Error::ResourceExhausted {
-        resource: "storage Arrow construction",
-    }
+    Error::ResourceExhausted { resource: "storage Arrow construction" }
 }
 
 /* === Tests === */

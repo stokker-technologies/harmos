@@ -26,8 +26,8 @@ use std::task::Poll;
 // Local Imports
 use crate::storage::fixture::*;
 use crate::storage::waveforms;
-use harmos_runtime::state::Envelope;
 use harmos_runtime::Application;
+use harmos_runtime::state::Envelope;
 
 /* === Constants === */
 
@@ -90,18 +90,12 @@ impl harmos_runtime::state::Transaction<u64> for Advance {
 
 impl RecordProjection for Projection {
     fn project<'a>(
-        &'a self,
-        entry: &'a Envelope<&serde_json::Value>,
-        output: &'a mut ProjectedRecords<'_>,
+        &'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             let schema = waveforms::schema();
             let item = Identifier::new(format!("observed-{}", entry.position.0)).unwrap();
-            let payload = harmos_runtime::Message::encode_to_vec(&waveforms::Sample {
-                phase: 0,
-                ordinal: entry.position.0,
-                value: 1.0,
-            });
+            let payload = harmos_runtime::Message::encode_to_vec(&waveforms::Sample { phase: 0, ordinal: entry.position.0, value: 1.0 });
             output.push(record(&schema, &item, &payload)).await
         })
     }
@@ -114,12 +108,7 @@ impl RecordProjection for Projection {
 fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::Query {
     harmos_runtime::storage::operations::Query {
         at,
-        source: harmos_runtime::storage::query::Source::Files(
-            harmos_runtime::storage::query::FileSelection {
-                scope: None,
-                item: None,
-            },
-        ),
+        source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
         transforms: Vec::new(),
         slice: harmos_runtime::storage::query::RowSlice::default(),
     }
@@ -155,10 +144,7 @@ async fn unrelated_backlog_skipped() {
         _ = f.data.control.write_entered.notified() => panic!("ready journal was held behind unrelated primary data")
     }
     assert_eq!(f.storage.cursor_saved(), durable);
-    assert_eq!(
-        f.recovery.control.writes.lock().unwrap().as_slice(),
-        &[first.sequence, second.sequence]
-    );
+    assert_eq!(f.recovery.control.writes.lock().unwrap().as_slice(), &[first.sequence, second.sequence]);
     {
         let entries = f.recovery.entries.lock().unwrap();
         assert_eq!(entries[&first.sequence].payload, b"state-one");
@@ -175,10 +161,7 @@ async fn unrelated_backlog_skipped() {
 
 async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
     poll_fn(|context| {
-        assert!(
-            future.as_mut().poll(context).is_pending(),
-            "gated future completed unexpectedly"
-        );
+        assert!(future.as_mut().poll(context).is_pending(), "gated future completed unexpectedly");
         Poll::Ready(())
     })
     .await;
@@ -189,35 +172,17 @@ async fn journal_awaits_data() {
     let data = Arc::new(Data::new(history()));
     let state = Arc::new(Recovery::new(history()));
     let policy = config();
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: state.clone(),
-        },
-        policy.clone(),
-    )
-    .unwrap();
+    let storage: StorageManager =
+        StorageManager::new(StorageBackends { primary: data.clone(), state: state.clone() }, policy.clone()).unwrap();
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Transactions::catalog())
         .register(Records::catalog())
-        .managed_state(ReadLimits {
-            rows: NonZeroUsize::new(1).unwrap(),
-            bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-        })
-        .store_records(
-            ReadLimits {
-                rows: NonZeroUsize::new(4).unwrap(),
-                bytes: NonZeroUsize::new(16 * 1024).unwrap(),
-            },
-            Projection,
-        )
+        .managed_state(ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() })
+        .store_records(ReadLimits { rows: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(16 * 1024).unwrap() }, Projection)
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    storage
-        .write_schema(&waveforms::schema(), &waveforms::definition())
-        .await
-        .unwrap();
+    storage.write_schema(&waveforms::schema(), &waveforms::definition()).await.unwrap();
     let before = storage.flush().await.unwrap();
 
     // Keep Both Transactions In The Queue Until The Recovery Barrier Exists.

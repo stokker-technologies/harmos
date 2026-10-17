@@ -99,18 +99,12 @@ impl Operation for Measure {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Gauge>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(resources: Arc<Gauge>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self(resources))
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        _request: &mut MeasureContract,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, _request: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.ran.fetch_add(1, Ordering::SeqCst);
@@ -138,18 +132,9 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         entered,
         release: Semaphore::new(0),
     });
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Measure>("app", lane, gauge.clone())
-        .unwrap();
-    let instances: Vec<_> = (0..count)
-        .map(|_| runtime.operations.submit(MeasureContract {}).unwrap())
-        .collect();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Measure>("app", lane, gauge.clone()).unwrap();
+    let instances: Vec<_> = (0..count).map(|_| runtime.operations.submit(MeasureContract {}).unwrap()).collect();
 
     for _ in 0..admitted {
         receiver.recv().await.unwrap();

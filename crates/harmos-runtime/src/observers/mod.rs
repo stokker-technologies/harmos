@@ -64,11 +64,7 @@ pub struct ObserverDefinition {
 pub trait ObserverBackend: Send + Sync + 'static {
     type Resources: Send + Sync + 'static;
     fn definition(&self) -> crate::Result<ObserverDefinition>;
-    fn run(
-        &self,
-        resources: Arc<Self::Resources>,
-        activation: ObserverActivation,
-    ) -> impl Future<Output = crate::Result<()>> + Send;
+    fn run(&self, resources: Arc<Self::Resources>, activation: ObserverActivation) -> impl Future<Output = crate::Result<()>> + Send;
 }
 
 /* === Implementations === */
@@ -78,24 +74,14 @@ pub trait ObserverBackend: Send + Sync + 'static {
 /* === Private Functions === */
 pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     if definition.id.trim().is_empty() || definition.id.chars().any(char::is_control) {
-        return Err(Error::InvalidInput {
-            field: "observer identity",
-            reason: "must be nonempty and contain no control characters",
-        });
+        return Err(Error::InvalidInput { field: "observer identity", reason: "must be nonempty and contain no control characters" });
     }
     if definition.interval.is_zero() {
-        return Err(Error::InvalidInput {
-            field: "observer interval",
-            reason: "must be positive",
-        });
+        return Err(Error::InvalidInput { field: "observer interval", reason: "must be positive" });
     }
     let mut names = BTreeSet::new();
     for stream in &definition.streams {
-        if stream.id.is_empty()
-            || stream.schema == 0
-            || stream.window == 0
-            || !names.insert(stream.id.as_str())
-        {
+        if stream.id.is_empty() || stream.schema == 0 || stream.window == 0 || !names.insert(stream.id.as_str()) {
             return Err(Error::InvalidInput {
                 field: "observer streams",
                 reason: "stream identities must be unique and schema/window must be positive",

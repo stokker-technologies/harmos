@@ -28,9 +28,7 @@ pub trait Instance<O: OperationDeclaration>: Send + Sized {
 
     fn join(self) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
-    fn cancel_and_join(
-        self,
-    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
+    fn cancel_and_join(self) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
         async move {
             self.cancel().await?;
             self.join().await

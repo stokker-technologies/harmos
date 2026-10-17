@@ -15,32 +15,17 @@ use super::*;
 impl State {
     pub(crate) fn data_target(&self, through: &StorageCursor) -> Result<Target> {
         if !self.status.accepted.covers(through)? {
-            return Err(Error::InvalidInput {
-                field: "storage cursor",
-                reason: "cursor is ahead of admission",
-            });
+            return Err(Error::InvalidInput { field: "storage cursor", reason: "cursor is ahead of admission" });
         }
         if self.status.saved.covers(through)? {
-            return Ok(Target {
-                index: self.data_flushed,
-                sequence: self.status.saved.sequence,
-            });
+            return Ok(Target { index: self.data_flushed, sequence: self.status.saved.sequence });
         }
         let entry = self
             .queue
             .iter()
-            .find(|entry| {
-                entry.operation.domain() == Domain::Data
-                    && entry.operation.sequence() >= through.sequence
-            })
-            .ok_or(Error::InvalidInput {
-                field: "storage cursor",
-                reason: "admitted cursor has no pending owner",
-            })?;
-        Ok(Target {
-            index: entry.index,
-            sequence: entry.operation.sequence(),
-        })
+            .find(|entry| entry.operation.domain() == Domain::Data && entry.operation.sequence() >= through.sequence)
+            .ok_or(Error::InvalidInput { field: "storage cursor", reason: "admitted cursor has no pending owner" })?;
+        Ok(Target { index: entry.index, sequence: entry.operation.sequence() })
     }
 
     /// Recompute the published pending and read totals from their owners.
@@ -48,23 +33,11 @@ impl State {
         let now = self.execution.now();
         self.receipts.purge(now);
         self.status.mutation_bytes = self.receipts.snapshot_bytes();
-        self.status.pending_batches = self.reserved_batches
-            + self.queue.len()
-            + self
-                .files
-                .values()
-                .filter(|file| file.pending_batch())
-                .count();
-        self.status.pending_bytes = self.reserved
-            + self.scratch_bytes
-            + self.queue.bytes()
-            + self.files.values().map(|file| file.bytes()).sum::<usize>();
-        self.status.read_bytes = self.read_bytes
-            + self
-                .deletions
-                .values()
-                .map(|deletion| deletion.bytes)
-                .sum::<usize>();
+        self.status.pending_batches =
+            self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
+        self.status.pending_bytes =
+            self.reserved + self.scratch_bytes + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
+        self.status.read_bytes = self.read_bytes + self.deletions.values().map(|deletion| deletion.bytes).sum::<usize>();
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {
@@ -76,11 +49,7 @@ impl State {
     }
 
     pub(crate) fn write_boundary(&self) -> Option<u64> {
-        [self.data_request, self.recovery_request]
-            .into_iter()
-            .flatten()
-            .map(|target| target.index)
-            .min()
+        [self.data_request, self.recovery_request].into_iter().flatten().map(|target| target.index).min()
     }
 
     pub(crate) fn request_flush(&mut self) -> bool {
@@ -99,15 +68,12 @@ impl State {
 
 impl Inner {
     pub(crate) fn notify(&self) {
-        self.changed
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.changed.send_modify(|revision| *revision = revision.wrapping_add(1));
     }
 
     pub(crate) fn relieve_pressure(&self, state: &mut State, bytes: usize, batches: usize) {
-        let full = state.status.pending_bytes.saturating_add(bytes)
-            > self.settings.request.max_pending_write_bytes.get()
-            || state.status.pending_batches.saturating_add(batches)
-                > self.settings.request.max_pending_write_batches.get();
+        let full = state.status.pending_bytes.saturating_add(bytes) > self.settings.request.max_pending_write_bytes.get()
+            || state.status.pending_batches.saturating_add(batches) > self.settings.request.max_pending_write_batches.get();
         if full {
             let lagged = state.lag_followers();
             let requested = state.request_flush();
@@ -118,15 +84,12 @@ impl Inner {
     }
 
     pub(crate) async fn bounded<T>(&self, future: StorageFuture<'_, T>) -> Result<T> {
-        self.execution
-            .timeout(IO_TIMEOUT, future)
-            .await
-            .map_err(|_| {
-                Error::backend(
-                    "storage I/O",
-                    crate::BackendFailure::Transient,
-                    io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
-                )
-            })?
+        self.execution.timeout(IO_TIMEOUT, future).await.map_err(|_| {
+            Error::backend(
+                "storage I/O",
+                crate::BackendFailure::Transient,
+                io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
+            )
+        })?
     }
 }

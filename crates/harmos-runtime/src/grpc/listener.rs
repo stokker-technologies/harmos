@@ -101,18 +101,8 @@ pub(super) trait Host: Send + Sync {
 
 /* === Implementations === */
 impl Resources {
-    pub(super) fn new(
-        settings: Settings,
-        routes: tonic::service::Routes,
-        middleware: Vec<Arc<dyn Middleware>>,
-    ) -> Self {
-        Self {
-            settings,
-            routes,
-            middleware: middleware.into(),
-            stopping: watch::channel(false).0,
-            address: Mutex::new(None),
-        }
+    pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
+        Self { settings, routes, middleware: middleware.into(), stopping: watch::channel(false).0, address: Mutex::new(None) }
     }
 }
 
@@ -150,19 +140,14 @@ impl<A: Application> Host for Owner<A> {
         Box::pin(async move {
             let _transition = self.transitions.lock().await;
             if self.closing.load(Ordering::Acquire) {
-                return Err(Error::Closing {
-                    domain: "gRPC listener",
-                });
+                return Err(Error::Closing { domain: "gRPC listener" });
             }
             // A Dropped Attachment Is Cancelled But Still Owns Its Service
             let retiring = {
                 let mut current = self.current();
                 match current.as_ref() {
                     Some(attached) if !*attached.resources.stopping.borrow() => {
-                        return Err(Error::AlreadyRegistered {
-                            domain: "gRPC listener",
-                            name: SERVICE.into(),
-                        });
+                        return Err(Error::AlreadyRegistered { domain: "gRPC listener", name: SERVICE.into() });
                     }
                     Some(_) => current.take(),
                     None => None,
@@ -181,22 +166,12 @@ impl<A: Application> Host for Owner<A> {
                         ..crate::services::POLICY
                     },
                 },
-                |resources: Arc<Resources>| Listener {
-                    resources,
-                    task: None,
-                },
+                |resources: Arc<Resources>| Listener { resources, task: None },
             )?;
-            *self.current() = Some(Current {
-                generation,
-                resources: resources.clone(),
-                lease: None,
-                application: std::marker::PhantomData,
-            });
+            *self.current() =
+                Some(Current { generation, resources: resources.clone(), lease: None, application: std::marker::PhantomData });
             let started = async {
-                let lease = self
-                    .operations
-                    .submit_with_resources_at(SERVICE, resources.clone())
-                    .await?;
+                let lease = self.operations.submit_with_resources_at(SERVICE, resources.clone()).await?;
                 let lease = Arc::new(lease);
                 if let Some(current) = self.current().as_mut() {
                     current.lease = Some(lease.clone());
@@ -205,13 +180,7 @@ impl<A: Application> Host for Owner<A> {
                     lease.cancel();
                 }
                 lease.ready().await?;
-                resources
-                    .address
-                    .lock()
-                    .expect("gRPC address lock is healthy")
-                    .ok_or(Error::NotReady {
-                        domain: "gRPC listener",
-                    })
+                resources.address.lock().expect("gRPC address lock is healthy").ok_or(Error::NotReady { domain: "gRPC listener" })
             };
             match started.await {
                 Ok(address) => Ok((generation, address)),
@@ -231,14 +200,7 @@ impl<A: Application> Host for Owner<A> {
             let _transition = self.transitions.lock().await;
             let retiring = {
                 let mut current = self.current();
-                if current
-                    .as_ref()
-                    .is_some_and(|current| current.generation == generation)
-                {
-                    current.take()
-                } else {
-                    None
-                }
+                if current.as_ref().is_some_and(|current| current.generation == generation) { current.take() } else { None }
             };
             match retiring {
                 Some(retiring) => self.retire(retiring).await,
@@ -249,10 +211,7 @@ impl<A: Application> Host for Owner<A> {
 
     fn cancel(&self, generation: u64) {
         let current = self.current();
-        let Some(current) = current
-            .as_ref()
-            .filter(|current| current.generation == generation)
-        else {
+        let Some(current) = current.as_ref().filter(|current| current.generation == generation) else {
             return;
         };
         current.resources.stopping.send_replace(true);
@@ -262,9 +221,7 @@ impl<A: Application> Host for Owner<A> {
     }
 
     fn attached(&self) -> bool {
-        self.current()
-            .as_ref()
-            .is_some_and(|current| !*current.resources.stopping.borrow())
+        self.current().as_ref().is_some_and(|current| !*current.resources.stopping.borrow())
     }
 
     fn close(&self) {
@@ -289,14 +246,8 @@ impl<A: Application> Host for Owner<A> {
 
     fn local_addr(&self) -> Option<SocketAddr> {
         let current = self.current();
-        let current = current
-            .as_ref()
-            .filter(|current| !*current.resources.stopping.borrow())?;
-        *current
-            .resources
-            .address
-            .lock()
-            .expect("gRPC address lock is healthy")
+        let current = current.as_ref().filter(|current| !*current.resources.stopping.borrow())?;
+        *current.resources.address.lock().expect("gRPC address lock is healthy")
     }
 }
 
@@ -307,36 +258,29 @@ impl<A: Application> Resident<A> for Listener {
         if *self.resources.stopping.borrow() {
             return Ok(());
         }
-        let listener = TcpListener::bind(self.resources.settings.address)
-            .await
-            .map_err(|source| Fault::Application(failure(source)))?;
-        let address = listener
-            .local_addr()
-            .map_err(|source| Fault::Application(failure(source)))?;
+        let listener = TcpListener::bind(self.resources.settings.address).await.map_err(|source| Fault::Application(failure(source)))?;
+        let address = listener.local_addr().map_err(|source| Fault::Application(failure(source)))?;
         let slots = Arc::new(Semaphore::new(self.resources.settings.connections.get()));
         let stopping = self.resources.stopping.subscribe();
         // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
         let grace = self.resources.settings.shutdown_timeout / 2;
-        let incoming = futures_util::stream::unfold(
-            (listener, slots, stopping),
-            move |(listener, slots, stopping)| async move {
-                let permit = slots.clone().acquire_owned().await.ok()?;
-                let connection = listener.accept().await.and_then(|(stream, _)| {
-                    stream.set_nodelay(true)?;
-                    let mut cancellation = stopping.clone();
-                    Ok(Connection {
-                        stream,
-                        stopping: Box::pin(async move {
-                            let _ = cancellation.wait_for(|stopping| *stopping).await;
-                            tokio::time::sleep(grace).await;
-                        }),
-                        stopped: false,
-                        _permit: permit,
-                    })
-                });
-                Some((connection, (listener, slots, stopping)))
-            },
-        );
+        let incoming = futures_util::stream::unfold((listener, slots, stopping), move |(listener, slots, stopping)| async move {
+            let permit = slots.clone().acquire_owned().await.ok()?;
+            let connection = listener.accept().await.and_then(|(stream, _)| {
+                stream.set_nodelay(true)?;
+                let mut cancellation = stopping.clone();
+                Ok(Connection {
+                    stream,
+                    stopping: Box::pin(async move {
+                        let _ = cancellation.wait_for(|stopping| *stopping).await;
+                        tokio::time::sleep(grace).await;
+                    }),
+                    stopped: false,
+                    _permit: permit,
+                })
+            });
+            Some((connection, (listener, slots, stopping)))
+        });
         let inbound = Inbound {
             routes: self.resources.routes.clone(),
             middleware: self.resources.middleware.clone(),
@@ -347,13 +291,9 @@ impl<A: Application> Resident<A> for Listener {
         let mut server = tonic::transport::Server::builder();
         server = server
             .concurrency_limit_per_connection(self.resources.settings.calls_per_connection.get())
-            .max_concurrent_streams(Some(
-                self.resources.settings.calls_per_connection.get() as u32
-            ));
+            .max_concurrent_streams(Some(self.resources.settings.calls_per_connection.get() as u32));
         if let Some(tls) = &self.resources.settings.tls {
-            server = server
-                .tls_config(tls.clone())
-                .map_err(|source| Fault::Application(failure(source)))?;
+            server = server.tls_config(tls.clone()).map_err(|source| Fault::Application(failure(source)))?;
         }
         let shutdown = async move {
             while !*stopping.borrow_and_update() {
@@ -375,27 +315,16 @@ impl<A: Application> Resident<A> for Listener {
                     .await
                     .map_err(failure)
             } else {
-                server
-                    .serve_with_incoming_shutdown(inbound, incoming, shutdown)
-                    .await
-                    .map_err(failure)
+                server.serve_with_incoming_shutdown(inbound, incoming, shutdown).await.map_err(failure)
             }
         }));
-        *self
-            .resources
-            .address
-            .lock()
-            .expect("gRPC address lock is healthy") = Some(address);
+        *self.resources.address.lock().expect("gRPC address lock is healthy") = Some(address);
         tracing::info!(%address, "gRPC listener ready");
         context.ready();
-        let completed = context
-            .until_stopping(self.task.as_mut().expect("listener owns serving task"))
-            .await;
+        let completed = context.until_stopping(self.task.as_mut().expect("listener owns serving task")).await;
         if let Some(result) = completed {
             self.task.take();
-            result
-                .map_err(|source| Fault::Application(failure(source)))?
-                .map_err(Fault::Application)?;
+            result.map_err(|source| Fault::Application(failure(source)))?.map_err(Fault::Application)?;
         }
         Ok(())
     }
@@ -406,17 +335,11 @@ impl<A: Application> Resident<A> for Listener {
         if let Some(task) = &mut self.task {
             let joined = tokio::time::timeout(self.resources.settings.shutdown_timeout, task)
                 .await
-                .map_err(|_| Error::NotReady {
-                    domain: "gRPC connection settlement",
-                })?;
+                .map_err(|_| Error::NotReady { domain: "gRPC connection settlement" })?;
             self.task.take();
             joined.map_err(failure)??;
         }
-        *self
-            .resources
-            .address
-            .lock()
-            .expect("gRPC address lock is healthy") = None;
+        *self.resources.address.lock().expect("gRPC address lock is healthy") = None;
         tracing::info!("gRPC listener stopped");
         Ok(())
     }
@@ -440,31 +363,20 @@ impl Connection {
             self.stopped = self.stopping.as_mut().poll(context).is_ready();
         }
         if self.stopped {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::ConnectionAborted,
-                "gRPC listener is stopping",
-            ));
+            return Err(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "gRPC listener is stopping"));
         }
         Ok(())
     }
 }
 
 impl AsyncRead for Connection {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
         self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_read(cx, buffer)
     }
 }
 impl AsyncWrite for Connection {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bytes: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<std::io::Result<usize>> {
         self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_write(cx, bytes)
     }
@@ -484,10 +396,7 @@ impl AsyncWrite for Connection {
 
 /* === Private Functions === */
 fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::TaskFailed {
-        domain: "gRPC listener",
-        source: Arc::new(source),
-    }
+    Error::TaskFailed { domain: "gRPC listener", source: Arc::new(source) }
 }
 
 /* === Tests === */

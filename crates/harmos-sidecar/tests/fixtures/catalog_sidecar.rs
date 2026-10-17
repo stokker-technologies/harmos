@@ -19,51 +19,29 @@
 // Local Imports
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_domain::operations::lifecycle::Policy;
-use harmos_sdk::operations::{
-    OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
-};
+use harmos_sdk::operations::{OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
 /* === Constants === */
-const SDK: [harmos_domain::operations::OperationPolicy; 2] =
-    [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
 
 #[used]
-static IDENTITY: [u8; contracts::identity_len(
-    "sidecar",
-    Catalog::ID,
-    Catalog::VERSION,
-    Catalog::DESCRIPTION,
-    "()",
-)] = contracts::encode_identity(
-    "sidecar",
-    Catalog::ID,
-    Catalog::VERSION,
-    Catalog::DESCRIPTION,
-    "()",
-);
+static IDENTITY: [u8; contracts::identity_len("sidecar", Catalog::ID, Catalog::VERSION, Catalog::DESCRIPTION, "()")] =
+    contracts::encode_identity("sidecar", Catalog::ID, Catalog::VERSION, Catalog::DESCRIPTION, "()");
 
 #[used]
-static CONTRACTS: [u8; contracts::encoded_tree_len(
-    "sidecar",
-    Catalog::ID,
-    Catalog::PROVIDES,
-    &[],
-    &SDK,
-)] = contracts::encode_tree("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK);
+static CONTRACTS: [u8; contracts::encoded_tree_len("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK)] =
+    contracts::encode_tree("sidecar", Catalog::ID, Catalog::PROVIDES, &[], &SDK);
 
 #[used]
-static PUBLICATIONS: [u8; publications::encoded_len("sidecar", Catalog::ID, &[])] =
-    publications::encode("sidecar", Catalog::ID, &[]);
+static PUBLICATIONS: [u8; publications::encoded_len("sidecar", Catalog::ID, &[])] = publications::encode("sidecar", Catalog::ID, &[]);
 
 #[used]
-static LISTENERS: [u8; listeners::encoded_len("sidecar", Catalog::ID, &[])] =
-    listeners::encode("sidecar", Catalog::ID, &[]);
+static LISTENERS: [u8; listeners::encoded_len("sidecar", Catalog::ID, &[])] = listeners::encode("sidecar", Catalog::ID, &[]);
 
 #[used]
-static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])] =
-    observers::encode_tree("sidecar", Catalog::ID, &[]);
+static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])] = observers::encode_tree("sidecar", Catalog::ID, &[]);
 
 /* === Macros === */
 
@@ -132,13 +110,9 @@ impl Declared for Catalog {
     const ID: &'static str = "catalog-fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
-    const PROVIDES: &'static [harmos_domain::catalog::Node<
-        harmos_domain::operations::WireDeclaration,
-    >] = &[harmos_domain::catalog::Node::Leaf(
-        harmos_domain::operations::WireDeclaration::of::<Read>(),
-    )];
-    const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] =
-        &[];
+    const PROVIDES: &'static [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>] =
+        &[harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<Read>())];
+    const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
     fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
         harmos_domain::plugin::schema_markers::<Self>(

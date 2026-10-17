@@ -43,14 +43,9 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn run(
-    arguments: Arguments,
-    cancellation: &harmos_packaging::BuildCancellation,
-) -> Result<(), harmos_packaging::Error> {
+pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     let json = arguments.build.json;
-    let settings = arguments
-        .build
-        .settings(harmos_packaging::config::BuildBackend::Sidecar);
+    let settings = arguments.build.settings(harmos_packaging::config::BuildBackend::Sidecar);
     let result = arguments.collection.build(&settings, cancellation)?;
     crate::output::build(&result, json)
 }

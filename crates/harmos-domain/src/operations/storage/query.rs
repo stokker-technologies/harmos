@@ -47,10 +47,7 @@ crate::declare!(Query {
     visibility: Visibility::Shared,
     replay: ReplaySafety::Idempotent,
     grpc: ("harmos.storage.v1", "Storage", "Query"),
-    grant: |request: &Query| Some(crate::plugin::Grant::of(
-        "storage.query",
-        request.source.grant_scope(),
-    )),
+    grant: |request: &Query| Some(crate::plugin::Grant::of("storage.query", request.source.grant_scope(),)),
 });
 
 /* === Type Aliases === */
@@ -73,9 +70,7 @@ impl Query {
     pub fn validate(&self) -> Result<()> {
         self.source.validate()?;
         if self.transforms.len() > 64 {
-            return Err(crate::model::storage::query::transform::invalid(
-                "too many query transforms",
-            ));
+            return Err(crate::model::storage::query::transform::invalid("too many query transforms"));
         }
         Ok(())
     }
@@ -84,26 +79,10 @@ impl Query {
 impl MemorySize for Query {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.at
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.at)),
-            )
-            .saturating_add(
-                self.source
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.source)),
-            )
-            .saturating_add(
-                self.transforms
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.transforms)),
-            )
-            .saturating_add(
-                self.slice
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.slice)),
-            )
+            .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
+            .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
     }
 }
 

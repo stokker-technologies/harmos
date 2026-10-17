@@ -18,10 +18,7 @@ use std::sync::{Arc, Mutex};
 use support::{Bank, Bonus, Fact, Ledger, Noted, booted, deposit, ledger};
 // Local Imports
 use super::support;
-use harmos_runtime::{
-    state::Entry, state::Kind, state::Origin, state::Position, state::Recorded,
-    storage::JournalConsumer,
-};
+use harmos_runtime::{state::Entry, state::Kind, state::Origin, state::Position, state::Recorded, storage::JournalConsumer};
 use support::journal::{Journal, Store, frame};
 
 /* === Constants === */
@@ -46,13 +43,7 @@ impl Kept {
     fn new() -> (Self, Held) {
         let entries: Held = Arc::new(Mutex::new(Vec::new()));
 
-        (
-            Self {
-                entries: Arc::clone(&entries),
-                resume: Position::ORIGIN,
-            },
-            entries,
-        )
+        (Self { entries: Arc::clone(&entries), resume: Position::ORIGIN }, entries)
     }
 }
 
@@ -61,11 +52,7 @@ impl JournalConsumer<Bank> for Kept {
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         let mut held = self.entries.lock().expect("the fold is never poisoned");
 
         for entry in entries {
@@ -86,32 +73,16 @@ async fn replay_applies_version() {
     let copy = Store::default();
 
     // What this build writes: a bonus of 10 credits 10.
-    let live = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy))
-    })
-    .await;
-    let written = live
-        .state
-        .commit(Bonus { amount: 10 })
-        .await
-        .expect("accepted");
+    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
+    let written = live.state.commit(Bonus { amount: 10 }).await.expect("accepted");
     live.state.wait_until_stored(written.position).await;
     live.stop().await.unwrap();
 
     // What a version-1 build wrote: the same declared amount, under version 1,
     // in version 1's own shape — and version 1 credited double.
-    copy.push(frame(
-        2,
-        Kind::Transaction,
-        "ledger.bonus",
-        1,
-        serde_json::json!({ "amount": 10 }),
-    ));
+    copy.push(frame(2, Kind::Transaction, "ledger.bonus", 1, serde_json::json!({ "amount": 10 })));
 
-    let recovered = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy))
-    })
-    .await;
+    let recovered = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
     let rebuilt = ledger(&recovered).await;
 
     assert_eq!(
@@ -135,29 +106,17 @@ async fn replay_applies_version() {
 async fn stored_fact_upgrades() {
     let copy = Store::default();
 
-    let live = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy))
-    })
-    .await;
+    let live = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy))).await;
     let written = live.state.commit(deposit(4)).await.expect("accepted");
     live.state.wait_until_stored(written.position).await;
     live.stop().await.unwrap();
 
     // A fact as a version-1 build wrote it: the note under a field name the
     // current shape does not have.
-    copy.push(frame(
-        2,
-        Kind::Record,
-        "ledger.noted",
-        1,
-        serde_json::json!({ "text": "audited" }),
-    ));
+    copy.push(frame(2, Kind::Record, "ledger.noted", 1, serde_json::json!({ "text": "audited" })));
 
     let (kept, held) = Kept::new();
-    let recovered = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy)).attach(kept)
-    })
-    .await;
+    let recovered = booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).attach(kept)).await;
 
     assert_eq!(recovered.state.applied(), Position(2));
 

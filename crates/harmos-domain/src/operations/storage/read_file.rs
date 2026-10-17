@@ -40,10 +40,7 @@ crate::declare!(ReadFile {
     visibility: Visibility::Shared,
     replay: ReplaySafety::Idempotent,
     grpc: ("harmos.storage.v1", "Storage", "ReadFile"),
-    grant: |request: &ReadFile| Some(crate::plugin::Grant::of(
-        "storage.read_file",
-        request.file.metadata.id.as_str().to_owned(),
-    )),
+    grant: |request: &ReadFile| Some(crate::plugin::Grant::of("storage.read_file", request.file.metadata.id.as_str().to_owned(),)),
 });
 
 /* === Type Aliases === */
@@ -64,16 +61,8 @@ pub struct ReadFile {
 impl MemorySize for ReadFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.file
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.file)),
-            )
-            .saturating_add(
-                self.range
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.range)),
-            )
+            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
+            .saturating_add(self.range.memory_size().saturating_sub(std::mem::size_of_val(&self.range)))
     }
 }
 

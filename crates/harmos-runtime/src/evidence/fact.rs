@@ -20,9 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 // Local Imports
 use crate::evidence::EvidenceError;
-use crate::{
-    DefinitionId, Identified, state::At, state::FactSource, state::Position, state::SystemFact,
-};
+use crate::{DefinitionId, Identified, state::At, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
 pub(crate) const SOURCE: &str = "artifact";
@@ -71,35 +69,15 @@ impl EvidenceRecord {
     pub fn details<K: EvidenceKind>(&self) -> Result<K::Details, EvidenceError> {
         let (named, _) = K::definition();
         if named != self.kind {
-            return Err(EvidenceError::Mismatched {
-                kind: self.kind.clone(),
-                named,
-            });
+            return Err(EvidenceError::Mismatched { kind: self.kind.clone(), named });
         }
 
-        serde_json::from_slice(&self.described).map_err(|error| EvidenceError::Malformed {
-            kind: self.kind.clone(),
-            cause: error.to_string(),
-        })
+        serde_json::from_slice(&self.described)
+            .map_err(|error| EvidenceError::Malformed { kind: self.kind.clone(), cause: error.to_string() })
     }
 
-    pub(crate) fn new(
-        kind: DefinitionId,
-        version: u32,
-        scope: String,
-        key: String,
-        length: u64,
-        described: Vec<u8>,
-    ) -> Self {
-        Self {
-            kind,
-            version,
-            scope,
-            key,
-            length,
-            finalized: None,
-            described,
-        }
+    pub(crate) fn new(kind: DefinitionId, version: u32, scope: String, key: String, length: u64, described: Vec<u8>) -> Self {
+        Self { kind, version, scope, key, length, finalized: None, described }
     }
 
     pub(crate) fn folded(fact: &SystemFact, position: Position) -> Option<Self> {
@@ -117,10 +95,7 @@ impl EvidenceRecord {
             scope: recorded.scope,
             key: recorded.key,
             length: recorded.length,
-            finalized: Some(At {
-                value: recorded.digest,
-                position,
-            }),
+            finalized: Some(At { value: recorded.digest, position }),
             described: recorded.details.get().as_bytes().to_vec(),
         })
     }
@@ -137,12 +112,7 @@ impl EvidenceRecord {
         })
         .expect("the fixed evidence fact shape serializes");
 
-        SystemFact {
-            source: FactSource::Work(SOURCE.to_owned()),
-            name: FINALIZED.to_owned(),
-            version: VERSION,
-            payload,
-        }
+        SystemFact { source: FactSource::Work(SOURCE.to_owned()), name: FINALIZED.to_owned(), version: VERSION, payload }
     }
 }
 

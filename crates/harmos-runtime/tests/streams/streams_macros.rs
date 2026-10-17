@@ -22,12 +22,7 @@ mod streams {
         }
     }
 
-    #[harmos_runtime::stream(
-        description = "A waveform-shaped row with one historical schema.",
-        id = "pulse",
-        window = 4,
-        history(PulseV1)
-    )]
+    #[harmos_runtime::stream(description = "A waveform-shaped row with one historical schema.", id = "pulse", window = 4, history(PulseV1))]
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
     pub struct Pulse(pub u64);
 
@@ -45,11 +40,7 @@ mod streams {
         }
     }
 
-    #[harmos_runtime::stream(
-        description = "A second vertical row proves dispatch and demand stay per-stream.",
-        id = "reading",
-        window = 2
-    )]
+    #[harmos_runtime::stream(description = "A second vertical row proves dispatch and demand stay per-stream.", id = "reading", window = 2)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Reading {
         pub value: i64,
@@ -105,8 +96,8 @@ use std::pin::Pin;
 use serde::de::value::{Error as ValueError, U64Deserializer};
 // Local Imports
 use harmos_runtime::{
-    Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial,
-    streams::Item, streams::Prefix, streams::Stream, streams::Tracked,
+    Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial, streams::Item, streams::Prefix, streams::Stream,
+    streams::Tracked,
 };
 
 /* === Constants === */
@@ -168,9 +159,7 @@ impl harmos_runtime::state::TransactionCatalog<State> for Change {}
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn next<S: Clone + 'static>(
-    watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin),
-) -> Option<Item<S>> {
+async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }
 
@@ -194,20 +183,8 @@ async fn streams_publish_query() {
     runtime.streams.publish(streams::Pulse(7));
     runtime.streams.publish(streams::Pulse(8));
 
-    assert_eq!(
-        next(&mut watching).await,
-        Some(Item::Row(At {
-            value: streams::Pulse(7),
-            position: Position::ORIGIN,
-        }))
-    );
-    assert_eq!(
-        next(&mut watching).await,
-        Some(Item::Row(At {
-            value: streams::Pulse(8),
-            position: Position::ORIGIN,
-        }))
-    );
+    assert_eq!(next(&mut watching).await, Some(Item::Row(At { value: streams::Pulse(7), position: Position::ORIGIN })));
+    assert_eq!(next(&mut watching).await, Some(Item::Row(At { value: streams::Pulse(8), position: Position::ORIGIN })));
 
     let queried: Vec<_> = runtime
         .streams
@@ -231,12 +208,7 @@ fn generated_catalog_registers() {
     assert_eq!(catalog[0].id(), "pulse");
     assert_eq!(catalog[0].version(), 2);
     assert_eq!(catalog[0].window(), 4);
-    assert_eq!(
-        streams::Studio::definition("reading")
-            .expect("the id is in the catalog")
-            .window(),
-        2
-    );
+    assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
     assert!(streams::Studio::definition("outside").is_none());
     assert_eq!(streams::Pulse::DEFINITION, ("pulse", 2, 4));
     assert_eq!(streams::Pulse::HISTORY, [("pulse", 1)]);
@@ -245,18 +217,9 @@ fn generated_catalog_registers() {
 
 #[test]
 fn declared_coordinates_carry() {
-    let row = streams::Capture {
-        take: streams::Take(3),
-        lens: streams::Lens(9),
-        ordinal: 41,
-        value: -7,
-    };
+    let row = streams::Capture { take: streams::Take(3), lens: streams::Lens(9), ordinal: 41, value: -7 };
 
-    assert_eq!(
-        row.track(),
-        (streams::Take(3), streams::Lens(9)),
-        "the declaration's depth and component types are the row's own"
-    );
+    assert_eq!(row.track(), (streams::Take(3), streams::Lens(9)), "the declaration's depth and component types are the row's own");
     assert_eq!(<streams::Capture as Tracked>::TRACK, ["take", "lens"]);
     assert_eq!(row.axis(), 41);
     assert_eq!(<streams::Capture as Axial>::AXIS, "ordinal");
@@ -268,11 +231,7 @@ fn selection_prefix_declared() {
         selection.labels()
     }
 
-    assert_eq!(
-        narrows::<streams::Capture, _>((streams::Take(3),)),
-        ["take_3"],
-        "a shorter tuple selects the whole subtree beneath it"
-    );
+    assert_eq!(narrows::<streams::Capture, _>((streams::Take(3),)), ["take_3"], "a shorter tuple selects the whole subtree beneath it");
     assert_eq!(
         narrows::<streams::Capture, _>((streams::Take(3), streams::Lens(9))),
         ["take_3", "lens_9"],
@@ -282,10 +241,7 @@ fn selection_prefix_declared() {
         (streams::Take(3),).selects(&(streams::Take(3), streams::Lens(1))),
         "a prefix selects by the application's own equality, component by component"
     );
-    assert!(
-        !(streams::Take(3),).selects(&(streams::Take(4), streams::Lens(1))),
-        "and cuts everything it does not name"
-    );
+    assert!(!(streams::Take(3),).selects(&(streams::Take(4), streams::Lens(1))), "and cuts everything it does not name");
     // Neither of these implements `Prefix<(Take, Lens)>`, so neither compiles:
     //
     //     narrows::<streams::Capture, _>((streams::Lens(9),));
@@ -302,14 +258,11 @@ fn rows_restore_direct() {
         "the historical row converts directly into the current row"
     );
     assert_eq!(
-        streams::Pulse::restore(2, U64Deserializer::<ValueError>::new(9))
-            .expect("the current row decodes"),
+        streams::Pulse::restore(2, U64Deserializer::<ValueError>::new(9)).expect("the current row decodes"),
         Some(streams::Pulse(9))
     );
     assert!(
-        streams::Pulse::restore(99, U64Deserializer::<ValueError>::new(9))
-            .expect("an unknown version is not a decode error")
-            .is_none()
+        streams::Pulse::restore(99, U64Deserializer::<ValueError>::new(9)).expect("an unknown version is not a decode error").is_none()
     );
 }
 
@@ -317,65 +270,29 @@ fn rows_restore_direct() {
 fn stream_attribute_carries() {
     use harmos_runtime::{Message, StreamSpec};
 
-    let row = PresentedSample {
-        voltage: -12.5,
-        sample_index: u64::MAX,
-    };
+    let row = PresentedSample { voltage: -12.5, sample_index: u64::MAX };
     let decoded = PresentedSample::decode(&row.encode_to_vec()).unwrap();
     assert_eq!(decoded.voltage.to_bits(), row.voltage.to_bits());
     assert_eq!(decoded.sample_index, u64::MAX);
     assert_eq!(<PresentedSample as StreamSpec>::metadata().label, "Samples");
+    assert_eq!(<PresentedSample as StreamSpec>::metadata().attributes["acme.owner"], harmos_runtime::Value::Text("bench".into()));
+    assert!(matches!(<PresentedSample as StreamSpec>::metadata().attributes["config"], harmos_runtime::Value::Object(_)));
+    assert_eq!(<PresentedSample as StreamSpec>::row_metadata()[0].unit.as_deref(), Some("V"));
+    assert_eq!(<PresentedSample as StreamSpec>::row_metadata()[1].metadata.label, "Sample Index");
     assert_eq!(
-        <PresentedSample as StreamSpec>::metadata().attributes["acme.owner"],
-        harmos_runtime::Value::Text("bench".into())
-    );
-    assert!(matches!(
-        <PresentedSample as StreamSpec>::metadata().attributes["config"],
-        harmos_runtime::Value::Object(_)
-    ));
-    assert_eq!(
-        <PresentedSample as StreamSpec>::row_metadata()[0]
-            .unit
-            .as_deref(),
-        Some("V")
-    );
-    assert_eq!(
-        <PresentedSample as StreamSpec>::row_metadata()[1]
-            .metadata
-            .label,
-        "Sample Index"
-    );
-    assert_eq!(
-        <PresentedSample as StreamSpec>::row_metadata()[0]
-            .metadata
-            .description
-            .as_deref(),
+        <PresentedSample as StreamSpec>::row_metadata()[0].metadata.description.as_deref(),
         Some("Measured voltage"),
         "a field's explicit description is retained"
     );
-    assert_eq!(
-        PresentedSample::definition()
-            .metadata()
-            .description
-            .as_deref(),
-        Some("Portable samples")
-    );
+    assert_eq!(PresentedSample::definition().metadata().description.as_deref(), Some("Portable samples"));
 
     #[cfg(feature = "plugin")]
     const ENTRIES: &[harmos_runtime::plugin::inventory::publications::Entry] =
-        &[harmos_runtime::plugin::inventory::publications::Entry::of::<
-            PresentedSample,
-        >()];
+        &[harmos_runtime::plugin::inventory::publications::Entry::of::<PresentedSample>()];
     #[cfg(feature = "plugin")]
-    assert_eq!(
-        ENTRIES[0].metadata(),
-        <PresentedSample as StreamSpec>::metadata()
-    );
+    assert_eq!(ENTRIES[0].metadata(), <PresentedSample as StreamSpec>::metadata());
     #[cfg(feature = "plugin")]
-    assert_eq!(
-        ENTRIES[0].row_metadata(),
-        <PresentedSample as StreamSpec>::row_metadata()
-    );
+    assert_eq!(ENTRIES[0].row_metadata(), <PresentedSample as StreamSpec>::row_metadata());
 }
 
 /* === Tests === */

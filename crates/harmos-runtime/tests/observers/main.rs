@@ -43,9 +43,7 @@ use tokio::sync::Semaphore;
 // Local Imports
 use harmos_runtime::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos_runtime::operations::resident::{Activation, Definition, Key, Kind};
-use harmos_runtime::operations::{
-    OperationInstance, OperationManager, OperationOutcome, OperationPhase,
-};
+use harmos_runtime::operations::{OperationInstance, OperationManager, OperationOutcome, OperationPhase};
 #[cfg(feature = "plugin-sidecar")]
 use harmos_runtime::sidecar::{ActivationId, Activity, ObserverError};
 use harmos_runtime::{Error, Runtime};
@@ -130,19 +128,10 @@ impl Control {
 impl ObserverBackend for Backend {
     type Resources = Control;
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
-        Ok(ObserverDefinition {
-            id: self.id.into(),
-            interval: Duration::from_millis(5),
-            streams: vec![],
-            demand_keys: vec![],
-        })
+        Ok(ObserverDefinition { id: self.id.into(), interval: Duration::from_millis(5), streams: vec![], demand_keys: vec![] })
     }
 
-    async fn run(
-        &self,
-        resources: Arc<Control>,
-        mut activation: ObserverActivation,
-    ) -> harmos_runtime::Result<()> {
+    async fn run(&self, resources: Arc<Control>, mut activation: ObserverActivation) -> harmos_runtime::Result<()> {
         resources.starts.add_permits(1);
         tokio::select! {
             _ = activation.stopping() => return Ok(()),
@@ -159,11 +148,7 @@ impl ObserverBackend for Backend {
         resources.finish.acquire().await.unwrap().forget();
         resources.completed.fetch_add(1, Ordering::SeqCst);
         if matches!(self.mode, Mode::Failed) {
-            Err(Error::backend(
-                "observer cleanup",
-                harmos_runtime::BackendFailure::Conflict,
-                std::io::Error::other("cleanup conflict"),
-            ))
+            Err(Error::backend("observer cleanup", harmos_runtime::BackendFailure::Conflict, std::io::Error::other("cleanup conflict")))
         } else {
             Ok(())
         }
@@ -180,27 +165,15 @@ impl Drop for Reentrant {
 impl ObserverBackend for FinalPublication {
     type Resources = harmos_runtime::state::StateManager<Bank>;
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
-        Ok(ObserverDefinition {
-            id: "final".into(),
-            interval: Duration::from_secs(1),
-            streams: vec![],
-            demand_keys: vec![],
-        })
+        Ok(ObserverDefinition { id: "final".into(), interval: Duration::from_secs(1), streams: vec![], demand_keys: vec![] })
     }
-    async fn run(
-        &self,
-        journal: Arc<Self::Resources>,
-        mut activation: ObserverActivation,
-    ) -> harmos_runtime::Result<()> {
+    async fn run(&self, journal: Arc<Self::Resources>, mut activation: ObserverActivation) -> harmos_runtime::Result<()> {
         activation.ready();
         activation.stopping().await;
         journal
             .commit(support::deposit(9))
             .await
-            .map_err(|source| Error::TaskFailed {
-                domain: "observer final publication",
-                source: Arc::new(source),
-            })?;
+            .map_err(|source| Error::TaskFailed { domain: "observer final publication", source: Arc::new(source) })?;
         Ok(())
     }
 }
@@ -209,12 +182,7 @@ impl ObserverBackend for ReentrantBackend {
     type Resources = ();
     fn definition(&self) -> harmos_runtime::Result<ObserverDefinition> {
         let _ = self.0.manager.resident_definitions();
-        Ok(ObserverDefinition {
-            id: "retained".into(),
-            interval: Duration::from_secs(1),
-            streams: vec![],
-            demand_keys: vec![],
-        })
+        Ok(ObserverDefinition { id: "retained".into(), interval: Duration::from_secs(1), streams: vec![], demand_keys: vec![] })
     }
     async fn run(&self, _: Arc<()>, _: ObserverActivation) -> harmos_runtime::Result<()> {
         unreachable!("definition stays inert")
@@ -251,14 +219,7 @@ impl Observing {
         };
         // The caller's span and subscriber follow the observation onto its task.
         let task = tokio::spawn(observing.in_current_span().with_current_subscriber());
-        Self {
-            observer,
-            activation,
-            ready,
-            interrupt: Some(interrupt),
-            task: Some(task),
-            activity: None,
-        }
+        Self { observer, activation, ready, interrupt: Some(interrupt), task: Some(task), activity: None }
     }
 
     fn is_ready(&self) -> bool {
@@ -270,10 +231,7 @@ impl Observing {
     }
 
     async fn ready(&mut self) {
-        self.ready
-            .wait_for(|ready| *ready)
-            .await
-            .expect("observer reports readiness");
+        self.ready.wait_for(|ready| *ready).await.expect("observer reports readiness");
     }
 
     // Interrupt observation; `None` when the activity was still observing.
@@ -317,11 +275,7 @@ impl Drop for Observing {
 
 /* === Private Functions === */
 async fn runtime() -> Runtime<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime()
-        .await
-        .unwrap()
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap()
 }
 
 async fn reached(signal: &Semaphore) {
@@ -330,20 +284,11 @@ async fn reached(signal: &Semaphore) {
 
 async fn phase(manager: &OperationManager, key: &Key, phases: &[OperationPhase]) {
     let mut states = manager.watch_residents();
-    states
-        .wait_for(|states| {
-            states
-                .get(key)
-                .is_some_and(|state| phases.contains(&state.lifecycle.phase()))
-        })
-        .await
-        .unwrap();
+    states.wait_for(|states| states.get(key).is_some_and(|state| phases.contains(&state.lifecycle.phase()))).await.unwrap();
 }
 
 fn key(manager: &OperationManager, lease: &Lease) -> Key {
-    manager
-        .resident_key(lease.id())
-        .expect("resident instance is registered")
+    manager.resident_key(lease.id()).expect("resident instance is registered")
 }
 
 fn leases(manager: &OperationManager, key: &Key) -> usize {
@@ -355,19 +300,11 @@ fn current(manager: &OperationManager, key: &Key) -> OperationPhase {
 }
 
 fn observers(manager: &OperationManager) -> Vec<Definition> {
-    manager
-        .resident_definitions()
-        .into_iter()
-        .filter(|definition| definition.kind() == Kind::Observer)
-        .collect()
+    manager.resident_definitions().into_iter().filter(|definition| definition.kind() == Kind::Observer).collect()
 }
 
 fn observer_instances(manager: &OperationManager) -> usize {
-    manager
-        .residents()
-        .values()
-        .filter(|snapshot| snapshot.kind == Kind::Observer)
-        .count()
+    manager.residents().values().filter(|snapshot| snapshot.kind == Kind::Observer).count()
 }
 
 fn register(manager: &OperationManager, id: &'static str, mode: Mode) {
@@ -380,10 +317,7 @@ async fn cancellation_skips_backend() {
     let manager = &runtime.operations;
     register(manager, "queued", Mode::Cooperative);
     let resources = Control::new();
-    let lease = manager
-        .submit_with_resources_at("queued", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("queued", resources.clone()).await.unwrap();
     // The Current-Thread Executor Has Not Polled The Queued Backend Yet.
     lease.cancel();
     lease.settle().await.unwrap();
@@ -403,23 +337,10 @@ async fn clones_share_activation() {
     let manager = runtime.handle().operations;
     register(&manager, "watch", Mode::Cooperative);
     assert_eq!(observers(&runtime.operations).len(), 1);
-    assert!(matches!(
-        manager.register_observer(Backend {
-            id: "watch",
-            mode: Mode::Cooperative
-        }),
-        Err(Error::AlreadyRegistered { .. })
-    ));
+    assert!(matches!(manager.register_observer(Backend { id: "watch", mode: Mode::Cooperative }), Err(Error::AlreadyRegistered { .. })));
     let resources = Control::new();
-    let first = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
-    let second = runtime
-        .operations
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let first = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
+    let second = runtime.operations.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(&manager, &first);
     assert_eq!(first.id(), second.id());
     assert_eq!(manager.resident(&key).unwrap().instance, first.id());
@@ -437,12 +358,7 @@ async fn clones_share_activation() {
     runtime.stop().await.unwrap();
     assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
     assert_eq!(current(&manager, &key), OperationPhase::Stopped);
-    assert!(matches!(
-        manager
-            .submit_with_resources_at("watch", resources.clone())
-            .await,
-        Err(Error::Closing { .. })
-    ));
+    assert!(matches!(manager.submit_with_resources_at("watch", resources.clone()).await, Err(Error::Closing { .. })));
 }
 
 #[tokio::test]
@@ -451,10 +367,7 @@ async fn activation_waits_cancelled() {
     let manager = &runtime.operations;
     register(manager, "watch", Mode::Cooperative);
     let resources = Control::new();
-    let first = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let first = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(manager, &first);
     let generation = first.id();
     phase(manager, &key, RUNNING).await;
@@ -463,10 +376,7 @@ async fn activation_waits_cancelled() {
     pending::parked(std::pin::pin!(manager.submit_with_resources_at("watch", resources.clone()))).await;
     resources.initialize.add_permits(1);
     resources.finish.add_permits(1);
-    let next = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let next = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     assert_ne!(next.id(), generation);
     phase(manager, &key, RUNNING).await;
     assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
@@ -481,14 +391,8 @@ async fn instance_cancel_joins() {
     let manager = &runtime.operations;
     register(manager, "watch", Mode::Cooperative);
     let resources = Control::new();
-    let first = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
-    let second = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let first = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
+    let second = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(manager, &first);
     reached(&resources.starts).await;
     phase(manager, &key, RUNNING).await;
@@ -517,10 +421,7 @@ async fn instance_cancel_joins() {
     assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
 
     resources.initialize.add_permits(1);
-    let replacement = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let replacement = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     phase(manager, &key, RUNNING).await;
     assert_ne!(replacement.id(), first.id());
     first.cancel();
@@ -540,20 +441,14 @@ async fn cannot_release_replacement() {
     let manager = &runtime.operations;
     register(manager, "watch", Mode::Finishing);
     let resources = Control::new();
-    let old = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let old = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(manager, &old);
     reached(&resources.stops).await;
     phase(manager, &key, STOPPING).await;
     resources.finish.add_permits(1);
     phase(manager, &key, STOPPED).await;
     resources.initialize.add_permits(1);
-    let next = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let next = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     assert_ne!(old.id(), next.id());
     old.release().await.unwrap();
     assert_eq!(leases(manager, &key), 1);
@@ -570,24 +465,13 @@ async fn scope_stop_revokes() {
     register(manager, "watch", Mode::Cooperative);
     let first = Control::new();
     let second = Control::new();
-    let a = manager
-        .submit_with_resources_at("watch", first.clone())
-        .await
-        .unwrap();
-    let b = manager
-        .submit_with_resources_at("watch", second.clone())
-        .await
-        .unwrap();
+    let a = manager.submit_with_resources_at("watch", first.clone()).await.unwrap();
+    let b = manager.submit_with_resources_at("watch", second.clone()).await.unwrap();
     let (a_key, b_key) = (key(manager, &a), key(manager, &b));
     phase(manager, &a_key, RUNNING).await;
     phase(manager, &b_key, RUNNING).await;
     pending::parked(std::pin::pin!(manager.retire_resources(&first))).await;
-    assert!(matches!(
-        manager
-            .submit_with_resources_at("watch", first.clone())
-            .await,
-        Err(Error::Closing { .. })
-    ));
+    assert!(matches!(manager.submit_with_resources_at("watch", first.clone()).await, Err(Error::Closing { .. })));
     assert_eq!(current(manager, &b_key), OperationPhase::Running);
     first.finish.add_permits(1);
     manager.retire_resources(&first).await.unwrap();
@@ -604,35 +488,18 @@ async fn unregister_reserves_name() {
     let manager = &runtime.operations;
     register(manager, "watch", Mode::Cooperative);
     let resources = Control::new();
-    let old = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let old = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &old), RUNNING).await;
     pending::parked(std::pin::pin!(manager.unregister_resident("watch"))).await;
     assert!(manager.resident_definition("watch").is_some());
-    assert!(matches!(
-        manager
-            .submit_with_resources_at("watch", resources.clone())
-            .await,
-        Err(Error::Closing { .. })
-    ));
-    assert!(matches!(
-        manager.register_observer(Backend {
-            id: "watch",
-            mode: Mode::Cooperative
-        }),
-        Err(Error::AlreadyRegistered { .. })
-    ));
+    assert!(matches!(manager.submit_with_resources_at("watch", resources.clone()).await, Err(Error::Closing { .. })));
+    assert!(matches!(manager.register_observer(Backend { id: "watch", mode: Mode::Cooperative }), Err(Error::AlreadyRegistered { .. })));
     resources.finish.add_permits(1);
     manager.unregister_resident("watch").await.unwrap();
     assert!(manager.resident_definition("watch").is_none());
     register(manager, "watch", Mode::Cooperative);
     resources.initialize.add_permits(1);
-    let next = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let next = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     old.release().await.unwrap();
     let next_key = key(manager, &next);
     phase(manager, &next_key, RUNNING).await;
@@ -650,45 +517,16 @@ async fn scopes_reject_foreigners() {
     register(&second.operations, "watch", Mode::Cooperative);
     // Resources Shared Across Runtimes Open Independent Scopes.
     let shared = Control::new();
-    let one = first
-        .operations
-        .submit_with_resources_at("watch", shared.clone())
-        .await
-        .unwrap();
-    let two = second
-        .operations
-        .submit_with_resources_at("watch", shared.clone())
-        .await
-        .unwrap();
+    let one = first.operations.submit_with_resources_at("watch", shared.clone()).await.unwrap();
+    let two = second.operations.submit_with_resources_at("watch", shared.clone()).await.unwrap();
     assert_ne!(one.id(), two.id());
     assert!(first.operations.resident_key(two.id()).is_none());
     assert!(second.operations.resident_key(one.id()).is_none());
     assert_eq!(leases(&first.operations, &key(&first.operations, &one)), 1);
-    assert_eq!(
-        leases(&second.operations, &key(&second.operations, &two)),
-        1
-    );
-    assert!(matches!(
-        first
-            .operations
-            .submit_with_resources_at("watch", Arc::new(()))
-            .await,
-        Err(Error::InvalidInput { .. })
-    ));
-    assert!(matches!(
-        first
-            .operations
-            .submit_with_resources_at("absent", shared.clone())
-            .await,
-        Err(Error::NotRegistered { .. })
-    ));
-    assert!(matches!(
-        first.operations.register_observer(Backend {
-            id: "",
-            mode: Mode::Cooperative
-        }),
-        Err(Error::InvalidInput { .. })
-    ));
+    assert_eq!(leases(&second.operations, &key(&second.operations, &two)), 1);
+    assert!(matches!(first.operations.submit_with_resources_at("watch", Arc::new(())).await, Err(Error::InvalidInput { .. })));
+    assert!(matches!(first.operations.submit_with_resources_at("absent", shared.clone()).await, Err(Error::NotRegistered { .. })));
+    assert!(matches!(first.operations.register_observer(Backend { id: "", mode: Mode::Cooperative }), Err(Error::InvalidInput { .. })));
     shared.finish.add_permits(1);
     drop((one, two));
     first.stop().await.unwrap();
@@ -703,36 +541,21 @@ async fn runtime_retains_failure() {
     register(manager, "good", Mode::Cooperative);
     let bad = Control::new();
     let good = Control::new();
-    let a = manager
-        .submit_with_resources_at("bad", bad.clone())
-        .await
-        .unwrap();
-    let b = manager
-        .submit_with_resources_at("good", good.clone())
-        .await
-        .unwrap();
+    let a = manager.submit_with_resources_at("bad", bad.clone()).await.unwrap();
+    let b = manager.submit_with_resources_at("good", good.clone()).await.unwrap();
     let a_key = key(manager, &a);
     phase(manager, &a_key, RUNNING).await;
     phase(manager, &key(manager, &b), RUNNING).await;
     bad.finish.add_permits(1);
     good.finish.add_permits(1);
     for _ in 0..2 {
-        assert!(matches!(
-            runtime.stop().await,
-            Err(Error::TaskFailed {
-                domain: "observer",
-                ..
-            })
-        ));
+        assert!(matches!(runtime.stop().await, Err(Error::TaskFailed { domain: "observer", .. })));
     }
     assert_eq!(good.completed.load(Ordering::SeqCst), 1);
     assert_eq!(bad.completed.load(Ordering::SeqCst), 1);
     assert!(matches!(
         manager.resident(&a_key).unwrap().failure.as_deref(),
-        Some(Error::Backend {
-            kind: harmos_runtime::BackendFailure::Conflict,
-            ..
-        })
+        Some(Error::Backend { kind: harmos_runtime::BackendFailure::Conflict, .. })
     ));
     assert!(a.release().await.is_err());
     b.release().await.unwrap();
@@ -743,22 +566,12 @@ async fn backend_panic_joined() {
     let runtime = runtime().await;
     let manager = &runtime.operations;
     register(manager, "panic", Mode::Panicked);
-    let lease = manager
-        .submit_with_resources_at("panic", Control::new())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("panic", Control::new()).await.unwrap();
     let key = key(manager, &lease);
     phase(manager, &key, STOPPING).await;
     let status = manager.resident(&key).unwrap();
-    let Some(Error::TaskFailed { source, .. }) = status.failure.as_deref() else {
-        panic!("typed panic cause")
-    };
-    assert!(
-        source
-            .downcast_ref::<tokio::task::JoinError>()
-            .unwrap()
-            .is_panic()
-    );
+    let Some(Error::TaskFailed { source, .. }) = status.failure.as_deref() else { panic!("typed panic cause") };
+    assert!(source.downcast_ref::<tokio::task::JoinError>().unwrap().is_panic());
     assert!(lease.release().await.is_err());
     assert!(runtime.stop().await.is_err());
 }
@@ -767,18 +580,10 @@ async fn backend_panic_joined() {
 async fn shutdown_drops_unused() {
     let runtime = runtime().await;
     let dropped = Arc::new(AtomicBool::new(false));
-    let resources = Arc::new(Reentrant {
-        manager: runtime.operations.clone(),
-        dropped: dropped.clone(),
-    });
+    let resources = Arc::new(Reentrant { manager: runtime.operations.clone(), dropped: dropped.clone() });
     let weak = Arc::downgrade(&resources);
     // Staging an empty catalog opens the scope without activating anything.
-    drop(
-        runtime
-            .operations
-            .stage_observers(&resources, std::iter::empty::<Unused>())
-            .unwrap(),
-    );
+    drop(runtime.operations.stage_observers(&resources, std::iter::empty::<Unused>()).unwrap());
     drop(resources);
     assert!(weak.upgrade().is_some());
     runtime.stop().await.unwrap();
@@ -793,10 +598,7 @@ async fn shutdown_cancels_initialization() {
     register(manager, "watch", Mode::Cooperative);
     let resources = Control::new();
     resources.initialize.acquire().await.unwrap().forget();
-    let lease = manager
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(manager, &lease);
     reached(&resources.starts).await;
     assert!(STARTING.contains(&current(manager, &key)));
@@ -811,19 +613,13 @@ async fn runtime_joins_final() {
     let runtime = runtime().await;
     let manager = &runtime.operations;
     manager.register_observer(FinalPublication).unwrap();
-    let lease = manager
-        .submit_with_resources_at("final", Arc::new(runtime.state.clone()))
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("final", Arc::new(runtime.state.clone())).await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
     let before = runtime.state.applied();
     let stopped = runtime.stop().await.unwrap();
     assert!(stopped > before);
     assert_eq!(stopped, runtime.state.applied());
-    assert!(matches!(
-        runtime.state.commit(support::deposit(1)).await,
-        Err(Error::Unavailable)
-    ));
+    assert!(matches!(runtime.state.commit(support::deposit(1)).await, Err(Error::Unavailable)));
     lease.release().await.unwrap();
 }
 
@@ -837,9 +633,7 @@ async fn consumers_share_initialization() {
     for _ in 0..32 {
         let manager = manager.clone();
         let resources = resources.clone();
-        consumers.push(tokio::spawn(async move {
-            manager.submit_with_resources_at("watch", resources).await
-        }));
+        consumers.push(tokio::spawn(async move { manager.submit_with_resources_at("watch", resources).await }));
     }
     let mut leases_held = Vec::new();
     for consumer in consumers {
@@ -868,10 +662,7 @@ async fn shutdown_releases_factories() {
     let dropped = Arc::new(AtomicBool::new(false));
     runtime
         .operations
-        .register_observer(ReentrantBackend(Reentrant {
-            manager: runtime.handle().operations,
-            dropped: dropped.clone(),
-        }))
+        .register_observer(ReentrantBackend(Reentrant { manager: runtime.handle().operations, dropped: dropped.clone() }))
         .unwrap();
     runtime.stop().await.unwrap();
     assert!(dropped.load(Ordering::SeqCst));
@@ -883,37 +674,19 @@ async fn closing_preserves_failure() {
     let runtime = runtime().await;
     register(&runtime.operations, "watch", Mode::Failed);
     let resources = Control::new();
-    let first = runtime
-        .operations
-        .submit_with_resources_at("watch", resources.clone())
-        .await
-        .unwrap();
+    let first = runtime.operations.submit_with_resources_at("watch", resources.clone()).await.unwrap();
     let key = key(&runtime.operations, &first);
     phase(&runtime.operations, &key, RUNNING).await;
     drop(first);
     reached(&resources.stops).await;
     let manager = runtime.operations.clone();
     let reactivated = resources.clone();
-    let mut activating = tokio::spawn(async move {
-        manager
-            .submit_with_resources_at("watch", reactivated)
-            .await
-            .map(|lease| lease.id())
-    });
+    let mut activating = tokio::spawn(async move { manager.submit_with_resources_at("watch", reactivated).await.map(|lease| lease.id()) });
     pending::parked(std::pin::Pin::new(&mut activating)).await;
     pending::parked(std::pin::pin!(runtime.stop())).await;
     resources.finish.add_permits(1);
-    assert!(matches!(
-        activating.await.unwrap(),
-        Err(Error::Closing { .. })
-    ));
-    assert!(matches!(
-        runtime.stop().await,
-        Err(Error::TaskFailed {
-            domain: "observer",
-            ..
-        })
-    ));
+    assert!(matches!(activating.await.unwrap(), Err(Error::Closing { .. })));
+    assert!(matches!(runtime.stop().await, Err(Error::TaskFailed { domain: "observer", .. })));
     assert!(runtime.operations.resident(&key).unwrap().failure.is_some());
 }
 
@@ -923,10 +696,7 @@ async fn retirement_replays_failure() {
     let manager = &runtime.operations;
     register(manager, "returned-failure", Mode::Failed);
     let control = Control::new();
-    let lease = manager
-        .submit_with_resources_at("returned-failure", control.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("returned-failure", control.clone()).await.unwrap();
     let key = key(manager, &lease);
     phase(manager, &key, RUNNING).await;
     control.finish.add_permits(1);
@@ -937,22 +707,11 @@ async fn retirement_replays_failure() {
     assert!(manager.resident(&key).is_none());
     assert!(lease.release().await.is_err());
     for _ in 0..2 {
-        let error = runtime
-            .stop()
-            .await
-            .expect_err("retired failure reaches root shutdown");
-        let Error::TaskFailed {
-            domain: "observer",
-            source,
-        } = &error
-        else {
+        let error = runtime.stop().await.expect_err("retired failure reaches root shutdown");
+        let Error::TaskFailed { domain: "observer", source } = &error else {
             panic!("root retains observer failure: {error:?}");
         };
-        let Some(Error::TaskFailed {
-            domain: "retired observer",
-            source,
-        }) = source.downcast_ref::<Error>()
-        else {
+        let Some(Error::TaskFailed { domain: "retired observer", source }) = source.downcast_ref::<Error>() else {
             panic!("retired scope retains its cause: {error:?}");
         };
         let Some(Error::TaskFailed { source, .. }) = source.downcast_ref::<Error>() else {
@@ -960,11 +719,7 @@ async fn retirement_replays_failure() {
         };
         assert!(matches!(
             source.downcast_ref::<Error>(),
-            Some(Error::Backend {
-                operation: "observer cleanup",
-                kind: harmos_runtime::BackendFailure::Conflict,
-                ..
-            })
+            Some(Error::Backend { operation: "observer cleanup", kind: harmos_runtime::BackendFailure::Conflict, .. })
         ));
     }
     assert_eq!(control.completed.load(Ordering::Acquire), 1);
@@ -976,10 +731,7 @@ async fn retirement_retains_panicked() {
     let manager = &runtime.operations;
     register(manager, "panicked-scope", Mode::Panicked);
     let resources = Control::new();
-    let lease = manager
-        .submit_with_resources_at("panicked-scope", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("panicked-scope", resources.clone()).await.unwrap();
     let key = key(manager, &lease);
     phase(manager, &key, STOPPING).await;
     let generation = lease.id();
@@ -991,12 +743,7 @@ async fn retirement_retains_panicked() {
         assert!(lifecycle.cleanup_failure().is_some());
         assert!(lifecycle.settled_at().is_none());
         assert_eq!(manager.resident(&key).unwrap().instance, generation);
-        assert!(
-            manager
-                .submit_with_resources_at("panicked-scope", resources.clone())
-                .await
-                .is_err()
-        );
+        assert!(manager.submit_with_resources_at("panicked-scope", resources.clone()).await.is_err());
     }
     assert!(lease.release().await.is_err());
     assert!(runtime.stop().await.is_err());

@@ -19,9 +19,7 @@
 
 // Local Imports
 use crate::state::support::{Bank, HOUSE, alice, deposit, runtime};
-use harmos_runtime::{
-    Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position,
-};
+use harmos_runtime::{Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position};
 
 /* === Constants === */
 
@@ -94,10 +92,7 @@ async fn state_survives_stop() {
 
 #[tokio::test]
 async fn handles_share_nonclone() {
-    let runtime = Runtime::<Plain>::builder(State { value: 19 }, ())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Plain>::builder(State { value: 19 }, ()).runtime().await.unwrap();
     let manager = runtime.state.clone();
     let state = manager.state().clone();
     let value = state.read(|state| state.value).await.unwrap();

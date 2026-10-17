@@ -11,10 +11,7 @@
 mod delivery;
 
 /* === Re-Exports === */
-pub use delivery::{
-    Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed,
-    encoding_memory_bytes,
-};
+pub use delivery::{Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
 // Standard Library Imports
@@ -25,9 +22,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::catalog::{Catalog, Projection, Visitor};
 use crate::config::SchemaSettings;
-use crate::operations::{
-    Contract, ContractError, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration,
-};
+use crate::operations::{Contract, ContractError, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration};
 use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::Schema;
 use crate::schema::{self};
@@ -69,29 +64,13 @@ pub struct Declarations;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Source {
-    Record {
-        id: Cow<'static, str>,
-        version: u32,
-        row: Schema,
-    },
-    Stream {
-        id: Cow<'static, str>,
-        schema_ordinal: u32,
-        row: Schema,
-    },
+    Record { id: Cow<'static, str>, version: u32, row: Schema },
+    Stream { id: Cow<'static, str>, schema_ordinal: u32, row: Schema },
 }
 
 pub enum SourceDeclaration {
-    Record {
-        id: &'static str,
-        version: u32,
-        row: SchemaDefinition,
-    },
-    Stream {
-        id: &'static str,
-        schema_ordinal: u32,
-        row: SchemaDefinition,
-    },
+    Record { id: &'static str, version: u32, row: SchemaDefinition },
+    Stream { id: &'static str, schema_ordinal: u32, row: SchemaDefinition },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -132,37 +111,23 @@ impl Source {
 
     pub fn matches_context(&self, context: Context) -> bool {
         context.validate().is_ok()
-            && matches!(
-                (self, context),
-                (Self::Record { .. }, Context::Record { .. })
-                    | (Self::Stream { .. }, Context::Stream { .. })
-            )
+            && matches!((self, context), (Self::Record { .. }, Context::Record { .. }) | (Self::Stream { .. }, Context::Stream { .. }))
     }
 
     fn validate(&self) -> Result<(), Error> {
         if self.id().trim().is_empty() || self.id().chars().any(char::is_control) {
-            return Err(Error::Source {
-                reason: "source identities must be nonempty and contain no control characters",
-            });
+            return Err(Error::Source { reason: "source identities must be nonempty and contain no control characters" });
         }
         match self {
             Self::Record { version: 0, .. } => {
-                return Err(Error::Source {
-                    reason: "record semantic version must be positive",
-                });
+                return Err(Error::Source { reason: "record semantic version must be positive" });
             }
-            Self::Stream {
-                schema_ordinal: 0, ..
-            } => {
-                return Err(Error::Source {
-                    reason: "stream schema ordinal must be positive",
-                });
+            Self::Stream { schema_ordinal: 0, .. } => {
+                return Err(Error::Source { reason: "stream schema ordinal must be positive" });
             }
             _ => {}
         }
-        self.schema()
-            .prepare(&SchemaSettings::default())
-            .map_err(schema::Error::from)?;
+        self.schema().prepare(&SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(())
     }
 }
@@ -175,21 +140,10 @@ impl SourceDeclaration {
     }
 
     pub fn source(&self) -> Result<Source, Error> {
-        let row = Schema::from_declaration(self.row(), &SchemaSettings::default())
-            .map_err(schema::Error::from)?;
+        let row = Schema::from_declaration(self.row(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(match self {
-            Self::Record { id, version, .. } => Source::Record {
-                id: Cow::Borrowed(id),
-                version: *version,
-                row,
-            },
-            Self::Stream {
-                id, schema_ordinal, ..
-            } => Source::Stream {
-                id: Cow::Borrowed(id),
-                schema_ordinal: *schema_ordinal,
-                row,
-            },
+            Self::Record { id, version, .. } => Source::Record { id: Cow::Borrowed(id), version: *version, row },
+            Self::Stream { id, schema_ordinal, .. } => Source::Stream { id: Cow::Borrowed(id), schema_ordinal: *schema_ordinal, row },
         })
     }
 }
@@ -212,26 +166,13 @@ impl Definition {
             || operation.policy.restart != RestartPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {
-            return Err(Error::Callback {
-                reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety",
-            });
+            return Err(Error::Callback { reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety" });
         }
-        let matches = delivery::matches(
-            callback.request(),
-            source.schema(),
-            &SchemaSettings::default(),
-        )
-        .map_err(schema::Error::from)?;
+        let matches = delivery::matches(callback.request(), source.schema(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         if !matches || !callback.response().fields().is_empty() {
-            return Err(Error::Callback {
-                reason: "callback request must be exactly Delivery<Row> for this source, with a unit response",
-            });
+            return Err(Error::Callback { reason: "callback request must be exactly Delivery<Row> for this source, with a unit response" });
         }
-        Ok(Self {
-            id,
-            source,
-            callback,
-        })
+        Ok(Self { id, source, callback })
     }
 
     pub fn id(&self) -> &Identifier {
@@ -264,9 +205,7 @@ impl Declarations {
 
     pub fn from_tree(entries: &[crate::catalog::Node<Entry>]) -> Result<Vec<Definition>, Error> {
         let expected = crate::catalog::count(entries);
-        collect(expected, |visit| {
-            crate::catalog::try_for_each(entries, visit)
-        })
+        collect(expected, |visit| crate::catalog::try_for_each(entries, visit))
     }
 }
 
@@ -274,8 +213,7 @@ impl Declarations {
 
 /* === Private Functions === */
 fn collect(
-    expected: usize,
-    project: impl FnOnce(&mut dyn FnMut(&Entry) -> Result<(), Error>) -> Result<(), Error>,
+    expected: usize, project: impl FnOnce(&mut dyn FnMut(&Entry) -> Result<(), Error>) -> Result<(), Error>,
 ) -> Result<Vec<Definition>, Error> {
     if expected > MAX_LISTENERS {
         return Err(Error::Limit);
@@ -294,14 +232,10 @@ fn collect(
         }
         let definition = entry.definition()?;
         if !listeners.insert(definition.id.clone()) {
-            return Err(Error::Duplicate {
-                id: definition.id.to_string(),
-            });
+            return Err(Error::Duplicate { id: definition.id.to_string() });
         }
         if !callbacks.insert(definition.callback.operation().id.clone()) {
-            return Err(Error::Duplicate {
-                id: definition.callback.operation().id.to_string(),
-            });
+            return Err(Error::Duplicate { id: definition.callback.operation().id.to_string() });
         }
         definitions.push(definition);
         Ok(())

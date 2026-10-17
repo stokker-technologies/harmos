@@ -107,10 +107,7 @@ pub enum Error {
 
 /* === Implementations === */
 impl<R> Kind<R> {
-    pub(crate) fn try_map<S, E>(
-        self,
-        reference: impl FnOnce(R) -> Result<S, E>,
-    ) -> Result<Kind<S>, E> {
+    pub(crate) fn try_map<S, E>(self, reference: impl FnOnce(R) -> Result<S, E>) -> Result<Kind<S>, E> {
         Ok(match self {
             Self::Bool => Kind::Bool,
             Self::U32 => Kind::U32,
@@ -121,9 +118,7 @@ impl<R> Kind<R> {
             Self::F64 => Kind::F64,
             Self::String => Kind::String,
             Self::Bytes => Kind::Bytes,
-            Self::Message { definition } => Kind::Message {
-                definition: reference(definition)?,
-            },
+            Self::Message { definition } => Kind::Message { definition: reference(definition)? },
         })
     }
 }
@@ -140,15 +135,10 @@ impl<'de, R: Deserialize<'de>> Deserialize<'de> for Kind<R> {
         }
         let input = Input::<R>::deserialize(deserializer)?;
         if input.kind == "message" {
-            return input
-                .definition
-                .map(|definition| Self::Message { definition })
-                .ok_or_else(|| D::Error::missing_field("definition"));
+            return input.definition.map(|definition| Self::Message { definition }).ok_or_else(|| D::Error::missing_field("definition"));
         }
         if input.definition.is_some() {
-            return Err(D::Error::custom(
-                "scalar schema kind cannot reference a definition",
-            ));
+            return Err(D::Error::custom("scalar schema kind cannot reference a definition"));
         }
         match input.kind.as_str() {
             "bool" => Ok(Self::Bool),
@@ -167,11 +157,7 @@ impl<'de, R: Deserialize<'de>> Deserialize<'de> for Kind<R> {
 
 impl crate::MemorySize for Schema {
     fn memory_size(&self) -> usize {
-        let mut bytes = size_of::<Self>().saturating_add(
-            self.definitions
-                .capacity()
-                .saturating_mul(size_of::<Vec<Field>>()),
-        );
+        let mut bytes = size_of::<Self>().saturating_add(self.definitions.capacity().saturating_mul(size_of::<Vec<Field>>()));
         for fields in &self.definitions {
             bytes = bytes.saturating_add(fields.capacity().saturating_mul(size_of::<Field>()));
             for field in fields {
@@ -193,11 +179,7 @@ impl Schema {
             .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
             .ok_or(Error::Budget)?;
         for fields in &self.definitions {
-            bytes = fields
-                .len()
-                .checked_mul(size_of::<Field>())
-                .and_then(|fields| bytes.checked_add(fields))
-                .ok_or(Error::Budget)?;
+            bytes = fields.len().checked_mul(size_of::<Field>()).and_then(|fields| bytes.checked_add(fields)).ok_or(Error::Budget)?;
             for field in fields {
                 if let Cow::Owned(name) = &field.name {
                     bytes = bytes.checked_add(name.len()).ok_or(Error::Budget)?;
@@ -209,10 +191,7 @@ impl Schema {
 
     pub fn validation_memory_bytes(&self, settings: &SchemaSettings) -> Result<usize, Error> {
         let preparation = self.preparation(settings)?;
-        preparation
-            .bytes
-            .checked_sub(crate::MemorySize::memory_size(self))
-            .ok_or(Error::Budget)
+        preparation.bytes.checked_sub(crate::MemorySize::memory_size(self)).ok_or(Error::Budget)
     }
 
     pub fn view(&self, root: usize) -> Result<View<'_>, Error> {
@@ -227,22 +206,14 @@ impl Schema {
     }
 
     // Compare Wire Shapes Independently Of Local Definition Indices.
-    pub fn equivalent(
-        &self,
-        root: usize,
-        other: &Self,
-        other_root: usize,
-        settings: &SchemaSettings,
-    ) -> Result<bool, Error> {
+    pub fn equivalent(&self, root: usize, other: &Self, other_root: usize, settings: &SchemaSettings) -> Result<bool, Error> {
         let mut preparation = self.prepare(settings)?;
         let right = other.prepare(settings)?;
         if root >= self.definitions.len() {
             return Err(Error::Reference { definition: root });
         }
         if other_root >= other.definitions.len() {
-            return Err(Error::Reference {
-                definition: other_root,
-            });
+            return Err(Error::Reference { definition: other_root });
         }
         if !std::ptr::eq(self, other) {
             preparation.add_bytes(right.bytes, 1, settings)?;
@@ -265,10 +236,7 @@ impl Schema {
             }
             for (left, right) in left.iter().zip(right) {
                 preparation.add_work(left.name.len() + 1, settings)?;
-                if left.name != right.name
-                    || left.tag != right.tag
-                    || left.cardinality != right.cardinality
-                {
+                if left.name != right.name || left.tag != right.tag || left.cardinality != right.cardinality {
                     return Ok(false);
                 }
                 match (left.kind, right.kind) {
@@ -286,32 +254,14 @@ impl Schema {
 
     pub fn preparation(&self, settings: &SchemaSettings) -> Result<Preparation, Error> {
         if self.root >= self.definitions.len() {
-            return Err(Error::Reference {
-                definition: self.root,
-            });
+            return Err(Error::Reference { definition: self.root });
         }
-        let mut preparation = Preparation {
-            definitions: self.definitions.len(),
-            fields: 0,
-            bytes: size_of::<Self>(),
-            work: 0,
-        };
+        let mut preparation = Preparation { definitions: self.definitions.len(), fields: 0, bytes: size_of::<Self>(), work: 0 };
         // Charge Retained Storage And Traversal Scratch Before Allocating Scratch.
-        preparation.add_bytes(
-            self.definitions.capacity(),
-            size_of::<Vec<Field>>(),
-            settings,
-        )?;
-        preparation.add_bytes(
-            self.definitions.len(),
-            size_of::<bool>() + size_of::<usize>(),
-            settings,
-        )?;
+        preparation.add_bytes(self.definitions.capacity(), size_of::<Vec<Field>>(), settings)?;
+        preparation.add_bytes(self.definitions.len(), size_of::<bool>() + size_of::<usize>(), settings)?;
         for fields in &self.definitions {
-            preparation.fields = preparation
-                .fields
-                .checked_add(fields.len())
-                .ok_or(Error::Budget)?;
+            preparation.fields = preparation.fields.checked_add(fields.len()).ok_or(Error::Budget)?;
             preparation.add_bytes(fields.capacity(), size_of::<Field>(), settings)?;
             preparation.add_work(fields.len() + 1, settings)?;
             for field in fields {
@@ -321,19 +271,11 @@ impl Schema {
                 preparation.add_work(field.name.len(), settings)?;
             }
         }
-        let scratch = self
-            .definitions
-            .iter()
-            .map(|fields| fields.len())
-            .max()
-            .unwrap_or(0);
+        let scratch = self.definitions.iter().map(|fields| fields.len()).max().unwrap_or(0);
         preparation.add_bytes(scratch, size_of::<&str>() + size_of::<u32>(), settings)?;
         for fields in &self.definitions {
             let bits = usize::BITS as usize - fields.len().leading_zeros() as usize;
-            let work = fields
-                .len()
-                .checked_mul(2 * bits + 2)
-                .ok_or(Error::Budget)?;
+            let work = fields.len().checked_mul(2 * bits + 2).ok_or(Error::Budget)?;
             preparation.add_work(work, settings)?;
         }
         preparation.add_work(self.definitions.len(), settings)?;
@@ -347,34 +289,16 @@ impl Schema {
             // Sorting Is Bounded By Direct Fields, Independent Of Repeated References.
             let mut names = Vec::with_capacity(fields.len());
             let mut tags = Vec::with_capacity(fields.len());
-            let variants = fields
-                .iter()
-                .any(|field| field.cardinality == Cardinality::Variant);
+            let variants = fields.iter().any(|field| field.cardinality == Cardinality::Variant);
             for field in fields {
-                let invalid = |reason| Error::Field {
-                    field: diagnostic_name(&field.name),
-                    reason,
-                };
-                if variants
-                    && (field.cardinality != Cardinality::Variant
-                        || !matches!(field.kind, Kind::Message { .. }))
-                {
-                    return Err(invalid(
-                        "an enum schema requires only message-valued variants",
-                    ));
+                let invalid = |reason| Error::Field { field: diagnostic_name(&field.name), reason };
+                if variants && (field.cardinality != Cardinality::Variant || !matches!(field.kind, Kind::Message { .. })) {
+                    return Err(invalid("an enum schema requires only message-valued variants"));
                 }
-                if field.name.is_empty()
-                    || field.name.len() > MAX_NAME_BYTES
-                    || field.name.chars().any(char::is_control)
-                {
-                    return Err(invalid(
-                        "name must be nonempty, at most 256 bytes, and contain no control characters",
-                    ));
+                if field.name.is_empty() || field.name.len() > MAX_NAME_BYTES || field.name.chars().any(char::is_control) {
+                    return Err(invalid("name must be nonempty, at most 256 bytes, and contain no control characters"));
                 }
-                if field.tag == 0
-                    || field.tag > 536_870_911
-                    || (19_000..=19_999).contains(&field.tag)
-                {
+                if field.tag == 0 || field.tag > 536_870_911 || (19_000..=19_999).contains(&field.tag) {
                     return Err(invalid("invalid protobuf tag"));
                 }
                 if let Kind::Message { definition } = field.kind
@@ -388,17 +312,11 @@ impl Schema {
             names.sort_unstable();
             tags.sort_unstable();
             if let Some(pair) = names.windows(2).find(|pair| pair[0] == pair[1]) {
-                return Err(Error::Field {
-                    field: diagnostic_name(pair[0]),
-                    reason: "duplicate name",
-                });
+                return Err(Error::Field { field: diagnostic_name(pair[0]), reason: "duplicate name" });
             }
             if let Some(pair) = tags.windows(2).find(|pair| pair[0] == pair[1]) {
                 let field = fields.iter().find(|field| field.tag == pair[0]).unwrap();
-                return Err(Error::Field {
-                    field: diagnostic_name(&field.name),
-                    reason: "duplicate protobuf tag",
-                });
+                return Err(Error::Field { field: diagnostic_name(&field.name), reason: "duplicate protobuf tag" });
             }
         }
         let mut reached = vec![false; self.definitions.len()];
@@ -442,16 +360,8 @@ impl<'a> View<'a> {
 }
 
 impl Preparation {
-    fn add_bytes(
-        &mut self,
-        count: usize,
-        size: usize,
-        settings: &SchemaSettings,
-    ) -> Result<(), Error> {
-        self.bytes = count
-            .checked_mul(size)
-            .and_then(|bytes| self.bytes.checked_add(bytes))
-            .ok_or(Error::Budget)?;
+    fn add_bytes(&mut self, count: usize, size: usize, settings: &SchemaSettings) -> Result<(), Error> {
+        self.bytes = count.checked_mul(size).and_then(|bytes| self.bytes.checked_add(bytes)).ok_or(Error::Budget)?;
         if self.bytes > settings.preparation_bytes.get() {
             return Err(Error::Budget);
         }
@@ -469,10 +379,7 @@ impl Preparation {
 
 impl<'de> Deserialize<'de> for Schema {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Seed {
-            settings: &SchemaSettings::default(),
-        }
-        .deserialize(deserializer)
+        Seed { settings: &SchemaSettings::default() }.deserialize(deserializer)
     }
 }
 
@@ -488,9 +395,7 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
             fn visit_map<A: MapAccess<'de>>(self, mut input: A) -> Result<Schema, A::Error> {
                 let mut root = None;
                 let mut definitions = None;
-                let mut budget = Budget {
-                    remaining: self.0.preparation_bytes.get(),
-                };
+                let mut budget = Budget { remaining: self.0.preparation_bytes.get() };
                 while let Some(key) = input.next_key::<String>()? {
                     match key.as_str() {
                         "root" => {
@@ -503,16 +408,14 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
                             if definitions.is_some() {
                                 return Err(A::Error::duplicate_field("definitions"));
                             }
-                            definitions =
-                                Some(input.next_value_seed(DefinitionsSeed(&mut budget))?);
+                            definitions = Some(input.next_value_seed(DefinitionsSeed(&mut budget))?);
                         }
                         _ => return Err(A::Error::unknown_field(&key, &["root", "definitions"])),
                     }
                 }
                 let schema = Schema {
                     root: root.ok_or_else(|| A::Error::missing_field("root"))?,
-                    definitions: definitions
-                        .ok_or_else(|| A::Error::missing_field("definitions"))?,
+                    definitions: definitions.ok_or_else(|| A::Error::missing_field("definitions"))?,
                 };
                 schema.prepare(self.0).map_err(A::Error::custom)?;
                 Ok(schema)
@@ -524,10 +427,7 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
 
 impl Budget {
     fn charge<E: serde::de::Error>(&mut self, bytes: usize) -> Result<(), E> {
-        self.remaining = self
-            .remaining
-            .checked_sub(bytes)
-            .ok_or_else(|| E::custom(Error::Budget))?;
+        self.remaining = self.remaining.checked_sub(bytes).ok_or_else(|| E::custom(Error::Budget))?;
         Ok(())
     }
 }
@@ -550,9 +450,7 @@ impl<'de> DeserializeSeed<'de> for FieldSeed<'_> {
     type Value = Field;
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         // Reserve Capacity And Sorting Scratch Before Any Field Allocation.
-        self.0.charge::<D::Error>(
-            4 * size_of::<Field>() + size_of::<&str>() + size_of::<u32>() + MAX_NAME_BYTES,
-        )?;
+        self.0.charge::<D::Error>(4 * size_of::<Field>() + size_of::<&str>() + size_of::<u32>() + MAX_NAME_BYTES)?;
         Field::deserialize(deserializer)
     }
 }
@@ -577,9 +475,7 @@ impl<'de> Visitor<'de> for DefinitionSeed<'_> {
         formatter.write_str("bounded direct message fields")
     }
     fn visit_seq<A: SeqAccess<'de>>(self, mut input: A) -> Result<Self::Value, A::Error> {
-        self.0.charge::<A::Error>(
-            4 * size_of::<Vec<Field>>() + size_of::<usize>() + size_of::<bool>(),
-        )?;
+        self.0.charge::<A::Error>(4 * size_of::<Vec<Field>>() + size_of::<usize>() + size_of::<bool>())?;
         let mut fields = Vec::new();
         while let Some(field) = input.next_element_seed(FieldSeed(self.0))? {
             fields.push(field);
@@ -590,9 +486,7 @@ impl<'de> Visitor<'de> for DefinitionSeed<'_> {
 
 /* === Public Functions === */
 /* === Private Functions === */
-fn definition<'de, D: Deserializer<'de>, R: Deserialize<'de>>(
-    deserializer: D,
-) -> Result<Option<R>, D::Error> {
+fn definition<'de, D: Deserializer<'de>, R: Deserialize<'de>>(deserializer: D) -> Result<Option<R>, D::Error> {
     R::deserialize(deserializer).map(Some)
 }
 

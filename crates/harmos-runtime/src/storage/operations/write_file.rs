@@ -47,23 +47,14 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = StreamInput<FileBatch>;
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        ctx: Self::Context<'a>,
-        request: &mut WriteFile,
-        input: &mut Self::Endpoints,
+        &mut self, ctx: Self::Context<'a>, request: &mut WriteFile, input: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileReference>> {
-        let grant = harmos_domain::plugin::Grant::of(
-            WriteFile::ID,
-            request.metadata.id.as_str().to_owned(),
-        );
+        let grant = harmos_domain::plugin::Grant::of(WriteFile::ID, request.metadata.id.as_str().to_owned());
         ctx.admit_stream_grant(&grant)?;
         self.storage.retry_transient_persistence();
         let mut file = self.storage.create_file(request.metadata.clone()).await?;
@@ -71,17 +62,11 @@ impl<C: 'static> Operation for Handler<C> {
         while let Some(batch) = input.recv().await {
             ctx.admit_stream_grant(&grant)?;
             if batch.offset != offset || batch.bytes.is_empty() {
-                return Err(Error::InvalidInput {
-                    field: "file batch",
-                    reason: "nonempty batches must have contiguous byte offsets",
-                });
+                return Err(Error::InvalidInput { field: "file batch", reason: "nonempty batches must have contiguous byte offsets" });
             }
             let next = offset
                 .checked_add(batch.bytes.len() as u64)
-                .ok_or(Error::InvalidInput {
-                    field: "file batch offset",
-                    reason: "byte offset overflow",
-                })?;
+                .ok_or(Error::InvalidInput { field: "file batch offset", reason: "byte offset overflow" })?;
             file.write_all(&batch.bytes).await?;
             offset = next;
         }

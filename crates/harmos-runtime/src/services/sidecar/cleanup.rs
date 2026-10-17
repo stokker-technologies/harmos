@@ -34,18 +34,12 @@ impl Cleanup {
         }
         let ids: Vec<_> = self.routed_tasks.keys().copied().collect();
         for id in ids {
-            let task = self
-                .routed_tasks
-                .get_mut(&id)
-                .expect("the retained slot exists");
+            let task = self.routed_tasks.get_mut(&id).expect("the retained slot exists");
             if task.failure.is_some() {
                 continue;
             }
             if let Err(error) = (&mut task.running).await {
-                let failure = format!(
-                    "native operation drain failed: {}",
-                    harmos_domain::failure::Report(&error)
-                );
+                let failure = format!("native operation drain failed: {}", harmos_domain::failure::Report(&error));
                 task.failure = Some(failure.clone());
                 self.failure.get_or_insert(failure);
                 continue;
@@ -61,16 +55,14 @@ impl Cleanup {
             if let Err(error) = joined
                 && !error.is_cancelled()
             {
-                self.failure
-                    .get_or_insert_with(|| format!("native transport task failed: {error}"));
+                self.failure.get_or_insert_with(|| format!("native transport task failed: {error}"));
                 self.failed_readers.push(reader);
             }
         }
         if let Some(session) = self.session.as_mut() {
             session.finish().await?;
             if let Some(failure) = session.outcome() {
-                self.logical_failure
-                    .get_or_insert_with(|| failure.to_string());
+                self.logical_failure.get_or_insert_with(|| failure.to_string());
             }
         }
         if let Some(failure) = &self.failure {
@@ -93,9 +85,7 @@ impl Drop for Attempt<'_> {
 }
 
 impl Calls {
-    pub(super) fn new(
-        registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>,
-    ) -> Self {
+    pub(super) fn new(registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>) -> Self {
         Self {
             live: Mutex::new(None),
             ready: tokio::sync::watch::channel(false).0,
@@ -105,12 +95,8 @@ impl Calls {
     }
 
     pub(super) fn open(
-        &self,
-        live: mpsc::UnboundedSender<Request>,
-        arrivals: mpsc::Sender<Arrival>,
-        operations: &[crate::operations::Definition],
-        contracts: &[crate::operations::Contract],
-        ended: tokio::sync::watch::Receiver<bool>,
+        &self, live: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[crate::operations::Definition],
+        contracts: &[crate::operations::Contract], ended: tokio::sync::watch::Receiver<bool>,
         plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
     ) -> Arc<Endpoint> {
         let scope = plugin.as_ref().map(|(scope, _)| scope.clone());

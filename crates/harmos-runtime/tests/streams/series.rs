@@ -21,9 +21,8 @@ use support::{Bank, Capture, Ledger, capture, catalog, deposit, streams};
 // Local Imports
 use crate::streams::support;
 use harmos_runtime::{
-    Aggregate, Runtime, state::At, state::Position, storage::Batch, storage::Cursor,
-    storage::Series, storage::StreamConsumer, streams::Aggregated, streams::Axial,
-    streams::BeneathWindow, streams::Bucket, streams::Definition, streams::Point, streams::Prefix,
+    Aggregate, Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::Series, storage::StreamConsumer,
+    streams::Aggregated, streams::Axial, streams::BeneathWindow, streams::Bucket, streams::Definition, streams::Point, streams::Prefix,
     streams::Stream, streams::Tracked,
 };
 
@@ -89,10 +88,7 @@ impl StreamConsumer<Bank> for Tape {
     }
 
     async fn drain(&mut self, batch: Batch<Bank>) -> Cursor {
-        self.rows
-            .lock()
-            .expect("the tape is never poisoned")
-            .extend(batch.select::<Capture>());
+        self.rows.lock().expect("the tape is never poisoned").extend(batch.select::<Capture>());
         self.cursor = batch.reaches();
 
         self.cursor
@@ -101,16 +97,9 @@ impl StreamConsumer<Bank> for Tape {
 
 impl Series<Bank> for Tape {
     async fn rows(
-        &mut self,
-        stream: Definition,
-        track: &[String],
-        start: Bound<Position>,
-        end: Bound<Position>,
+        &mut self, stream: Definition, track: &[String], start: Bound<Position>, end: Bound<Position>,
     ) -> Result<Vec<At<Arc<dyn Any + Send + Sync>>>, BeneathWindow> {
-        self.asked
-            .lock()
-            .expect("the tape is never poisoned")
-            .push((stream.id().to_owned(), track.to_vec()));
+        self.asked.lock().expect("the tape is never poisoned").push((stream.id().to_owned(), track.to_vec()));
 
         if reaches_beneath(start, self.floor) {
             return Err(BeneathWindow::Floor { floor: self.floor });
@@ -123,29 +112,15 @@ impl Series<Bank> for Tape {
             .iter()
             .filter(|At { position, .. }| admitted(start, end, *position))
             .filter(|At { value, .. }| narrowed(track, value))
-            .map(|At { value, position }| At {
-                value: Arc::new(*value) as Arc<dyn Any + Send + Sync>,
-                position: *position,
-            })
+            .map(|At { value, position }| At { value: Arc::new(*value) as Arc<dyn Any + Send + Sync>, position: *position })
             .collect())
     }
 
     async fn buckets(
-        &mut self,
-        stream: Definition,
-        track: &[String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        budget: usize,
+        &mut self, stream: Definition, track: &[String], start: Bound<u64>, end: Bound<u64>, budget: usize,
     ) -> Result<Vec<Bucket>, BeneathWindow> {
-        self.asked
-            .lock()
-            .expect("the tape is never poisoned")
-            .push((stream.id().to_owned(), track.to_vec()));
-        self.budgets
-            .lock()
-            .expect("the tape is never poisoned")
-            .push(budget);
+        self.asked.lock().expect("the tape is never poisoned").push((stream.id().to_owned(), track.to_vec()));
+        self.budgets.lock().expect("the tape is never poisoned").push(budget);
 
         // The coarsest grouping that fits the budget, which is what a level
         // choice is: four points per bucket, so the budget is a bucket count
@@ -176,17 +151,9 @@ impl Series<Bank> for Tape {
     }
 
     async fn aggregate(
-        &mut self,
-        stream: Definition,
-        track: &[String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        kind: Aggregate,
+        &mut self, stream: Definition, track: &[String], start: Bound<u64>, end: Bound<u64>, kind: Aggregate,
     ) -> Result<Vec<Aggregated>, BeneathWindow> {
-        self.asked
-            .lock()
-            .expect("the tape is never poisoned")
-            .push((stream.id().to_owned(), track.to_vec()));
+        self.asked.lock().expect("the tape is never poisoned").push((stream.id().to_owned(), track.to_vec()));
 
         // One measured field folded into one bucket. A bucket answers the
         // mergeable members; median and percentiles need the values, which
@@ -203,13 +170,7 @@ impl Series<Bank> for Tape {
             .reduce(|held, next| held.merge(&next))
             .and_then(|folded| folded.aggregate(kind));
 
-        Ok(answer
-            .map(|value| Aggregated {
-                field: "value".to_owned(),
-                value,
-            })
-            .into_iter()
-            .collect())
+        Ok(answer.map(|value| Aggregated { field: "value".to_owned(), value }).into_iter().collect())
     }
 
     async fn seal(&mut self, _stream: Definition, _track: &[String]) -> Position {
@@ -280,19 +241,13 @@ fn admitted(start: Bound<Position>, end: Bound<Position>, at: Position) -> bool 
 }
 
 async fn resumed(tape: Tape, at: Position) -> Runtime<Bank> {
-    Runtime::<Bank>::builder(
-        At {
-            value: Ledger::default(),
-            position: at,
-        },
-        (),
-    )
-    .register(catalog())
-    .register(streams())
-    .series(tape)
-    .runtime()
-    .await
-    .expect("a boot standing on a recovered frontier")
+    Runtime::<Bank>::builder(At { value: Ledger::default(), position: at }, ())
+        .register(catalog())
+        .register(streams())
+        .series(tape)
+        .runtime()
+        .await
+        .expect("a boot standing on a recovered frontier")
 }
 
 async fn served(tape: Tape) -> Runtime<Bank> {
@@ -317,14 +272,8 @@ async fn captured(rows: &Kept, count: usize) {
 
 async fn publish(runtime: &Runtime<Bank>, rows: &Kept, ordinals: &[u64]) {
     for (taken, ordinal) in ordinals.iter().enumerate() {
-        runtime
-            .state
-            .commit(deposit(1))
-            .await
-            .expect("the deposit is accepted");
-        runtime
-            .streams
-            .publish(capture(1, 1, *ordinal, *ordinal as i64));
+        runtime.state.commit(deposit(1)).await.expect("the deposit is accepted");
+        runtime.streams.publish(capture(1, 1, *ordinal, *ordinal as i64));
         captured(rows, taken + 1).await;
     }
 }
@@ -346,11 +295,7 @@ async fn range_beneath_window() {
         .map(|At { value, .. }| value.ordinal)
         .collect();
 
-    assert_eq!(
-        answered,
-        (1..=12).collect::<Vec<_>>(),
-        "every row is answered exactly once, in publish order, across the seam"
-    );
+    assert_eq!(answered, (1..=12).collect::<Vec<_>>(), "every row is answered exactly once, in publish order, across the seam");
     assert_eq!(
         asked.lock().expect("the tape is never poisoned").as_slice(),
         [("capture".to_owned(), Vec::new())],
@@ -367,13 +312,8 @@ async fn retained_skips_tier() {
 
     publish(&runtime, &rows, &[1, 2]).await;
 
-    let answered: Vec<u64> = runtime
-        .streams
-        .query::<Capture>(..)
-        .await
-        .expect("nothing was evicted")
-        .map(|At { value, .. }| value.ordinal)
-        .collect();
+    let answered: Vec<u64> =
+        runtime.streams.query::<Capture>(..).await.expect("nothing was evicted").map(|At { value, .. }| value.ordinal).collect();
 
     assert_eq!(answered, vec![1, 2]);
     assert!(
@@ -391,16 +331,9 @@ async fn window_stands_durable() {
     // What a previous run left in the tier. This boot's ring never saw these
     // rows and never will, so a window that answered for the whole of history
     // until it had evicted something would call them missing.
-    rows.lock().expect("the tape is never poisoned").extend([
-        At {
-            value: capture(1, 1, 1, 1),
-            position: Position(1),
-        },
-        At {
-            value: capture(1, 1, 2, 2),
-            position: Position(2),
-        },
-    ]);
+    rows.lock()
+        .expect("the tape is never poisoned")
+        .extend([At { value: capture(1, 1, 1, 1), position: Position(1) }, At { value: capture(1, 1, 2, 2), position: Position(2) }]);
     let runtime = resumed(tape, Position(2)).await;
 
     let answered: Vec<u64> = runtime
@@ -411,11 +344,7 @@ async fn window_stands_durable() {
         .map(|At { value, .. }| value.ordinal)
         .collect();
 
-    assert_eq!(
-        answered,
-        vec![1, 2],
-        "the first query of a restart splices, before the ring has evicted anything"
-    );
+    assert_eq!(answered, vec![1, 2], "the first query of a restart splices, before the ring has evicted anything");
     assert_eq!(
         asked.lock().expect("the tape is never poisoned").as_slice(),
         [("capture".to_owned(), Vec::new())],
@@ -426,19 +355,10 @@ async fn window_stands_durable() {
     // answered from the ring, once, beside the durable prefix beneath it.
     publish(&runtime, &rows, &[3]).await;
 
-    let answered: Vec<u64> = runtime
-        .streams
-        .query::<Capture>(..)
-        .await
-        .expect("both tiers answer")
-        .map(|At { value, .. }| value.ordinal)
-        .collect();
+    let answered: Vec<u64> =
+        runtime.streams.query::<Capture>(..).await.expect("both tiers answer").map(|At { value, .. }| value.ordinal).collect();
 
-    assert_eq!(
-        answered,
-        vec![1, 2, 3],
-        "the boundary is the watermark: beneath it the tier's, above it the ring's"
-    );
+    assert_eq!(answered, vec![1, 2, 3], "the boundary is the watermark: beneath it the tier's, above it the ring's");
 
     runtime.stop().await.unwrap();
 }
@@ -451,11 +371,7 @@ async fn floor_lacks_tier() {
     publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
 
     assert_eq!(
-        runtime
-            .streams
-            .query::<Capture>(..)
-            .await
-            .expect_err("the adapter's own history begins later than the range"),
+        runtime.streams.query::<Capture>(..).await.expect_err("the adapter's own history begins later than the range"),
         BeneathWindow::Floor { floor: Position(6) },
         "the floor is evidence, not a shortened answer"
     );
@@ -471,17 +387,8 @@ async fn tracked_read_narrows() {
     // Two runs of two probes each, interleaved, so a partition is never merely
     // a prefix of the published order.
     for ordinal in 1..=8u64 {
-        runtime
-            .state
-            .commit(deposit(1))
-            .await
-            .expect("the deposit is accepted");
-        runtime.streams.publish(capture(
-            ordinal % 2,
-            ordinal % 4 / 2,
-            ordinal,
-            ordinal as i64,
-        ));
+        runtime.state.commit(deposit(1)).await.expect("the deposit is accepted");
+        runtime.streams.publish(capture(ordinal % 2, ordinal % 4 / 2, ordinal, ordinal as i64));
         captured(&rows, ordinal as usize).await;
     }
 
@@ -502,25 +409,11 @@ async fn tracked_read_narrows() {
         .map(|At { value, .. }| value.ordinal)
         .collect();
 
-    assert_eq!(
-        answered,
-        vec![3, 7],
-        "the answer is cut by the application's own track equality, component by component"
-    );
-    assert_eq!(
-        subtree,
-        vec![1, 3, 5, 7],
-        "a prefix answers for every partition beneath it"
-    );
+    assert_eq!(answered, vec![3, 7], "the answer is cut by the application's own track equality, component by component");
+    assert_eq!(subtree, vec![1, 3, 5, 7], "a prefix answers for every partition beneath it");
     assert_eq!(
         asked.lock().expect("the tape is never poisoned").as_slice(),
-        [
-            (
-                "capture".to_owned(),
-                vec!["run_1".to_owned(), "probe_1".to_owned()]
-            ),
-            ("capture".to_owned(), vec!["run_1".to_owned()]),
-        ],
+        [("capture".to_owned(), vec!["run_1".to_owned(), "probe_1".to_owned()]), ("capture".to_owned(), vec!["run_1".to_owned()]),],
         "the component labels of the selection are what narrow the served read"
     );
 
@@ -535,62 +428,20 @@ async fn survey_spends_caller() {
     publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
     let sealed = runtime.streams.seal::<Capture>().await;
 
-    let buckets = runtime
-        .streams
-        .survey::<Capture>(..)
-        .budget(12)
-        .await
-        .expect("the served tier holds the sealed rows");
+    let buckets = runtime.streams.survey::<Capture>(..).budget(12).await.expect("the served tier holds the sealed rows");
 
-    assert_eq!(
-        *budgets.lock().expect("the tape is never poisoned"),
-        vec![12],
-        "the caller's ceiling reaches the adapter unchanged"
-    );
-    assert_eq!(
-        asked.lock().expect("the tape is never poisoned").as_slice(),
-        [("capture".to_owned(), Vec::new())]
-    );
+    assert_eq!(*budgets.lock().expect("the tape is never poisoned"), vec![12], "the caller's ceiling reaches the adapter unchanged");
+    assert_eq!(asked.lock().expect("the tape is never poisoned").as_slice(), [("capture".to_owned(), Vec::new())]);
     assert_eq!(buckets.len(), 3, "twelve points of budget is three buckets");
-    assert_eq!(
-        buckets.iter().map(Bucket::count).sum::<u64>(),
-        12,
-        "every sealed row is folded into exactly one bucket"
-    );
-    let whole = buckets
-        .iter()
-        .skip(1)
-        .fold(buckets[0].clone(), |held, next| held.merge(next));
+    assert_eq!(buckets.iter().map(Bucket::count).sum::<u64>(), 12, "every sealed row is folded into exactly one bucket");
+    let whole = buckets.iter().skip(1).fold(buckets[0].clone(), |held, next| held.merge(next));
     assert_eq!(whole.aggregate(Aggregate::Count), Some(12.0));
+    assert_eq!(whole.aggregate(Aggregate::Min), Some(whole.min.value), "the summary and the drawn points agree");
+    assert_eq!(whole.aggregate(Aggregate::Median), None, "a bucket keeps no values to order");
+    assert_eq!(buckets[0].first, Point { axis: 1, value: 1.0 }, "the extremes carry the axis coordinates they occurred at");
     assert_eq!(
-        whole.aggregate(Aggregate::Min),
-        Some(whole.min.value),
-        "the summary and the drawn points agree"
-    );
-    assert_eq!(
-        whole.aggregate(Aggregate::Median),
-        None,
-        "a bucket keeps no values to order"
-    );
-    assert_eq!(
-        buckets[0].first,
-        Point {
-            axis: 1,
-            value: 1.0
-        },
-        "the extremes carry the axis coordinates they occurred at"
-    );
-    assert_eq!(
-        buckets
-            .iter()
-            .cloned()
-            .reduce(|held, next| held.merge(&next))
-            .expect("a survey answers at least one bucket")
-            .max,
-        Point {
-            axis: 12,
-            value: 12.0
-        },
+        buckets.iter().cloned().reduce(|held, next| held.merge(&next)).expect("a survey answers at least one bucket").max,
+        Point { axis: 12, value: 12.0 },
         "merging the answer back down reproduces the whole range's extreme"
     );
     assert!(sealed > Position::ORIGIN);
@@ -603,28 +454,14 @@ async fn seal_reports_position() {
     let (tape, (rows, _asked, _budgets)) = Tape::new();
     let runtime = served(tape).await;
 
-    assert_eq!(
-        runtime.streams.seal::<Capture>().await,
-        Position::ORIGIN,
-        "a tape that has taken nothing has made nothing durable"
-    );
+    assert_eq!(runtime.streams.seal::<Capture>().await, Position::ORIGIN, "a tape that has taken nothing has made nothing durable");
 
     publish(&runtime, &rows, &(1..=6).collect::<Vec<_>>()).await;
     let sealed = runtime.streams.seal::<Capture>().await;
 
+    assert_eq!(sealed, runtime.state.applied(), "the barrier reaches the last row published, which was stamped here");
     assert_eq!(
-        sealed,
-        runtime.state.applied(),
-        "the barrier reaches the last row published, which was stamped here"
-    );
-    assert_eq!(
-        runtime
-            .streams
-            .survey::<Capture>(..)
-            .budget(4)
-            .await
-            .expect("the sealed rows are surveyable")
-            .len(),
+        runtime.streams.survey::<Capture>(..).budget(4).await.expect("the sealed rows are surveyable").len(),
         1,
         "four points of budget is one bucket over the whole sealed range"
     );
@@ -637,19 +474,10 @@ async fn absent_adapter_refuses() {
     let runtime = support::streaming().await;
 
     assert_eq!(
-        runtime
-            .streams
-            .survey::<Capture>(..)
-            .budget(64)
-            .await
-            .expect_err("the window retains rows, not levels"),
+        runtime.streams.survey::<Capture>(..).budget(64).await.expect_err("the window retains rows, not levels"),
         BeneathWindow::Unserved,
     );
-    assert_eq!(
-        runtime.streams.seal::<Capture>().await,
-        Position::ORIGIN,
-        "nothing serving means nothing durable, said plainly"
-    );
+    assert_eq!(runtime.streams.seal::<Capture>().await, Position::ORIGIN, "nothing serving means nothing durable, said plainly");
 
     runtime.stop().await.unwrap();
 }

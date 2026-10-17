@@ -64,10 +64,7 @@ impl Refusal {
 
     // Refuses with the failure an error chain carries, or writes its cause.
     pub fn originate(
-        code: i64,
-        classification: operations::FailureKind,
-        error: &(dyn std::error::Error + 'static),
-        origin: Origin,
+        code: i64, classification: operations::FailureKind, error: &(dyn std::error::Error + 'static), origin: Origin,
     ) -> Self {
         Self::failed(code, Failure::originate(classification, error, origin))
     }
@@ -93,12 +90,7 @@ impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         // A Refusal Is A Leaf: It Names The Operation Frame Beside Its Cause
         match self.failure.context().operation() {
-            Some(operation) => write!(
-                formatter,
-                "operation `{operation}` failed: {} ({})",
-                self.failure.cause(),
-                self.code
-            ),
+            Some(operation) => write!(formatter, "operation `{operation}` failed: {} ({})", self.failure.cause(), self.code),
             None => write!(formatter, "{} ({})", self.failure.cause(), self.code),
         }
     }

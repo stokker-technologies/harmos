@@ -76,15 +76,11 @@ impl crate::model::storage::codec::Value for Encoding {
         1
     }
 
-    fn postcard_memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> Result<usize, crate::MessageError> {
+    fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize, crate::MessageError> {
         Self::postcard_read(input).map(|_| 0)
     }
 
-    fn postcard_read(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> Result<Self::Native, crate::MessageError> {
+    fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Self::Native, crate::MessageError> {
         encoding(input.value()?)
     }
 }
@@ -96,9 +92,7 @@ fn encoding(value: u64) -> Result<crate::model::storage::PayloadEncoding, crate:
     match value {
         0 => Ok(crate::model::storage::PayloadEncoding::ProtobufV1),
         1 => Ok(crate::model::storage::PayloadEncoding::PostcardV1),
-        _ => Err(crate::MessageError::borrowed(
-            "unknown persisted payload encoding",
-        )),
+        _ => Err(crate::MessageError::borrowed("unknown persisted payload encoding")),
     }
 }
 

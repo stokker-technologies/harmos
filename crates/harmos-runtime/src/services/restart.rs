@@ -69,11 +69,7 @@ enum AttemptEvent<T> {
 /* === Implementations === */
 impl Health {
     fn under(restart: RestartPolicy) -> Self {
-        Self {
-            credit: restart.credit(),
-            failures: 0,
-            history: Vec::new(),
-        }
+        Self { credit: restart.credit(), failures: 0, history: Vec::new() }
     }
 
     fn refill(&mut self, restart: RestartPolicy) {
@@ -84,12 +80,8 @@ impl Health {
 
 /* === Public Functions === */
 pub(super) async fn run<A: Application>(
-    definition: &ServiceDefinition,
-    resident: &mut dyn ErasedResident<A>,
-    cleanup: &Cleanup<A>,
-    report: &Report,
-    operations: &OperationManager,
-    stopping: watch::Sender<bool>,
+    definition: &ServiceDefinition, resident: &mut dyn ErasedResident<A>, cleanup: &Cleanup<A>, report: &Report,
+    operations: &OperationManager, stopping: watch::Sender<bool>,
 ) -> Result<()> {
     let name = definition.id.as_str();
     let policy = definition.policy;
@@ -119,34 +111,21 @@ pub(super) async fn run<A: Application>(
             #[cfg(feature = "plugin-sidecar")]
             Arc::clone(&cleanup.lifecycle),
         );
-        let mut attempt = Box::pin(crate::supervision::attempt(
-            async { resident.run(context).await },
-            stopping.subscribe(),
-            policy.timeout,
-        ));
+        let mut attempt =
+            Box::pin(crate::supervision::attempt(async { resident.run(context).await }, stopping.subscribe(), policy.timeout));
 
         let mut readiness_observed = false;
         let mut health_wait: Option<HealthWait> = None;
         let answer = loop {
-            let event = next_event(
-                attempt.as_mut(),
-                &mut readiness,
-                readiness_observed,
-                &mut health_wait,
-            )
-            .await;
+            let event = next_event(attempt.as_mut(), &mut readiness, readiness_observed, &mut health_wait).await;
             match event {
                 AttemptEvent::Completed(answer) => break answer,
                 AttemptEvent::Ready => {
                     readiness_observed = true;
                     if !*stopping.borrow() {
-                        report.health(ServiceStatus::Running {
-                            credit: health.credit,
-                        });
+                        report.health(ServiceStatus::Running { credit: health.credit });
                         if health.credit < policy.restart.credit()
-                            && let RestartPolicy::OnTransient {
-                                sustained_health, ..
-                            } = policy.restart
+                            && let RestartPolicy::OnTransient { sustained_health, .. } = policy.restart
                         {
                             health_wait = Some(Box::pin(executor::sleep(sustained_health)));
                         }
@@ -157,9 +136,7 @@ pub(super) async fn run<A: Application>(
                     health_wait = None;
                     if !*stopping.borrow() {
                         health.refill(policy.restart);
-                        report.health(ServiceStatus::Running {
-                            credit: health.credit,
-                        });
+                        report.health(ServiceStatus::Running { credit: health.credit });
                     }
                 }
             }
@@ -171,20 +148,13 @@ pub(super) async fn run<A: Application>(
 
         drop(attempt);
         let terminal = match &answer {
-            Err(cause) => Some(Err(Arc::new(Error::TaskFailed {
-                domain: "service attempt",
-                source: Arc::new(cause.clone()),
-            }))),
+            Err(cause) => Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: Arc::new(cause.clone()) }))),
             Ok(Ok(())) => Some(Ok(())),
-            Ok(Err(Fault::Application(error))) => Some(Err(Arc::new(Error::TaskFailed {
-                domain: "service attempt",
-                source: error.source.clone(),
-            }))),
+            Ok(Err(Fault::Application(error))) => {
+                Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: error.source.clone() })))
+            }
             Ok(Err(Fault::Environmental(error))) if health.credit == 0 && !*stopping.borrow() => {
-                Some(Err(Arc::new(Error::TaskFailed {
-                    domain: "service attempt",
-                    source: error.source.clone(),
-                })))
+                Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: error.source.clone() })))
             }
             Ok(Err(Fault::Environmental(_))) if *stopping.borrow() => Some(Ok(())),
             Ok(Err(Fault::Environmental(_))) => None,
@@ -196,10 +166,7 @@ pub(super) async fn run<A: Application>(
         report.transition(OperationPhase::Stopping);
         if let Err(error) = super::runner::cleanup(resident).await {
             if let Ok(Err(Fault::Environmental(failure))) = &answer {
-                cleanup.record(Err(Arc::new(Error::TaskFailed {
-                    domain: "service attempt",
-                    source: failure.source.clone(),
-                })));
+                cleanup.record(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: failure.source.clone() })));
             }
             report.quiesce();
             return Err(error);
@@ -208,17 +175,7 @@ pub(super) async fn run<A: Application>(
 
         match answer {
             Ok(answer) => {
-                if let Some(result) = settle(
-                    name,
-                    answer,
-                    &mut health,
-                    policy.restart,
-                    report,
-                    &handles,
-                    &stopping,
-                )
-                .await
-                {
+                if let Some(result) = settle(name, answer, &mut health, policy.restart, report, &handles, &stopping).await {
                     return result;
                 }
             }
@@ -227,20 +184,13 @@ pub(super) async fn run<A: Application>(
                 return deactivate(name, cause, health.history, source, report, &handles).await;
             }
         }
-        attempt_index = attempt_index
-            .checked_add(1)
-            .ok_or(Error::ResourceExhausted {
-                resource: "service attempt identities",
-            })?;
+        attempt_index = attempt_index.checked_add(1).ok_or(Error::ResourceExhausted { resource: "service attempt identities" })?;
     }
 }
 
 /* === Private Functions === */
 async fn next_event<F: Future + ?Sized>(
-    mut attempt: Pin<&mut F>,
-    readiness: &mut watch::Receiver<bool>,
-    readiness_observed: bool,
-    health_wait: &mut Option<HealthWait>,
+    mut attempt: Pin<&mut F>, readiness: &mut watch::Receiver<bool>, readiness_observed: bool, health_wait: &mut Option<HealthWait>,
 ) -> AttemptEvent<F::Output> {
     let mut ready = std::pin::pin!(readiness.wait_for(|ready| *ready));
     std::future::poll_fn(|context| {
@@ -248,11 +198,7 @@ async fn next_event<F: Future + ?Sized>(
             return Poll::Ready(AttemptEvent::Completed(answer));
         }
         if !readiness_observed && let Poll::Ready(answer) = ready.as_mut().poll(context) {
-            return Poll::Ready(if answer.is_ok() {
-                AttemptEvent::Ready
-            } else {
-                AttemptEvent::ReadinessClosed
-            });
+            return Poll::Ready(if answer.is_ok() { AttemptEvent::Ready } else { AttemptEvent::ReadinessClosed });
         }
         if let Some(wait) = health_wait
             && wait.as_mut().poll(context).is_ready()
@@ -265,13 +211,8 @@ async fn next_event<F: Future + ?Sized>(
 }
 
 async fn settle<A: Application>(
-    name: &str,
-    answer: std::result::Result<(), Fault<Failure>>,
-    health: &mut Health,
-    restart: RestartPolicy,
-    report: &Report,
-    handles: &super::Handles<A>,
-    stopping: &watch::Sender<bool>,
+    name: &str, answer: std::result::Result<(), Fault<Failure>>, health: &mut Health, restart: RestartPolicy, report: &Report,
+    handles: &super::Handles<A>, stopping: &watch::Sender<bool>,
 ) -> Option<Result<()>> {
     match answer {
         Ok(()) => {
@@ -279,15 +220,8 @@ async fn settle<A: Application>(
             Some(Ok(()))
         }
         Err(Fault::Application(error)) => Some(
-            deactivate(
-                name,
-                ServiceExit::Application(error.message),
-                std::mem::take(&mut health.history),
-                error.source,
-                report,
-                handles,
-            )
-            .await,
+            deactivate(name, ServiceExit::Application(error.message), std::mem::take(&mut health.history), error.source, report, handles)
+                .await,
         ),
         Err(Fault::Environmental(error)) => {
             if *stopping.borrow() {
@@ -299,28 +233,16 @@ async fn settle<A: Application>(
                 RestartPolicy::OnTransient { backoff, .. } if health.credit > 0 => backoff,
                 _ => {
                     return Some(
-                        deactivate(
-                            name,
-                            ServiceExit::CreditExhausted,
-                            std::mem::take(&mut health.history),
-                            error.source,
-                            report,
-                            handles,
-                        )
-                        .await,
+                        deactivate(name, ServiceExit::CreditExhausted, std::mem::take(&mut health.history), error.source, report, handles)
+                            .await,
                     );
                 }
             };
             health.credit -= 1;
             report.health(ServiceStatus::BackingOff);
-            let delay = backoff
-                .delay(health.failures, report.id().value())
-                .unwrap_or(Duration::ZERO);
+            let delay = backoff.delay(health.failures, report.id().value()).unwrap_or(Duration::ZERO);
             let mut waiting = stopping.subscribe();
-            let interrupted =
-                crate::supervision::interruptible(executor::sleep(delay), &mut waiting)
-                    .await
-                    .is_none();
+            let interrupted = crate::supervision::interruptible(executor::sleep(delay), &mut waiting).await.is_none();
             if interrupted {
                 report.health(ServiceStatus::Stopped);
                 return Some(Ok(()));
@@ -332,32 +254,17 @@ async fn settle<A: Application>(
 }
 
 async fn deactivate<A: Application>(
-    name: &str,
-    cause: ServiceExit,
-    history: Vec<String>,
-    source: Arc<dyn std::error::Error + Send + Sync>,
-    report: &Report,
+    name: &str, cause: ServiceExit, history: Vec<String>, source: Arc<dyn std::error::Error + Send + Sync>, report: &Report,
     handles: &super::Handles<A>,
 ) -> Result<()> {
-    let payload = serde_json::to_vec(&Deactivation {
-        cause: describe(&cause),
-        history: &history,
-    })
-    .expect("the fixed work fact shape serializes");
+    let payload =
+        serde_json::to_vec(&Deactivation { cause: describe(&cause), history: &history }).expect("the fixed work fact shape serializes");
     let _ = handles
         .records
-        .publish_system(SystemFact {
-            source: FactSource::Work(name.to_owned()),
-            name: "deactivated".to_owned(),
-            version: 1,
-            payload,
-        })
+        .publish_system(SystemFact { source: FactSource::Work(name.to_owned()), name: "deactivated".to_owned(), version: 1, payload })
         .await;
     report.health(ServiceStatus::Inactive { cause, history });
-    Err(Error::TaskFailed {
-        domain: "service attempt",
-        source,
-    })
+    Err(Error::TaskFailed { domain: "service attempt", source })
 }
 
 fn describe(cause: &ServiceExit) -> String {

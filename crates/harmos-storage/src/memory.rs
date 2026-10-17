@@ -67,23 +67,12 @@ pub(super) enum Shortfall {
 /* === Implementations === */
 impl MemoryBank {
     pub(super) fn new(reservation: Reservation) -> Self {
-        Self {
-            state: Arc::new(Mutex::new(BankState {
-                requested: reservation.bytes(),
-                reservation,
-                used: 0,
-                retained: 0,
-                refusal: None,
-            })),
-        }
+        Self { state: Arc::new(Mutex::new(BankState { requested: reservation.bytes(), reservation, used: 0, retained: 0, refusal: None })) }
     }
 
     /// Admit `bytes` of credit for the attempt, waiting for other owners.
     pub(super) async fn admit(
-        inner: &Arc<Inner>,
-        held: &Held,
-        bytes: usize,
-        deadline: Option<Instant>,
+        inner: &Arc<Inner>, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
         let reservation = Reservation::wait(inner, Pool::Read, held, bytes, deadline).await?;
         Ok(Self::new(reservation))
@@ -100,10 +89,7 @@ impl MemoryBank {
     }
 
     pub(super) fn scope(&self) -> MemoryScope<'_> {
-        MemoryScope {
-            bank: self,
-            used: 0,
-        }
+        MemoryScope { bank: self, used: 0 }
     }
 
     /// Claim bytes that outlive this attempt, such as a retained Arrow batch.
@@ -134,12 +120,7 @@ impl Drop for MemoryScope<'_> {
 impl BankState {
     // Grow The Attempt's Reservation So `bytes` More Fit Beside Current Claims.
     fn ensure(&mut self, bytes: usize) -> Result<()> {
-        let required = self
-            .used
-            .checked_add(bytes)
-            .ok_or(Error::ResourceExhausted {
-                resource: "storage read memory",
-            })?;
+        let required = self.used.checked_add(bytes).ok_or(Error::ResourceExhausted { resource: "storage read memory" })?;
         self.requested = self.requested.max(required.saturating_add(self.retained));
         let available = self.reservation.bytes();
         if required <= available {

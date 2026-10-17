@@ -58,16 +58,8 @@ pub struct FollowFile {
 impl MemorySize for FollowFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.file
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.file)),
-            )
-            .saturating_add(
-                self.offset
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.offset)),
-            )
+            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
+            .saturating_add(self.offset.memory_size().saturating_sub(std::mem::size_of_val(&self.offset)))
     }
 }
 

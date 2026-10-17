@@ -41,8 +41,7 @@
 
 use harmos_runtime::simulation::SimulatedRuntime;
 use harmos_runtime::{
-    Application, DefinitionId, Identified, Runtime, runtime::Catalog, runtime::Registration,
-    state::PrincipalId, state::Transaction,
+    Application, DefinitionId, Identified, Runtime, runtime::Catalog, runtime::Registration, state::PrincipalId, state::Transaction,
 };
 use harmos_runtime::{state::DecodeError, state::Kind};
 
@@ -89,11 +88,7 @@ struct Faithful;
 #[derive(Clone)]
 struct Wrong;
 
-fn decode_nothing(
-    _id: &DefinitionId,
-    _version: u32,
-    _bytes: &[u8],
-) -> Result<Option<SetGain>, DecodeError> {
+fn decode_nothing(_id: &DefinitionId, _version: u32, _bytes: &[u8]) -> Result<Option<SetGain>, DecodeError> {
     Ok(None)
 }
 
@@ -109,11 +104,7 @@ impl Registration<Amplifier> for Faithful {
 
 impl Registration<Amplifier> for Wrong {
     fn register(self) -> Catalog<Amplifier> {
-        Catalog::Transactions {
-            definitions: declared(),
-            decode: decode_nothing,
-            inverses: Some(|change, _before| Some(SetGain(change.0))),
-        }
+        Catalog::Transactions { definitions: declared(), decode: decode_nothing, inverses: Some(|change, _before| Some(SetGain(change.0))) }
     }
 }
 
@@ -129,8 +120,7 @@ fn scripted<C: Registration<Amplifier> + 'static>(catalog: C) -> SimulatedRuntim
         .expect("a memory-only simulation boots");
 
     for gain in [3, 9] {
-        sim.commit(PrincipalId::new("tester"), SetGain(gain))
-            .expect("accepted");
+        sim.commit(PrincipalId::new("tester"), SetGain(gain)).expect("accepted");
     }
 
     sim
@@ -150,9 +140,7 @@ fn inverse_fails_law() {
         sim.assert_inverses_restore();
     }))
     .expect_err("an inverse that restores nothing is not an inverse");
-    let message = failure
-        .downcast_ref::<String>()
-        .expect("divergence diagnostic");
+    let message = failure.downcast_ref::<String>().expect("divergence diagnostic");
     assert_eq!(
         message,
         "the inverse of the change at Position(1) did not restore the state it changed\n  before:   Model { gain: 0 }\n  restored: Model { gain: 3 }",

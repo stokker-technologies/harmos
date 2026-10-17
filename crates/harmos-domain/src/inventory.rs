@@ -127,18 +127,13 @@ pub(crate) const fn write<const N: usize>(output: &mut [u8; N], cursor: &mut usi
 
 /* === Private Functions === */
 fn retain_schema(
-    schema: crate::schema::graph::Schema,
-    settings: &mut crate::config::SchemaSettings,
+    schema: crate::schema::graph::Schema, settings: &mut crate::config::SchemaSettings,
 ) -> Result<crate::schema::graph::Schema, crate::schema::graph::Error> {
     use crate::MemorySize;
     use crate::schema::graph::Error;
     let preparation = schema.preparation(settings)?;
-    settings.preparation_bytes = settings
-        .preparation_bytes
-        .get()
-        .checked_sub(schema.memory_size())
-        .and_then(std::num::NonZeroUsize::new)
-        .ok_or(Error::Budget)?;
+    settings.preparation_bytes =
+        settings.preparation_bytes.get().checked_sub(schema.memory_size()).and_then(std::num::NonZeroUsize::new).ok_or(Error::Budget)?;
     // Resolve Named Definitions And Validate The Result Under One Shared Work
     // Allowance Across Every Contract, Source And Publication In The Artifact.
     settings.preparation_work = preparation

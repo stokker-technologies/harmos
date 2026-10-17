@@ -15,8 +15,8 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
 
 // Third Party Imports
-use harmos_storage::*;
 use harmos_domain::Identifier;
+use harmos_storage::*;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
@@ -37,14 +37,8 @@ async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
     let data = Arc::new(Data::<()>::journaled(directory, history()).unwrap());
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
-        },
-        settings,
-    )
-    .unwrap();
+    let storage: StorageManager =
+        StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
     crate::fixture::start(&storage).await;
     (data, storage)
 }
@@ -57,14 +51,7 @@ async fn dropped_write_retained() {
     let schema = waveforms::schema();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("cancelled").unwrap();
-    let record = |item| RecordWrite {
-        schema: &schema,
-        scope: None,
-        item,
-        source: None,
-        source_time: None,
-        payload: &[1, 2, 3],
-    };
+    let record = |item| RecordWrite { schema: &schema, scope: None, item, source: None, source_time: None, payload: &[1, 2, 3] };
 
     // A Controlled Backend Gate Separates Acceptance From Durability.
     data.control.block_write.store(true, Ordering::SeqCst);
@@ -85,13 +72,9 @@ async fn dropped_write_retained() {
     data.control.write_release.notify_one();
     assert_eq!(flushing.await.unwrap().unwrap(), accepted);
     assert_eq!(data.records.lock().unwrap().len(), 1);
-    assert_eq!(
-        data.records.lock().unwrap().values().next().unwrap().item,
-        first
-    );
+    assert_eq!(data.records.lock().unwrap().values().next().unwrap().item, first);
     assert_eq!(storage.status().pending_bytes, 0);
     storage.close().await.unwrap();
-
 }
 
 #[tokio::test]
@@ -102,15 +85,9 @@ async fn cancelled_query_releases() {
     // Cancelling A Queued Query Releases Its Admission Slot.
     let query = || harmos_domain::operations::storage::Query {
         at: accepted.clone(),
-        source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection {
-            scope: None,
-            item: None,
-        }),
+        source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],
-        slice: harmos_storage::query::RowSlice {
-            offset: 0,
-            limit: None,
-        },
+        slice: harmos_storage::query::RowSlice { offset: 0, limit: None },
     };
     let first_reader = storage.query(query()).await.unwrap();
     let mut waiting = Box::pin(storage.query(query()));
@@ -118,13 +95,9 @@ async fn cancelled_query_releases() {
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();
-    assert!(matches!(
-        following.next().await.unwrap(),
-        Some(harmos_storage::query::QueryArrow::Schema(_))
-    ));
+    assert!(matches!(following.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);
     drop(following);
     storage.close().await.unwrap();
-
 }

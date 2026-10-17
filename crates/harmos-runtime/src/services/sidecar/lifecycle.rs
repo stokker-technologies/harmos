@@ -26,9 +26,7 @@ where
             return Ok(());
         }
         if self.cleanup.get_mut().is_some() {
-            return Err(Fault::Application(
-                "native physical cleanup is still pending".into(),
-            ));
+            return Err(Fault::Application("native physical cleanup is still pending".into()));
         }
         let instance = self
             .routing
@@ -38,84 +36,45 @@ where
             .map_err(|error| Fault::Application(error.to_string()))?;
         let declarations = self.attach.publications();
         let observers = self.attach.observers();
-        let operations = self
-            .attach
-            .operations()
-            .map_err(|error| Fault::Application(error.to_string()))?;
-        harmos_sidecar::inventory::operations::validate(&operations)
-            .map_err(|error| Fault::Application(error.to_string()))?;
-        let contracts = self
-            .attach
-            .operation_contracts()
-            .map_err(|error| Fault::Application(error.to_string()))?;
+        let operations = self.attach.operations().map_err(|error| Fault::Application(error.to_string()))?;
+        harmos_sidecar::inventory::operations::validate(&operations).map_err(|error| Fault::Application(error.to_string()))?;
+        let contracts = self.attach.operation_contracts().map_err(|error| Fault::Application(error.to_string()))?;
         if let Some(contracts) = &contracts {
             let mut ids = std::collections::BTreeSet::new();
             if contracts.len() != operations.len()
                 || contracts.iter().any(|contract| {
-                    !ids.insert(contract.operation().id.clone())
-                        || !operations
-                            .iter()
-                            .any(|operation| operation == contract.operation())
+                    !ids.insert(contract.operation().id.clone()) || !operations.iter().any(|operation| operation == contract.operation())
                 })
             {
-                return Err(Fault::Application(
-                    "native canonical contracts differ from the admitted operations".into(),
-                ));
+                return Err(Fault::Application("native canonical contracts differ from the admitted operations".into()));
             }
         }
         let contracts = contracts.unwrap_or_default();
-        let sdk = self
-            .attach
-            .sdk_lifecycle()
-            .map_err(|error| Fault::Application(error.to_string()))?;
+        let sdk = self.attach.sdk_lifecycle().map_err(|error| Fault::Application(error.to_string()))?;
         let scope = instance.as_ref().and_then(|endpoint| endpoint.scope());
         if sdk.is_none() || scope.is_none() {
-            return Err(Fault::Application(
-                "native SDK transport requires the original manager-issued scope".to_owned(),
-            ));
+            return Err(Fault::Application("native SDK transport requires the original manager-issued scope".to_owned()));
         }
         if sdk.as_ref() != scope.and_then(|scope| scope.lifecycle()) {
-            return Err(Fault::Application(
-                "native SDK pair differs from the original admitted generation".to_owned(),
-            ));
+            return Err(Fault::Application("native SDK pair differs from the original admitted generation".to_owned()));
         }
-        let control = self
-            .attach
-            .observe_contract()
-            .map_err(|error| Fault::Application(error.to_string()))?;
-        let mut required = self
-            .attach
-            .required_contracts()
-            .map_err(|error| Fault::Application(error.to_string()))?;
+        let control = self.attach.observe_contract().map_err(|error| Fault::Application(error.to_string()))?;
+        let mut required = self.attach.required_contracts().map_err(|error| Fault::Application(error.to_string()))?;
         if let Some(required) = &mut required {
             required.sort_by(|a, b| a.contract.operation().id.cmp(&b.contract.operation().id));
         }
         if required.as_deref() != scope.and_then(|scope| scope.required_contracts()) {
-            return Err(Fault::Application(
-                "native required contracts differ from the original admitted generation".to_owned(),
-            ));
+            return Err(Fault::Application("native required contracts differ from the original admitted generation".to_owned()));
         }
         if control.as_ref() != scope.and_then(|scope| scope.observe_contract())
-            || scope.is_some_and(|scope| {
-                normalized_observers(scope.observers().to_vec())
-                    != normalized_observers(observers.clone())
-            })
+            || scope.is_some_and(|scope| normalized_observers(scope.observers().to_vec()) != normalized_observers(observers.clone()))
         {
-            return Err(Fault::Application(
-                "native observer roles or inventory differ from the original admitted generation"
-                    .to_owned(),
-            ));
+            return Err(Fault::Application("native observer roles or inventory differ from the original admitted generation".to_owned()));
         }
-        harmos_sidecar::inventory::observers::validate(&observers, &declarations)
-            .map_err(|error| Fault::Application(error.to_string()))?;
-        let plugin = instance
-            .as_ref()
-            .and_then(|endpoint| endpoint.scope())
-            .cloned();
+        harmos_sidecar::inventory::observers::validate(&observers, &declarations).map_err(|error| Fault::Application(error.to_string()))?;
+        let plugin = instance.as_ref().and_then(|endpoint| endpoint.scope()).cloned();
         if let Some(scope) = &plugin {
-            scope
-                .validate_operations(operations.iter())
-                .map_err(|error| Fault::Application(error.to_string()))?;
+            scope.validate_operations(operations.iter()).map_err(|error| Fault::Application(error.to_string()))?;
         }
         *self.cleanup.get_mut() = Some(Cleanup {
             instance,
@@ -132,41 +91,22 @@ where
             ended: None,
             failure: None,
         });
-        let cleanup = self
-            .cleanup
-            .get_mut()
-            .as_mut()
-            .expect("the attempt owns its cleanup");
-        let admitted: BTreeMap<String, Arc<crate::streams::PublicationLease>> =
-            executor::timeout(self.handshake, async {
-                let scope = plugin
-                    .as_ref()
-                    .expect("SDK transport retains its original admitted scope");
-                let registration = context
-                    .streams()
-                    .stage_plugin(scope, declarations.clone())
-                    .await
-                    .map_err(|error| Fault::Application(error.to_string()))?;
-                let leases = registration.leases().to_vec();
-                cleanup.registration = Some(registration);
-                Ok::<_, Fault<String>>(
-                    declarations
-                        .iter()
-                        .zip(leases)
-                        .map(|(declaration, lease)| (declaration.id.clone(), lease))
-                        .collect(),
-                )
-            })
-            .await
-            .map_err(|_| {
-                Fault::Application("stream admission exceeded the handshake deadline".into())
-            })??;
+        let cleanup = self.cleanup.get_mut().as_mut().expect("the attempt owns its cleanup");
+        let admitted: BTreeMap<String, Arc<crate::streams::PublicationLease>> = executor::timeout(self.handshake, async {
+            let scope = plugin.as_ref().expect("SDK transport retains its original admitted scope");
+            let registration =
+                context.streams().stage_plugin(scope, declarations.clone()).await.map_err(|error| Fault::Application(error.to_string()))?;
+            let leases = registration.leases().to_vec();
+            cleanup.registration = Some(registration);
+            Ok::<_, Fault<String>>(declarations.iter().zip(leases).map(|(declaration, lease)| (declaration.id.clone(), lease)).collect())
+        })
+        .await
+        .map_err(|_| Fault::Application("stream admission exceeded the handshake deadline".into()))??;
 
         // Retain the reservation through physical attempt settlement.
         cleanup.admitted = admitted.clone();
-        let attached = self.attach.attach().await.map_err(|error| {
-            Fault::Environmental(format!("the sidecar could not be started: {error}"))
-        })?;
+        let attached =
+            self.attach.attach().await.map_err(|error| Fault::Environmental(format!("the sidecar could not be started: {error}")))?;
 
         let result = converse(
             attached,
@@ -190,10 +130,7 @@ where
         .await;
         cleanup.disposition = Some(result);
         let settled = cleanup.finish().await;
-        let disposition = cleanup
-            .disposition
-            .take()
-            .expect("the attempt retained its disposition");
+        let disposition = cleanup.disposition.take().expect("the attempt retained its disposition");
         disposition?;
         settled.map_err(Fault::Application)?;
         if let Some(failure) = &cleanup.logical_failure {

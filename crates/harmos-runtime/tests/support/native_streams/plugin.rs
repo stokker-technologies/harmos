@@ -23,9 +23,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
-use harmos_runtime::operations::{
-    Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
-};
+use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -121,9 +119,7 @@ impl harmos_runtime::Plugin for Receiver {
     type Resources = State;
     type Error = Refusal;
     fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self {
-            state: Arc::new(State::default()),
-        })
+        Ok(Self { state: Arc::new(State::default()) })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
@@ -131,10 +127,7 @@ impl harmos_runtime::Plugin for Receiver {
     fn resources(&self) -> Arc<State> {
         self.state.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Consumption>(self.resources())?;
         table.bind_operation::<Reporting>(self.resources())
     }
@@ -156,10 +149,7 @@ impl Operation for Consumption {
         Ok(Self { state })
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        row: &mut Delivery<Listener>,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, row: &mut Delivery<Listener>, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if !matches!(row.context(), DeliveryContext::Stream { .. }) {
@@ -167,14 +157,10 @@ impl Operation for Consumption {
             }
             let row = row.row();
             let expected = self.state.rows.load(Ordering::SeqCst);
-            if row.sequence != expected
-                || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8)
-            {
+            if row.sequence != expected || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8) {
                 return Err(Refusal::of("payload loss, reordering or corruption"));
             }
-            self.state
-                .bytes
-                .fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
+            self.state.bytes.fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
             self.state.rows.store(expected + 1, Ordering::SeqCst);
             self.state.changed.notify_waiters();
             Ok(())
@@ -194,21 +180,14 @@ impl Operation for Reporting {
         Ok(Self { state })
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut Progress,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut Progress, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
         let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
             loop {
                 let changed = self.state.changed.notified();
                 let rows = self.state.rows.load(Ordering::SeqCst);
                 if rows >= request.expected {
-                    return Ok(Acknowledged {
-                        process_id: std::process::id(),
-                        rows,
-                        bytes: self.state.bytes.load(Ordering::SeqCst),
-                    });
+                    return Ok(Acknowledged { process_id: std::process::id(), rows, bytes: self.state.bytes.load(Ordering::SeqCst) });
                 }
                 changed.await;
             }

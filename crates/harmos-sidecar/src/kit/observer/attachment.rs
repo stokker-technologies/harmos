@@ -70,33 +70,21 @@ struct Running {
 /* === Implementations === */
 impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     pub fn new(
-        instances: Vec<Instance<R, H>>,
-        resources: Arc<R>,
-        grants: &[harmos_domain::inventory::publications::Entry],
+        instances: Vec<Instance<R, H>>, resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry],
     ) -> Result<Arc<Self>, Refusal> {
         super::validate_outputs(&instances, grants).map_err(Refusal::of)?;
         let declarations: Vec<_> = instances.iter().map(Instance::declaration).collect();
         let mut selected = BTreeMap::new();
         for instance in instances {
             if instance.id().is_empty() || selected.contains_key(instance.id()) {
-                return Err(Refusal::of(
-                    "observer identities must be nonempty and unique",
-                ));
+                return Err(Refusal::of("observer identities must be nonempty and unique"));
             }
             selected.insert(instance.id(), instance);
         }
-        Ok(Arc::new(Self {
-            resources,
-            declarations,
-            instances: selected,
-            closing: AtomicBool::new(false),
-        }))
+        Ok(Arc::new(Self { resources, declarations, instances: selected, closing: AtomicBool::new(false) }))
     }
 
-    pub fn from_catalog<C>(
-        resources: Arc<R>,
-        grants: &[harmos_domain::inventory::publications::Entry],
-    ) -> Result<Arc<Self>, Refusal>
+    pub fn from_catalog<C>(resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal>
     where
         C: harmos_domain::catalog::Catalog<super::Declarations<R, H>>,
     {
@@ -117,9 +105,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     }
 }
 
-impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor>
-    for ObserverAttachment<R, H>
-{
+impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for ObserverAttachment<R, H> {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.declarations.clone()
     }
@@ -147,38 +133,19 @@ where
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(
-        attachment: Arc<Self::Resources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            attachment,
-            running: None,
-            activity: None,
-        })
+    async fn initialize<'ctx>(attachment: Arc<Self::Resources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { attachment, running: None, activity: None })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        control: &mut Control,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, control: &mut Control, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
                 return Err(Refusal::of("observer admission is closing"));
             }
-            let name = self
-                .attachment
-                .instances
-                .get(control.observer.as_str())
-                .ok_or_else(|| Refusal::of("unknown observer"))?
-                .id();
-            self.running = Some(Running::spawn(
-                Arc::clone(&self.attachment),
-                name,
-                host.clone(),
-            )?);
+            let name = self.attachment.instances.get(control.observer.as_str()).ok_or_else(|| Refusal::of("unknown observer"))?.id();
+            self.running = Some(Running::spawn(Arc::clone(&self.attachment), name, host.clone())?);
         }
         let running = self.running.as_mut().expect("spawned activation");
         let failed = running.failed.as_mut();
@@ -231,9 +198,7 @@ impl Drop for Interrupt<'_> {
 
 impl Running {
     fn spawn<R: Send + Sync + 'static, H: ObserverHost<R>>(
-        attachment: Arc<ObserverAttachment<R, H>>,
-        observer: &'static str,
-        host: Supervisor,
+        attachment: Arc<ObserverAttachment<R, H>>, observer: &'static str, host: Supervisor,
     ) -> Result<Self, Refusal> {
         let (stop, stopped) = oneshot::channel();
         let (failing, failed) = oneshot::channel();
@@ -244,12 +209,8 @@ impl Running {
             };
             let resources = Arc::clone(&attachment.resources);
             // Binding Happens On The Activation's Own Thread
-            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                H::bind(Arc::clone(&resources), host)
-            }));
-            let mut activity = match bound
-                .map_err(|_| ObserverError::BindingPanicked)
-                .and_then(|bound| instance.activate(resources, bound))
+            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
+            let mut activity = match bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound))
             {
                 Ok(activity) => activity,
                 Err(failure) => {
@@ -266,11 +227,7 @@ impl Running {
             let _ = returning.send(activity);
         })
         .map_err(Refusal::of)?;
-        Ok(Self {
-            stop: Some(stop),
-            failed: Some(failed),
-            returned: Some(returned),
-        })
+        Ok(Self { stop: Some(stop), failed: Some(failed), returned: Some(returned) })
     }
 
     // Interrupt the activation and take its activity back.
@@ -284,10 +241,7 @@ impl Running {
         };
         // Joining the activation also settles its failure sender. Cancellation
         // of run must not discard an error that shutdown still needs to report.
-        let failure = self
-            .failed
-            .take()
-            .and_then(|mut failed| failed.try_recv().ok());
+        let failure = self.failed.take().and_then(|mut failed| failed.try_recv().ok());
         (activity, failure)
     }
 }

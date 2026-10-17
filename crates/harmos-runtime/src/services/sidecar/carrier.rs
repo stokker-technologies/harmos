@@ -51,35 +51,21 @@ pub(super) struct Receiver(transport::Receiver);
 
 /* === Implementations === */
 impl Connecting {
-    pub fn new(
-        data: transport::Io,
-        control: Option<transport::Io>,
-        ending: Option<Ending>,
-    ) -> (Self, Option<Ending>) {
+    pub fn new(data: transport::Io, control: Option<transport::Io>, ending: Option<Ending>) -> (Self, Option<Ending>) {
         let Some(control) = control else {
             return (Self::Unavailable, ending);
         };
-        let transport::Connection {
-            sender,
-            receiver,
-            mut driver,
-        } = transport::Connection::new(data, control);
+        let transport::Connection { sender, receiver, mut driver } = transport::Connection::new(data, control);
         let task = executor::task(async move { driver.run().await });
-        let ending = Ending::new(DrivenEnd {
-            sender: sender.clone(),
-            task: Some(task),
-            original: ending,
-            failure: None,
-        });
+        let ending = Ending::new(DrivenEnd { sender: sender.clone(), task: Some(task), original: ending, failure: None });
         (Self::Binary(sender, receiver), Some(ending))
     }
 
     pub async fn connect(self) -> io::Result<(Sender, Receiver)> {
         match self {
-            Self::Unavailable => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "attachment requires an independent binary control channel",
-            )),
+            Self::Unavailable => {
+                Err(io::Error::new(io::ErrorKind::Unsupported, "attachment requires an independent binary control channel"))
+            }
             Self::Binary(sender, receiver) => Ok((Sender(sender), Receiver(receiver))),
         }
     }

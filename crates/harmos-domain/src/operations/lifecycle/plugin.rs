@@ -23,10 +23,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::MemorySize;
-use crate::operations::{
-    Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy,
-    RetryPolicy,
-};
+use crate::operations::{Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy, RetryPolicy};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
@@ -40,19 +37,9 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
-crate::declare!(Initialize {
-    id: "harmos.initialize",
-    version: 1,
-    policy: POLICY,
-    response: (),
-});
+crate::declare!(Initialize { id: "harmos.initialize", version: 1, policy: POLICY, response: () });
 
-crate::declare!(Shutdown {
-    id: "harmos.shutdown",
-    version: 1,
-    policy: POLICY,
-    response: (),
-});
+crate::declare!(Shutdown { id: "harmos.shutdown", version: 1, policy: POLICY, response: () });
 
 /* === Type Aliases === */
 
@@ -127,18 +114,8 @@ impl SdkOperation for Shutdown {
 impl Described for Initialize {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Initialize));
     const FIELDS: &'static [Field] = &[
-        Field {
-            name: Cow::Borrowed("config_json"),
-            tag: 1,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("generation_context"),
-            tag: 2,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
+        Field { name: Cow::Borrowed("config_json"), tag: 1, kind: Kind::Bytes, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("generation_context"), tag: 2, kind: Kind::Bytes, cardinality: Cardinality::Required },
     ];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
@@ -155,9 +132,7 @@ impl Described for Shutdown {
 
 impl MemorySize for Initialize {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.config_json.capacity())
-            .saturating_add(self.generation_context.capacity())
+        std::mem::size_of::<Self>().saturating_add(self.config_json.capacity()).saturating_add(self.generation_context.capacity())
     }
 }
 
@@ -199,11 +174,7 @@ impl Descriptor {
 
 impl From<Descriptor> for EncodedDescriptor {
     fn from(descriptor: Descriptor) -> Self {
-        Self {
-            action: descriptor.action,
-            version: descriptor.contract.version(),
-            policy: descriptor.contract.operation().policy,
-        }
+        Self { action: descriptor.action, version: descriptor.contract.version(), policy: descriptor.contract.operation().policy }
     }
 }
 

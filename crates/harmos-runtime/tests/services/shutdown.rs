@@ -208,7 +208,9 @@ async fn service_stop_observer() {
                 demand_keys: vec![],
             })
         }
-        async fn run(&self, gates: Arc<Cleanup>, mut activation: harmos_runtime::observers::ObserverActivation) -> harmos_runtime::Result<()> {
+        async fn run(
+            &self, gates: Arc<Cleanup>, mut activation: harmos_runtime::observers::ObserverActivation,
+        ) -> harmos_runtime::Result<()> {
             activation.ready();
             gates.running.notify_one();
             activation.stopping().await;
@@ -235,7 +237,8 @@ async fn service_stop_observer() {
                     service.finalizing.notified().await;
                 } => {}
             }
-        }).await;
+        })
+        .await;
     }
     assert_eq!(service.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(service.finalized.load(Ordering::SeqCst), 0);
@@ -259,7 +262,8 @@ async fn interruption_retains_stop() {
                 result = &mut stopping => panic!("physical stop is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        }).await;
+        })
+        .await;
     }
     assert!(!cleanup.stop_future_dropped.load(Ordering::SeqCst));
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
@@ -292,7 +296,8 @@ async fn cleanup_releases_resident() {
                 result = &mut stopping => panic!("cleanup is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        }).await;
+        })
+        .await;
         assert!(!cleanup.dropped.load(Ordering::SeqCst));
         cleanup.release.notify_one();
         (&mut stopping).await.unwrap();
@@ -327,7 +332,8 @@ async fn cleanup_retry_survives() {
                 result = &mut waiting => panic!("physical cleanup is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        }).await;
+        })
+        .await;
     }
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
     cleanup.release.notify_one();
@@ -343,29 +349,30 @@ async fn uncooperative_resident_aborted() {
     let entered = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicBool::new(false));
     let runtime = assembly()
-        .service_with("stalled", harmos_runtime::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos_runtime::services::POLICY }, {
-            let entered = entered.clone();
-            let dropped = dropped.clone();
-            move |_context| {
+        .service_with(
+            "stalled",
+            harmos_runtime::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos_runtime::services::POLICY },
+            {
                 let entered = entered.clone();
                 let dropped = dropped.clone();
-                async move {
-                    let _guard = Dropped(dropped);
-                    entered.notify_one();
-                    std::future::pending::<Result<(), Fault<&str>>>().await
+                move |_context| {
+                    let entered = entered.clone();
+                    let dropped = dropped.clone();
+                    async move {
+                        let _guard = Dropped(dropped);
+                        entered.notify_one();
+                        std::future::pending::<Result<(), Fault<&str>>>().await
+                    }
                 }
-            }
-        })
+            },
+        )
         .runtime()
         .await
         .unwrap();
     entered.notified().await;
     let statuses = runtime.operations.watch_residents();
 
-    assert!(matches!(
-        (runtime.stop()).await,
-        Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })
-    ));
+    assert!(matches!((runtime.stop()).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 
     assert!(dropped.load(Ordering::SeqCst), "shutdown joined cancellation before returning");
     assert!(matches!(
@@ -379,21 +386,25 @@ async fn cleanup_finish_within() {
     let entered = Arc::new(Notify::new());
     let cleaned = Arc::new(AtomicBool::new(false));
     let runtime = assembly()
-        .service_with("cleanup", harmos_runtime::operations::OperationPolicy { timeout: Duration::from_millis(50), ..harmos_runtime::services::POLICY }, {
-            let entered = entered.clone();
-            let cleaned = cleaned.clone();
-            move |mut context: harmos_runtime::services::Service<super::Bank>| {
+        .service_with(
+            "cleanup",
+            harmos_runtime::operations::OperationPolicy { timeout: Duration::from_millis(50), ..harmos_runtime::services::POLICY },
+            {
                 let entered = entered.clone();
                 let cleaned = cleaned.clone();
-                async move {
-                    entered.notify_one();
-                    context.stopping().await;
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                    cleaned.store(true, Ordering::SeqCst);
-                    Ok::<(), Fault<&str>>(())
+                move |mut context: harmos_runtime::services::Service<super::Bank>| {
+                    let entered = entered.clone();
+                    let cleaned = cleaned.clone();
+                    async move {
+                        entered.notify_one();
+                        context.stopping().await;
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        cleaned.store(true, Ordering::SeqCst);
+                        Ok::<(), Fault<&str>>(())
+                    }
                 }
-            }
-        })
+            },
+        )
         .runtime()
         .await
         .unwrap();
@@ -420,7 +431,10 @@ async fn unregister_retains_ownership() {
         .register_service(
             harmos_runtime::services::ServiceDefinition {
                 id: "tenant".into(),
-                policy: harmos_runtime::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos_runtime::services::POLICY },
+                policy: harmos_runtime::operations::OperationPolicy {
+                    timeout: Duration::from_millis(10),
+                    ..harmos_runtime::services::POLICY
+                },
             },
             {
                 let entered = entered.clone();
@@ -519,11 +533,7 @@ async fn domains_outlives_clones() {
         async move { runtime.stop().await.unwrap() }
     });
 
-    assert_eq!(
-        (stopping).await
-            .expect("runtime stop does not panic"),
-        Position::ORIGIN
-    );
+    assert_eq!((stopping).await.expect("runtime stop does not panic"), Position::ORIGIN);
     assert!(
         matches!(retained.records.publish(Noted("after".to_owned())).await, Err(harmos_runtime::Error::Unavailable)),
         "a sealed journal refuses a late write rather than leaving it hanging"

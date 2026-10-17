@@ -64,9 +64,7 @@ pub fn decode<T: Message + Described>(input: DecodeInput<'_>) -> Result<T, Messa
 
 /// The memory decoding one protobuf `T` holds: the intermediate Postcard bytes
 /// beside the decoded value.
-pub fn decoding_memory<T: Message + Described>(
-    input: DecodeInput<'_>,
-) -> Result<usize, MessageError> {
+pub fn decoding_memory<T: Message + Described>(input: DecodeInput<'_>) -> Result<usize, MessageError> {
     let postcard = transcode::decode(&T::DEFINITION, input)?;
     decoding_add(postcard.len(), T::decoding_memory(&postcard)?)
 }

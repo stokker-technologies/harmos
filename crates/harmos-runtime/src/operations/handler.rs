@@ -65,8 +65,7 @@ pub(crate) enum Outcome<T: Send + Sync + 'static> {
     },
 }
 
-pub(crate) type Settling<T> =
-    Pin<Box<dyn Future<Output = Result<crate::operations::Response<T>>> + Send>>;
+pub(crate) type Settling<T> = Pin<Box<dyn Future<Output = Result<crate::operations::Response<T>>> + Send>>;
 
 #[derive(Clone)]
 pub struct Context<'a> {
@@ -91,9 +90,7 @@ impl OperationGeneration {
         NEXT_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map(Self)
-            .map_err(|_| Error::ResourceExhausted {
-                resource: "operation provider generations",
-            })
+            .map_err(|_| Error::ResourceExhausted { resource: "operation provider generations" })
     }
 
     pub fn value(self) -> u64 {
@@ -113,9 +110,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     // A resident instance stops for every lease holder.
     pub fn cancel(&self) {
         match &self.outcome {
-            Outcome::Resident {
-                lease: Some(lease), ..
-            } => lease.stop(),
+            Outcome::Resident { lease: Some(lease), .. } => lease.stop(),
             _ => self.control.cancel(),
         }
     }
@@ -136,22 +131,14 @@ impl<O: OperationDeclaration> OperationInstance<O> {
             let current = status.borrow_and_update().clone();
             match current.phase() {
                 super::OperationPhase::Running => return Ok(()),
-                phase
-                    if phase.is_terminal()
-                        || current.cancellation_requested()
-                        || current.outcome().is_some() =>
-                {
+                phase if phase.is_terminal() || current.cancellation_requested() || current.outcome().is_some() => {
                     self.settle().await?;
-                    return Err(Error::NotReady {
-                        domain: "operation activation",
-                    });
+                    return Err(Error::NotReady { domain: "operation activation" });
                 }
                 _ => {}
             }
             if status.changed().await.is_err() {
-                return Err(Error::NotReady {
-                    domain: "operation activation",
-                });
+                return Err(Error::NotReady { domain: "operation activation" });
             }
         }
     }
@@ -199,16 +186,10 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     // Wait for the instance to settle without consuming the handle. A
     // resident reports its outcome and retries a retained cleanup.
     pub async fn settle(&self) -> Result<()> {
-        if let Outcome::Resident {
-            lease: Some(lease), ..
-        } = &self.outcome
-        {
+        if let Outcome::Resident { lease: Some(lease), .. } = &self.outcome {
             return lease.settlement().await;
         }
-        self.control
-            .settle()
-            .await
-            .map_err(|source| Error::OperationSettlement { source })
+        self.control.settle().await.map_err(|source| Error::OperationSettlement { source })
     }
 }
 
@@ -231,12 +212,7 @@ impl<O: OperationDeclaration> Future for OperationInstance<O> {
                 Poll::Ready(Err(_)) => Err(crate::Refusal::Unavailable.into()),
                 Poll::Pending => return Poll::Pending,
             },
-            Outcome::Resident { settled, .. } => match settled
-                .get_mut()
-                .expect("resident settlement is healthy")
-                .as_mut()
-                .poll(cx)
-            {
+            Outcome::Resident { settled, .. } => match settled.get_mut().expect("resident settlement is healthy").as_mut().poll(cx) {
                 Poll::Ready(answer) => answer,
                 Poll::Pending => return Poll::Pending,
             },
@@ -249,10 +225,7 @@ impl<O: OperationDeclaration> Future for OperationInstance<O> {
 impl<O: OperationDeclaration> Drop for OperationInstance<O> {
     fn drop(&mut self) {
         // A resident lease releases itself when dropped.
-        if matches!(self.outcome, Outcome::Request(_))
-            && !self.released
-            && !self.control.is_settled()
-        {
+        if matches!(self.outcome, Outcome::Request(_)) && !self.released && !self.control.is_settled() {
             self.control.cancel();
         }
     }
@@ -268,9 +241,7 @@ where
         self.id
     }
 
-    fn status(
-        &self,
-    ) -> impl Future<Output = Result<harmos_domain::operations::instance::Status>> + Send {
+    fn status(&self) -> impl Future<Output = Result<harmos_domain::operations::instance::Status>> + Send {
         std::future::ready(Ok(self.control.status().portable()))
     }
 
@@ -307,10 +278,7 @@ impl Context<'_> {
     }
 
     // An active instance this attempt's caller submitted; others stay hidden.
-    pub(crate) fn owned_instance(
-        &self,
-        id: OperationInstanceId,
-    ) -> Option<Arc<crate::supervision::instance::Instance>> {
+    pub(crate) fn owned_instance(&self, id: OperationInstanceId) -> Option<Arc<crate::supervision::instance::Instance>> {
         self.operations.instances.owned(id, &self.origin.identity)
     }
 
@@ -337,10 +305,7 @@ impl Context<'_> {
     }
 
     // Refuse a provider-prepared grant the admitted caller does not hold.
-    #[cfg(any(
-        all(feature = "plugin-guest", not(target_arch = "wasm32")),
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32")), feature = "plugin-sidecar"))]
     pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
@@ -349,73 +314,32 @@ impl Context<'_> {
         }
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
-            (origin.has_lifecycle_loan() || origin.resident)
-                && origin
-                    .scope
-                    .as_ref()
-                    .is_some_and(|caller| caller.same_activation(scope))
+            (origin.has_lifecycle_loan() || origin.resident) && origin.scope.as_ref().is_some_and(|caller| caller.same_activation(scope))
         })
     }
 
-    pub fn submit_at<O: OperationDeclaration>(
-        &self,
-        id: &str,
-        request: O,
-    ) -> Result<OperationInstance<O>> {
-        self.operations.admit_at::<O, ()>(
-            id,
-            (request.into(), ()),
-            Some(&self.scope),
-            self.admission.held(),
-            &self.source,
-            None,
-        )
+    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O) -> Result<OperationInstance<O>> {
+        self.operations.admit_at::<O, ()>(id, (request.into(), ()), Some(&self.scope), self.admission.held(), &self.source, None)
     }
 
     pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
-        self.operations.submit_scoped::<O, ()>(
-            (request.into(), ()),
-            &self.scope,
-            &self.admission,
-            &self.source,
-            None,
-        )
+        self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(
-        &self,
-        request: O,
-        endpoints: P,
-    ) -> Result<OperationInstance<O>> {
-        self.operations.submit_scoped::<O, P>(
-            (request.into(), endpoints),
-            &self.scope,
-            &self.admission,
-            &self.source,
-            None,
-        )
+    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O, endpoints: P) -> Result<OperationInstance<O>> {
+        self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self,
-        request: super::StreamItem<O>,
-        endpoints: P,
+        &self, request: super::StreamItem<O>, endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
@@ -426,32 +350,17 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_caused<O: OperationDeclaration>(
-        &self,
-        request: O,
-        cause: Position,
-    ) -> Result<OperationInstance<O>> {
-        self.operations.submit_scoped::<O, ()>(
-            (request.into(), ()),
-            &self.scope,
-            &self.admission,
-            &self.source,
-            Some(cause),
-        )
+    pub fn submit_caused<O: OperationDeclaration>(&self, request: O, cause: Position) -> Result<OperationInstance<O>> {
+        self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
     pub async fn call_caused<O: OperationDeclaration>(
-        &self,
-        request: O,
-        cause: Position,
+        &self, request: O, cause: Position,
     ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
-    pub async fn call<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> Result<crate::operations::Response<O::Response>> {
+    pub async fn call<O: OperationDeclaration>(&self, request: O) -> Result<crate::operations::Response<O::Response>> {
         self.submit(request)?.await
     }
 }
@@ -461,9 +370,7 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
     NEXT_INSTANCE
         .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
         .map(OperationInstanceId::new)
-        .map_err(|_| Error::ResourceExhausted {
-            resource: "operation instance identities",
-        })
+        .map_err(|_| Error::ResourceExhausted { resource: "operation instance identities" })
 }
 
 /* === Private Functions === */

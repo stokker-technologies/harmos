@@ -361,8 +361,11 @@ mod unified_plugins {
         assert!(initialization.settings.is_empty());
         assert!(initialization.snapshot.is_empty());
         let markers = SdkAuthored::markers().unwrap();
-        let declaration =
-            harmos_runtime::sidecar::inventory::Declaration::inspect(&markers.concat(), harmos_runtime::sidecar::inventory::Facility::Sidecar).unwrap();
+        let declaration = harmos_runtime::sidecar::inventory::Declaration::inspect(
+            &markers.concat(),
+            harmos_runtime::sidecar::inventory::Facility::Sidecar,
+        )
+        .unwrap();
         assert_eq!(declaration.id, SdkAuthored::ID);
         let required = &declaration.contracts.requires;
         assert_eq!(required.len(), 2);
@@ -397,7 +400,8 @@ mod unified_plugins {
         assert_eq!(declaration.observers.len(), 1);
         assert_eq!(declaration.observers[0].id, "fixture.unified.inert-observer");
         let inert = <InertObserver as harmos_domain::inventory::observers::Declared>::ENTRY;
-        let physical = <harmos_runtime::sidecar::__private::ObserverInventory<CustomHost> as harmos_runtime::catalog::Member<InertObserver>>::ENTRY;
+        let physical =
+            <harmos_runtime::sidecar::__private::ObserverInventory<CustomHost> as harmos_runtime::catalog::Member<InertObserver>>::ENTRY;
         assert_eq!(inert.id, physical.id);
         assert_eq!(inert.interval, physical.interval);
         assert_eq!(inert.streams.len(), physical.streams.len());
@@ -443,28 +447,40 @@ mod unified_plugins {
             bytes
         };
         parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
-        assert!(harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar).is_err());
+        assert!(
+            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar)
+                .is_err()
+        );
         parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
         parts.iter_mut().find(|part| part["kind"] == "contracts").unwrap()["provides"] = serde_json::json!([]);
-        assert!(harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar).is_err());
+        assert!(
+            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar)
+                .is_err()
+        );
     }
 
     #[test]
     fn listener_inventory_inert() {
         let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
-        let declaration = harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar).unwrap();
+        let declaration =
+            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
+                .unwrap();
         let selected = declaration.listeners;
         assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
         assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
         assert_eq!(selected[0].callback().version(), 1);
         let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
-        let guest = harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
+        let guest =
+            harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
+                .unwrap();
         assert_eq!(&guest.listeners, &selected);
         assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
 
         let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
         assert_eq!(
-            harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest).unwrap().listeners,
+            harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
+                .unwrap()
+                .listeners,
             Vec::new()
         );
     }
@@ -703,7 +719,8 @@ mod unified_plugins {
         let inspected = match facility {
             "sidecar" => {
                 let declaration =
-                    harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar).unwrap();
+                    harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
+                        .unwrap();
                 assert_eq!(declaration.restart(), None);
                 assert_eq!(declaration.operations.len(), contracts.provides.len());
                 assert_eq!(declaration.streams.len(), streams);
@@ -711,7 +728,8 @@ mod unified_plugins {
             }
             "guest" => {
                 let declaration =
-                    harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
+                    harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest)
+                        .unwrap();
                 assert_eq!(declaration.operations.len(), contracts.provides.len());
                 assert_eq!(declaration.streams.len(), streams);
                 declaration.contracts

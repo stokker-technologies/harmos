@@ -20,9 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::{
-    Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
-};
+use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Constants === */
 
@@ -48,14 +46,7 @@ impl Mirror {
         let checkpoint = Arc::new(AtomicU64::new(0));
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
 
-        (
-            Self {
-                checkpoint: Arc::clone(&checkpoint),
-                seen: Arc::clone(&seen),
-                ceiling: None,
-            },
-            (checkpoint, seen),
-        )
+        (Self { checkpoint: Arc::clone(&checkpoint), seen: Arc::clone(&seen), ceiling: None }, (checkpoint, seen))
     }
 
     pub(crate) fn stalled_at(ceiling: Position) -> (Self, Watched) {
@@ -71,15 +62,8 @@ impl<A: Application> JournalConsumer<A> for Mirror {
         Position(self.checkpoint.load(Ordering::Acquire))
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        applied: Position,
-    ) -> Position {
-        self.seen
-            .lock()
-            .expect("the probe is never poisoned")
-            .extend(entries.iter().map(|entry| entry.position));
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, applied: Position) -> Position {
+        self.seen.lock().expect("the probe is never poisoned").extend(entries.iter().map(|entry| entry.position));
 
         let reached = self.ceiling.map_or(applied, |ceiling| applied.min(ceiling));
         self.checkpoint.store(reached.0, Ordering::Release);

@@ -35,9 +35,9 @@ use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Sour
 use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
 use crate::{
-    Application, DefinitionId, Error, operations::LaneSet, operations::OperationPolicy,
-    services::Resident, state::At, state::CaptureLimits, state::DecodeError, state::Entry,
-    state::JournalCapture, state::Kind, state::Position, state::StateManager, storage::Cursor,
+    Application, DefinitionId, Error, operations::LaneSet, operations::OperationPolicy, services::Resident, state::At,
+    state::CaptureLimits, state::DecodeError, state::Entry, state::JournalCapture, state::Kind, state::Position, state::StateManager,
+    storage::Cursor,
 };
 
 /* === Constants === */
@@ -218,11 +218,7 @@ where
     A: Application<State = S, Transaction = T>,
 {
     fn register(self) -> Catalog<A> {
-        Catalog::Transactions {
-            definitions: self.definitions,
-            decode: self.decode,
-            inverses: Some(self.inverses),
-        }
+        Catalog::Transactions { definitions: self.definitions, decode: self.decode, inverses: Some(self.inverses) }
     }
 }
 
@@ -231,27 +227,16 @@ where
     A: Application<Record = R>,
 {
     fn register(self) -> Catalog<A> {
-        Catalog::Transactions {
-            definitions: self.definitions,
-            decode: |_, _, _| Ok(None),
-            inverses: None,
-        }
+        Catalog::Transactions { definitions: self.definitions, decode: |_, _, _| Ok(None), inverses: None }
     }
 }
 
 impl<A: Application> Inspection<A> {
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
-        Ok(At {
-            value: read(&self.state.value),
-            position: self.state.position,
-        })
+        Ok(At { value: read(&self.state.value), position: self.state.position })
     }
 
-    pub async fn state_at(
-        &self,
-        origin: Origin<A::State>,
-        at: Position,
-    ) -> Result<At<A::State>, Error> {
+    pub async fn state_at(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {
         self.reads.state(origin, at).await
     }
 
@@ -262,11 +247,7 @@ impl<A: Application> Inspection<A> {
         self.query_through(after, self.state.position).await
     }
 
-    pub async fn query_through<X>(
-        &self,
-        after: Position,
-        through: Position,
-    ) -> impl Iterator<Item = Result<Entry<X>, Error>>
+    pub async fn query_through<X>(&self, after: Position, through: Position) -> impl Iterator<Item = Result<Entry<X>, Error>>
     where
         X: Clone + Send + 'static,
     {
@@ -281,14 +262,10 @@ impl<A: Application> Inspection<A> {
             Ok(entries) => entries
                 .into_iter()
                 .filter_map(|entry| {
-                    entry.value.select::<X>().map(|value| {
-                        Ok(Entry {
-                            prepared: None,
-                            position: entry.position,
-                            metadata: entry.metadata,
-                            value,
-                        })
-                    })
+                    entry
+                        .value
+                        .select::<X>()
+                        .map(|value| Ok(Entry { prepared: None, position: entry.position, metadata: entry.metadata, value }))
                 })
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -343,10 +320,7 @@ impl<A: Application> Runtime<A> {
         &self.grpc
     }
 
-    pub fn builder(
-        origin: impl Into<Origin<A::State>>,
-        resources: impl Into<Arc<A::Resources>>,
-    ) -> Builder<A> {
+    pub fn builder(origin: impl Into<Origin<A::State>>, resources: impl Into<Arc<A::Resources>>) -> Builder<A> {
         Builder {
             origin: origin.into(),
             resources: resources.into(),
@@ -372,46 +346,22 @@ impl<A: Application> Runtime<A> {
         }
     }
 
-    pub async fn inspect(
-        origin: impl Into<Origin<A::State>>,
-        source: impl Source<A>,
-    ) -> Result<Inspector<A>, Incompatible> {
+    pub async fn inspect(origin: impl Into<Origin<A::State>>, source: impl Source<A>) -> Result<Inspector<A>, Incompatible> {
         let mut attachments = Attachments::new();
         attachments.recover(source);
         let mut consumers = attachments.supervised();
         let recovery = consumers.load().await?;
         let origin = origin.into();
         let anchor = origin.position;
-        let mut state = At {
-            value: origin.value,
-            position: anchor,
-        };
-        let entries = recovery
-            .entries
-            .into_iter()
-            .filter(|entry| entry.position > anchor)
-            .collect();
-        replay(
-            None,
-            entries,
-            &mut state,
-            &mut Undos::default(),
-            none::<A>,
-            0,
-        )
-        .map_err(Incompatible::of)?;
+        let mut state = At { value: origin.value, position: anchor };
+        let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
+        replay(None, entries, &mut state, &mut Undos::default(), none::<A>, 0).map_err(Incompatible::of)?;
         state.position = state.position.max(recovery.frontier).max(anchor);
 
         let (reads, requests) = crate::state::Reads::channel(REQUESTS);
         let source = tokio::spawn(inspect_reads(consumers, requests));
 
-        Ok(Inspector {
-            state: Inspection {
-                state: Arc::new(state),
-                reads,
-            },
-            source,
-        })
+        Ok(Inspector { state: Inspection { state: Arc::new(state), reads }, source })
     }
 
     pub fn stop_participant(&self) -> StopParticipant {
@@ -462,11 +412,7 @@ impl<A: Application> Builder<A> {
         self.simulation.register(catalog.clone());
 
         match catalog.register() {
-            Catalog::Transactions {
-                definitions,
-                decode,
-                inverses,
-            } => {
+            Catalog::Transactions { definitions, decode, inverses } => {
                 if let Some(inverses) = inverses {
                     self.inverses = inverses;
                 }
@@ -480,56 +426,35 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn operation<T>(
-        self,
-        owner: impl Into<String>,
-        lane: impl crate::operations::Lane,
-        resources: Arc<T::Resources>,
-    ) -> Self
+    pub fn operation<T>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<T::Resources>) -> Self
     where
         T: for<'ctx> crate::operations::Operation<Context<'ctx> = crate::operations::Context<'ctx>>,
     {
-        let binding =
-            crate::operations::CatalogBinding::operation::<T>(owner.into(), lane, resources);
+        let binding = crate::operations::CatalogBinding::operation::<T>(owner.into(), lane, resources);
         self.bind_operations(binding)
     }
 
-    pub fn operations<C, R>(
-        self,
-        owner: impl Into<String>,
-        lane: impl crate::operations::Lane,
-        resources: Arc<R>,
-    ) -> Self
+    pub fn operations<C, R>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<R>) -> Self
     where
         C: crate::catalog::Catalog<crate::operations::AuthoredDeclarations>
             + crate::catalog::Catalog<crate::operations::Implementations<R>>,
         R: Send + Sync + 'static,
     {
-        let binding =
-            crate::operations::CatalogBinding::local::<C, R>(owner.into(), lane, resources);
+        let binding = crate::operations::CatalogBinding::local::<C, R>(owner.into(), lane, resources);
         self.bind_operations(binding)
     }
 
-    pub fn wire_operations<C, R>(
-        self,
-        owner: impl Into<String>,
-        lane: impl crate::operations::Lane,
-        resources: Arc<R>,
-    ) -> Self
+    pub fn wire_operations<C, R>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<R>) -> Self
     where
         C: crate::catalog::Catalog<crate::operations::AuthoredDeclarations>
             + crate::catalog::Catalog<crate::operations::WireImplementations<R>>,
         R: Send + Sync + 'static,
     {
-        let binding =
-            crate::operations::CatalogBinding::wire::<C, R>(owner.into(), lane, resources);
+        let binding = crate::operations::CatalogBinding::wire::<C, R>(owner.into(), lane, resources);
         self.bind_operations(binding)
     }
 
-    pub fn operation_middleware(
-        mut self,
-        middleware: Arc<dyn crate::operations::middleware::Middleware>,
-    ) -> Self {
+    pub fn operation_middleware(mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Self {
         #[cfg(feature = "simulation")]
         self.simulation.operation_middleware(middleware.clone());
         self.operation_middleware.push(middleware);
@@ -557,32 +482,19 @@ impl<A: Application> Builder<A> {
         self.service_with(name, crate::services::POLICY, resident)
     }
 
-    pub fn service_with<R>(
-        mut self,
-        name: impl Into<String>,
-        policy: OperationPolicy,
-        resident: R,
-    ) -> Self
+    pub fn service_with<R>(mut self, name: impl Into<String>, policy: OperationPolicy, resident: R) -> Self
     where
         R: Resident<A>,
     {
         #[cfg(feature = "simulation")]
         self.live_only.push("resident services");
 
-        let definition = ServiceDefinition {
-            id: name.into(),
-            policy,
-        };
-        self.services
-            .push(DeclaredService::new(definition, resident));
+        let definition = ServiceDefinition { id: name.into(), policy };
+        self.services.push(DeclaredService::new(definition, resident));
         self
     }
 
-    pub fn evidence(
-        mut self,
-        vault: impl Vault,
-        kinds: impl IntoIterator<Item = (DefinitionId, u32)>,
-    ) -> Self {
+    pub fn evidence(mut self, vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
         #[cfg(feature = "simulation")]
         self.live_only.push("an evidence vault");
 
@@ -630,11 +542,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn require_capture(
-        mut self,
-        limits: CaptureLimits,
-        consumer: impl JournalCapture<A>,
-    ) -> Result<Self, crate::state::CaptureError> {
+    pub fn require_capture(mut self, limits: CaptureLimits, consumer: impl JournalCapture<A>) -> Result<Self, crate::state::CaptureError> {
         #[cfg(feature = "simulation")]
         self.live_only.push("required capture");
 
@@ -663,12 +571,7 @@ impl<A: Application> Builder<A> {
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_service_with<R>(
-        mut self,
-        name: impl Into<String>,
-        policy: OperationPolicy,
-        resident: R,
-    ) -> Self
+    pub fn simulated_service_with<R>(mut self, name: impl Into<String>, policy: OperationPolicy, resident: R) -> Self
     where
         R: Resident<A> + Clone,
     {
@@ -677,11 +580,7 @@ impl<A: Application> Builder<A> {
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_evidence(
-        mut self,
-        vault: impl Vault + Clone,
-        kinds: impl IntoIterator<Item = (DefinitionId, u32)>,
-    ) -> Self {
+    pub fn simulated_evidence(mut self, vault: impl Vault + Clone, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
         self.simulation.evidence(vault, kinds);
         self
     }
@@ -718,15 +617,8 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn store_records(
-        mut self,
-        limits: crate::storage::ReadLimits,
-        projection: impl crate::storage::RecordProjection,
-    ) -> Self {
-        self.record_projection = Some(crate::storage::capture::Projection {
-            limits,
-            handler: Box::new(projection),
-        });
+    pub fn store_records(mut self, limits: crate::storage::ReadLimits, projection: impl crate::storage::RecordProjection) -> Self {
+        self.record_projection = Some(crate::storage::capture::Projection { limits, handler: Box::new(projection) });
         #[cfg(feature = "simulation")]
         self.live_only.push("managed primary record capture");
         self
@@ -744,17 +636,10 @@ impl<A: Application> Builder<A> {
 
     pub fn reconcile<F, Fut>(mut self, reconcile: F) -> Self
     where
-        F: FnOnce(
-                StateManager<A>,
-                crate::storage::StorageManager<crate::storage::ErasedCatalog>,
-            ) -> Fut
-            + Send
-            + 'static,
+        F: FnOnce(StateManager<A>, crate::storage::StorageManager<crate::storage::ErasedCatalog>) -> Fut + Send + 'static,
         Fut: Future<Output = crate::Result<()>> + Send + 'static,
     {
-        self.reconciliation = Some(Box::new(move |journal, storage| {
-            Box::pin(reconcile(journal, storage))
-        }));
+        self.reconciliation = Some(Box::new(move |journal, storage| Box::pin(reconcile(journal, storage))));
         #[cfg(feature = "simulation")]
         self.live_only.push("saved application data reconciliation");
         self
@@ -768,29 +653,22 @@ impl<A: Application> Builder<A> {
     {
         #[cfg(feature = "simulation")]
         self.simulation.initialize(timeout, initialize.clone());
-        self.initializers
-            .push(boot::Initializer::new(timeout, initialize));
+        self.initializers.push(boot::Initializer::new(timeout, initialize));
         self
     }
 
-    pub fn runtime_with_storage<C>(
-        self,
-        storage: &crate::storage::StorageManager<C>,
-    ) -> Startup<A> {
+    pub fn runtime_with_storage<C>(self, storage: &crate::storage::StorageManager<C>) -> Startup<A> {
         Startup::new(self, Some(storage.erased()))
     }
 
     async fn boot(
-        self,
-        storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
-        cleanup: BootstrapCleanup,
+        self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
     ) -> Result<Runtime<A>, Incompatible> {
-        if self.initializers.iter().any(|initializer| {
-            initializer.timeout.is_zero()
-                || tokio::time::Instant::now()
-                    .checked_add(initializer.timeout)
-                    .is_none()
-        }) {
+        if self
+            .initializers
+            .iter()
+            .any(|initializer| initializer.timeout.is_zero() || tokio::time::Instant::now().checked_add(initializer.timeout).is_none())
+        {
             let source: crate::Error = Error::InvalidInput {
                 field: "runtime initialization timeout",
                 reason: "requires a positive representable finite duration",
@@ -798,26 +676,16 @@ impl<A: Application> Builder<A> {
             return Err(Incompatible::initialization(Box::new(source)));
         }
         if self.snapshots.is_some() && self.managed_state.is_none() {
-            return Err(Incompatible::unreadable(
-                "managed snapshots require managed state",
-            ));
+            return Err(Incompatible::unreadable("managed snapshots require managed state"));
         }
         if self.reconciliation.is_some() && self.managed_state.is_none() {
-            return Err(Incompatible::reconciliation(
-                "reconciliation requires managed state",
-            ));
+            return Err(Incompatible::reconciliation("reconciliation requires managed state"));
         }
         if self.record_projection.is_some() && self.managed_state.is_none() {
-            return Err(Incompatible::unreadable(
-                "primary record capture requires managed state",
-            ));
+            return Err(Incompatible::unreadable("primary record capture requires managed state"));
         }
-        if self.managed_state.is_some()
-            && (storage.is_none() || self.attachments.has_recovery_owner())
-        {
-            return Err(Incompatible::unreadable(
-                "managed state requires storage and exclusive recovery ownership",
-            ));
+        if self.managed_state.is_some() && (storage.is_none() || self.attachments.has_recovery_owner()) {
+            return Err(Incompatible::unreadable("managed state requires storage and exclusive recovery ownership"));
         }
         let mut boot = boot::Boot::new(storage, cleanup.clone()).map_err(Incompatible::work)?;
         if let Err(error) = self.boot_owned(&mut boot).await {
@@ -830,10 +698,7 @@ impl<A: Application> Builder<A> {
                     Err(Incompatible {
                         cause: Cause::Cleanup {
                             source: Box::new(error),
-                            failure: Error::TaskFailed {
-                                domain: "bootstrap cleanup",
-                                source: failure,
-                            },
+                            failure: Error::TaskFailed { domain: "bootstrap cleanup", source: failure },
                         },
                         cleanup: retained,
                     })
@@ -868,56 +733,22 @@ impl<A: Application> Builder<A> {
         let tail = attachments.tail_window()?;
         let mut consumers = attachments.supervised();
         let recovery = consumers.load().await?;
-        let (resume, selections) = consumers.recordings().fold(
-            (Cursor::ORIGIN, Vec::new()),
-            |(resume, mut selections), recording| {
-                selections.push(recording.selections());
+        let (resume, selections) = consumers.recordings().fold((Cursor::ORIGIN, Vec::new()), |(resume, mut selections), recording| {
+            selections.push(recording.selections());
 
-                (resume.max(recording.resume()), selections)
-            },
-        );
+            (resume.max(recording.resume()), selections)
+        });
         let anchor = origin.position;
-        let mut state = At {
-            value: origin.value,
-            position: anchor,
-        };
+        let mut state = At { value: origin.value, position: anchor };
         let mut undos = Undos::default();
-        let entries = recovery
-            .entries
-            .into_iter()
-            .filter(|entry| entry.position > anchor)
-            .collect();
-        let mut recovered = replay(
-            Some(&catalog),
-            entries,
-            &mut state,
-            &mut undos,
-            inverses,
-            tail,
-        )
-        .map_err(Incompatible::of)?;
-        let stored = recovery
-            .encoded
-            .into_iter()
-            .filter(|(position, _)| *position > anchor)
-            .collect();
+        let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
+        let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses, tail).map_err(Incompatible::of)?;
+        let stored = recovery.encoded.into_iter().filter(|(position, _)| *position > anchor).collect();
         state.position = state.position.max(recovery.frontier).max(anchor);
         let mut managed_durable = None;
         if let Some(limits) = managed_state {
-            let storage = boot
-                .storage
-                .as_ref()
-                .expect("managed state requires storage");
-            let loaded = StateManager::recover(
-                storage,
-                state,
-                &catalog,
-                inverses,
-                tail,
-                limits,
-                snapshots.as_ref(),
-            )
-            .await?;
+            let storage = boot.storage.as_ref().expect("managed state requires storage");
+            let loaded = StateManager::recover(storage, state, &catalog, inverses, tail, limits, snapshots.as_ref()).await?;
             state = loaded.state;
             undos = loaded.undos;
             recovered = loaded.tail;
@@ -929,8 +760,7 @@ impl<A: Application> Builder<A> {
                 snapshots,
             });
         }
-        let windows = Table::resuming(definitions, state.position, resume)
-            .map_err(Incompatible::dishonored)?;
+        let windows = Table::resuming(definitions, state.position, resume).map_err(Incompatible::dishonored)?;
         let demand = windows.hold(selections).map_err(Incompatible::dishonored)?;
         let replayed = recovered.clone();
         consumers.redelivering(recovered.clone(), stored, state.position);
@@ -957,20 +787,14 @@ impl<A: Application> Builder<A> {
         // Evidence folds from the same replayed order the state above it
         // folded from, so a boot learns what was finalized from facts rather
         // than from whatever files happen to be lying in a vault.
-        let evidence =
-            Evidence::wired(journal.clone(), evidence, &replayed).map_err(Incompatible::kept)?;
+        let evidence = Evidence::wired(journal.clone(), evidence, &replayed).map_err(Incompatible::kept)?;
         // The windows are wired before the consumers start, so a recorder
         // attached below never misses a row published in the gap between the
         // two.
         let (tier, served) = Tier::channel(REQUESTS);
         let streams = StreamManager::wired(windows, journal.progress(), tier);
         let delivery = streams.delivery();
-        operation_settings
-            .validate()
-            .map_err(|source| Incompatible {
-                cause: Cause::Operations(source),
-                cleanup: None,
-            })?;
+        operation_settings.validate().map_err(|source| Incompatible { cause: Cause::Operations(source), cleanup: None })?;
         let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
         let storage = Arc::new(boot.storage.clone().map(OnceLock::from).unwrap_or_default());
         let handles = crate::services::Handles {
@@ -980,45 +804,24 @@ impl<A: Application> Builder<A> {
             streams: streams.clone(),
             evidence: evidence.clone(),
         };
-        let instances = crate::operations::instances::Instances::start(
-            lanes,
-            Box::new(handles.clone()),
-            resources,
-            &operation_settings,
-        );
+        let instances = crate::operations::instances::Instances::start(lanes, Box::new(handles.clone()), resources, &operation_settings);
         let mut reserved = std::collections::BTreeSet::new();
         for service in &services {
             crate::services::validate(&service.definition()).map_err(Incompatible::work)?;
             if !reserved.insert(service.id().to_owned()) {
-                let duplicate: crate::Error = crate::Error::AlreadyRegistered {
-                    domain: "service",
-                    name: service.id().to_owned(),
-                };
+                let duplicate: crate::Error = crate::Error::AlreadyRegistered { domain: "service", name: service.id().to_owned() };
                 return Err(Incompatible::work(duplicate));
             }
         }
-        let operations = crate::operations::OperationManager::new(
-            instances,
-            &operation_settings,
-            reserved,
-            boot.identity.clone(),
-        );
+        let operations = crate::operations::OperationManager::new(instances, &operation_settings, reserved, boot.identity.clone());
         for middleware in operation_middleware {
-            operations
-                .register_middleware(middleware)
-                .map_err(Incompatible::work)?;
+            operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }
         for binding in bindings {
-            binding.bind(&operations).map_err(|source| Incompatible {
-                cause: Cause::Operations(source),
-                cleanup: None,
-            })?;
+            binding.bind(&operations).map_err(|source| Incompatible { cause: Cause::Operations(source), cleanup: None })?;
         }
         if let Some(storage) = &boot.storage {
-            storage
-                .start_on::<A>(&operations)
-                .await
-                .map_err(Incompatible::work)?;
+            storage.start_on::<A>(&operations).await.map_err(Incompatible::work)?;
         }
         let (ready, booted) = oneshot::channel();
         let supervisor = tokio::spawn(supervise(Supervision {
@@ -1066,35 +869,17 @@ impl<A: Application> Builder<A> {
         if let Some(reconcile) = reconciliation {
             let runtime = boot.runtime.as_ref().expect("boot owns runtime");
             let storage = runtime.storage().expect("reconciliation requires storage");
-            reconcile(runtime.state.clone(), storage.clone())
-                .await
-                .map_err(Incompatible::reconciliation)?;
-            storage
-                .flush()
-                .await
-                .map_err(Incompatible::reconciliation)?;
-            storage
-                .flush_recovery()
-                .await
-                .map_err(Incompatible::reconciliation)?;
+            reconcile(runtime.state.clone(), storage.clone()).await.map_err(Incompatible::reconciliation)?;
+            storage.flush().await.map_err(Incompatible::reconciliation)?;
+            storage.flush_recovery().await.map_err(Incompatible::reconciliation)?;
         }
-        let operations = &boot
-            .runtime
-            .as_ref()
-            .expect("runtime is owned during boot")
-            .operations;
+        let operations = &boot.runtime.as_ref().expect("runtime is owned during boot").operations;
         for service in services {
-            let lease = operations
-                .start_service(service, false, true)
-                .map_err(Incompatible::work)?;
+            let lease = operations.start_service(service, false, true).map_err(Incompatible::work)?;
             operations.hold_resident(lease);
         }
         for initializer in initializers {
-            let handle = boot
-                .runtime
-                .as_ref()
-                .expect("runtime is owned during initialization")
-                .handle();
+            let handle = boot.runtime.as_ref().expect("runtime is owned during initialization").handle();
             let initialize = (initializer.initialize)(handle);
             match tokio::time::timeout(initializer.timeout, initialize).await {
                 Ok(result) => result.map_err(Incompatible::initialization)?,
@@ -1107,10 +892,7 @@ impl<A: Application> Builder<A> {
 
 impl Incompatible {
     fn initialization(source: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        Self {
-            cause: Cause::Initialization(source),
-            cleanup: None,
-        }
+        Self { cause: Cause::Initialization(source), cleanup: None }
     }
 
     pub fn cleanup_error(&self) -> Option<&crate::Error> {
@@ -1129,53 +911,32 @@ impl Incompatible {
     }
 
     fn reconciliation(cause: impl fmt::Display) -> Self {
-        Self {
-            cause: Cause::Reconciliation(cause.to_string()),
-            cleanup: None,
-        }
+        Self { cause: Cause::Reconciliation(cause.to_string()), cleanup: None }
     }
 
     pub fn unreadable(cause: impl fmt::Display) -> Self {
-        Self {
-            cause: Cause::Unreadable(cause.to_string()),
-            cleanup: None,
-        }
+        Self { cause: Cause::Unreadable(cause.to_string()), cleanup: None }
     }
 
     fn of(cause: DecodeError) -> Self {
-        Self {
-            cause: Cause::Undeclared(cause),
-            cleanup: None,
-        }
+        Self { cause: Cause::Undeclared(cause), cleanup: None }
     }
 
     pub(crate) fn dishonored(cause: crate::streams::Refused) -> Self {
-        Self {
-            cause: Cause::Dishonorable(cause),
-            cleanup: None,
-        }
+        Self { cause: Cause::Dishonorable(cause), cleanup: None }
     }
 
     pub(crate) fn work(cause: impl fmt::Display) -> Self {
-        Self {
-            cause: Cause::Work(cause.to_string()),
-            cleanup: None,
-        }
+        Self { cause: Cause::Work(cause.to_string()), cleanup: None }
     }
 
     #[cfg(feature = "simulation")]
     fn simulation(live_only: String) -> Self {
-        Self {
-            cause: Cause::Simulation(live_only),
-            cleanup: None,
-        }
+        Self { cause: Cause::Simulation(live_only), cleanup: None }
     }
 
     fn kept(cause: String) -> Self {
-        Self {
-            cause: Cause::Kept(cause),
-            cleanup: None,
-        }
+        Self { cause: Cause::Kept(cause), cleanup: None }
     }
 }
 
@@ -1188,20 +949,13 @@ impl From<harmos_sidecar::ExecutableError> for Incompatible {
 
 impl Participants {
     fn new() -> Self {
-        Self {
-            stopping: watch::channel(false).0,
-            active: watch::channel(0).0,
-        }
+        Self { stopping: watch::channel(false).0, active: watch::channel(0).0 }
     }
 
     fn register(&self) -> StopParticipant {
         self.active.send_modify(|active| *active += 1);
 
-        StopParticipant {
-            stopping: self.stopping.subscribe(),
-            active: self.active.clone(),
-            released: false,
-        }
+        StopParticipant { stopping: self.stopping.subscribe(), active: self.active.clone(), released: false }
     }
 
     async fn stop(&self) {
@@ -1234,8 +988,7 @@ impl StopParticipant {
 
     fn release(&mut self) {
         if !self.released {
-            self.active
-                .send_modify(|active| *active = active.saturating_sub(1));
+            self.active.send_modify(|active| *active = active.saturating_sub(1));
             self.released = true;
         }
     }
@@ -1279,19 +1032,8 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
     let _ = ready.send(());
 
     loop {
-        match turn(
-            &mut progress,
-            &mut delivery,
-            &mut requests,
-            &mut served,
-            &mut writer,
-        )
-        .await
-        {
-            Turn::Advanced {
-                journal,
-                streams: rows,
-            } => {
+        match turn(&mut progress, &mut delivery, &mut requests, &mut served, &mut writer).await {
+            Turn::Advanced { journal, streams: rows } => {
                 if journal {
                     let applied = *progress.borrow_and_update();
                     consumers.drain(&feed, applied).await;
@@ -1328,11 +1070,7 @@ async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamM
     }
 }
 
-async fn stand_windows<A: Application>(
-    streams: &StreamManager<A>,
-    consumers: &mut Consumers<A>,
-    booted: Position,
-) {
+async fn stand_windows<A: Application>(streams: &StreamManager<A>, consumers: &mut Consumers<A>, booted: Position) {
     for wired in streams.declared() {
         let durable = consumers.sealed(wired.definition.clone(), &[]).await;
 
@@ -1343,11 +1081,8 @@ async fn stand_windows<A: Application>(
 }
 
 async fn turn<A: Application>(
-    progress: &mut watch::Receiver<Position>,
-    delivery: &mut watch::Receiver<()>,
-    requests: &mut mpsc::Receiver<ReadRequest<A>>,
-    served: &mut mpsc::Receiver<Request>,
-    writer: &mut JoinHandle<()>,
+    progress: &mut watch::Receiver<Position>, delivery: &mut watch::Receiver<()>, requests: &mut mpsc::Receiver<ReadRequest<A>>,
+    served: &mut mpsc::Receiver<Request>, writer: &mut JoinHandle<()>,
 ) -> Turn<A> {
     let mut advanced = Box::pin(progress.changed());
     let mut published = Box::pin(delivery.changed());
@@ -1383,17 +1118,10 @@ async fn turn<A: Application>(
 }
 
 async fn answer<A: Application>(
-    request: ReadRequest<A>,
-    consumers: &mut Consumers<A>,
-    catalog: Option<&Dispatch<A, Payload<A>>>,
-    inverses: Inverting<A>,
+    request: ReadRequest<A>, consumers: &mut Consumers<A>, catalog: Option<&Dispatch<A, Payload<A>>>, inverses: Inverting<A>,
 ) {
     match request {
-        ReadRequest::Entries {
-            after,
-            through,
-            reply,
-        } => {
+        ReadRequest::Entries { after, through, reply } => {
             let answer = consumers.read(after, through).await.map(|recovery| {
                 recovery
                     .entries
@@ -1415,35 +1143,16 @@ async fn answer<A: Application>(
                     .commits
                     .iter()
                     .copied()
-                    .chain(
-                        recovery
-                            .entries
-                            .iter()
-                            .filter_map(|entry| entry.metadata.commit),
-                    )
-                    .any(|(first, end)| {
-                        (first <= at && at < end)
-                            || (first <= origin.position && origin.position < end)
-                    })
+                    .chain(recovery.entries.iter().filter_map(|entry| entry.metadata.commit))
+                    .any(|(first, end)| (first <= at && at < end) || (first <= origin.position && origin.position < end))
                 {
                     return Err(crate::Error::IncompleteCommit);
                 }
                 if recovery.frontier < at {
                     return Err(crate::Error::BeyondTail);
                 }
-                let mut state = At {
-                    value: origin.value,
-                    position: origin.position,
-                };
-                replay(
-                    catalog,
-                    recovery.entries,
-                    &mut state,
-                    &mut Undos::default(),
-                    inverses,
-                    0,
-                )
-                .map_err(|_| crate::Error::Unavailable)?;
+                let mut state = At { value: origin.value, position: origin.position };
+                replay(catalog, recovery.entries, &mut state, &mut Undos::default(), inverses, 0).map_err(|_| crate::Error::Unavailable)?;
                 state.position = at;
 
                 Ok(state)
@@ -1456,71 +1165,31 @@ async fn answer<A: Application>(
 
 async fn serve<A: Application>(request: Request, consumers: &mut Consumers<A>) {
     match request {
-        Request::Reader {
-            stream,
-            track,
-            start,
-            end,
-            limits,
-            permit,
-            reply,
-        } => {
+        Request::Reader { stream, track, start, end, limits, permit, reply } => {
             if !reply.is_closed() {
-                let answer = consumers
-                    .row_reader(stream, &track, start, end, limits)
-                    .await;
-                let _ = reply.send(crate::streams::Opened {
-                    source: answer,
-                    permit,
-                });
+                let answer = consumers.row_reader(stream, &track, start, end, limits).await;
+                let _ = reply.send(crate::streams::Opened { source: answer, permit });
             }
         }
-        Request::Rows {
-            stream,
-            track,
-            start,
-            end,
-            reply,
-        } => {
+        Request::Rows { stream, track, start, end, reply } => {
             let answer = consumers.served(stream, &track, start, end).await;
             let _ = reply.send(answer);
         }
-        Request::Buckets {
-            stream,
-            track,
-            start,
-            end,
-            budget,
-            reply,
-        } => {
+        Request::Buckets { stream, track, start, end, budget, reply } => {
             let answer = consumers.surveyed(stream, &track, start, end, budget).await;
             let _ = reply.send(answer);
         }
-        Request::Aggregate {
-            stream,
-            track,
-            start,
-            end,
-            kind,
-            reply,
-        } => {
+        Request::Aggregate { stream, track, start, end, kind, reply } => {
             let answer = consumers.aggregated(stream, &track, start, end, kind).await;
             let _ = reply.send(answer);
         }
-        Request::Seal {
-            stream,
-            track,
-            reply,
-        } => {
+        Request::Seal { stream, track, reply } => {
             let _ = reply.send(consumers.sealed(stream, &track).await);
         }
     }
 }
 
-async fn inspect_reads<A: Application>(
-    mut consumers: Consumers<A>,
-    mut requests: mpsc::Receiver<ReadRequest<A>>,
-) {
+async fn inspect_reads<A: Application>(mut consumers: Consumers<A>, mut requests: mpsc::Receiver<ReadRequest<A>>) {
     while let Some(request) = requests.recv().await {
         answer(request, &mut consumers, None, none::<A>).await;
     }

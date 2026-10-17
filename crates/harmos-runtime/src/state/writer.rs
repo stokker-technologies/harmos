@@ -21,10 +21,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
 // Local Imports
-use super::entry::{
-    CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey,
-    Timestamp,
-};
+use super::entry::{CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 use super::envelope::Recorded;
 use super::history::{Focus, Reversals, Undos};
 use super::record::{PreparationError, Prepared, PreparedCommit};
@@ -109,12 +106,7 @@ impl Direction {
 }
 
 impl Unsealed {
-    fn mint(
-        context: &Context,
-        request: Option<RequestKey>,
-        link: Option<Link>,
-        clock: fn() -> Timestamp,
-    ) -> Self {
+    fn mint(context: &Context, request: Option<RequestKey>, link: Option<Link>, clock: fn() -> Timestamp) -> Self {
         Self {
             principal: context.principal.clone(),
             correlation: context.correlation,
@@ -140,27 +132,11 @@ impl Unsealed {
 
 /* === Public Functions === */
 pub(crate) async fn run<A: Application>(
-    mut requests: mpsc::Receiver<Request<A>>,
-    tracked: Arc<TrackedState<A>>,
-    stored: watch::Sender<Position>,
-    inverses: Inverting<A>,
-    mut undos: Undos<A>,
-    mut capture: Option<super::capture::Capture<A>>,
+    mut requests: mpsc::Receiver<Request<A>>, tracked: Arc<TrackedState<A>>, stored: watch::Sender<Position>, inverses: Inverting<A>,
+    mut undos: Undos<A>, mut capture: Option<super::capture::Capture<A>>,
 ) {
-    let mut receipts = capture
-        .as_mut()
-        .map(|capture| capture.take_receipts())
-        .unwrap_or_default();
-    run_admissions(
-        &mut requests,
-        &tracked,
-        &stored,
-        inverses,
-        &mut undos,
-        capture.as_ref(),
-        &mut receipts,
-    )
-    .await;
+    let mut receipts = capture.as_mut().map(|capture| capture.take_receipts()).unwrap_or_default();
+    run_admissions(&mut requests, &tracked, &stored, inverses, &mut undos, capture.as_ref(), &mut receipts).await;
     if let Some(capture) = capture {
         capture.snapshot(&tracked, &undos, &receipts, true).await;
         capture.finish().await;
@@ -169,24 +145,14 @@ pub(crate) async fn run<A: Application>(
 
 /* === Private Functions === */
 async fn run_admissions<A: Application>(
-    requests: &mut mpsc::Receiver<Request<A>>,
-    tracked: &Arc<TrackedState<A>>,
-    stored: &watch::Sender<Position>,
-    inverses: Inverting<A>,
-    undos: &mut Undos<A>,
-    capture: Option<&super::capture::Capture<A>>,
-    receipts: &mut HashMap<RequestKey, Receipt>,
+    requests: &mut mpsc::Receiver<Request<A>>, tracked: &Arc<TrackedState<A>>, stored: &watch::Sender<Position>, inverses: Inverting<A>,
+    undos: &mut Undos<A>, capture: Option<&super::capture::Capture<A>>, receipts: &mut HashMap<RequestKey, Receipt>,
 ) {
     let mut sealing = tracked.sealing.subscribe();
 
     while let Some(request) = next_request(requests, &mut sealing, capture).await {
         match request {
-            Request::Commit {
-                transaction,
-                key,
-                context,
-                reply,
-            } => {
+            Request::Commit { transaction, key, context, reply } => {
                 if let Some(seen) = key.as_ref().and_then(|key| receipts.get(key)) {
                     let _ = reply.send(Ok(*seen));
                     continue;
@@ -210,22 +176,14 @@ async fn run_admissions<A: Application>(
                         let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
                         continue;
                     }
-                    let prepared = match super::record::prepare::<A>(
-                        &transaction,
-                        &state.value,
-                        &tracked.catalog,
-                    ) {
+                    let prepared = match super::record::prepare::<A>(&transaction, &state.value, &tracked.catalog) {
                         Ok(prepared) => prepared,
                         Err(refusal) => {
                             let _ = reply.send(Err(Admission::Preparation(refusal)));
                             continue;
                         }
                     };
-                    let Some(frontier) = state
-                        .position
-                        .0
-                        .checked_add(1 + prepared.records.len() as u64)
-                    else {
+                    let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
                         let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
                         continue;
                     };
@@ -237,11 +195,7 @@ async fn run_admissions<A: Application>(
                         &prepared.transaction,
                         prepared.records.iter().map(|(_, prepared)| prepared),
                         &draft,
-                        (
-                            Position(frontier - prepared.records.len() as u64),
-                            crate::state::Kind::Transaction,
-                            true,
-                        ),
+                        (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
                     )
                     .await
                     {
@@ -263,8 +217,7 @@ async fn run_admissions<A: Application>(
                         return;
                     }
                     let inverse = inverses(&transaction, &state.value);
-                    let applied =
-                        catch_unwind(AssertUnwindSafe(|| transaction.apply(&mut state.value)));
+                    let applied = catch_unwind(AssertUnwindSafe(|| transaction.apply(&mut state.value)));
                     if applied.is_err() {
                         tracked.poison();
                         return;
@@ -276,37 +229,17 @@ async fn run_admissions<A: Application>(
                 };
 
                 let (state, position, inverse, prepared, permit) = sealed;
-                let receipt = publish_group(
-                    tracked,
-                    stored,
-                    position,
-                    draft,
-                    Arc::clone(&transaction),
-                    prepared,
-                    capture.zip(permit),
-                )
-                .await;
+                let receipt =
+                    publish_group(tracked, stored, position, draft, Arc::clone(&transaction), prepared, capture.zip(permit)).await;
                 drop(state);
 
-                undos.record(
-                    position,
-                    context.principal.as_ref(),
-                    None,
-                    &transaction,
-                    inverse,
-                );
+                undos.record(position, context.principal.as_ref(), None, &transaction, inverse);
                 if let Some(key) = key {
                     receipts.insert(key, receipt);
                 }
                 let _ = reply.send(Ok(receipt));
             }
-            Request::Revert {
-                principal,
-                focus,
-                direction,
-                mut context,
-                reply,
-            } => {
+            Request::Revert { principal, focus, direction, mut context, reply } => {
                 let chosen = match direction {
                     Direction::Undo => undos.undoable(&principal, &focus),
                     Direction::Redo => undos.redoable(&principal, &focus),
@@ -340,22 +273,14 @@ async fn run_admissions<A: Application>(
                         let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
                         continue;
                     }
-                    let prepared = match super::record::prepare::<A>(
-                        &answer,
-                        &state.value,
-                        &tracked.catalog,
-                    ) {
+                    let prepared = match super::record::prepare::<A>(&answer, &state.value, &tracked.catalog) {
                         Ok(prepared) => prepared,
                         Err(refusal) => {
                             let _ = reply.send(Err(Refusal::Preparation(refusal)));
                             continue;
                         }
                     };
-                    let Some(frontier) = state
-                        .position
-                        .0
-                        .checked_add(1 + prepared.records.len() as u64)
-                    else {
+                    let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
                         let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
                         continue;
                     };
@@ -365,11 +290,7 @@ async fn run_admissions<A: Application>(
                         &prepared.transaction,
                         prepared.records.iter().map(|(_, prepared)| prepared),
                         &draft,
-                        (
-                            Position(frontier - prepared.records.len() as u64),
-                            crate::state::Kind::Transaction,
-                            true,
-                        ),
+                        (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
                     )
                     .await
                     {
@@ -403,34 +324,13 @@ async fn run_admissions<A: Application>(
                 };
 
                 let (state, position, inverse, prepared, permit) = sealed;
-                let receipt = publish_group(
-                    tracked,
-                    stored,
-                    position,
-                    draft,
-                    Arc::clone(&answer),
-                    prepared,
-                    capture.zip(permit),
-                )
-                .await;
+                let receipt = publish_group(tracked, stored, position, draft, Arc::clone(&answer), prepared, capture.zip(permit)).await;
                 drop(state);
 
-                undos.record(
-                    position,
-                    context.principal.as_ref(),
-                    Some(link),
-                    &answer,
-                    inverse,
-                );
+                undos.record(position, context.principal.as_ref(), Some(link), &answer, inverse);
                 let _ = reply.send(Ok(receipt));
             }
-            Request::Record {
-                value,
-                prepared,
-                preparation: _preparation,
-                context,
-                reply,
-            } => {
+            Request::Record { value, prepared, preparation: _preparation, context, reply } => {
                 if !context_fits(&context, None) {
                     let _ = reply.send(Err(PreparationError::Limit));
                     continue;
@@ -440,15 +340,7 @@ async fn run_admissions<A: Application>(
                     let _ = reply.send(Err(PreparationError::Limit));
                     continue;
                 };
-                let permit = match reserve(
-                    capture,
-                    &prepared,
-                    std::iter::empty(),
-                    &draft,
-                    (Position(next), value.kind(), false),
-                )
-                .await
-                {
+                let permit = match reserve(capture, &prepared, std::iter::empty(), &draft, (Position(next), value.kind(), false)).await {
                     Ok(permit) => permit,
                     Err(error) => {
                         let failed = error == PreparationError::CaptureFailed;
@@ -480,34 +372,18 @@ async fn run_admissions<A: Application>(
                 };
 
                 let (state, position) = sealed;
-                let receipt = publish(
-                    tracked,
-                    stored,
-                    position,
-                    draft,
-                    value,
-                    prepared,
-                    capture.zip(permit),
-                )
-                .await;
+                let receipt = publish(tracked, stored, position, draft, value, prepared, capture.zip(permit)).await;
                 drop(state);
 
                 let _ = reply.send(Ok(receipt));
             }
-            Request::Reversals {
-                principal,
-                focus,
-                reply,
-            } => {
+            Request::Reversals { principal, focus, reply } => {
                 // Stamped from the same state a `read` is stamped from, because
                 // a view compares the two: an answer a caller cannot place in
                 // history is one it cannot tell from a stale one.
                 let position = tracked.state.read().await.position;
 
-                let _ = reply.send(At {
-                    value: undos.reversals(&principal, &focus),
-                    position,
-                });
+                let _ = reply.send(At { value: undos.reversals(&principal, &focus), position });
             }
         }
         if let Some(capture) = capture {
@@ -517,25 +393,15 @@ async fn run_admissions<A: Application>(
 }
 
 async fn publish<A: Application>(
-    tracked: &TrackedState<A>,
-    stored: &watch::Sender<Position>,
-    position: Position,
-    draft: Unsealed,
-    value: Recorded<A>,
-    prepared: Prepared,
-    capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
+    tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed, value: Recorded<A>,
+    prepared: Prepared, capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
 ) -> Receipt {
     let metadata = draft.seal(position);
     let correlation = metadata.correlation;
 
     {
         let mut tail = tracked.tail.write().await;
-        let entries = tail.push_group(vec![Entry {
-            prepared: Some(prepared),
-            position,
-            metadata,
-            value,
-        }]);
+        let entries = tail.push_group(vec![Entry { prepared: Some(prepared), position, metadata, value }]);
         // A storage worker may flush on another thread as soon as ownership
         // transfers. Publish the applied frontier before it can acknowledge save.
         tracked.applied.send_replace(position);
@@ -548,37 +414,20 @@ async fn publish<A: Application>(
     // `applied` on this same code path, so `wait_until_stored` needs no `cfg`.
     stored.send_replace(position);
 
-    Receipt {
-        frontier: position,
-        position,
-        correlation,
-    }
+    Receipt { frontier: position, position, correlation }
 }
 
 async fn publish_group<A: Application>(
-    tracked: &TrackedState<A>,
-    stored: &watch::Sender<Position>,
-    position: Position,
-    draft: Unsealed,
-    transaction: Arc<A::Transaction>,
-    prepared: PreparedCommit<A>,
-    capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
+    tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed, transaction: Arc<A::Transaction>,
+    prepared: PreparedCommit<A>, capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
 ) -> Receipt {
-    let PreparedCommit {
-        transaction: prepared,
-        records,
-    } = prepared;
+    let PreparedCommit { transaction: prepared, records } = prepared;
     let frontier = Position(position.0 + records.len() as u64);
     let mut metadata = draft.seal(position);
     metadata.commit = Some((position, frontier));
     let correlation = metadata.correlation;
     let mut entries = Vec::with_capacity(records.len() + 1);
-    entries.push(Entry {
-        position,
-        metadata: metadata.clone(),
-        prepared: Some(prepared),
-        value: Recorded::Transaction(transaction),
-    });
+    entries.push(Entry { position, metadata: metadata.clone(), prepared: Some(prepared), value: Recorded::Transaction(transaction) });
     metadata.causation = Some(CausationId(position));
     metadata.request = None;
     metadata.link = None;
@@ -596,18 +445,14 @@ async fn publish_group<A: Application>(
         capture.submit(entries, frontier, permit);
     }
     stored.send_replace(frontier);
-    Receipt {
-        position,
-        frontier,
-        correlation,
-    }
+    Receipt { position, frontier, correlation }
 }
 
 fn witnessed_at(now: Timestamp) -> Timestamp {
     let rounded = match now.duration_since(Timestamp::UNIX_EPOCH) {
-        Ok(since) => u64::try_from(since.as_micros())
-            .ok()
-            .and_then(|micros| Timestamp::UNIX_EPOCH.checked_add(Duration::from_micros(micros))),
+        Ok(since) => {
+            u64::try_from(since.as_micros()).ok().and_then(|micros| Timestamp::UNIX_EPOCH.checked_add(Duration::from_micros(micros)))
+        }
         Err(before) => u64::try_from(before.duration().as_micros())
             .ok()
             .and_then(|micros| Timestamp::UNIX_EPOCH.checked_sub(Duration::from_micros(micros))),
@@ -617,9 +462,7 @@ fn witnessed_at(now: Timestamp) -> Timestamp {
 }
 
 async fn next_request<A: Application>(
-    requests: &mut mpsc::Receiver<Request<A>>,
-    sealing: &mut watch::Receiver<bool>,
-    capture: Option<&super::capture::Capture<A>>,
+    requests: &mut mpsc::Receiver<Request<A>>, sealing: &mut watch::Receiver<bool>, capture: Option<&super::capture::Capture<A>>,
 ) -> Option<Request<A>> {
     if *sealing.borrow_and_update() {
         requests.close();
@@ -651,10 +494,7 @@ async fn next_request<A: Application>(
 }
 
 async fn reserve<'a, A: Application>(
-    capture: Option<&super::capture::Capture<A>>,
-    prepared: &'a Prepared,
-    others: impl Iterator<Item = &'a Prepared>,
-    draft: &Unsealed,
+    capture: Option<&super::capture::Capture<A>>, prepared: &'a Prepared, others: impl Iterator<Item = &'a Prepared>, draft: &Unsealed,
     group: (Position, crate::state::Kind, bool),
 ) -> Result<Option<super::capture::Permit>, PreparationError> {
     let Some(capture) = capture else {
@@ -662,16 +502,10 @@ async fn reserve<'a, A: Application>(
     };
     let others: Vec<_> = others.collect();
     let count = 1 + others.len();
-    let metadata = serde_json::to_vec(&draft.clone().seal(Position(u64::MAX)))
-        .map_err(|_| PreparationError::Encoding)?
-        .len();
-    let mut bytes = count
-        .checked_mul(metadata + 256)
-        .ok_or(PreparationError::Limit)?;
+    let metadata = serde_json::to_vec(&draft.clone().seal(Position(u64::MAX))).map_err(|_| PreparationError::Encoding)?.len();
+    let mut bytes = count.checked_mul(metadata + 256).ok_or(PreparationError::Limit)?;
     for prepared in std::iter::once(prepared).chain(others.iter().copied()) {
-        bytes = bytes
-            .checked_add(prepared.bytes()?)
-            .ok_or(PreparationError::Limit)?;
+        bytes = bytes.checked_add(prepared.bytes()?).ok_or(PreparationError::Limit)?;
     }
     let (position, kind, commit) = group;
     let mut metadata = draft.clone().seal(position);
@@ -700,18 +534,11 @@ async fn reserve<'a, A: Application>(
             payload: &prepared.payload,
         });
     }
-    capture
-        .reserve(bytes, &crate::state::recovery::Group::new(entries))
-        .await
-        .map(Some)
+    capture.reserve(bytes, &crate::state::recovery::Group::new(entries)).await.map(Some)
 }
 
 fn context_fits(context: &Context, key: Option<&RequestKey>) -> bool {
-    context
-        .principal
-        .as_ref()
-        .is_none_or(|id| id.as_str().len() <= 1024)
-        && key.is_none_or(|key| key.as_str().len() <= 1024)
+    context.principal.as_ref().is_none_or(|id| id.as_str().len() <= 1024) && key.is_none_or(|key| key.as_str().len() <= 1024)
 }
 
 /* === Tests === */

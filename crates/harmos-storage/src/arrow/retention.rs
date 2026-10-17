@@ -73,24 +73,19 @@ pub(super) fn new_resident_bytes(batch: &RecordBatch, input: &[&RecordBatch]) ->
     for column in batch.columns() {
         count(&column.to_data(), &mut seen, &mut bytes)?;
     }
-    bytes
-        .checked_add(owner_bytes(batch)?)
-        .ok_or_else(|| invalid("Arrow ownership size overflow"))
+    bytes.checked_add(owner_bytes(batch)?).ok_or_else(|| invalid("Arrow ownership size overflow"))
 }
 
 pub(super) fn owner_bytes(batch: &RecordBatch) -> Result<usize> {
     fn count_buffers(data: &ArrayData) -> Option<usize> {
-        data.child_data().iter().try_fold(
-            data.buffers().len() + usize::from(data.nulls().is_some()),
-            |count, child| count.checked_add(count_buffers(child)?),
-        )
+        data.child_data()
+            .iter()
+            .try_fold(data.buffers().len() + usize::from(data.nulls().is_some()), |count, child| count.checked_add(count_buffers(child)?))
     }
     let buffers = batch
         .columns()
         .iter()
-        .try_fold(0usize, |count, column| {
-            count.checked_add(count_buffers(&column.to_data())?)
-        })
+        .try_fold(0usize, |count, column| count.checked_add(count_buffers(&column.to_data())?))
         .ok_or_else(|| invalid("Arrow owner count overflow"))?;
     // Include Arc control blocks, custom Buffer scaffolding and column owners.
     buffers
@@ -115,30 +110,18 @@ pub(super) fn attach(batch: &RecordBatch, owner: Arc<Owner>) -> Result<RecordBat
 
 /* === Private Functions === */
 fn count(data: &ArrayData, seen: &mut BTreeMap<usize, usize>, bytes: &mut usize) -> Result<()> {
-    *bytes = bytes
-        .checked_add(std::mem::size_of::<ArrayData>())
-        .ok_or_else(|| invalid("Arrow resident size overflow"))?;
-    for buffer in data
-        .buffers()
-        .iter()
-        .chain(data.nulls().map(|nulls| nulls.buffer()))
-    {
-        let base = (buffer.as_ptr() as usize)
-            .checked_sub(buffer.ptr_offset())
-            .ok_or_else(|| invalid("Arrow allocation offset underflow"))?;
+    *bytes = bytes.checked_add(std::mem::size_of::<ArrayData>()).ok_or_else(|| invalid("Arrow resident size overflow"))?;
+    for buffer in data.buffers().iter().chain(data.nulls().map(|nulls| nulls.buffer())) {
+        let base =
+            (buffer.as_ptr() as usize).checked_sub(buffer.ptr_offset()).ok_or_else(|| invalid("Arrow allocation offset underflow"))?;
         // Arrow Custom Allocations Report Capacity Zero. The Accessible Span
         // Still Bounds Kernel Reads/Copies; Its Original Full Allocation Remains
         // Charged By BufferOwner Until The Last Alias Drops.
-        let span = buffer
-            .len()
-            .checked_add(buffer.ptr_offset())
-            .ok_or_else(|| invalid("Arrow accessible allocation span overflow"))?;
+        let span = buffer.len().checked_add(buffer.ptr_offset()).ok_or_else(|| invalid("Arrow accessible allocation span overflow"))?;
         let capacity = buffer.capacity().max(span);
         let previous = seen.entry(base).or_insert(0);
         if capacity > *previous {
-            *bytes = bytes
-                .checked_add(capacity - *previous)
-                .ok_or_else(|| invalid("Arrow resident size overflow"))?;
+            *bytes = bytes.checked_add(capacity - *previous).ok_or_else(|| invalid("Arrow resident size overflow"))?;
             *previous = capacity;
         }
     }
@@ -149,16 +132,8 @@ fn count(data: &ArrayData, seen: &mut BTreeMap<usize, usize>, bytes: &mut usize)
 }
 
 fn attach_data(data: ArrayData, owner: &Arc<Owner>) -> Result<ArrayData> {
-    let buffers = data
-        .buffers()
-        .iter()
-        .map(|buffer| attach_buffer(buffer, owner))
-        .collect();
-    let children = data
-        .child_data()
-        .iter()
-        .map(|child| attach_data(child.clone(), owner))
-        .collect::<Result<Vec<_>>>()?;
+    let buffers = data.buffers().iter().map(|buffer| attach_buffer(buffer, owner)).collect();
+    let children = data.child_data().iter().map(|child| attach_data(child.clone(), owner)).collect::<Result<Vec<_>>>()?;
     let nulls = data.nulls().map(|nulls| {
         let boolean = nulls.inner();
         let buffer = attach_buffer(boolean.inner(), owner);
@@ -173,21 +148,14 @@ fn attach_data(data: ArrayData, owner: &Arc<Owner>) -> Result<ArrayData> {
 }
 
 fn attach_buffer(buffer: &Buffer, owner: &Arc<Owner>) -> Buffer {
-    let retained = Arc::new(BufferOwner {
-        _buffer: buffer.clone(),
-        _owner: Arc::clone(owner),
-    });
-    let pointer =
-        NonNull::new(buffer.as_ptr().cast_mut()).expect("Arrow buffer pointer is nonnull");
+    let retained = Arc::new(BufferOwner { _buffer: buffer.clone(), _owner: Arc::clone(owner) });
+    let pointer = NonNull::new(buffer.as_ptr().cast_mut()).expect("Arrow buffer pointer is nonnull");
     // SAFETY: BufferOwner retains this exact immutable source Buffer, hence its
     // allocation, for the custom buffer's entire lifetime. The source pointer
     // is valid for buffer.len() bytes; clones/slices retain the custom owner.
     // A zero-length slice can still retain its source's allocation, so it must
     // retain the reservation too. Arrow also provides a nonnull empty pointer.
-    #[expect(
-        unsafe_code,
-        reason = "Arrow custom allocation retains the original immutable buffer and its reservation"
-    )]
+    #[expect(unsafe_code, reason = "Arrow custom allocation retains the original immutable buffer and its reservation")]
     unsafe {
         Buffer::from_custom_allocation(pointer, buffer.len(), retained)
     }

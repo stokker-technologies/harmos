@@ -89,12 +89,22 @@ def main() -> None:
         _copy(source, FIXTURES / source.relative_to(TARGET / "dependencies"), [exported], files)
     if archive.tree(ROOT) != before:
         raise RuntimeError("sources changed while fixtures were building; rebuild the complete candidate")
-    archive.stamp(ROOT, producers, files, {
-        "artifacts": artifacts, "libraries": libraries, "builds": builds,
-        "build_roots": {name: str(ROOT) for name in builds},
-        "dependencies": "libraries", "vendor": "vendor", "wheels": "wheels", "requirements": "requirements.txt",
-        "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
-    })
+    archive.stamp(
+        ROOT,
+        producers,
+        files,
+        {
+            "artifacts": artifacts,
+            "libraries": libraries,
+            "builds": builds,
+            "build_roots": {name: str(ROOT) for name in builds},
+            "dependencies": "libraries",
+            "vendor": "vendor",
+            "wheels": "wheels",
+            "requirements": "requirements.txt",
+            "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
+        },
+    )
 
 
 # === Private Functions === #
@@ -119,10 +129,15 @@ def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: st
     outputs = [result]
     if backend == "guest":
         messages = _messages(capture)
-        modules = {Path(filename) for message in messages
-                   if message.get("reason") == "compiler-artifact" and not message["profile"]["test"]
-                   and message["target"]["name"] == package.replace("-", "_")
-                   for filename in message["filenames"] if filename.endswith(".wasm")}
+        modules = {
+            Path(filename)
+            for message in messages
+            if message.get("reason") == "compiler-artifact"
+            and not message["profile"]["test"]
+            and message["target"]["name"] == package.replace("-", "_")
+            for filename in message["filenames"]
+            if filename.endswith(".wasm")
+        }
         if len(modules) != 1:
             raise RuntimeError(f"expected one raw {package} module, found {modules}")
         module = modules.pop()
@@ -131,14 +146,38 @@ def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: st
             transformed = module.with_suffix(".component.wasm")
             transformed.unlink(missing_ok=True)
             outputs.append(transformed)
-    command = [str(tool), "harmos", backend, "build", "--manifest-path", str(manifest), "-p", package,
-               "--profile", profile, "--target", capture["target"],
-               "--from-cargo-json", str(_resolve(capture["messages"]["path"])),
-               "--metadata-json", str(_resolve(capture["metadata"]["path"])),
-               "--archive-json", str(_resolve(capture["receipt"])), "--json"]
-    produced = archive.native(ROOT, profile, "package", [command], outputs,
-                              locks=[ROOT / "Cargo.lock", manifest.parent / "Cargo.lock"],
-                              inputs=[tool, _resolve(capture["receipt"])], parents=[owner, capture], stdout={0: result})
+    command = [
+        str(tool),
+        "harmos",
+        backend,
+        "build",
+        "--manifest-path",
+        str(manifest),
+        "-p",
+        package,
+        "--profile",
+        profile,
+        "--target",
+        capture["target"],
+        "--from-cargo-json",
+        str(_resolve(capture["messages"]["path"])),
+        "--metadata-json",
+        str(_resolve(capture["metadata"]["path"])),
+        "--archive-json",
+        str(_resolve(capture["receipt"])),
+        "--json",
+    ]
+    produced = archive.native(
+        ROOT,
+        profile,
+        "package",
+        [command],
+        outputs,
+        locks=[ROOT / "Cargo.lock", manifest.parent / "Cargo.lock"],
+        inputs=[tool, _resolve(capture["receipt"])],
+        parents=[owner, capture],
+        stdout={0: result},
+    )
     return json.loads(result.read_text(encoding="utf-8")), result, produced
 
 
@@ -175,8 +214,7 @@ def _offline_inputs(profile: str) -> dict:
     inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
     if (ROOT / ".cargo").is_dir():
         inputs.append(ROOT / ".cargo")
-    return archive.native(ROOT, profile, "dependency-export", commands,
-                          [destination], locks=locks, inputs=inputs, stdout=captured)
+    return archive.native(ROOT, profile, "dependency-export", commands, [destination], locks=locks, inputs=inputs, stdout=captured)
 
 
 def _stage_build(build: dict, collected: Path, package: str, producers: list[dict], files: dict) -> tuple[str, str]:
@@ -202,9 +240,19 @@ def _stage_build(build: dict, collected: Path, package: str, producers: list[dic
 
 
 def _copy(source: Path, destination: Path, producers: list[dict], files: dict) -> str:
-    owner = next((record for record in producers if str(source) in {
-        **record.get("artifacts", {}), **record.get("generated", {}), **record.get("exports", {}),
-    }), None)
+    owner = next(
+        (
+            record
+            for record in producers
+            if str(source)
+            in {
+                **record.get("artifacts", {}),
+                **record.get("generated", {}),
+                **record.get("exports", {}),
+            }
+        ),
+        None,
+    )
     if owner is None:
         raise RuntimeError(f"staged input has no original producer: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -244,7 +292,9 @@ def _libraries(messages: list[dict], producer: dict, files: dict) -> dict[str, s
             _copy(path, destination / path.name, [producer], files)
             if name not in found:
                 continue
-            suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
+            suffix = (
+                (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
+            )
             if path.suffix == suffix:
                 found[name].add((destination / path.name).relative_to(FIXTURES).as_posix())
     ambiguous = {name: sorted(paths) for name, paths in found.items() if len(paths) != 1}

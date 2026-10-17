@@ -68,10 +68,7 @@ pub enum Error {
     #[error("generated Python package exceeds its bounded output limit")]
     Limit,
     #[error("failed to remove incomplete output after {cause}: {source}")]
-    Cleanup {
-        cause: String,
-        source: std::io::Error,
-    },
+    Cleanup { cause: String, source: std::io::Error },
     #[error(transparent)]
     Export(#[from] ExportError),
     #[error(transparent)]
@@ -88,18 +85,14 @@ pub enum Error {
 impl Settings {
     fn validate(&self) -> Result<(), Error> {
         if !identifier(&self.module) || self.module.starts_with('_') {
-            return Err(Error::Settings(
-                "module must be one public Python identifier",
-            ));
+            return Err(Error::Settings("module must be one public Python identifier"));
         }
         let name = self.distribution.as_bytes();
         if name.is_empty()
             || name.len() > 128
             || !name.first().is_some_and(u8::is_ascii_alphanumeric)
             || !name.last().is_some_and(u8::is_ascii_alphanumeric)
-            || !name
-                .iter()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+            || !name.iter().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
         {
             return Err(Error::Settings("distribution name"));
         }
@@ -135,10 +128,7 @@ pub fn generate(catalog: Catalog<'_>, output: &Path) -> Result<PathBuf, Error> {
     for contract in contracts {
         if all || requested.remove(contract.operation().id.as_str()) {
             if contract.grpc().is_none() {
-                return Err(Error::Unsupported(format!(
-                    "{} has no protobuf/gRPC binding",
-                    contract.operation().id
-                )));
+                return Err(Error::Unsupported(format!("{} has no protobuf/gRPC binding", contract.operation().id)));
             }
             selected.push(contract.clone());
         }
@@ -157,9 +147,7 @@ pub fn generate(catalog: Catalog<'_>, output: &Path) -> Result<PathBuf, Error> {
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     value.len() <= 128
-        && bytes
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        && bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
         && !matches!(
             value,
@@ -213,10 +201,7 @@ fn python_version(version: &Version) -> Result<String, Error> {
             _ => return Err(Error::Settings("unsupported Python prerelease version")),
         };
         let number = parts.next().unwrap_or("0");
-        if number.is_empty()
-            || !number.bytes().all(|byte| byte.is_ascii_digit())
-            || parts.next().is_some()
-        {
+        if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) || parts.next().is_some() {
             return Err(Error::Settings("unsupported Python prerelease number"));
         }
         result.push_str(kind);
@@ -224,13 +209,7 @@ fn python_version(version: &Version) -> Result<String, Error> {
     }
     if !version.build.is_empty() {
         result.push('+');
-        result.push_str(
-            &version
-                .build
-                .as_str()
-                .replace('-', ".")
-                .to_ascii_lowercase(),
-        );
+        result.push_str(&version.build.as_str().replace('-', ".").to_ascii_lowercase());
     }
     Ok(result)
 }

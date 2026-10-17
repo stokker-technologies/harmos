@@ -21,28 +21,17 @@ impl FileState {
             return None;
         }
         if self.session.is_none() {
-            return Some(Err(Error::InvalidInput {
-                field: "file following",
-                reason: "private transfer staging is not readable",
-            }));
+            return Some(Err(Error::InvalidInput { field: "file following", reason: "private transfer staging is not readable" }));
         }
         if let Some(source) = &self.progress.lock().unwrap().failure {
-            return Some(Err(Error::Persistence {
-                source: source.clone(),
-            }));
+            return Some(Err(Error::Persistence { source: source.clone() }));
         }
-        Some(Ok(FileProgress {
-            length: self.length,
-            phase: FilePhase::Producing,
-        }))
+        Some(Ok(FileProgress { length: self.length, phase: FilePhase::Producing }))
     }
 
     pub(crate) fn bytes(&self) -> usize {
         self.base_bytes
-            + self
-                .mutation
-                .as_ref()
-                .map_or(0, crate::MemorySize::memory_size)
+            + self.mutation.as_ref().map_or(0, crate::MemorySize::memory_size)
             + match &self.command {
                 Some(Command::Write(bytes)) => bytes.len(),
                 _ => 0,
@@ -56,11 +45,7 @@ impl FileState {
 
 impl FileAction {
     pub(crate) fn caller_retries(&self, state: &State) -> bool {
-        let Some(mutation) = state
-            .files
-            .get(&self.id())
-            .and_then(|file| file.mutation.as_ref())
-        else {
+        let Some(mutation) = state.files.get(&self.id()).and_then(|file| file.mutation.as_ref()) else {
             return false;
         };
         // Inactivity Cleanup Retains The Worker's Own Retry Policy.
@@ -83,42 +68,29 @@ impl FileAction {
 impl State {
     pub(crate) fn file_action(&mut self) -> Option<FileAction> {
         let ids: Vec<_> = self.files.keys().copied().collect();
-        let id = ids
-            .iter()
-            .copied()
-            .filter(|id| *id > self.file_cursor)
-            .chain(ids.iter().copied().filter(|id| *id <= self.file_cursor))
-            .find(|id| {
-                let file = &self.files[id];
-                !file.in_flight
-                    && (file.abandoned || file.command.is_some())
-                    && (!matches!(file.command, Some(Command::Finish { .. }))
-                        || (self.reserved == 0 && self.finishing.is_none_or(|owner| owner == *id)))
-            })?;
+        let id =
+            ids.iter().copied().filter(|id| *id > self.file_cursor).chain(ids.iter().copied().filter(|id| *id <= self.file_cursor)).find(
+                |id| {
+                    let file = &self.files[id];
+                    !file.in_flight
+                        && (file.abandoned || file.command.is_some())
+                        && (!matches!(file.command, Some(Command::Finish { .. }))
+                            || (self.reserved == 0 && self.finishing.is_none_or(|owner| owner == *id)))
+                },
+            )?;
         self.file_cursor = id;
         let file = self.files.get_mut(&id).unwrap();
         if file.abandoned && !matches!(file.command, Some(Command::Finish { .. })) {
             file.command = Some(Command::Abort);
         }
         let action = match file.command.as_mut()? {
-            Command::Create => FileAction::Create {
-                id,
-                metadata: file.metadata.clone(),
-                staging: file.staging.clone(),
-                resumable: file.session.is_some(),
-            },
-            Command::Resume { expected, next } => FileAction::Resume {
-                id,
-                staging: file.staging.clone(),
-                expected: *expected,
-                next: *next,
-            },
-            Command::Write(bytes) => FileAction::Write {
-                id,
-                staging: file.staging.clone(),
-                offset: file.length,
-                bytes: bytes.clone(),
-            },
+            Command::Create => {
+                FileAction::Create { id, metadata: file.metadata.clone(), staging: file.staging.clone(), resumable: file.session.is_some() }
+            }
+            Command::Resume { expected, next } => {
+                FileAction::Resume { id, staging: file.staging.clone(), expected: *expected, next: *next }
+            }
+            Command::Write(bytes) => FileAction::Write { id, staging: file.staging.clone(), offset: file.length, bytes: bytes.clone() },
             Command::Finish { target, sha256 } => {
                 if target.is_none() {
                     let Some(index) = self.next.checked_add(1) else {
@@ -139,16 +111,10 @@ impl State {
                     sha256: *sha256,
                 }
             }
-            Command::Abort if file.session.is_some() => FileAction::Abandon {
-                id,
-                staging: file.staging.clone(),
-                extra: file.extra.clone(),
-            },
-            Command::Abort => FileAction::Abort {
-                id,
-                staging: file.staging.clone(),
-                extra: file.extra.clone(),
-            },
+            Command::Abort if file.session.is_some() => {
+                FileAction::Abandon { id, staging: file.staging.clone(), extra: file.extra.clone() }
+            }
+            Command::Abort => FileAction::Abort { id, staging: file.staging.clone(), extra: file.extra.clone() },
         };
         file.in_flight = true;
         self.collect();
@@ -172,12 +138,7 @@ impl State {
         }
     }
 
-    pub(crate) fn file_completed(
-        &mut self,
-        action: FileAction,
-        completed: FileCompleted,
-        session_timeout: Duration,
-    ) {
+    pub(crate) fn file_completed(&mut self, action: FileAction, completed: FileCompleted, session_timeout: Duration) {
         let id = action.id();
         let Some(file) = self.files.get_mut(&id) else {
             return;
@@ -212,40 +173,24 @@ impl State {
                         _ => file.session.as_ref().expect("managed file").generation,
                     };
                     let length = match &file.command {
-                        Some(Command::Write(bytes))
-                            if matches!(completed, FileCompleted::Written) =>
-                        {
-                            file.length + bytes.len() as u64
-                        }
+                        Some(Command::Write(bytes)) if matches!(completed, FileCompleted::Written) => file.length + bytes.len() as u64,
                         _ => file.length,
                     };
                     crate::MutationValue::Producer(crate::FileProducer {
-                        session: FileSession {
-                            history: file.staging.history.clone(),
-                            id: file.staging.id.clone(),
-                            generation,
-                        },
+                        session: FileSession { history: file.staging.history.clone(), id: file.staging.id.clone(), generation },
                         length,
                     })
                 }
-                (FileCompleted::Finished(reference), Kind::Finish) => {
-                    crate::MutationValue::Reference(reference.clone())
-                }
+                (FileCompleted::Finished(reference), Kind::Finish) => crate::MutationValue::Reference(reference.clone()),
                 (FileCompleted::Aborted, Kind::Abandon) => {
-                    crate::MutationValue::Progress(FileProgress {
-                        length: file.length,
-                        phase: FilePhase::Abandoned,
-                    })
+                    crate::MutationValue::Progress(FileProgress { length: file.length, phase: FilePhase::Abandoned })
                 }
                 _ => crate::MutationValue::Rejected,
             }
         });
         let mut progress = file.progress.lock().unwrap();
         progress.failure = None;
-        let remove = matches!(
-            completed,
-            FileCompleted::Finished(_) | FileCompleted::Aborted
-        );
+        let remove = matches!(completed, FileCompleted::Finished(_) | FileCompleted::Aborted);
         match completed {
             FileCompleted::Created => {
                 file.command = None;
@@ -259,9 +204,7 @@ impl State {
                 tracing::info!(file = %file.staging.id, generation, offset = file.length, reason = "producer resumed", "file production resumed with durable fencing");
             }
             FileCompleted::Written => {
-                let Some(Command::Write(bytes)) = file.command.take() else {
-                    unreachable!("one owned batch")
-                };
+                let Some(Command::Write(bytes)) = file.command.take() else { unreachable!("one owned batch") };
                 file.hash.update(&bytes);
                 file.length += bytes.len() as u64;
                 progress.length = file.length;
@@ -269,9 +212,7 @@ impl State {
             }
             FileCompleted::Finished(reference) => {
                 let reference = *reference;
-                let FileAction::Finish { target, .. } = action else {
-                    unreachable!("one finish owner")
-                };
+                let FileAction::Finish { target, .. } = action else { unreachable!("one finish owner") };
                 self.status.accepted = reference.position.clone();
                 self.next = target.index;
                 self.data_accepted = target;
@@ -291,8 +232,7 @@ impl State {
         }
         drop(progress);
         if let Some(mutation) = mutation {
-            self.receipts
-                .complete(&mutation.id, outcome.expect("receipt outcome"));
+            self.receipts.complete(&mutation.id, outcome.expect("receipt outcome"));
         }
         if remove {
             self.files.remove(&id);

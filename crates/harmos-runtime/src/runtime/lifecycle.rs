@@ -72,10 +72,7 @@ impl<A: Application> Runtime<A> {
             if let Some(current) = self.storage.get()
                 && !current.same_instance(&storage)
             {
-                return Err(Error::AlreadyRegistered {
-                    domain: "runtime storage",
-                    name: "primary".to_owned(),
-                });
+                return Err(Error::AlreadyRegistered { domain: "runtime storage", name: "primary".to_owned() });
             }
             storage.claim_owner(self.operations.resident_identity())?;
             self.storage.get_or_init(|| storage)
@@ -91,10 +88,7 @@ impl<A: Application> Runtime<A> {
         let deadline = tokio::time::Instant::now()
             .checked_add(timeout)
             .filter(|_| !timeout.is_zero())
-            .ok_or(Error::InvalidInput {
-                field: "runtime shutdown timeout",
-                reason: "must be positive and representable",
-            })?;
+            .ok_or(Error::InvalidInput { field: "runtime shutdown timeout", reason: "must be positive and representable" })?;
         match tokio::time::timeout_at(deadline, self.stop()).await {
             Ok(result) => result,
             Err(_) => {
@@ -103,11 +97,7 @@ impl<A: Application> Runtime<A> {
                     Stopping::Running(_) => "admission",
                     Stopping::Closing { progress, .. } => *progress.borrow(),
                 };
-                tracing::error!(
-                    phase,
-                    ?timeout,
-                    "runtime shutdown budget exhausted; original cleanup retained"
-                );
+                tracing::error!(phase, ?timeout, "runtime shutdown budget exhausted; original cleanup retained");
                 Err(Error::ShutdownTimeout { phase })
             }
         }
@@ -124,11 +114,7 @@ impl<A: Application> Runtime<A> {
             // Notify Residents Before Cancelling Their In-Flight Calls
             self.operations.close_resident_admission();
             self.operations.close_admission();
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             {
                 self.records.stop_listeners();
                 self.streams.stop_listeners();
@@ -148,31 +134,18 @@ impl<A: Application> Runtime<A> {
                     outcome: outcome.clone(),
                     progress: progress.clone(),
                 };
-                *stopping = Stopping::Closing {
-                    cleanup: Arc::new(Cleanup::new(original)),
-                    outcome,
-                    progress,
-                };
+                *stopping = Stopping::Closing { cleanup: Arc::new(Cleanup::new(original)), outcome, progress };
             }
-            let Stopping::Closing {
-                cleanup, outcome, ..
-            } = &*stopping
-            else {
+            let Stopping::Closing { cleanup, outcome, .. } = &*stopping else {
                 unreachable!("shutdown retains its driver before awaiting it");
             };
             (cleanup.clone(), outcome.clone())
         };
-        cleanup.settle().await.map_err(|source| {
-            Arc::try_unwrap(source).unwrap_or_else(|source| Error::TaskFailed {
-                domain: "runtime cleanup",
-                source,
-            })
-        })?;
-        outcome(
-            completed
-                .get()
-                .expect("physical shutdown published its outcome"),
-        )
+        cleanup
+            .settle()
+            .await
+            .map_err(|source| Arc::try_unwrap(source).unwrap_or_else(|source| Error::TaskFailed { domain: "runtime cleanup", source }))?;
+        outcome(completed.get().expect("physical shutdown published its outcome"))
     }
 }
 
@@ -192,60 +165,29 @@ impl<A: Application> Shutdown<A> {
             }
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             {
                 self.handles.records.stop_listeners();
                 self.handles.streams.stop_listeners();
             }
             self.progress.send_replace("observers and listeners");
             let observers = self.handles.operations.shutdown_observers();
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
-            let (observers, records, streams) = tokio::join!(
-                observers,
-                self.handles.records.shutdown_listeners(),
-                self.handles.streams.shutdown_listeners(),
-            );
-            #[cfg(not(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            )))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            let (observers, records, streams) =
+                tokio::join!(observers, self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners(),);
+            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
             let observers = observers.await;
             if self.handles.operations.observer_cleanup_pending() {
-                return Err(observers.err().unwrap_or(Error::NotReady {
-                    domain: "observer cleanup",
-                }));
+                return Err(observers.err().unwrap_or(Error::NotReady { domain: "observer cleanup" }));
             }
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             records?;
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             streams?;
             self.progress.send_replace("application services");
-            let services = self
-                .handles
-                .operations
-                .shutdown_application_services()
-                .await;
+            let services = self.handles.operations.shutdown_application_services().await;
             if self.handles.operations.service_cleanup_pending(false) {
-                return Err(services.err().unwrap_or(Error::NotReady {
-                    domain: "service cleanup",
-                }));
+                return Err(services.err().unwrap_or(Error::NotReady { domain: "service cleanup" }));
             }
             // Original SDK Shutdown Keeps Its Dispatcher Until Application Cleanup Settles.
             self.progress.send_replace("operations");
@@ -258,18 +200,12 @@ impl<A: Application> Shutdown<A> {
             if let Err(source) = observers
                 && settled.is_ok()
             {
-                settled = Err(Failure {
-                    domain: "observer",
-                    source: Arc::new(source),
-                });
+                settled = Err(Failure { domain: "observer", source: Arc::new(source) });
             }
             if let Err(source) = services
                 && settled.is_ok()
             {
-                settled = Err(Failure {
-                    domain: "service",
-                    source: Arc::new(source),
-                });
+                settled = Err(Failure { domain: "service", source: Arc::new(source) });
             }
             self.handles.streams.close();
             self.state = Drain::Drained(settled);
@@ -285,21 +221,14 @@ impl<A: Application> Shutdown<A> {
         self.progress.send_replace("infrastructure services");
         let services = self.handles.operations.shutdown_residents().await;
         if self.handles.operations.service_cleanup_pending(true) {
-            return Err(services.err().unwrap_or(Error::NotReady {
-                domain: "service cleanup",
-            }));
+            return Err(services.err().unwrap_or(Error::NotReady { domain: "service cleanup" }));
         }
         if let Err(source) = services
             && settled.is_ok()
         {
-            settled = Err(Failure {
-                domain: "service",
-                source: Arc::new(source),
-            });
+            settled = Err(Failure { domain: "service", source: Arc::new(source) });
         }
-        self.outcome
-            .set(settled)
-            .unwrap_or_else(|_| unreachable!("shutdown publishes its outcome once"));
+        self.outcome.set(settled).unwrap_or_else(|_| unreachable!("shutdown publishes its outcome once"));
         Ok(())
     }
 }
@@ -313,11 +242,7 @@ impl<A: Application> Handle<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn joined(
-    supervisor: &mut JoinHandle<Position>,
-    journal_handles: &Weak<()>,
-    notices: &watch::Sender<Option<String>>,
-) -> Outcome {
+async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>) -> Outcome {
     let mut grace = Box::pin(tokio::time::sleep(STOP_GRACE));
     let joined = std::future::poll_fn(|context| {
         if let Poll::Ready(settled) = Pin::new(&mut *supervisor).poll(context) {
@@ -344,19 +269,13 @@ async fn joined(
             supervisor.await
         }
     }
-    .map_err(|source| Failure {
-        domain: "journal supervisor",
-        source: Arc::new(source),
-    })
+    .map_err(|source| Failure { domain: "journal supervisor", source: Arc::new(source) })
 }
 
 fn outcome(settled: &Outcome) -> Result<Position> {
     match settled {
         Ok(position) => Ok(*position),
-        Err(failure) => Err(Error::TaskFailed {
-            domain: failure.domain,
-            source: failure.source.clone(),
-        }),
+        Err(failure) => Err(Error::TaskFailed { domain: failure.domain, source: failure.source.clone() }),
     }
 }
 

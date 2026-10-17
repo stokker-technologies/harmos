@@ -44,27 +44,17 @@ pub(super) struct Mutation<'a> {
 /* === Implementations === */
 impl<C> StorageManager<C> {
     pub async fn write_schema_once(
-        &self,
-        mutation: &MutationId,
-        key: &super::SchemaKey,
-        schema: &crate::schema::graph::Schema,
+        &self, mutation: &MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
     ) -> Result<StorageCursor> {
         self.admit_schema(key, schema, Some(mutation)).await
     }
 
-    pub async fn write_records_once(
-        &self,
-        mutation: &MutationId,
-        records: &[RecordWrite<'_>],
-    ) -> Result<StorageCursor> {
-        self.admit_record_values(mutation, records.iter().copied())
-            .await
+    pub async fn write_records_once(&self, mutation: &MutationId, records: &[RecordWrite<'_>]) -> Result<StorageCursor> {
+        self.admit_record_values(mutation, records.iter().copied()).await
     }
 
     pub(crate) async fn admit_record_values<'a>(
-        &self,
-        mutation: &MutationId,
-        records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone,
+        &self, mutation: &MutationId, records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone,
     ) -> Result<StorageCursor> {
         nonempty(records.len())?;
         let mut hash = Sha256::new();
@@ -73,29 +63,15 @@ impl<C> StorageManager<C> {
         for record in records.clone() {
             hash_record(&mut hash, &record);
         }
-        self.admit_records(
-            records,
-            Some(Mutation {
-                id: mutation,
-                fingerprint: hash.finalize().into(),
-            }),
-        )
-        .await
+        self.admit_records(records, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }
 
-    pub async fn write_stream_once(
-        &self,
-        mutation: &MutationId,
-        rows: &[StreamWrite<'_>],
-    ) -> Result<StorageCursor> {
-        self.admit_stream_values(mutation, rows.iter().copied())
-            .await
+    pub async fn write_stream_once(&self, mutation: &MutationId, rows: &[StreamWrite<'_>]) -> Result<StorageCursor> {
+        self.admit_stream_values(mutation, rows.iter().copied()).await
     }
 
     pub(crate) async fn admit_stream_values<'a>(
-        &self,
-        mutation: &MutationId,
-        rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone,
+        &self, mutation: &MutationId, rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone,
     ) -> Result<StorageCursor> {
         nonempty(rows.len())?;
         let mut hash = Sha256::new();
@@ -106,14 +82,7 @@ impl<C> StorageManager<C> {
             hash.update(row.sequence.to_le_bytes());
             hash_record(&mut hash, &row.record);
         }
-        self.admit_stream(
-            rows,
-            Some(Mutation {
-                id: mutation,
-                fingerprint: hash.finalize().into(),
-            }),
-        )
-        .await
+        self.admit_stream(rows, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }
 }
 
@@ -122,9 +91,7 @@ impl<C> StorageManager<C> {
 /* === Private Functions === */
 // Called After Shared Schema Preflight Has Bounded The Finite Definition Table.
 pub(super) fn schema_mutation<'a>(
-    id: &'a MutationId,
-    key: &super::SchemaKey,
-    schema: &crate::schema::graph::Schema,
+    id: &'a MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
 ) -> Result<Mutation<'a>> {
     let mut hash = Sha256::new();
     part(&mut hash, b"storage.write_schema:v1");
@@ -135,10 +102,7 @@ pub(super) fn schema_mutation<'a>(
     for fields in &schema.definitions {
         hash_fields(&mut hash, fields)?;
     }
-    Ok(Mutation {
-        id,
-        fingerprint: hash.finalize().into(),
-    })
+    Ok(Mutation { id, fingerprint: hash.finalize().into() })
 }
 fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Result<()> {
     use crate::schema::Cardinality;
@@ -146,10 +110,7 @@ fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Res
     hash.update((fields.len() as u64).to_le_bytes());
     for field in fields {
         if field.name.len() > crate::schema::MAX_NAME_BYTES {
-            return Err(Error::InvalidInput {
-                field: "storage schema",
-                reason: "field name exceeds limit",
-            });
+            return Err(Error::InvalidInput { field: "storage schema", reason: "field name exceeds limit" });
         }
         part(hash, field.name.as_bytes());
         hash.update(field.tag.to_le_bytes());
@@ -180,10 +141,7 @@ fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Res
 
 fn nonempty(count: usize) -> Result<()> {
     if count == 0 {
-        return Err(Error::InvalidInput {
-            field: "storage mutation",
-            reason: "write batch must not be empty",
-        });
+        return Err(Error::InvalidInput { field: "storage mutation", reason: "write batch must not be empty" });
     }
     Ok(())
 }

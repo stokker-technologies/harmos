@@ -37,25 +37,10 @@ pub enum Taper {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Band {
-    Rectangular {
-        start: f64,
-        end: f64,
-    },
-    RaisedCosine {
-        start: f64,
-        end: f64,
-        transition: f64,
-    },
-    Kaiser {
-        start: f64,
-        end: f64,
-        beta: f64,
-    },
-    Gaussian {
-        start: f64,
-        end: f64,
-        sigma: f64,
-    },
+    Rectangular { start: f64, end: f64 },
+    RaisedCosine { start: f64, end: f64, transition: f64 },
+    Kaiser { start: f64, end: f64, beta: f64 },
+    Gaussian { start: f64, end: f64, sigma: f64 },
 }
 
 /* === Traits === */
@@ -71,18 +56,13 @@ impl Taper {
             Self::Rectangular => 1.0,
             Self::Hamming => 0.54 - 0.46 * (2.0 * PI * index / length).cos(),
             Self::Hann => 0.5 * (1.0 - (2.0 * PI * index / length).cos()),
-            Self::Blackman => {
-                0.42 - 0.5 * (2.0 * PI * index / length).cos()
-                    + 0.08 * (4.0 * PI * index / length).cos()
-            }
+            Self::Blackman => 0.42 - 0.5 * (2.0 * PI * index / length).cos() + 0.08 * (4.0 * PI * index / length).cos(),
         }
     }
 
     #[must_use]
     pub fn coefficients(&self, length: usize) -> Vec<f64> {
-        (0..length)
-            .map(|index| self.coefficient(index, length))
-            .collect()
+        (0..length).map(|index| self.coefficient(index, length)).collect()
     }
 }
 
@@ -138,13 +118,7 @@ fn bessel_i0(argument: f64) -> f64 {
         let square = (argument / 3.75).powi(2);
         1.0 + square
             * (3.515_622_9
-                + square
-                    * (3.089_942_4
-                        + square
-                            * (1.206_749_2
-                                + square
-                                    * (0.265_973_2
-                                        + square * (0.036_076_8 + square * 0.004_581_3)))))
+                + square * (3.089_942_4 + square * (1.206_749_2 + square * (0.265_973_2 + square * (0.036_076_8 + square * 0.004_581_3)))))
     } else {
         let ratio = 3.75 / magnitude;
         (magnitude.exp() / magnitude.sqrt())
@@ -159,12 +133,7 @@ fn bessel_i0(argument: f64) -> f64 {
                                             * (0.009_162_81
                                                 + ratio
                                                     * (-0.020_577_06
-                                                        + ratio
-                                                            * (0.026_355_37
-                                                                + ratio
-                                                                    * (-0.016_476_33
-                                                                        + ratio
-                                                                            * 0.003_923_77))))))))
+                                                        + ratio * (0.026_355_37 + ratio * (-0.016_476_33 + ratio * 0.003_923_77))))))))
     }
 }
 

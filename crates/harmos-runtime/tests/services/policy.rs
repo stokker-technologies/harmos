@@ -25,8 +25,8 @@ use std::time::Duration;
 // Local Imports
 use super::{assembly, service_status, support::Bank};
 use harmos_runtime::{
-    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus,
-    state::FactSource, state::Position, state::SystemFact,
+    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position,
+    state::SystemFact,
 };
 
 /* === Constants === */
@@ -53,21 +53,14 @@ enum AdapterExit {
 impl Resident<Bank> for MutableAdapter {
     type Error = String;
 
-    async fn run(
-        &mut self,
-        mut context: harmos_runtime::services::Service<Bank>,
-    ) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: harmos_runtime::services::Service<Bank>) -> Result<(), Fault<Self::Error>> {
         self.attempts += 1;
         let attempt = self.attempts;
         context.ready();
         match context.until_stopping(self.exits.recv()).await {
             None => Ok(()),
-            Some(Some(AdapterExit::Environmental)) => {
-                Err(Fault::Environmental(format!("reset on attempt {attempt}")))
-            }
-            Some(Some(AdapterExit::Application)) => {
-                Err(Fault::Application(format!("failed on attempt {attempt}")))
-            }
+            Some(Some(AdapterExit::Environmental)) => Err(Fault::Environmental(format!("reset on attempt {attempt}"))),
+            Some(Some(AdapterExit::Application)) => Err(Fault::Application(format!("failed on attempt {attempt}"))),
             Some(None) => Err(Fault::Application("exit channel closed".to_owned())),
         }
     }
@@ -103,35 +96,18 @@ async fn fault_deactivates_service() {
             .runtime()
             .await
             .expect("the service declaration is valid");
-        let status = service_status(runtime.operations.watch_residents(), "analysis", |status| {
-            matches!(status, ServiceStatus::Inactive { .. })
-        })
-        .await;
+        let status =
+            service_status(runtime.operations.watch_residents(), "analysis", |status| matches!(status, ServiceStatus::Inactive { .. }))
+                .await;
         let ServiceStatus::Inactive { cause, history } = status else {
             unreachable!("the status matched Inactive");
         };
-        assert_eq!(
-            cause,
-            if panics {
-                ServiceExit::Panicked
-            } else {
-                ServiceExit::Application("bad invariant".into())
-            }
-        );
+        assert_eq!(cause, if panics { ServiceExit::Panicked } else { ServiceExit::Application("bad invariant".into()) });
         assert!(history.is_empty());
         let facts = work_facts(&runtime).await;
         assert_eq!(facts.len(), 1);
-        assert_eq!(
-            facts[0].identify().0.as_str(),
-            "harmos:work/analysis/deactivated"
-        );
-        assert!(matches!(
-            runtime.stop().await,
-            Err(harmos_runtime::Error::TaskFailed {
-                domain: "service",
-                ..
-            })
-        ));
+        assert_eq!(facts[0].identify().0.as_str(), "harmos:work/analysis/deactivated");
+        assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     }
 }
 
@@ -150,10 +126,8 @@ async fn credit_exhaustion_history() {
         .runtime()
         .await
         .expect("the service declaration is valid");
-    let status = service_status(runtime.operations.watch_residents(), "adapter", |status| {
-        matches!(status, ServiceStatus::Inactive { .. })
-    })
-    .await;
+    let status =
+        service_status(runtime.operations.watch_residents(), "adapter", |status| matches!(status, ServiceStatus::Inactive { .. })).await;
 
     assert!(matches!(
         status,
@@ -164,13 +138,7 @@ async fn credit_exhaustion_history() {
     ));
     assert_eq!(attempts.load(Ordering::SeqCst), 4);
     assert_eq!(work_facts(&runtime).await.len(), 1);
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos_runtime::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test(start_paused = true)]
@@ -189,53 +157,29 @@ async fn credit_survive_restarts() {
         ..harmos_runtime::services::POLICY
     };
     let runtime = assembly()
-        .service_with(
-            "adapter",
-            policy,
-            MutableAdapter {
-                attempts: 0,
-                exits: receiver,
-            },
-        )
+        .service_with("adapter", policy, MutableAdapter { attempts: 0, exits: receiver })
         .runtime()
         .await
         .expect("the mutable resident declaration is valid");
     let mut statuses = runtime.operations.watch_residents();
-    service_status(statuses.clone(), "adapter", |status| {
-        *status == ServiceStatus::Running { credit: 1 }
-    })
-    .await;
+    service_status(statuses.clone(), "adapter", |status| *status == ServiceStatus::Running { credit: 1 }).await;
 
     let key = harmos_runtime::operations::resident::Key::root("adapter");
     let instance_id = runtime.operations.resident(&key).unwrap().instance;
 
-    exits
-        .send(AdapterExit::Environmental)
-        .expect("the first attempt is live");
-    service_status(statuses.clone(), "adapter", |status| {
-        *status == ServiceStatus::Running { credit: 0 }
-    })
-    .await;
-    assert_eq!(
-        runtime.operations.resident(&key).unwrap().instance,
-        instance_id
-    );
+    exits.send(AdapterExit::Environmental).expect("the first attempt is live");
+    service_status(statuses.clone(), "adapter", |status| *status == ServiceStatus::Running { credit: 0 }).await;
+    assert_eq!(runtime.operations.resident(&key).unwrap().instance, instance_id);
     statuses
         .wait_for(|all| {
-            all.get(&harmos_runtime::operations::resident::Key::root("adapter"))
-                .and_then(|item| item.health.as_ref())
+            all.get(&harmos_runtime::operations::resident::Key::root("adapter")).and_then(|item| item.health.as_ref())
                 == Some(&ServiceStatus::Running { credit: 1 })
         })
         .await
         .expect("sustained health refills the visible credit");
 
-    exits
-        .send(AdapterExit::Application)
-        .expect("the second attempt is live");
-    let status = service_status(statuses, "adapter", |status| {
-        matches!(status, ServiceStatus::Inactive { .. })
-    })
-    .await;
+    exits.send(AdapterExit::Application).expect("the second attempt is live");
+    let status = service_status(statuses, "adapter", |status| matches!(status, ServiceStatus::Inactive { .. })).await;
     assert!(matches!(
         status,
         ServiceStatus::Inactive {
@@ -243,11 +187,5 @@ async fn credit_survive_restarts() {
             ref history,
         } if error == "failed on attempt 2" && history == &["reset on attempt 1"]
     ));
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos_runtime::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }

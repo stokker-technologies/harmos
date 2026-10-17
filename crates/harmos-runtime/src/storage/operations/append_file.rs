@@ -53,29 +53,15 @@ impl<C: 'static> Operation for Handler<C> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = ();
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut AppendFile,
-        _: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut AppendFile, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProducer>> {
         let result: ::core::result::Result<FileProducer, Self::Error> = async move {
-            self.storage
-                .append_file_once(
-                    &request.mutation,
-                    &request.session,
-                    request.offset,
-                    &request.bytes,
-                )
-                .await
-                .map_err(Into::into)
+            self.storage.append_file_once(&request.mutation, &request.session, request.offset, &request.bytes).await.map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

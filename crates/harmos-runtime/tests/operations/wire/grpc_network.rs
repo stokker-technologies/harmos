@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Network Authentication, Streaming And Listener Shutdown.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 
@@ -117,8 +115,8 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_runtime::operations::listing;
     use harmos_domain::plugin::Grant;
+    use harmos_runtime::operations::listing;
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime.operations.register_wire_operation::<Guard>("app", Lanes::Open, Arc::new(())).unwrap();
     runtime.operations.register_wire_operation::<Descend>("app", Lanes::Open, Arc::new(())).unwrap();
@@ -281,7 +279,10 @@ async fn stalled_listener_settles() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
+                    decode, encode,
+                )
+                .unwrap(),
             )
             .await
             .unwrap()
@@ -295,12 +296,14 @@ async fn stalled_listener_settles() {
                 assert!(runtime.grpc().local_addr().is_none());
             }
             runtime.grpc().attach(settings()).await.unwrap()
-        }).await;
+        })
+        .await;
         assert!(tokio::net::TcpStream::connect(address).await.is_err());
         (async {
             while let Ok(Some(_)) = unread.message().await {}
             stopped.acquire().await.unwrap().forget();
-        }).await;
+        })
+        .await;
         let channel =
             tonic::transport::Endpoint::from_shared(format!("http://{}", replacement.local_addr())).unwrap().connect().await.unwrap();
         assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
@@ -332,7 +335,10 @@ async fn shutdown_streams_unavailable() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
         .unwrap()
@@ -352,7 +358,10 @@ async fn shutdown_streams_unavailable() {
             .client_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-                Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                    decode, encode,
+                )
+                .unwrap(),
             )
             .await
             .err()
@@ -569,7 +578,10 @@ async fn streaming_preserves_principals() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -590,8 +602,12 @@ async fn streaming_preserves_principals() {
                 .streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-                    Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
-                        .unwrap(),
+                    Codec::<
+                        harmos_runtime::grpc::Transcoded,
+                        OutputEnvelope<Reply, Reply>,
+                        harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>,
+                    >::new(decode, encode)
+                    .unwrap(),
                 )
                 .await
                 .unwrap();
@@ -604,7 +620,10 @@ async fn streaming_preserves_principals() {
                 .client_streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                        decode, encode,
+                    )
+                    .unwrap(),
                 )
                 .await
                 .unwrap();
@@ -678,7 +697,10 @@ async fn observes_cancel_deadline() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
+                    decode, encode,
+                )
+                .unwrap(),
             )
             .await
             .unwrap();
@@ -757,4 +779,3 @@ async fn access_never_grant() {
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
     runtime.stop().await.unwrap();
 }
-

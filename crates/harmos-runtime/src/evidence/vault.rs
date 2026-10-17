@@ -27,8 +27,7 @@ use super::EvidenceError;
 /* === Macros === */
 
 /* === Type Aliases === */
-pub(crate) type Answering<'a, T> =
-    Pin<Box<dyn Future<Output = Result<T, EvidenceError>> + Send + 'a>>;
+pub(crate) type Answering<'a, T> = Pin<Box<dyn Future<Output = Result<T, EvidenceError>> + Send + 'a>>;
 
 /* === Structs === */
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,16 +48,9 @@ pub trait Vault: Send + Sync + 'static {
 
     fn open(&self, name: &str) -> impl Future<Output = Result<u64, EvidenceError>> + Send;
 
-    fn external(
-        &self,
-        name: &str,
-    ) -> impl Future<Output = Result<Option<PathBuf>, EvidenceError>> + Send;
+    fn external(&self, name: &str) -> impl Future<Output = Result<Option<PathBuf>, EvidenceError>> + Send;
 
-    fn append(
-        &self,
-        name: &str,
-        bytes: &[u8],
-    ) -> impl Future<Output = Result<u64, EvidenceError>> + Send;
+    fn append(&self, name: &str, bytes: &[u8]) -> impl Future<Output = Result<u64, EvidenceError>> + Send;
 
     fn length(&self, name: &str) -> impl Future<Output = Result<u64, EvidenceError>> + Send;
 
@@ -68,19 +60,9 @@ pub trait Vault: Send + Sync + 'static {
 
     fn quarantine(&self, name: &str) -> impl Future<Output = Result<(), EvidenceError>> + Send;
 
-    fn read(
-        &self,
-        name: &str,
-        offset: u64,
-        limit: usize,
-    ) -> impl Future<Output = Result<(Vec<u8>, u64), EvidenceError>> + Send;
+    fn read(&self, name: &str, offset: u64, limit: usize) -> impl Future<Output = Result<(Vec<u8>, u64), EvidenceError>> + Send;
 
-    fn read_draft(
-        &self,
-        name: &str,
-        offset: u64,
-        limit: usize,
-    ) -> impl Future<Output = Result<(Vec<u8>, u64), EvidenceError>> + Send;
+    fn read_draft(&self, name: &str, offset: u64, limit: usize) -> impl Future<Output = Result<(Vec<u8>, u64), EvidenceError>> + Send;
 }
 
 pub(crate) trait Keeping: Send + Sync + 'static {
@@ -102,19 +84,9 @@ pub(crate) trait Keeping: Send + Sync + 'static {
 
     fn quarantine<'a>(&'a self, name: &'a str) -> Answering<'a, ()>;
 
-    fn read<'a>(
-        &'a self,
-        name: &'a str,
-        offset: u64,
-        limit: usize,
-    ) -> Answering<'a, (Vec<u8>, u64)>;
+    fn read<'a>(&'a self, name: &'a str, offset: u64, limit: usize) -> Answering<'a, (Vec<u8>, u64)>;
 
-    fn read_draft<'a>(
-        &'a self,
-        name: &'a str,
-        offset: u64,
-        limit: usize,
-    ) -> Answering<'a, (Vec<u8>, u64)>;
+    fn read_draft<'a>(&'a self, name: &'a str, offset: u64, limit: usize) -> Answering<'a, (Vec<u8>, u64)>;
 }
 
 /* === Implementations === */
@@ -161,21 +133,11 @@ impl<V: Vault> Keeping for V {
         Box::pin(Vault::quarantine(self, name))
     }
 
-    fn read<'a>(
-        &'a self,
-        name: &'a str,
-        offset: u64,
-        limit: usize,
-    ) -> Answering<'a, (Vec<u8>, u64)> {
+    fn read<'a>(&'a self, name: &'a str, offset: u64, limit: usize) -> Answering<'a, (Vec<u8>, u64)> {
         Box::pin(Vault::read(self, name, offset, limit))
     }
 
-    fn read_draft<'a>(
-        &'a self,
-        name: &'a str,
-        offset: u64,
-        limit: usize,
-    ) -> Answering<'a, (Vec<u8>, u64)> {
+    fn read_draft<'a>(&'a self, name: &'a str, offset: u64, limit: usize) -> Answering<'a, (Vec<u8>, u64)> {
         Box::pin(Vault::read_draft(self, name, offset, limit))
     }
 }

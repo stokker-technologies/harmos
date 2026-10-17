@@ -53,9 +53,7 @@ pub(super) struct Staged {
 /* === Implementations === */
 impl<A: Application> StreamManager<A> {
     pub async fn stage_plugin(
-        &self,
-        scope: &PluginScope,
-        declarations: impl IntoIterator<Item = StreamDeclaration>,
+        &self, scope: &PluginScope, declarations: impl IntoIterator<Item = StreamDeclaration>,
     ) -> Result<StreamRegistration, StreamAdmissionError> {
         let definitions = publication_definitions(scope.owner(), declarations)?;
         if !scope.matches_streams(&definitions) {
@@ -65,9 +63,7 @@ impl<A: Application> StreamManager<A> {
             .iter()
             .map(|definition| {
                 crate::schema::Validator::from_schema(
-                    definition
-                        .schema()
-                        .expect("plugin definitions own a row schema"),
+                    definition.schema().expect("plugin definitions own a row schema"),
                     &harmos_domain::config::SchemaSettings::default(),
                 )
                 .map_err(crate::schema::Error::from)
@@ -79,16 +75,8 @@ impl<A: Application> StreamManager<A> {
         }
         let activation = Arc::new(super::Activation::new(&self.windows));
         let mut registration = {
-            let _visibility = self
-                .windows
-                .visibility
-                .read()
-                .expect("stream visibility poisoned");
-            let mut windows = self
-                .windows
-                .windows
-                .write()
-                .expect("stream registry poisoned");
+            let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
+            let mut windows = self.windows.windows.write().expect("stream registry poisoned");
             validate_existing(&windows, &definitions, true)?;
             // A transport restart within an already committed activation may
             // renew its exact writers, but cannot mutate the admitted inventory.
@@ -107,9 +95,7 @@ impl<A: Application> StreamManager<A> {
             }
             let mut leases = Vec::with_capacity(definitions.len());
             for (definition, validation) in definitions.into_iter().zip(validations) {
-                let revisions = windows
-                    .entry(Arc::<str>::from(definition.id()))
-                    .or_default();
+                let revisions = windows.entry(Arc::<str>::from(definition.id())).or_default();
                 // One settled snapshot avoids retaining a chain of generations.
                 // Existing readers independently own their immutable descriptors.
                 let previous = revisions.get(&definition.version()).map(|previous| {
@@ -141,11 +127,7 @@ impl<A: Application> StreamManager<A> {
                     definition,
                     window,
                     publisher: Mutex::new(Arc::downgrade(&active)),
-                    staged: Some(Staged {
-                        scope: scope.clone(),
-                        previous,
-                        activation: Arc::downgrade(&activation),
-                    }),
+                    staged: Some(Staged { scope: scope.clone(), previous, activation: Arc::downgrade(&activation) }),
                 });
                 revisions.insert(wired.definition.version(), wired.clone());
                 leases.push(Arc::new(PublicationLease {
@@ -162,12 +144,7 @@ impl<A: Application> StreamManager<A> {
                 }));
             }
             activation.retain_leases(leases);
-            StreamRegistration {
-                table: self.windows.clone(),
-                scope: scope.clone(),
-                bound: false,
-                activation,
-            }
+            StreamRegistration { table: self.windows.clone(), scope: scope.clone(), bound: false, activation }
         };
 
         for lease in registration.leases() {
@@ -176,12 +153,7 @@ impl<A: Application> StreamManager<A> {
             if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
                 return Err(StreamAdmissionError::Closed);
             }
-            if wired
-                .staged
-                .as_ref()
-                .expect("staged inventory")
-                .previous
-                .is_none()
+            if wired.staged.as_ref().expect("staged inventory").previous.is_none()
                 && floor > Position::ORIGIN
                 && floor <= *self.applied.borrow()
             {
@@ -215,25 +187,14 @@ impl Drop for StreamRegistration {
         if self.scope.has_committed() {
             return;
         }
-        let _visibility = self
-            .table
-            .visibility
-            .read()
-            .expect("stream visibility poisoned");
-        let mut windows = self
-            .table
-            .windows
-            .write()
-            .expect("stream registry poisoned");
+        let _visibility = self.table.visibility.read().expect("stream visibility poisoned");
+        let mut windows = self.table.windows.write().expect("stream registry poisoned");
         for lease in self.leases() {
             let wired = &lease.stream.wired;
             let Some(revisions) = windows.get_mut(wired.definition.id()) else {
                 continue;
             };
-            if !revisions
-                .get(&wired.definition.version())
-                .is_some_and(|current| Arc::ptr_eq(current, wired))
-            {
+            if !revisions.get(&wired.definition.version()).is_some_and(|current| Arc::ptr_eq(current, wired)) {
                 continue;
             }
             match &wired.staged.as_ref().expect("staged inventory").previous {

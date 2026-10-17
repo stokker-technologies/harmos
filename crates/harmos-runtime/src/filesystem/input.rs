@@ -44,29 +44,18 @@ pub fn read(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
     let maximum = u64::try_from(limit)
         .ok()
         .and_then(|value| value.checked_add(1))
-        .ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "input file limit is too large")
-        })?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "input file limit is too large"))?;
     if !std::fs::metadata(path)?.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "input must be a regular file",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "input must be a regular file"));
     }
     let file = std::fs::File::open(path)?;
     if !file.metadata()?.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "input must be a regular file",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "input must be a regular file"));
     }
     let mut bytes = Vec::new();
     file.take(maximum).read_to_end(&mut bytes)?;
     if bytes.len() > limit {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("input file exceeds {limit} bytes"),
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("input file exceeds {limit} bytes")));
     }
     Ok(bytes)
 }

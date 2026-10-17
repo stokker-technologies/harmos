@@ -120,9 +120,7 @@ pub enum Error<P: Plugin> {
 impl<P: Plugin> std::fmt::Debug for Error<P> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Configuration(error) => {
-                formatter.debug_tuple("Configuration").field(error).finish()
-            }
+            Self::Configuration(error) => formatter.debug_tuple("Configuration").field(error).finish(),
             Self::Plugin(error) => formatter.debug_tuple("Plugin").field(error).finish(),
             Self::Inventory(error) => formatter.debug_tuple("Inventory").field(error).finish(),
             Self::Serving(error) => formatter.debug_tuple("Serving").field(error).finish(),
@@ -150,67 +148,35 @@ impl<P: Plugin> Clone for Error<P> {
 }
 
 impl<P: Plugin> Owner<P> {
-    pub fn new(
-        contracts: Vec<Contract>,
-        capacity: NonZeroUsize,
-    ) -> Result<(Arc<Self>, Table<P>), Error<P>> {
+    pub fn new(contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table<P>), Error<P>> {
         Self::new_with_observers(contracts, capacity, Vec::new())
     }
 
     pub fn new_with_observers(
-        contracts: Vec<Contract>,
-        capacity: NonZeroUsize,
-        observers: Vec<crate::inventory::observers::Declaration>,
+        contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
     ) -> Result<(Arc<Self>, Table<P>), Error<P>> {
-        let definitions: Vec<_> = contracts
-            .iter()
-            .map(|contract| contract.operation().clone())
-            .collect();
-        crate::inventory::operations::validate(&definitions)
-            .map_err(|error| Error::Inventory(Arc::new(error)))?;
+        let definitions: Vec<_> = contracts.iter().map(|contract| contract.operation().clone()).collect();
+        crate::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
         let table = Arc::new(Mutex::new(WireTable::new(capacity)));
         let owner = Arc::new(Self {
-            slot: Arc::new(Mutex::new(Slot {
-                plugin: None,
-                phase: Phase::Empty,
-                attachment: None,
-                generation_context: None,
-            })),
+            slot: Arc::new(Mutex::new(Slot { plugin: None, phase: Phase::Empty, attachment: None, generation_context: None })),
             table: Arc::downgrade(&table),
             contracts: contracts.into(),
             observers: observers.into(),
-            retirement: Mutex::new(Retirement {
-                state: None,
-                active: false,
-                finished: false,
-            }),
+            retirement: Mutex::new(Retirement { state: None, active: false, finished: false }),
         });
         {
             let mut bindings = table.lock().map_err(|_| Error::Poisoned)?;
-            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>, _>(
-                &mut bindings,
-                Arc::clone(&owner),
-            )
-            .map_err(|error| Error::Serving(Arc::new(error)))?;
+            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>, _>(&mut bindings, Arc::clone(&owner))
+                .map_err(|error| Error::Serving(Arc::new(error)))?;
         }
         Ok((owner, table))
     }
 
     pub async fn quiesce(&self) -> Result<(), Error<P>> {
-        let attachment = self
-            .slot
-            .lock()
-            .map_err(|_| Error::Poisoned)?
-            .attachment
-            .clone();
+        let attachment = self.slot.lock().map_err(|_| Error::Poisoned)?.attachment.clone();
         if let Some(attachment) = attachment {
-            guarded(async {
-                attachment
-                    .quiesce()
-                    .await
-                    .map_err(|error| Error::Serving(Arc::new(error)))
-            })
-            .await?;
+            guarded(async { attachment.quiesce().await.map_err(|error| Error::Serving(Arc::new(error))) }).await?;
         }
         Ok(())
     }
@@ -236,11 +202,7 @@ impl<P: Plugin> Owner<P> {
                 None => self.prepare_shutdown()?,
             };
             retirement.active = true;
-            RetirementLoan {
-                owner: Arc::clone(self),
-                state: Some(state),
-                finished: false,
-            }
+            RetirementLoan { owner: Arc::clone(self), state: Some(state), finished: false }
         };
         loan.state.as_mut().ok_or(Error::Phase)?.finalize().await?;
         loan.finished = true;
@@ -267,11 +229,7 @@ impl<P: Plugin> Owner<P> {
 
 impl<P: Plugin> Drop for RetirementLoan<P> {
     fn drop(&mut self) {
-        let mut retirement = self
-            .owner
-            .retirement
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let mut retirement = self.owner.retirement.lock().unwrap_or_else(|error| error.into_inner());
         retirement.active = false;
         retirement.finished = self.finished;
         if !self.finished {
@@ -285,18 +243,13 @@ impl<P: Plugin> Owner<P> {
         let generation_context = if request.generation_context.is_empty() {
             None
         } else {
-            let token: [u8; 32] = request
-                .generation_context
-                .as_slice()
-                .try_into()
-                .map_err(|_| Error::GenerationContext)?;
+            let token: [u8; 32] = request.generation_context.as_slice().try_into().map_err(|_| Error::GenerationContext)?;
             if token == [0; 32] {
                 return Err(Error::GenerationContext);
             }
             Some(token)
         };
-        let config = crate::decode_config(&request.config_json)
-            .map_err(|error| Error::Configuration(Arc::new(error)))?;
+        let config = crate::decode_config(&request.config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
         let plugin = P::prepare(config).map_err(|error| Error::Plugin(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
@@ -311,17 +264,9 @@ impl<P: Plugin> Owner<P> {
     async fn initialize(&self, state: &mut State<P>, context: &P::Context) -> Result<(), Error<P>> {
         if state.work.is_none() && state.result.is_none() {
             let mut plugin = state.plugin.take().ok_or(Error::Phase)?;
-            let context = state
-                .generation_context
-                .map_or_else(|| context.clone(), |token| context.with_generation(token));
+            let context = state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token));
             state.work = Some(Box::pin(async move {
-                let result = guarded(async {
-                    plugin
-                        .initialize(&context)
-                        .await
-                        .map_err(|error| Error::Plugin(Arc::new(error)))
-                })
-                .await;
+                let result = guarded(async { plugin.initialize(&context).await.map_err(|error| Error::Plugin(Arc::new(error))) }).await;
                 (plugin, result, false)
             }));
         }
@@ -339,10 +284,7 @@ impl<P: Plugin> Owner<P> {
                     return Err(Error::Serving(Arc::new(ServingError::Catalog)));
                 }
             }
-            let actual = state
-                .attachment
-                .as_ref()
-                .map_or_else(Vec::new, |attachment| attachment.observers());
+            let actual = state.attachment.as_ref().map_or_else(Vec::new, |attachment| attachment.observers());
             if actual.as_slice() != self.observers.as_ref() {
                 return Err(Error::Serving(Arc::new(ServingError::Catalog)));
             }
@@ -360,9 +302,7 @@ impl<P: Plugin> Owner<P> {
             let mut table = table.lock().map_err(|_| Error::Poisoned)?;
             let plugin = state.plugin.as_ref().ok_or(Error::Phase)?;
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin
-                    .bind_operations(&mut table)
-                    .and_then(|()| table.validate_contracts(&self.contracts))
+                plugin.bind_operations(&mut table).and_then(|()| table.validate_contracts(&self.contracts))
             }))
             .map_err(|_| Error::Panicked)
             .and_then(|result| result.map_err(|error| Error::Serving(Arc::new(error))))
@@ -406,26 +346,18 @@ impl<P: Plugin> Operation for Initializing<P> {
     type Endpoints = ();
     type Context<'a> = &'a P::Context;
 
-    async fn initialize<'ctx>(
-        owner: Arc<Owner<P>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Error<P>> {
+    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
         Ok(Self { owner, state: None })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut lifecycle::Initialize,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut lifecycle::Initialize, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if self.state.is_none() {
                 self.state = Some(self.owner.prepare_initialize(request)?);
             }
-            self.owner
-                .initialize(self.state.as_mut().ok_or(Error::Phase)?, context)
-                .await
+            self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, context).await
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -446,18 +378,12 @@ impl<P: Plugin> Operation for ShuttingDown<P> {
     type Endpoints = ();
     type Context<'a> = &'a P::Context;
 
-    async fn initialize<'ctx>(
-        owner: Arc<Owner<P>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Error<P>> {
+    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
         Ok(Self { owner, state: None })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        _request: &mut lifecycle::Shutdown,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, _request: &mut lifecycle::Shutdown, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if self.state.is_none() {
@@ -465,11 +391,7 @@ impl<P: Plugin> Operation for ShuttingDown<P> {
             }
             let state = self.state.as_mut().ok_or(Error::Phase)?;
             if state.work.is_none() && state.result.is_none() {
-                state.context = Some(
-                    state
-                        .generation_context
-                        .map_or_else(|| context.clone(), |token| context.with_generation(token)),
-                );
+                state.context = Some(state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token)));
                 state.start_shutdown()?;
             }
             state.finish().await?;
@@ -500,10 +422,7 @@ impl<P: Plugin> State<P> {
     }
 
     fn start_shutdown(&mut self) -> Result<(), Error<P>> {
-        let attachment = self
-            .attachment
-            .clone()
-            .or_else(|| self.plugin.as_ref().and_then(Plugin::attachment));
+        let attachment = self.attachment.clone().or_else(|| self.plugin.as_ref().and_then(Plugin::attachment));
         let mut plugin = self.plugin.take().ok_or(Error::Phase)?;
         let table = self.table.clone();
         let context = self.context.clone();
@@ -512,38 +431,25 @@ impl<P: Plugin> State<P> {
         self.work = Some(Box::pin(async move {
             let result = guarded(async {
                 if let Some(attachment) = attachment {
-                    attachment
-                        .quiesce()
-                        .await
-                        .map_err(|error| Error::Serving(Arc::new(error)))?;
+                    attachment.quiesce().await.map_err(|error| Error::Serving(Arc::new(error)))?;
                 }
                 let table = table.upgrade().ok_or(Error::Phase)?;
                 let settlement = {
                     let mut table = table.lock().map_err(|_| Error::Poisoned)?;
                     table.close_ordinary()
                 };
-                settlement
-                    .await
-                    .map_err(|error| Error::Serving(Arc::new(error)))?;
+                settlement.await.map_err(|error| Error::Serving(Arc::new(error)))?;
                 let retired = {
                     let mut table = table.lock().map_err(|_| Error::Poisoned)?;
-                    table
-                        .release_ordinary()
-                        .map_err(|error| Error::Serving(Arc::new(error)))?
+                    table.release_ordinary().map_err(|error| Error::Serving(Arc::new(error)))?
                 };
                 drop(retired);
                 if !shutdown_attempted && let Some(context) = &context {
                     // Domain Effects Are Never Replayed By Physical Cleanup Retries.
                     shutdown_attempted = true;
-                    plugin
-                        .stop(context)
-                        .await
-                        .map_err(|error| Error::Plugin(Arc::new(error)))?;
+                    plugin.stop(context).await.map_err(|error| Error::Plugin(Arc::new(error)))?;
                 }
-                plugin
-                    .cleanup()
-                    .await
-                    .map_err(|error| Error::Plugin(Arc::new(error)))
+                plugin.cleanup().await.map_err(|error| Error::Plugin(Arc::new(error)))
             })
             .await;
             (plugin, result, shutdown_attempted)
@@ -585,17 +491,11 @@ impl<P: Plugin> State<P> {
 
 /* === Private Functions === */
 // Guard Only The Borrowed Machinery Future; The Outer Future Retains P
-async fn guarded<P: Plugin>(
-    future: impl Future<Output = Result<(), Error<P>>>,
-) -> Result<(), Error<P>> {
+async fn guarded<P: Plugin>(future: impl Future<Output = Result<(), Error<P>>>) -> Result<(), Error<P>> {
     let mut future = std::pin::pin!(future);
-    std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
-            Ok(result) => result,
-            Err(_) => std::task::Poll::Ready(Err(Error::Panicked)),
-        }
+    std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
+        Ok(result) => result,
+        Err(_) => std::task::Poll::Ready(Err(Error::Panicked)),
     })
     .await
 }

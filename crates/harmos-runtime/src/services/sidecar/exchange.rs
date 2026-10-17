@@ -24,15 +24,10 @@ where
     }
 
     pub(super) async fn serve(
-        &mut self,
-        requests: &mut mpsc::UnboundedReceiver<Request>,
-        mut initialized: tokio::sync::watch::Receiver<bool>,
+        &mut self, requests: &mut mpsc::UnboundedReceiver<Request>, mut initialized: tokio::sync::watch::Receiver<bool>,
         on_ready: impl FnOnce(&mut Service<A>) -> Result<(), String>,
     ) -> bool {
-        let plugin = self
-            .plugin
-            .clone()
-            .expect("canonical native execution retains its original scope");
+        let plugin = self.plugin.clone().expect("canonical native execution retains its original scope");
         let activation = plugin.ready();
         tokio::pin!(activation);
         let mut committed = plugin.is_ready();
@@ -68,15 +63,11 @@ where
             };
             match step {
                 Step::Stopping => return true,
-                Step::Published(Err(crate::streams::StreamPublicationError::Revoked))
-                    if plugin.is_closed() && !plugin.has_committed() =>
-                {
+                Step::Published(Err(crate::streams::StreamPublicationError::Revoked)) if plugin.is_closed() && !plugin.has_committed() => {
                     // Aborted Staging Discards Rows Without Ending SDK Cleanup.
                 }
                 Step::Published(publication) => {
-                    let delivered = publication
-                        .map_err(|error| error.to_string())
-                        .and_then(|publication| self.deliver(publication));
+                    let delivered = publication.map_err(|error| error.to_string()).and_then(|publication| self.deliver(publication));
                     if let Err(error) = delivered {
                         self.failure = Some(error);
                         return false;
@@ -102,25 +93,15 @@ where
                         continue;
                     }
                     if request.children.is_some() && self.child_scopes.len() >= 128 {
-                        let _ = request.answer.send(Err(SidecarError::refused(
-                            UNKNOWN,
-                            "native attempt context capacity exhausted",
-                        )));
+                        let _ = request.answer.send(Err(SidecarError::refused(UNKNOWN, "native attempt context capacity exhausted")));
                         continue;
                     }
                     let id = self.mint();
-                    let frame = Frame::Call {
-                        id,
-                        method: request.method,
-                        params: request.params,
-                    };
+                    let frame = Frame::Call { id, method: request.method, params: request.params };
                     if !frame.fits() {
                         let _ = request.answer.send(Err(SidecarError::refused(
                             Frame::OVERSIZED,
-                            format!(
-                                "the route request exceeds the {}-byte sidecar frame limit",
-                                Frame::LIMIT
-                            ),
+                            format!("the route request exceeds the {}-byte sidecar frame limit", Frame::LIMIT),
                         )));
                         continue;
                     }
@@ -141,16 +122,7 @@ where
     }
 
     pub(super) async fn step(&mut self, requests: &mut mpsc::UnboundedReceiver<Request>) -> Step {
-        let Self {
-            inbound,
-            returned,
-            context,
-            pending,
-            deliveries,
-            delivery_turn,
-            manager_owned_stop,
-            ..
-        } = self;
+        let Self { inbound, returned, context, pending, deliveries, delivery_turn, manager_owned_stop, .. } = self;
         let mut stopping = std::pin::pin!(context.stopping());
 
         std::future::poll_fn(|cx| {

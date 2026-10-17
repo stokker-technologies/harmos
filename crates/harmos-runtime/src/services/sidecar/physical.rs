@@ -95,10 +95,7 @@ struct Connection<A: Application, S, H> {
 /* === Implementations === */
 impl Signals {
     fn register(&self, waker: &Waker) {
-        let mut waiting = self
-            .waiting
-            .lock()
-            .expect("physical wake registry is healthy");
+        let mut waiting = self.waiting.lock().expect("physical wake registry is healthy");
         if !waiting.iter().any(|current| current.will_wake(waker)) {
             waiting.push(waker.clone());
         }
@@ -106,12 +103,7 @@ impl Signals {
 
     fn notify(&self) {
         self.revision.fetch_add(1, Ordering::AcqRel);
-        let waiting = std::mem::take(
-            &mut *self
-                .waiting
-                .lock()
-                .expect("physical wake registry is healthy"),
-        );
+        let waiting = std::mem::take(&mut *self.waiting.lock().expect("physical wake registry is healthy"));
         for waker in waiting {
             waker.wake();
         }
@@ -130,10 +122,7 @@ impl Wake for Signals {
 
 impl<A: Application, S, H> Clone for Polling<A, S, H> {
     fn clone(&self) -> Self {
-        Self {
-            original: self.original.clone(),
-            marker: std::marker::PhantomData,
-        }
+        Self { original: self.original.clone(), marker: std::marker::PhantomData }
     }
 }
 
@@ -184,35 +173,20 @@ where
 {
     // Start the connection as a service instance; the plugin manager restarts
     // plugins, so the instance itself never restarts.
-    pub(super) fn new(
-        resident: Supervised<A, S, H>,
-        operations: &OperationManager,
-    ) -> Result<Self> {
+    pub(super) fn new(resident: Supervised<A, S, H>, operations: &OperationManager) -> Result<Self> {
         let number = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let definition = ServiceDefinition {
             id: format!("harmos.sidecar.{}.{number}", resident.attach.owner()),
-            policy: OperationPolicy {
-                restart: RestartPolicy::Never,
-                ..crate::services::POLICY
-            },
+            policy: OperationPolicy { restart: RestartPolicy::Never, ..crate::services::POLICY },
         };
         let (outcome, mut finished) = watch::channel(None);
         let (end, ending) = watch::channel(false);
-        let connection = Connection {
-            supervised: resident,
-            outcome,
-            end: ending,
-        };
-        let lease =
-            operations.start_service::<A>(Once::new(definition, connection), true, false)?;
+        let connection = Connection { supervised: resident, outcome, end: ending };
+        let lease = operations.start_service::<A>(Once::new(definition, connection), true, false)?;
         let running: Running = Box::pin(async move {
             match finished.wait_for(Option::is_some).await {
-                Ok(outcome) => outcome
-                    .clone()
-                    .expect("a finished connection has an outcome"),
-                Err(_) => Err(Fault::Application(
-                    "native physical attempt was interrupted".into(),
-                )),
+                Ok(outcome) => outcome.clone().expect("a finished connection has an outcome"),
+                Err(_) => Err(Fault::Application("native physical attempt was interrupted".into())),
             }
         });
         Ok(Self {
@@ -234,19 +208,11 @@ where
     }
 
     pub(super) fn polling(&self) -> Polling<A, S, H> {
-        Polling {
-            original: Arc::downgrade(&self.original),
-            marker: std::marker::PhantomData,
-        }
+        Polling { original: Arc::downgrade(&self.original), marker: std::marker::PhantomData }
     }
 
     fn signals(&self, context: &Context<'_>) -> Arc<Signals> {
-        let signals = self
-            .original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .signals
-            .clone();
+        let signals = self.original.lock().unwrap_or_else(|error| error.into_inner()).signals.clone();
         signals.register(context.waker());
         signals
     }
@@ -254,10 +220,7 @@ where
     pub(super) fn poll(&mut self, context: &mut Context<'_>) -> Poll<Outcome> {
         let signals = self.signals(context);
         let mut running = {
-            let mut original = self
-                .original
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
+            let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
             if let Some(outcome) = &original.outcome {
                 return Poll::Ready(outcome.clone());
             }
@@ -265,9 +228,7 @@ where
                 return Poll::Pending;
             }
             let Some(running) = original.running.take() else {
-                return Poll::Ready(Err(Fault::Application(
-                    "native physical attempt was interrupted".into(),
-                )));
+                return Poll::Ready(Err(Fault::Application("native physical attempt was interrupted".into())));
             };
             original.running_busy = true;
             running
@@ -276,10 +237,7 @@ where
         let waker = Waker::from(signals.clone());
         let mut polling = Context::from_waker(&waker);
         let result = running.as_mut().poll(&mut polling);
-        let mut original = self
-            .original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
         original.running_busy = false;
         match result {
             Poll::Pending => {
@@ -304,30 +262,21 @@ where
 
     // The plugin started: its connection instance runs.
     pub(super) fn ready(&self) {
-        let original = self
-            .original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let original = self.original.lock().unwrap_or_else(|error| error.into_inner());
         if let Some(lease) = &original.lease {
             lease.transition(crate::operations::OperationPhase::Running);
         }
     }
 
     pub(super) fn is_running(&self) -> bool {
-        let original = self
-            .original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let original = self.original.lock().unwrap_or_else(|error| error.into_inner());
         original.running.is_some() || original.running_busy
     }
 
     // Stop the connection's instance; its cleanup settles through `poll_ending`.
     pub(super) fn cancel(&mut self) {
         let signals = {
-            let mut original = self
-                .original
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
+            let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
             original.cancelled = true;
             original.running.take();
             original.end.send_replace(true);
@@ -337,23 +286,13 @@ where
     }
 
     pub(super) fn retry_ending(&mut self) {
-        self.original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .ending_failure
-            .take();
+        self.original.lock().unwrap_or_else(|error| error.into_inner()).ending_failure.take();
     }
 
-    pub(super) fn poll_ending(
-        &mut self,
-        context: &mut Context<'_>,
-    ) -> Poll<std::result::Result<(), String>> {
+    pub(super) fn poll_ending(&mut self, context: &mut Context<'_>) -> Poll<std::result::Result<(), String>> {
         let signals = self.signals(context);
         let mut ending = {
-            let mut original = self
-                .original
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
+            let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
             if original.settled {
                 return Poll::Ready(Ok(()));
             }
@@ -382,10 +321,7 @@ where
         let waker = Waker::from(signals.clone());
         let mut polling = Context::from_waker(&waker);
         let result = ending.as_mut().poll(&mut polling);
-        let mut original = self
-            .original
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let mut original = self.original.lock().unwrap_or_else(|error| error.into_inner());
         original.ending_busy = false;
         match result {
             Poll::Pending => {
@@ -423,45 +359,22 @@ where
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical::<A, S, H> {
-            original,
-            marker: std::marker::PhantomData,
-        };
-        if physical.is_running() {
-            physical.poll(context)
-        } else {
-            Poll::Pending
-        }
+        let mut physical = Physical::<A, S, H> { original, marker: std::marker::PhantomData };
+        if physical.is_running() { physical.poll(context) } else { Poll::Pending }
     }
 
     pub(super) fn retry_ending(&self) {
         if let Some(original) = self.original.upgrade() {
-            Physical::<A, S, H> {
-                original,
-                marker: std::marker::PhantomData,
-            }
-            .retry_ending();
+            Physical::<A, S, H> { original, marker: std::marker::PhantomData }.retry_ending();
         }
     }
 
-    pub(super) fn poll_ending(
-        &self,
-        context: &mut Context<'_>,
-    ) -> Poll<std::result::Result<(), String>> {
+    pub(super) fn poll_ending(&self, context: &mut Context<'_>) -> Poll<std::result::Result<(), String>> {
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical::<A, S, H> {
-            original,
-            marker: std::marker::PhantomData,
-        };
-        if physical.is_running()
-            || physical
-                .original
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .settled
-        {
+        let mut physical = Physical::<A, S, H> { original, marker: std::marker::PhantomData };
+        if physical.is_running() || physical.original.lock().unwrap_or_else(|error| error.into_inner()).settled {
             return Poll::Pending;
         }
         physical.poll_ending(context)

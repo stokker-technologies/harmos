@@ -57,9 +57,7 @@ where
     R: Send + Sync + 'static,
     T: for<'ctx> Operation<Resources = R, Context<'ctx> = Context<'ctx>>,
 {
-    const ENTRY: Binding<R> = Binding {
-        register: register_owned::<T>,
-    };
+    const ENTRY: Binding<R> = Binding { register: register_owned::<T> };
 }
 
 impl<T, R> Member<T> for WireImplementations<R>
@@ -69,18 +67,11 @@ where
     T::Declaration: crate::operations::OperationDeclaration,
     T::Declaration: Message + Described,
 {
-    const ENTRY: Binding<R> = Binding {
-        register: register_owned_wire::<T>,
-    };
+    const ENTRY: Binding<R> = Binding { register: register_owned_wire::<T> };
 }
 
 impl<H> Binding<H> {
-    pub(super) fn apply(
-        &self,
-        bindings: &mut Bindings<'_>,
-        lane: &'static str,
-        handler: Arc<H>,
-    ) -> Result<()> {
+    pub(super) fn apply(&self, bindings: &mut Bindings<'_>, lane: &'static str, handler: Arc<H>) -> Result<()> {
         (self.register)(bindings, lane, handler)
     }
 }
@@ -88,22 +79,14 @@ impl<H> Binding<H> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn register_owned<T>(
-    bindings: &mut Bindings<'_>,
-    lane: &'static str,
-    resources: Arc<T::Resources>,
-) -> Result<()>
+fn register_owned<T>(bindings: &mut Bindings<'_>, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
 where
     T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>,
 {
     bindings.register_owned_at::<T>(lane, resources)
 }
 
-fn register_owned_wire<T>(
-    bindings: &mut Bindings<'_>,
-    lane: &'static str,
-    resources: Arc<T::Resources>,
-) -> Result<()>
+fn register_owned_wire<T>(bindings: &mut Bindings<'_>, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
 where
     T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>,
     T::Declaration: crate::operations::OperationDeclaration,

@@ -37,14 +37,14 @@ mod middleware;
 mod outcomes;
 #[path = "../operations/policy.rs"]
 mod policy;
+#[path = "../support/runtime_probe.rs"]
+mod probe;
 #[path = "../operations/resources.rs"]
 mod resources;
 #[path = "../operations/scoped.rs"]
 mod scoped;
 #[path = "../operations/shutdown.rs"]
 mod shutdown;
-#[path = "../support/runtime_probe.rs"]
-mod probe;
 #[path = "../operations/wire/mod.rs"]
 mod wire;
 

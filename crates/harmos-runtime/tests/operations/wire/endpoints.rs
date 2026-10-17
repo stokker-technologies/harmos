@@ -173,8 +173,6 @@ impl<const N: u8> harmos_runtime::Message for Declaration<N> {
     }
 }
 
-
-
 impl<const N: u8> harmos_runtime::MemorySize for Declaration<N> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

@@ -49,10 +49,7 @@ struct Native<A: Application, L> {
 /* === Implementations === */
 impl<A: Application> PluginHost<A> {
     pub async fn register_sidecar<C>(
-        &self,
-        executable: Executable,
-        settings: PluginSidecarSettings,
-        lane: impl Lane + Clone + Sync,
+        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync,
     ) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
@@ -61,10 +58,7 @@ impl<A: Application> PluginHost<A> {
     }
 
     pub async fn reload_sidecar<C>(
-        &self,
-        executable: Executable,
-        settings: PluginSidecarSettings,
-        lane: impl Lane + Clone + Sync,
+        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync,
     ) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
@@ -73,29 +67,18 @@ impl<A: Application> PluginHost<A> {
     }
 
     async fn sidecar<C>(
-        &self,
-        executable: Executable,
-        settings: PluginSidecarSettings,
-        lane: impl Lane + Clone + Sync,
-        replace: bool,
+        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync, replace: bool,
     ) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
     {
         settings.plugin.validate()?;
-        let mut definition =
-            PluginDefinition::sidecar(&executable, settings.plugin.configuration.clone())
-                .map_err(|source| failed(executable.declaration().id.as_str(), source))?;
+        let mut definition = PluginDefinition::sidecar(&executable, settings.plugin.configuration.clone())
+            .map_err(|source| failed(executable.declaration().id.as_str(), source))?;
         definition.requires = settings.plugin.requires.clone();
-        let declarations =
-            Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
-        harmos_domain::inventory::operations::validate_match(
-            &declarations,
-            &definition.contributions.operations,
-        )
-        .map_err(|_| Error::InvalidInput {
-            field: "native plugin catalog",
-            reason: "typed catalog differs from the inspected operation inventory",
+        let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
+        harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
+            Error::InvalidInput { field: "native plugin catalog", reason: "typed catalog differs from the inspected operation inventory" }
         })?;
         let grants = settings.plugin.host_operations.iter().cloned().collect();
         let restart = settings.plugin.restart;
@@ -104,12 +87,9 @@ impl<A: Application> PluginHost<A> {
         let driving = self.shared.driving.clone();
         let frozen = definition.clone();
         let factory: Factory = Arc::new(move || {
-            let resident = Supervised::new(
-                executable.clone(),
-                diagnostics::<A> as fn(&Service<A>, Notice),
-            )
-            .handshake(settings.plugin.initialization_timeout)
-            .grace(settings.plugin.shutdown_timeout);
+            let resident = Supervised::new(executable.clone(), diagnostics::<A> as fn(&Service<A>, Notice))
+                .handshake(settings.plugin.initialization_timeout)
+                .grace(settings.plugin.shutdown_timeout);
             let driver = RuntimeDriver::new::<C>(
                 resident,
                 &frozen,
@@ -122,8 +102,7 @@ impl<A: Application> PluginHost<A> {
             )?;
             Ok(Box::new(Native { driver }))
         });
-        self.register(definition, factory, grants, restart, replace)
-            .await
+        self.register(definition, factory, grants, restart, replace).await
     }
 }
 
@@ -133,19 +112,12 @@ where
     L: Lane + Clone,
 {
     fn start<'a>(
-        &'a mut self,
-        definition: &'a PluginDefinition,
-        router: &'a Router,
-        authority: &'a PluginLifecycleAuthority<'a>,
+        &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
     ) -> LifecycleFuture<'a> {
         Box::pin(self.driver.start(definition, router, authority))
     }
 
-    fn stop<'a>(
-        &'a mut self,
-        definition: &'a PluginDefinition,
-        authority: &'a PluginLifecycleAuthority<'a>,
-    ) -> LifecycleFuture<'a> {
+    fn stop<'a>(&'a mut self, definition: &'a PluginDefinition, authority: &'a PluginLifecycleAuthority<'a>) -> LifecycleFuture<'a> {
         Box::pin(self.driver.stop(definition, authority))
     }
 
@@ -164,10 +136,7 @@ fn diagnostics<A: Application>(_: &Service<A>, notice: Notice) {
 }
 
 fn failed(owner: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::OperationFailed {
-        operation: owner.to_owned(),
-        source: Arc::new(source),
-    }
+    Error::OperationFailed { operation: owner.to_owned(), source: Arc::new(source) }
 }
 
 /* === Tests === */

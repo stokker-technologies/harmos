@@ -51,17 +51,11 @@ impl<C: 'static> Operation for Handler<C> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<QueryOutput>;
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
     async fn run<'a>(
-        &mut self,
-        ctx: Self::Context<'a>,
-        request: &mut Query,
-        output: &mut Self::Endpoints,
+        &mut self, ctx: Self::Context<'a>, request: &mut Query, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<QueryCompletion>> {
         let grant = Grant::of(Query::ID, request.source.grant_scope());
         ctx.admit_stream_grant(&grant)?;
@@ -69,12 +63,9 @@ impl<C: 'static> Operation for Handler<C> {
         while let Some(item) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
             let item = item.output();
-            tokio::time::timeout(
-                IO_TIMEOUT,
-                output.send_with(item.memory_size(), || Ok(item)),
-            )
-            .await
-            .map_err(|_| super::output_timeout())??;
+            tokio::time::timeout(IO_TIMEOUT, output.send_with(item.memory_size(), || Ok(item)))
+                .await
+                .map_err(|_| super::output_timeout())??;
         }
         Ok(reader.completion()?.into())
     }

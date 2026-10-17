@@ -34,12 +34,7 @@ product!(Catalog {
 
 product!(CatalogPage { entries: Bytes => 1, next: Optional<Text> => 2 });
 
-coded!(CatalogKind {
-    Operations,
-    Schemas,
-    Streams,
-    Objects
-});
+coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 
 /* === Type Aliases === */
 
@@ -87,33 +82,21 @@ impl Catalog {
             CatalogKind::Streams => ("streams", "streams:*"),
             CatalogKind::Objects => ("objects", "objects:*"),
         };
-        Some(Grant::of(
-            "host.catalog",
-            self.schema.as_ref().map_or_else(
-                || all.to_owned(),
-                |schema| format!("{family}:schema:{schema}"),
-            ),
-        ))
+        Some(Grant::of("host.catalog", self.schema.as_ref().map_or_else(|| all.to_owned(), |schema| format!("{family}:schema:{schema}"))))
     }
 }
 
 impl MemorySize for Catalog {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.schema
-                    .as_ref()
-                    .map_or(0, |schema| schema.as_str().len()),
-            )
+            .saturating_add(self.schema.as_ref().map_or(0, |schema| schema.as_str().len()))
             .saturating_add(self.after.as_ref().map_or(0, String::capacity))
     }
 }
 
 impl MemorySize for CatalogPage {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.entries.capacity())
-            .saturating_add(self.next.as_ref().map_or(0, String::capacity))
+        std::mem::size_of::<Self>().saturating_add(self.entries.capacity()).saturating_add(self.next.as_ref().map_or(0, String::capacity))
     }
 }
 

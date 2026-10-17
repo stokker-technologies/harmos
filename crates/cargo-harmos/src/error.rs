@@ -56,11 +56,7 @@ impl Error {
                 | Packaging::Declaration(_),
             )
             | Self::Bindings(
-                Bindings::Settings(_)
-                | Bindings::Unsupported(_)
-                | Bindings::Collision(_)
-                | Bindings::Selection(_)
-                | Bindings::Exists(_),
+                Bindings::Settings(_) | Bindings::Unsupported(_) | Bindings::Collision(_) | Bindings::Selection(_) | Bindings::Exists(_),
             ) => 2,
             _ => 3,
         }

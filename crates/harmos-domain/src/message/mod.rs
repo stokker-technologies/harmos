@@ -13,9 +13,7 @@ pub mod postcard;
 
 /* === Re-Exports === */
 // Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
-pub(crate) use allocation::{
-    add as decoding_add, multiply as decoding_multiply, vector as decoding_vector,
-};
+pub(crate) use allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
 pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 
 /* === Imports === */
@@ -90,9 +88,7 @@ pub trait Message: Sized + Send + Sync {
     fn encoded_len(&self) -> usize;
     fn decode(bytes: &[u8]) -> Result<Self, MessageError>;
     fn decoding_memory(_bytes: &[u8]) -> Result<usize, MessageError> {
-        Err(MessageError::borrowed(
-            "decoding memory bound is unsupported",
-        ))
+        Err(MessageError::borrowed("decoding memory bound is unsupported"))
     }
 }
 
@@ -102,10 +98,7 @@ pub trait MemorySize: Sized {
 
 // A Value That Crosses A Process Boundary: Every Operation Request, Response
 // And Stream Item. Transport Codecs Derive From The Postcard Value And Its Shape.
-pub trait Portable:
-    Message + MemorySize + crate::schema::Described + Send + Sync + 'static
-{
-}
+pub trait Portable: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {}
 
 pub trait Storable: Message + MemorySize {
     fn encoded_size(&self) -> usize {
@@ -114,10 +107,7 @@ pub trait Storable: Message + MemorySize {
 }
 
 /* === Implementations === */
-impl<T> Portable for T where
-    T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static
-{
-}
+impl<T> Portable for T where T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {}
 
 impl<T: PostcardValue> Message for T {
     fn encode_to_vec(&self) -> Vec<u8> {
@@ -156,8 +146,7 @@ impl MemorySize for String {
 
 impl<T: MemorySize> MemorySize for Vec<T> {
     fn memory_size(&self) -> usize {
-        let mut bytes = std::mem::size_of::<Self>()
-            .saturating_add(self.capacity().saturating_mul(std::mem::size_of::<T>()));
+        let mut bytes = std::mem::size_of::<Self>().saturating_add(self.capacity().saturating_mul(std::mem::size_of::<T>()));
 
         for value in self {
             let owned = value.memory_size();
@@ -225,17 +214,14 @@ impl MessageError {
 
 /* === Public Functions === */
 pub fn btree_map_memory<K, V>(entries: usize) -> usize {
-    let alignment = std::mem::align_of::<K>()
-        .max(std::mem::align_of::<V>())
-        .max(std::mem::align_of::<usize>());
+    let alignment = std::mem::align_of::<K>().max(std::mem::align_of::<V>()).max(std::mem::align_of::<usize>());
     let node = std::mem::size_of::<K>()
         .saturating_add(std::mem::size_of::<V>())
         .saturating_mul(11)
         .saturating_add(13usize.saturating_mul(std::mem::size_of::<usize>()))
         .saturating_add(2 * std::mem::size_of::<u16>())
         .saturating_add(5usize.saturating_mul(alignment));
-    std::mem::size_of::<BTreeMap<K, V>>()
-        .saturating_add(entries.saturating_add(1).saturating_mul(node))
+    std::mem::size_of::<BTreeMap<K, V>>().saturating_add(entries.saturating_add(1).saturating_mul(node))
 }
 
 /* === Private Functions === */

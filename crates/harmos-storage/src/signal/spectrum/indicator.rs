@@ -41,10 +41,7 @@ pub fn band_energy(frequency: &[f64], magnitude: &[f64], low: f64, high: f64) ->
     }
 
     let step = step_of(frequency, &band);
-    magnitude[band]
-        .iter()
-        .map(|value| value * value * step)
-        .sum()
+    magnitude[band].iter().map(|value| value * value * step).sum()
 }
 
 #[must_use]
@@ -64,13 +61,10 @@ pub fn centroid(frequency: &[f64], magnitude: &[f64], low: f64, high: f64) -> Op
         return None;
     }
 
-    let (weighted, total) = frequency[band.clone()].iter().zip(&magnitude[band]).fold(
-        (0.0, 0.0),
-        |(weighted, total), (at, value)| {
-            let power = value * value;
-            (weighted + at * power, total + power)
-        },
-    );
+    let (weighted, total) = frequency[band.clone()].iter().zip(&magnitude[band]).fold((0.0, 0.0), |(weighted, total), (at, value)| {
+        let power = value * value;
+        (weighted + at * power, total + power)
+    });
 
     (total > 0.0).then_some(weighted / total)
 }
@@ -89,23 +83,14 @@ pub fn papr(frequency: &[f64], magnitude: &[f64], low: f64, high: f64) -> Option
 }
 
 #[must_use]
-pub fn rolloff(
-    frequency: &[f64],
-    magnitude: &[f64],
-    low: f64,
-    high: f64,
-    fraction: f64,
-) -> Option<f64> {
+pub fn rolloff(frequency: &[f64], magnitude: &[f64], low: f64, high: f64, fraction: f64) -> Option<f64> {
     let band = band(frequency, low, high);
     if band.is_empty() {
         return None;
     }
 
     let step = step_of(frequency, &band);
-    let total: f64 = magnitude[band.clone()]
-        .iter()
-        .map(|value| value * value * step)
-        .sum();
+    let total: f64 = magnitude[band.clone()].iter().map(|value| value * value * step).sum();
     if total <= 0.0 {
         return None;
     }
@@ -124,23 +109,14 @@ pub fn rolloff(
 }
 
 #[must_use]
-pub fn occupied_bandwidth(
-    frequency: &[f64],
-    magnitude: &[f64],
-    low: f64,
-    high: f64,
-    fraction: f64,
-) -> Option<(f64, f64, f64)> {
+pub fn occupied_bandwidth(frequency: &[f64], magnitude: &[f64], low: f64, high: f64, fraction: f64) -> Option<(f64, f64, f64)> {
     let band = band(frequency, low, high);
     if band.is_empty() {
         return None;
     }
 
     let step = step_of(frequency, &band);
-    let energies: Vec<f64> = magnitude[band.clone()]
-        .iter()
-        .map(|value| value * value * step)
-        .collect();
+    let energies: Vec<f64> = magnitude[band.clone()].iter().map(|value| value * value * step).collect();
     let total: f64 = energies.iter().sum();
     if total <= 0.0 {
         return None;

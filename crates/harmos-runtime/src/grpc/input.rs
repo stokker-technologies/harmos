@@ -53,13 +53,7 @@ pub enum InputError {
 /* === Public Functions === */
 pub async fn open<R, I, S>(
     incoming: S,
-) -> Result<
-    (
-        StreamItem<R>,
-        impl Stream<Item = Result<StreamItem<I>, tonic::Status>> + Send,
-    ),
-    tonic::Status,
->
+) -> Result<(StreamItem<R>, impl Stream<Item = Result<StreamItem<I>, tonic::Status>> + Send), tonic::Status>
 where
     R: Send + crate::MemorySize,
     I: Send + crate::MemorySize,
@@ -78,9 +72,7 @@ where
     let items = futures_util::stream::unfold(Some((incoming, opening)), |state| async move {
         let (mut incoming, mut opening) = state?;
         let result = match incoming.next().await {
-            Some(Ok(frame)) => InputEnvelope::project(frame)
-                .map_err(super::server::status)
-                .and_then(|frame| opening.validate(frame)),
+            Some(Ok(frame)) => InputEnvelope::project(frame).map_err(super::server::status).and_then(|frame| opening.validate(frame)),
             Some(Err(error)) => Err(error),
             None => return opening.finish(Ok(())).err().map(|error| (Err(error), None)),
         };
@@ -94,33 +86,20 @@ where
 }
 
 pub fn input<O, S>(
-    instance: OperationInstance<O>,
-    output: StreamOutput<<O::Input as crate::operations::Direction>::Item>,
-    incoming: S,
+    instance: OperationInstance<O>, output: StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
 ) -> impl Future<Output = Result<crate::operations::Response<O::Response>, InputError>> + Send
 where
     O: crate::operations::OperationDeclaration,
-    S: Stream<
-            Item = Result<
-                StreamItem<<O::Input as crate::operations::Direction>::Item>,
-                tonic::Status,
-            >,
-        > + Send,
+    S: Stream<Item = Result<StreamItem<<O::Input as crate::operations::Direction>::Item>, tonic::Status>> + Send,
 {
-    let pending = Pending {
-        instance,
-        delivered: false,
-    };
+    let pending = Pending { instance, delivered: false };
     async move {
         let mut pending = pending;
         let forwarded = {
             let forward = async move {
                 tokio::pin!(incoming);
                 while let Some(item) = incoming.next().await {
-                    let item = item.map_err(|source| Error::TaskFailed {
-                        domain: "gRPC input",
-                        source: Arc::new(source),
-                    })?;
+                    let item = item.map_err(|source| Error::TaskFailed { domain: "gRPC input", source: Arc::new(source) })?;
                     output.send_item(item).await?;
                 }
                 Ok::<(), Error>(())
@@ -142,10 +121,7 @@ where
         pending.delivered = true;
         match forwarded {
             Ok(()) => result.map_err(|error| InputError::Operation(Box::new(error))),
-            Err(source) => Err(InputError::Forward {
-                source: Box::new(source),
-                settlement: result.err().map(Box::new),
-            }),
+            Err(source) => Err(InputError::Forward { source: Box::new(source), settlement: result.err().map(Box::new) }),
         }
     }
 }

@@ -21,9 +21,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_domain::StreamSpec;
-use harmos_domain::operations::{
-    Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-};
+use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 
 /* === Constants === */
 const PROBE: OperationPolicy = OperationPolicy {
@@ -99,7 +97,9 @@ pub struct Stage {
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     }, visibility = Visibility::Shared)]
-pub struct ProviderEcho { pub say: String }
+pub struct ProviderEcho {
+    pub say: String,
+}
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
 #[harmos_domain::operation(id = "fixture.read", version = 1, response = Value, policy = OperationPolicy {
@@ -114,11 +114,15 @@ pub struct ProviderEcho { pub say: String }
         },
         restart: RestartPolicy::Never,
     })]
-pub struct Read { pub value: String }
+pub struct Read {
+    pub value: String,
+}
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
 #[harmos_domain::operation(id = "fixture.counts", version = 1, response = Value, policy = Read::POLICY)]
-pub struct Counts { pub value: String }
+pub struct Counts {
+    pub value: String,
+}
 
 /* === Enums === */
 #[harmos_guest::catalog(harmos_path = ::harmos_guest)]
@@ -145,38 +149,6 @@ impl StreamSpec for Echoed {
 impl harmos_guest::operations::ContextValue for Stage {
     const KEY: &'static str = "fixture.stage";
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* === Public Functions === */
 

@@ -47,10 +47,7 @@ pub fn run(arguments: Arguments) -> Result<(), harmos_packaging::Error> {
     if arguments.json {
         println!("{}", serde_json::to_string_pretty(&inspected)?);
     } else {
-        println!(
-            "{}@{} ({})\n{}",
-            inspected.id, inspected.version, inspected.facility, inspected.sha256
-        );
+        println!("{}@{} ({})\n{}", inspected.id, inspected.version, inspected.facility, inspected.sha256);
     }
     Ok(())
 }

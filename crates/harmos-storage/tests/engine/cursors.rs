@@ -45,27 +45,12 @@ async fn foreign_cursor_refused() {
     let first = write(&f.storage, "first").await;
     let mut foreign = first.clone();
     foreign.history.store = Identifier::new("other-store").unwrap();
-    assert!(matches!(
-        f.storage.flush_until(&foreign).await,
-        Err(Error::Domain(harmos_domain::Error::DifferentHistory))
-    ));
+    assert!(matches!(f.storage.flush_until(&foreign).await, Err(Error::Domain(harmos_domain::Error::DifferentHistory))));
     foreign = first.clone();
     foreign.history.epoch = Identifier::new("other-epoch").unwrap();
-    assert!(matches!(
-        f.storage.flush_until(&foreign).await,
-        Err(Error::Domain(harmos_domain::Error::DifferentHistory))
-    ));
-    let future = StorageCursor {
-        sequence: first.sequence + 1,
-        ..first.clone()
-    };
-    assert!(matches!(
-        f.storage.flush_until(&future).await,
-        Err(Error::InvalidInput {
-            field: "storage cursor",
-            ..
-        })
-    ));
+    assert!(matches!(f.storage.flush_until(&foreign).await, Err(Error::Domain(harmos_domain::Error::DifferentHistory))));
+    let future = StorageCursor { sequence: first.sequence + 1, ..first.clone() };
+    assert!(matches!(f.storage.flush_until(&future).await, Err(Error::InvalidInput { field: "storage cursor", .. })));
     assert!(f.data.control.writes.lock().unwrap().is_empty());
     assert_eq!(f.storage.cursor_accepted(), first);
     assert_eq!(f.storage.cursor_saved().sequence, 0);
@@ -95,10 +80,7 @@ async fn group_flushes_whole() {
     let records = [record(&key, &item, b"one"); 3];
     let end = f.storage.write_records(&records).await.unwrap();
     let later = write(&f.storage, "later").await;
-    let middle = StorageCursor {
-        sequence: 2,
-        ..end.clone()
-    };
+    let middle = StorageCursor { sequence: 2, ..end.clone() };
     assert_eq!(f.storage.flush_until(&middle).await.unwrap(), end);
     assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 2, 3]);
     assert_eq!(f.storage.cursor_accepted(), later);
@@ -136,10 +118,7 @@ async fn receipt_releases_covered() {
     let first = write(&f.storage, "first").await;
     let second = write(&f.storage, "second").await;
     f.data.control.block_write.store(true, Ordering::SeqCst);
-    f.data
-        .control
-        .flush_advance
-        .store(second.sequence as usize, Ordering::SeqCst);
+    f.data.control.flush_advance.store(second.sequence as usize, Ordering::SeqCst);
     {
         let all = f.storage.flush();
         tokio::pin!(all);
@@ -152,10 +131,7 @@ async fn receipt_releases_covered() {
     {
         let earlier = f.storage.flush_until(&first);
         tokio::pin!(earlier);
-        assert!(
-            crate::pending(earlier.as_mut()).await,
-            "backend write is still blocked"
-        );
+        assert!(crate::pending(earlier.as_mut()).await, "backend write is still blocked");
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();
         assert_eq!(earlier.await.unwrap(), second);
@@ -190,10 +166,7 @@ async fn receipt_cannot_cover() {
     let f = Fixture::new(config()).await;
     let first = write(&f.storage, "first").await;
     let second = write(&f.storage, "second").await;
-    f.data
-        .control
-        .flush_advance
-        .store(second.sequence as usize, Ordering::SeqCst);
+    f.data.control.flush_advance.store(second.sequence as usize, Ordering::SeqCst);
     assert!(matches!(f.storage.flush_until(&first).await,
         Err(Error::Persistence { source }) if matches!(source.as_ref(),
             Error::InvalidInput { field: "data write receipt", .. })));

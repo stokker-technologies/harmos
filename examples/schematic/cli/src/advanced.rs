@@ -43,14 +43,9 @@ use schematic_app::domain::{
 /* === Public Functions === */
 pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
     // Drain A Bounded Streaming Analysis
-    let settings = StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    };
+    let settings = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
     let request = AnalyzeSchematic { schematic };
-    let mut analysis = runtime
-        .operations
-        .download::<AnalyzeSchematic>(request.clone(), settings)?;
+    let mut analysis = runtime.operations.download::<AnalyzeSchematic>(request.clone(), settings)?;
     while let Some(finding) = analysis.next().await? {
         println!("Analysis: {}", finding.text);
     }
@@ -58,9 +53,7 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     println!("Analysis settled: {} findings", response.checked);
 
     // Cancellation Includes Physical Settlement
-    let analysis = runtime
-        .operations
-        .download::<AnalyzeSchematic>(request, settings)?;
+    let analysis = runtime.operations.download::<AnalyzeSchematic>(request, settings)?;
     analysis.cancel_and_settle().await?;
     println!("Cancelled analysis and waited for settlement");
 

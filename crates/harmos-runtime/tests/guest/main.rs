@@ -83,17 +83,12 @@ fn schematic() -> Vec<u8> {
 
 fn sandbox() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT
-        .get_or_init(|| load("harmos-sandbox-guest"))
-        .clone()
+    COMPONENT.get_or_init(|| load("harmos-sandbox-guest")).clone()
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
 fn route(x: i32) -> propose::ProposeRoute {
-    propose::ProposeRoute {
-        from: Point { x: 0, y: 0 },
-        to: Point { x, y: 4 },
-    }
+    propose::ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x, y: 4 } }
 }
 
 fn corner(x: i32) -> [Point; 3] {
@@ -104,15 +99,11 @@ fn component_error(error: &harmos_runtime::Error) -> &harmos_runtime::operations
     let harmos_runtime::Error::OperationFailed { source, .. } = error else {
         panic!("expected the original handler failure, got {error:?}");
     };
-    source
-        .downcast_ref()
-        .expect("component handler source is retained")
+    source.downcast_ref().expect("component handler source is retained")
 }
 
 fn execution_error(error: &harmos_runtime::Error) -> &wasmtime::Error {
-    let harmos_runtime::operations::ComponentError::Transport(Error::Execution { source }) =
-        component_error(error)
-    else {
+    let harmos_runtime::operations::ComponentError::Transport(Error::Execution { source }) = component_error(error) else {
         panic!("expected the original guest execution failure, got {error:?}");
     };
     source
@@ -120,11 +111,9 @@ fn execution_error(error: &harmos_runtime::Error) -> &wasmtime::Error {
 
 // A Failed Generation Reports Its SDK Shutdown Refusal Once, Then Retires
 async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
-    manager: &mut harmos_runtime::plugin::PluginManager<L::Guest, L::Sidecar, L::Embedded>,
-    lifecycle: &mut L,
+    manager: &mut harmos_runtime::plugin::PluginManager<L::Guest, L::Sidecar, L::Embedded>, lifecycle: &mut L,
 ) {
-    let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(lifecycle).await.unwrap_err()
-    else {
+    let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(lifecycle).await.unwrap_err() else {
         panic!("the original failed generation must report its SDK shutdown refusal")
     };
     let harmos_runtime::plugin::PluginFailure::Cleanup(failures) = *source else {
@@ -136,13 +125,8 @@ async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
         panic!("the manager preserves its original cleanup failure");
     };
     assert_eq!(*domain, "plugin cleanup");
-    let original = source
-        .downcast_ref::<harmos_runtime::Error>()
-        .expect("the original SDK error remains available");
-    assert!(matches!(
-        component_error(original),
-        harmos_runtime::operations::ComponentError::Unavailable
-    ));
+    let original = source.downcast_ref::<harmos_runtime::Error>().expect("the original SDK error remains available");
+    assert!(matches!(component_error(original), harmos_runtime::operations::ComponentError::Unavailable));
     manager.shutdown(lifecycle).await.unwrap();
 }
 

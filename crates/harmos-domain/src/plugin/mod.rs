@@ -54,16 +54,12 @@ pub trait Declared: Send + Sync + 'static {
 /* === Public Functions === */
 // Retain Each Shared Type Once Alongside The Artifact's Carrier Sections.
 pub fn schema_markers<P: Declared>(
-    mut carrier: Vec<&'static [u8]>,
-    settings: &crate::config::SchemaSettings,
+    mut carrier: Vec<&'static [u8]>, settings: &crate::config::SchemaSettings,
 ) -> Result<Vec<&'static [u8]>, crate::schema::graph::Error> {
     use crate::schema::Described;
     use crate::schema::declaration::Definition;
     use crate::schema::graph::Error;
-    let carrier_bytes = carrier
-        .capacity()
-        .checked_mul(std::mem::size_of::<&[u8]>())
-        .ok_or(Error::Budget)?;
+    let carrier_bytes = carrier.capacity().checked_mul(std::mem::size_of::<&[u8]>()).ok_or(Error::Budget)?;
     if carrier_bytes > settings.preparation_bytes.get() {
         return Err(Error::Budget);
     }
@@ -80,18 +76,14 @@ pub fn schema_markers<P: Declared>(
         crate::catalog::try_for_each(P::PROVIDES, &mut append)?;
         crate::catalog::try_for_each(P::REQUIRES, |requirement| append(&requirement.declaration))?;
         if crate::catalog::count(P::OBSERVERS) != 0 {
-            append(&crate::operations::WireDeclaration::of::<
-                crate::observers::Control,
-            >())?;
+            append(&crate::operations::WireDeclaration::of::<crate::observers::Control>())?;
         }
         crate::catalog::try_for_each(P::LISTENERS, |listener| append(&listener.callback))?;
     }
     for stream in P::STREAMS {
         push_schema_root(&mut roots, stream.row, carrier_bytes, settings)?;
     }
-    crate::catalog::try_for_each(P::LISTENERS, |listener| {
-        push_schema_root(&mut roots, listener.source.row(), carrier_bytes, settings)
-    })?;
+    crate::catalog::try_for_each(P::LISTENERS, |listener| push_schema_root(&mut roots, listener.source.row(), carrier_bytes, settings))?;
     push_schema_root(
         &mut roots,
         <crate::operations::lifecycle::Initialize as crate::schema::Described>::DEFINITION,
@@ -104,16 +96,8 @@ pub fn schema_markers<P: Declared>(
         .checked_mul(std::mem::size_of::<Definition>())
         .and_then(|bytes| bytes.checked_add(carrier.capacity() * std::mem::size_of::<&[u8]>()))
         .ok_or(Error::Budget)?;
-    let remaining = settings
-        .preparation_bytes
-        .get()
-        .checked_sub(retained)
-        .and_then(std::num::NonZeroUsize::new)
-        .ok_or(Error::Budget)?;
-    let allowance = crate::config::SchemaSettings {
-        preparation_bytes: remaining,
-        ..*settings
-    };
+    let remaining = settings.preparation_bytes.get().checked_sub(retained).and_then(std::num::NonZeroUsize::new).ok_or(Error::Budget)?;
+    let allowance = crate::config::SchemaSettings { preparation_bytes: remaining, ..*settings };
     let declarations = crate::schema::declaration::markers_many(roots, &allowance)?;
     let output = carrier
         .len()
@@ -130,9 +114,7 @@ pub fn schema_markers<P: Declared>(
 
 /* === Private Functions === */
 fn push_schema_root(
-    roots: &mut Vec<crate::schema::declaration::Definition>,
-    definition: crate::schema::declaration::Definition,
-    carrier_bytes: usize,
+    roots: &mut Vec<crate::schema::declaration::Definition>, definition: crate::schema::declaration::Definition, carrier_bytes: usize,
     settings: &crate::config::SchemaSettings,
 ) -> Result<(), crate::schema::graph::Error> {
     use crate::schema::graph::Error;

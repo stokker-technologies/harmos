@@ -17,9 +17,7 @@ use std::collections::BTreeSet;
 // Third Party Imports
 
 // Local Imports
-use super::{
-    Declares, Definition, OperationDeclaration, OperationPolicy, ReplaySafety, Visibility,
-};
+use super::{Declares, Definition, OperationDeclaration, OperationPolicy, ReplaySafety, Visibility};
 use crate::catalog::{self, Catalog, Member, Node, Projection, Visitor};
 use crate::{Error, Identifier, Result};
 
@@ -48,13 +46,7 @@ pub struct Declarations;
 /* === Implementations === */
 impl Entry {
     pub const fn of<O: OperationDeclaration>() -> Self {
-        Self {
-            id: O::ID,
-            description: O::DESCRIPTION,
-            policy: O::POLICY,
-            visibility: O::VISIBILITY,
-            replay: O::REPLAY,
-        }
+        Self { id: O::ID, description: O::DESCRIPTION, policy: O::POLICY, visibility: O::VISIBILITY, replay: O::REPLAY }
     }
 
     pub fn definition(&self) -> Result<Definition> {
@@ -96,9 +88,7 @@ impl Declarations {
     pub fn from_tree(entries: &[Node<Entry>]) -> Result<Vec<Definition>> {
         let mut names = BTreeSet::new();
         let mut definitions = Vec::with_capacity(catalog::count(entries));
-        catalog::try_for_each(entries, |declaration| {
-            append(declaration, &mut names, &mut definitions)
-        })?;
+        catalog::try_for_each(entries, |declaration| append(declaration, &mut names, &mut definitions))?;
         Ok(definitions)
     }
 
@@ -113,16 +103,10 @@ impl Declarations {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn append(
-    declaration: &Entry,
-    names: &mut BTreeSet<Identifier>,
-    definitions: &mut Vec<Definition>,
-) -> Result<()> {
+fn append(declaration: &Entry, names: &mut BTreeSet<Identifier>, definitions: &mut Vec<Definition>) -> Result<()> {
     let definition = declaration.definition()?;
     if !names.insert(definition.id.clone()) {
-        return Err(Error::DuplicateOperation {
-            id: declaration.id.to_owned(),
-        });
+        return Err(Error::DuplicateOperation { id: declaration.id.to_owned() });
     }
     definitions.push(definition);
     Ok(())

@@ -43,16 +43,8 @@ pub enum Error {
 
 /* === Implementations === */
 impl Error {
-    pub(crate) fn publication(
-        operation: &'static str,
-        path: &std::path::Path,
-        source: io::Error,
-    ) -> Self {
-        Self::Publication {
-            operation,
-            path: path.to_owned(),
-            source,
-        }
+    pub(crate) fn publication(operation: &'static str, path: &std::path::Path, source: io::Error) -> Self {
+        Self::Publication { operation, path: path.to_owned(), source }
     }
 
     pub fn kind(&self) -> io::ErrorKind {

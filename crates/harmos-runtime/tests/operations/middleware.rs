@@ -229,7 +229,10 @@ fn portable_preserves_local() {
     assert!(decoded.submit);
     let mut obsolete = encoded.clone();
     obsolete[0] = 5;
-    assert!(matches!(harmos_runtime::operations::WireChildCall::decode(&obsolete), Err(harmos_runtime::operations::WireCodecError::Version)));
+    assert!(matches!(
+        harmos_runtime::operations::WireChildCall::decode(&obsolete),
+        Err(harmos_runtime::operations::WireCodecError::Version)
+    ));
     call.values.push(values[0].clone());
     assert!(call.encode().is_err());
     call.values = vec![CallValue { key: "oversized".into(), payload: vec![0; PORTABLE_BYTES] }];

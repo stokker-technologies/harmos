@@ -72,52 +72,23 @@ impl<C> StorageManager<C> {
             let mut state = self.inner.state.lock().unwrap();
             super::capacity::admitting(&state, super::capacity::Pool::Read)?;
             if !state.status.saved.covers(at)? {
-                return Err(Error::InvalidInput {
-                    field: "query cursor",
-                    reason: "cursor exceeds the durable storage frontier",
-                });
+                return Err(Error::InvalidInput { field: "query cursor", reason: "cursor exceeds the durable storage frontier" });
             }
-            state.snapshots.insert(
-                id,
-                SnapshotState {
-                    at: at.clone(),
-                    opened: None,
-                    opening: false,
-                    released: false,
-                },
-            );
+            state.snapshots.insert(id, SnapshotState { at: at.clone(), opened: None, opening: false, released: false });
         }
         // The Guard Exists Before Waiting, So Cancellation Releases Registration.
-        let mut guard = Snapshot {
-            inner: Arc::clone(&self.inner),
-            id,
-            backend: BackendSnapshot {
-                at: at.clone(),
-                token: Vec::new(),
-            },
-        };
+        let mut guard = Snapshot { inner: Arc::clone(&self.inner), id, backend: BackendSnapshot { at: at.clone(), token: Vec::new() } };
         self.inner.notify();
         let opened = self
             .inner
             .wait(None, |state| match state.snapshots.get(&id) {
                 None => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
-                Some(held) if held.released => {
-                    Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" }))
-                }
-                Some(SnapshotState {
-                    opened: Some(result),
-                    ..
-                }) => match result {
+                Some(held) if held.released => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
+                Some(SnapshotState { opened: Some(result), .. }) => match result {
                     Ok(snapshot) => Attempt::Ready(snapshot.clone()),
-                    Err(source) => Attempt::Refuse(Refusal::Failed(Error::Persistence {
-                        source: source.clone(),
-                    })),
+                    Err(source) => Attempt::Refuse(Refusal::Failed(Error::Persistence { source: source.clone() })),
                 },
-                Some(_) if !state.status.running => {
-                    Attempt::Refuse(Refusal::Failed(Error::NotReady {
-                        domain: "storage worker",
-                    }))
-                }
+                Some(_) if !state.status.running => Attempt::Refuse(Refusal::Failed(Error::NotReady { domain: "storage worker" })),
                 Some(_) => Attempt::Wait,
             })
             .await
@@ -140,9 +111,7 @@ impl<C> StorageManager<C> {
                 if state.snapshots.is_empty() {
                     Attempt::Ready(())
                 } else if !state.status.running {
-                    Attempt::Refuse(Refusal::Failed(Error::NotReady {
-                        domain: "storage worker",
-                    }))
+                    Attempt::Refuse(Refusal::Failed(Error::NotReady { domain: "storage worker" }))
                 } else {
                     Attempt::Wait
                 }
@@ -154,34 +123,17 @@ impl<C> StorageManager<C> {
 
 impl Snapshot {
     /// Read one validated scan page and its encoded size.
-    pub(super) async fn scan<T: Entry>(
-        &self,
-        selection: &T::Selection,
-        page: ScanPage,
-    ) -> Result<(Vec<T>, usize)> {
+    pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let entries = self
-            .inner
-            .bounded(T::scan(
-                &*self.inner.primary,
-                &self.backend,
-                selection,
-                page,
-            ))
-            .await?;
+        let entries = self.inner.bounded(T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
         let mut previous = page.after;
         let mut bytes = 0usize;
         for entry in &entries {
             let position = entry.position();
             self.backend.at.history.check(&position.history)?;
-            if position.sequence <= previous
-                || position.sequence > self.backend.at.sequence
-                || !entry.matches(selection)
-            {
-                return Err(invalid(
-                    "backend returned an entry outside the ordered selection",
-                ));
+            if position.sequence <= previous || position.sequence > self.backend.at.sequence || !entry.matches(selection) {
+                return Err(invalid("backend returned an entry outside the ordered selection"));
             }
             previous = position.sequence;
             bytes = bytes.saturating_add(encoded_size(entry)?);
@@ -195,10 +147,7 @@ impl Snapshot {
     pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let object = self
-            .inner
-            .bounded(self.inner.primary.read_object(&self.backend, point))
-            .await?;
+        let object = self.inner.bounded(self.inner.primary.read_object(&self.backend, point)).await?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
             if object.position.sequence == 0
@@ -212,21 +161,10 @@ impl Snapshot {
         Ok(object)
     }
 
-    pub(super) async fn read_file(
-        &self,
-        file: &FileReference,
-        offset: u64,
-        max_bytes: NonZeroUsize,
-    ) -> Result<Vec<u8>> {
+    pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        self.inner
-            .bounded(
-                self.inner
-                    .primary
-                    .read_file(&self.backend, file, offset, max_bytes),
-            )
-            .await
+        self.inner.bounded(self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await
     }
 
     fn check(&self) -> Result<()> {
@@ -252,9 +190,7 @@ impl Drop for Snapshot {
 impl State {
     /// Whether a registered snapshot still waits to pin its image; pruning pauses.
     pub(super) fn snapshot_opening(&self) -> bool {
-        self.snapshots
-            .values()
-            .any(|held| !held.released && held.opened.is_none())
+        self.snapshots.values().any(|held| !held.released && held.opened.is_none())
     }
 
     pub(super) fn snapshot_action(&mut self, allow_release: bool) -> Option<SnapshotAction> {
@@ -289,9 +225,9 @@ impl State {
         };
         held.opening = false;
         held.opened = Some(match result {
-            Ok(snapshot) if snapshot.at != held.at || snapshot.token.len() > SNAPSHOT_BYTES => Err(
-                Arc::new(invalid("backend snapshot differs from its requested image")),
-            ),
+            Ok(snapshot) if snapshot.at != held.at || snapshot.token.len() > SNAPSHOT_BYTES => {
+                Err(Arc::new(invalid("backend snapshot differs from its requested image")))
+            }
             Ok(snapshot) => Ok(snapshot),
             Err(error) => Err(Arc::new(error)),
         });
@@ -309,10 +245,7 @@ impl State {
 
 /* === Private Functions === */
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "read snapshot",
-        reason,
-    }
+    Error::InvalidInput { field: "read snapshot", reason }
 }
 
 /* === Tests === */

@@ -58,9 +58,7 @@ impl Reflection {
     }
 
     fn respond(&self, request: pb::ServerReflectionRequest) -> pb::ServerReflectionResponse {
-        let response = self
-            .snapshot()
-            .and_then(|pool| answer(&pool, request.message_request.as_ref()));
+        let response = self.snapshot().and_then(|pool| answer(&pool, request.message_request.as_ref()));
         pb::ServerReflectionResponse {
             valid_host: request.host.clone(),
             original_request: Some(request),
@@ -75,32 +73,26 @@ impl Reflection {
 
     fn snapshot(&self) -> Result<DescriptorPool, Status> {
         let methods = self.operations.grpc_methods();
-        let artifacts =
-            harmos_packaging::proto::Artifacts::new(methods.iter().map(|method| &method.contract))
-                .map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
-        let mut pool = DescriptorPool::decode(artifacts.descriptors())
-            .map_err(|_| Status::internal("operation descriptors are invalid"))?;
-        pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET)
-            .map_err(|_| Status::internal("reflection descriptors are invalid"))?;
+        let artifacts = harmos_packaging::proto::Artifacts::new(methods.iter().map(|method| &method.contract))
+            .map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
+        let mut pool =
+            DescriptorPool::decode(artifacts.descriptors()).map_err(|_| Status::internal("operation descriptors are invalid"))?;
+        pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET).map_err(|_| Status::internal("reflection descriptors are invalid"))?;
         Ok(pool)
     }
 }
 
 #[tonic::async_trait]
 impl ServerReflection for Reflection {
-    type ServerReflectionInfoStream =
-        Pin<Box<dyn Stream<Item = Result<pb::ServerReflectionResponse, Status>> + Send>>;
+    type ServerReflectionInfoStream = Pin<Box<dyn Stream<Item = Result<pb::ServerReflectionResponse, Status>> + Send>>;
 
     async fn server_reflection_info(
-        &self,
-        request: Request<Streaming<pb::ServerReflectionRequest>>,
+        &self, request: Request<Streaming<pb::ServerReflectionRequest>>,
     ) -> Result<Response<Self::ServerReflectionInfoStream>, Status> {
         let provider = self.clone();
         // Each Message Sees Current Readiness, Even On A Long-Lived Stream.
         // Listener Middleware Authenticates This RPC Before Service Dispatch.
-        let stream = request
-            .into_inner()
-            .map(move |request| request.map(|request| provider.respond(request)));
+        let stream = request.into_inner().map(move |request| request.map(|request| provider.respond(request)));
         Ok(Response::new(Box::pin(stream)))
     }
 }
@@ -108,54 +100,32 @@ impl ServerReflection for Reflection {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn answer(
-    pool: &DescriptorPool,
-    request: Option<&MessageRequest>,
-) -> Result<MessageResponse, Status> {
+fn answer(pool: &DescriptorPool, request: Option<&MessageRequest>) -> Result<MessageResponse, Status> {
     let missing = || Status::not_found("descriptor not found");
     match request.ok_or_else(|| Status::invalid_argument("missing reflection request"))? {
         MessageRequest::ListServices(_) => {
-            let mut names: Vec<_> = pool
-                .services()
-                .map(|service| service.full_name().to_owned())
-                .collect();
+            let mut names: Vec<_> = pool.services().map(|service| service.full_name().to_owned()).collect();
             names.sort_unstable();
-            Ok(MessageResponse::ListServicesResponse(
-                pb::ListServiceResponse {
-                    service: names
-                        .into_iter()
-                        .map(|name| pb::ServiceResponse { name })
-                        .collect(),
-                },
-            ))
+            Ok(MessageResponse::ListServicesResponse(pb::ListServiceResponse {
+                service: names.into_iter().map(|name| pb::ServiceResponse { name }).collect(),
+            }))
         }
-        MessageRequest::FileByFilename(name) => {
-            file_response(pool.get_file_by_name(name).ok_or_else(missing)?)
-        }
-        MessageRequest::FileContainingSymbol(name) => {
-            file_response(symbol_file(pool, name).ok_or_else(missing)?)
-        }
+        MessageRequest::FileByFilename(name) => file_response(pool.get_file_by_name(name).ok_or_else(missing)?),
+        MessageRequest::FileContainingSymbol(name) => file_response(symbol_file(pool, name).ok_or_else(missing)?),
         MessageRequest::FileContainingExtension(extension) => {
-            let message = pool
-                .get_message_by_name(&extension.containing_type)
-                .ok_or_else(missing)?;
+            let message = pool.get_message_by_name(&extension.containing_type).ok_or_else(missing)?;
             let number = u32::try_from(extension.extension_number).map_err(|_| missing())?;
             let extension = message.get_extension(number).ok_or_else(missing)?;
             file_response(extension.parent_file())
         }
         MessageRequest::AllExtensionNumbersOfType(name) => {
             let message = pool.get_message_by_name(name).ok_or_else(missing)?;
-            let mut numbers: Vec<_> = message
-                .extensions()
-                .map(|extension| extension.number() as i32)
-                .collect();
+            let mut numbers: Vec<_> = message.extensions().map(|extension| extension.number() as i32).collect();
             numbers.sort_unstable();
-            Ok(MessageResponse::AllExtensionNumbersResponse(
-                pb::ExtensionNumberResponse {
-                    base_type_name: name.clone(),
-                    extension_number: numbers,
-                },
-            ))
+            Ok(MessageResponse::AllExtensionNumbersResponse(pb::ExtensionNumberResponse {
+                base_type_name: name.clone(),
+                extension_number: numbers,
+            }))
         }
     }
 }
@@ -179,9 +149,7 @@ fn symbol_file(pool: &DescriptorPool, name: &str) -> Option<FileDescriptor> {
         }
     }
     for message in pool.all_messages() {
-        if message.fields().any(|field| field.full_name() == name)
-            || message.oneofs().any(|oneof| oneof.full_name() == name)
-        {
+        if message.fields().any(|field| field.full_name() == name) || message.oneofs().any(|oneof| oneof.full_name() == name) {
             return Some(message.parent_file());
         }
     }
@@ -203,20 +171,14 @@ fn file_response(file: FileDescriptor) -> Result<MessageResponse, Status> {
             continue;
         }
         let encoded = file.file_descriptor_proto().encode_to_vec();
-        bytes = bytes
-            .checked_add(encoded.len() + 10)
-            .ok_or_else(|| Status::resource_exhausted("descriptor response too large"))?;
+        bytes = bytes.checked_add(encoded.len() + 10).ok_or_else(|| Status::resource_exhausted("descriptor response too large"))?;
         if bytes > MAX_RESPONSE_BYTES - MAX_REQUEST_BYTES {
             return Err(Status::resource_exhausted("descriptor response too large"));
         }
         files.push(encoded);
         pending.extend(file.dependencies());
     }
-    Ok(MessageResponse::FileDescriptorResponse(
-        pb::FileDescriptorResponse {
-            file_descriptor_proto: files,
-        },
-    ))
+    Ok(MessageResponse::FileDescriptorResponse(pb::FileDescriptorResponse { file_descriptor_proto: files }))
 }
 
 /* === Tests === */

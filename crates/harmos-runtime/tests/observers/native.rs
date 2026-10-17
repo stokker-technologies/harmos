@@ -134,21 +134,10 @@ async fn leases_share_existing() {
         .unwrap();
     let counts = Counts::new();
     let resources = Arc::new(counts.clone());
-    let first = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
-    let second = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
+    let first = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+    let second = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &first), RUNNING).await;
-    counts
-        .progress
-        .subscribe()
-        .wait_for(|_| counts.ticks.load(Ordering::SeqCst) >= 2)
-        .await
-        .unwrap();
+    counts.progress.subscribe().wait_for(|_| counts.ticks.load(Ordering::SeqCst) >= 2).await.unwrap();
     first.release().await.unwrap();
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 0);
@@ -164,31 +153,20 @@ async fn leases_share_existing() {
 async fn native_panic_closes() {
     let runtime = runtime().await;
     let manager = &runtime.operations;
-    manager
-        .register_native_observer(watch::<true>(), |_| ())
-        .unwrap();
+    manager.register_native_observer(watch::<true>(), |_| ()).unwrap();
     let counts = Counts::new();
     let resources = Arc::new(counts.clone());
-    let lease = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &lease), STOPPING).await;
     pending::parked(std::pin::pin!(manager.submit_with_resources_at("native", resources.clone()))).await;
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     counts.cleanup.add_permits(1);
     let failure = lease.release().await.unwrap_err();
-    let harmos_runtime::Error::TaskFailed { source, .. } = failure else {
-        panic!("managed failure")
-    };
-    let Some(harmos_runtime::Error::TaskFailed { source, .. }) = source.downcast_ref::<harmos_runtime::Error>()
-    else {
+    let harmos_runtime::Error::TaskFailed { source, .. } = failure else { panic!("managed failure") };
+    let Some(harmos_runtime::Error::TaskFailed { source, .. }) = source.downcast_ref::<harmos_runtime::Error>() else {
         panic!("native failure remains a root error");
     };
-    assert!(matches!(
-        source.downcast_ref::<ObserverError>(),
-        Some(ObserverError::CallbackPanicked)
-    ));
+    assert!(matches!(source.downcast_ref::<ObserverError>(), Some(ObserverError::CallbackPanicked)));
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     assert!(runtime.stop().await.is_err());
 }
@@ -211,14 +189,8 @@ async fn binding_owns_cleanup() {
     candidate.commit().unwrap();
     assert_eq!(bindings.load(Ordering::SeqCst), 0);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 0);
-    let first = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
-    let second = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
+    let first = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
+    let second = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &first), RUNNING).await;
     assert_eq!(first.id(), second.id());
     assert_eq!(bindings.load(Ordering::SeqCst), 1);
@@ -246,16 +218,11 @@ async fn failure_preserves_cleanup() {
 async fn handles_keep_cleanup() {
     let runtime = runtime().await;
     let manager = &runtime.operations;
-    manager
-        .register_native_observer(watch::<false>(), |_| ())
-        .unwrap();
+    manager.register_native_observer(watch::<false>(), |_| ()).unwrap();
     let counts = Counts::new();
     counts.refuse_stop.store(true, Ordering::SeqCst);
     let resources = Arc::new(counts.clone());
-    let lease = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
     lease.cancel();
     assert!(lease.settle().await.is_err());
@@ -277,9 +244,7 @@ async fn handles_keep_cleanup() {
 async fn cleanup_recovery(finalizing: bool) {
     let runtime = runtime().await;
     let manager = &runtime.operations;
-    manager
-        .register_native_observer(watch::<false>(), |_| ())
-        .unwrap();
+    manager.register_native_observer(watch::<false>(), |_| ()).unwrap();
     let counts = Counts::new();
     if finalizing {
         counts.cleanup.add_permits(1);
@@ -290,16 +255,9 @@ async fn cleanup_recovery(finalizing: bool) {
     }
     // A refused stop is retained while stopping; a refused cleanup while
     // finalizing.
-    let expected = if finalizing {
-        OperationPhase::Finalizing
-    } else {
-        OperationPhase::Stopping
-    };
+    let expected = if finalizing { OperationPhase::Finalizing } else { OperationPhase::Stopping };
     let resources = Arc::new(counts.clone());
-    let lease = manager
-        .submit_with_resources_at("native", resources.clone())
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("native", resources.clone()).await.unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
     lease.cancel();
     assert!(lease.settle().await.is_err());
@@ -310,14 +268,8 @@ async fn cleanup_recovery(finalizing: bool) {
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 1);
     pending::parked(std::pin::pin!(lease.settle())).await;
-    assert_eq!(
-        counts.stop_attempts.load(Ordering::SeqCst),
-        if finalizing { 1 } else { 2 }
-    );
-    assert_eq!(
-        counts.finalizations.load(Ordering::SeqCst),
-        if finalizing { 2 } else { 0 }
-    );
+    assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), if finalizing { 1 } else { 2 });
+    assert_eq!(counts.finalizations.load(Ordering::SeqCst), if finalizing { 2 } else { 0 });
     assert_eq!(lease.status().phase(), expected);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
@@ -326,10 +278,7 @@ async fn cleanup_recovery(finalizing: bool) {
     } else {
         counts.cleanup.add_permits(1);
     }
-    assert!(
-        lease.settle().await.is_err(),
-        "the original logical failure remains observable"
-    );
+    assert!(lease.settle().await.is_err(), "the original logical failure remains observable");
     assert!(lease.status().phase().is_terminal());
     assert!(!lease.status().cleanup_pending());
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 1);

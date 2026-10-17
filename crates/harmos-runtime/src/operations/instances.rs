@@ -40,8 +40,7 @@ use crate::{Error, Result};
 
 /* === Type Aliases === */
 type Driver = Pin<Box<dyn Future<Output = ()> + Send>>;
-type Completion =
-    Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Result<(), JoinError>)> + Send>>;
+type Completion = Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Result<(), JoinError>)> + Send>>;
 
 /* === Structs === */
 pub(crate) struct Instances {
@@ -103,26 +102,15 @@ enum Event {
 /* === Implementations === */
 impl Instances {
     pub(crate) fn start(
-        lanes: Lanes,
-        application_state: Box<dyn Any + Send + Sync>,
-        resources: Arc<dyn Any + Send + Sync>,
-        settings: &Settings,
+        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: Arc<dyn Any + Send + Sync>, settings: &Settings,
     ) -> Arc<Self> {
         let (ordinary, ordinary_receiving) = Queue::new(settings.queued.get());
         let (lifecycle, lifecycle_receiving) = Queue::new(settings.lifecycle_queued.get());
-        let receiving = Receiving {
-            ordinary: ordinary_receiving,
-            lifecycle: lifecycle_receiving,
-        };
+        let receiving = Receiving { ordinary: ordinary_receiving, lifecycle: lifecycle_receiving };
         let supervisor = Task::spawn(move |stopping| dispatch(receiving, stopping.subscribe()));
         Arc::new(Self {
             lanes,
-            state: Mutex::new(State {
-                closing: false,
-                active: BTreeMap::new(),
-                owners: BTreeMap::new(),
-                residents: BTreeMap::new(),
-            }),
+            state: Mutex::new(State { closing: false, active: BTreeMap::new(), owners: BTreeMap::new(), residents: BTreeMap::new() }),
             ordinary,
             lifecycle,
             supervisor,
@@ -132,11 +120,7 @@ impl Instances {
     }
 
     pub(crate) fn is_accepting(&self) -> bool {
-        !self
-            .state
-            .lock()
-            .expect("operation instance index is healthy")
-            .closing
+        !self.state.lock().expect("operation instance index is healthy").closing
     }
 
     pub(crate) fn lane_bounded(&self, name: &str) -> Option<bool> {
@@ -144,70 +128,37 @@ impl Instances {
     }
 
     pub(crate) fn status(&self, id: OperationInstanceId) -> Option<OperationStatus> {
-        let state = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy");
-        state
-            .active
-            .get(&id)
-            .or_else(|| state.residents.get(&id).map(|(instance, _)| instance))
-            .map(|instance| instance.status())
+        let state = self.state.lock().expect("operation instance index is healthy");
+        state.active.get(&id).or_else(|| state.residents.get(&id).map(|(instance, _)| instance)).map(|instance| instance.status())
     }
 
     // Index a resident instance for the built-ins until it stops.
-    pub(super) fn track_resident(
-        &self,
-        id: OperationInstanceId,
-        instance: &Arc<Instance>,
-        holder: super::caller::Identity,
-    ) {
-        let mut state = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy");
+    pub(super) fn track_resident(&self, id: OperationInstanceId, instance: &Arc<Instance>, holder: super::caller::Identity) {
+        let mut state = self.state.lock().expect("operation instance index is healthy");
         if instance.is_settled() {
             return;
         }
-        let (_, holders) = state
-            .residents
-            .entry(id)
-            .or_insert_with(|| (Arc::clone(instance), Vec::new()));
+        let (_, holders) = state.residents.entry(id).or_insert_with(|| (Arc::clone(instance), Vec::new()));
         if !holders.contains(&holder) {
             holders.push(holder);
         }
     }
 
     pub(crate) fn forget_resident(&self, id: OperationInstanceId) {
-        let retired = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy")
-            .residents
-            .remove(&id);
+        let retired = self.state.lock().expect("operation instance index is healthy").residents.remove(&id);
         drop(retired);
     }
 
     pub(super) fn assign(&self, id: OperationInstanceId, owner: super::caller::Identity) {
-        let mut state = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy");
+        let mut state = self.state.lock().expect("operation instance index is healthy");
         if state.active.contains_key(&id) {
             state.owners.insert(id, owner);
         }
     }
 
     // Resolve an active instance only for the caller that submitted it.
-    pub(super) fn owned(
-        &self,
-        id: OperationInstanceId,
-        caller: &super::caller::Identity,
-    ) -> Option<Arc<Instance>> {
-        let state = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy");
+    pub(super) fn owned(&self, id: OperationInstanceId, caller: &super::caller::Identity) -> Option<Arc<Instance>> {
+        let state = self.state.lock().expect("operation instance index is healthy");
         if let Some((instance, holders)) = state.residents.get(&id) {
             return holders.contains(caller).then(|| Arc::clone(instance));
         }
@@ -223,54 +174,26 @@ impl Instances {
 
     // The runtime's typed managers a service context lends its resident.
     pub(crate) fn handles_of<A: crate::Application>(&self) -> &crate::services::Handles<A> {
-        self.application_state
-            .downcast_ref::<crate::services::Handles<A>>()
-            .expect("operation scope names its runtime's application")
+        self.application_state.downcast_ref::<crate::services::Handles<A>>().expect("operation scope names its runtime's application")
     }
 
     pub(crate) fn resources_of<A: crate::Application>(&self) -> &A::Resources {
-        self.resources
-            .downcast_ref::<A::Resources>()
-            .expect("operation scope names its runtime's application")
+        self.resources.downcast_ref::<A::Resources>().expect("operation scope names its runtime's application")
     }
 
     pub(crate) fn reserve<O: Send + 'static>(
-        self: &Arc<Self>,
-        id: OperationInstanceId,
-        lane: &'static str,
-        submitted: tokio::time::Instant,
-        privileged: bool,
+        self: &Arc<Self>, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> Result<Reservation<O>> {
-        let admission = self
-            .lanes
-            .get(lane)
-            .expect("registration validated its lane");
-        let mut state = self
-            .state
-            .lock()
-            .expect("operation instance index is healthy");
+        let admission = self.lanes.get(lane).expect("registration validated its lane");
+        let mut state = self.state.lock().expect("operation instance index is healthy");
         if state.closing {
-            return Err(Error::Closing {
-                domain: "operation instances",
-            });
+            return Err(Error::Closing { domain: "operation instances" });
         }
-        let queue = if privileged {
-            &self.lifecycle
-        } else {
-            &self.ordinary
-        };
+        let queue = if privileged { &self.lifecycle } else { &self.ordinary };
         let permit =
-            queue
-                .capacity
-                .clone()
-                .try_acquire_owned()
-                .map_err(|_| Error::ResourceExhausted {
-                    resource: "operation admission queue",
-                })?;
-        let sending = queue.sending.try_reserve().map_err(|_| Error::Closing {
-            domain: "operation dispatcher",
-        })?;
+            queue.capacity.clone().try_acquire_owned().map_err(|_| Error::ResourceExhausted { resource: "operation admission queue" })?;
+        let sending = queue.sending.try_reserve().map_err(|_| Error::Closing { domain: "operation dispatcher" })?;
         let queue_permit = QueuePermit(Arc::new(Mutex::new(Some(permit))));
         let retiring = queue_permit.clone();
         let owner = Arc::downgrade(self);
@@ -280,10 +203,7 @@ impl Instances {
             retiring.release();
             if let Some(owner) = owner.upgrade() {
                 let retired = {
-                    let mut state = owner
-                        .state
-                        .lock()
-                        .expect("operation instance index is healthy");
+                    let mut state = owner.state.lock().expect("operation instance index is healthy");
                     state.owners.remove(&id);
                     state.active.remove(&id)
                 };
@@ -293,24 +213,9 @@ impl Instances {
         });
         let instance = Arc::new(instance);
         let (deposit, prepared) = oneshot::channel();
-        let reservation = Reservation {
-            outcome,
-            deposit,
-            control: instance.clone(),
-            admission: admission.clone(),
-            cause: None,
-        };
-        let execution = Execution {
-            admission,
-            submitted,
-            cancelled,
-            instance: instance.clone(),
-            queue: queue_permit,
-        };
-        assert!(
-            state.active.insert(id, instance.clone()).is_none(),
-            "instance IDs are unique"
-        );
+        let reservation = Reservation { outcome, deposit, control: instance.clone(), admission: admission.clone(), cause: None };
+        let execution = Execution { admission, submitted, cancelled, instance: instance.clone(), queue: queue_permit };
+        assert!(state.active.insert(id, instance.clone()).is_none(), "instance IDs are unique");
         let owner = self.clone();
         let control = instance.clone();
         sending.send(Submission {
@@ -330,10 +235,7 @@ impl Instances {
 
     pub(crate) fn close(&self) {
         let instances: Vec<_> = {
-            let mut state = self
-                .state
-                .lock()
-                .expect("operation instance index is healthy");
+            let mut state = self.state.lock().expect("operation instance index is healthy");
             state.closing = true;
             state.active.values().cloned().collect()
         };
@@ -344,13 +246,7 @@ impl Instances {
     }
 
     pub(crate) async fn settle(&self) -> Result<()> {
-        self.supervisor
-            .settle()
-            .await
-            .map_err(|source| Error::TaskFailed {
-                domain: "operation dispatcher",
-                source,
-            })?;
+        self.supervisor.settle().await.map_err(|source| Error::TaskFailed { domain: "operation dispatcher", source })?;
         Ok(())
     }
 }
@@ -365,11 +261,7 @@ impl<O> Reservation<O> {
         self
     }
 
-    pub(crate) fn submit(
-        self,
-        prepared: Prepared<O>,
-        cause: Option<crate::state::Position>,
-    ) -> oneshot::Receiver<Result<O>> {
+    pub(crate) fn submit(self, prepared: Prepared<O>, cause: Option<crate::state::Position>) -> oneshot::Receiver<Result<O>> {
         if let Err((prepared, _)) = self.deposit.send((prepared, cause.or(self.cause))) {
             prepared.retain_unavailable(&self.control, self.admission);
         }
@@ -380,23 +272,13 @@ impl<O> Reservation<O> {
 impl Queue {
     fn new(capacity: usize) -> (Self, mpsc::Receiver<Submission>) {
         let (sending, receiving) = mpsc::channel(capacity);
-        (
-            Self {
-                sending,
-                capacity: Arc::new(Semaphore::new(capacity)),
-            },
-            receiving,
-        )
+        (Self { sending, capacity: Arc::new(Semaphore::new(capacity)) }, receiving)
     }
 }
 
 impl QueuePermit {
     pub(crate) fn release(&self) {
-        let permit = self
-            .0
-            .lock()
-            .expect("operation queue claim is healthy")
-            .take();
+        let permit = self.0.lock().expect("operation queue claim is healthy").take();
         drop(permit);
     }
 }
@@ -419,10 +301,7 @@ async fn dispatch(mut receiving: Receiving, mut stopping: watch::Receiver<bool>)
                 running.push(Box::pin(async move { (submission.instance, task.await) }));
             }
             Event::Completed(instance, Err(source)) => {
-                instance.interrupted(Arc::new(Error::TaskFailed {
-                    domain: "operation instance",
-                    source: Arc::new(source),
-                }));
+                instance.interrupted(Arc::new(Error::TaskFailed { domain: "operation instance", source: Arc::new(source) }));
             }
             Event::Completed(_, Ok(())) => {}
             Event::Drained => return,
@@ -431,10 +310,7 @@ async fn dispatch(mut receiving: Receiving, mut stopping: watch::Receiver<bool>)
 }
 
 async fn next_event(
-    receiving: &mut Receiving,
-    running: &mut FuturesUnordered<Completion>,
-    stopping: &mut watch::Receiver<bool>,
-    closing: bool,
+    receiving: &mut Receiving, running: &mut FuturesUnordered<Completion>, stopping: &mut watch::Receiver<bool>, closing: bool,
 ) -> Event {
     if !closing && *stopping.borrow() {
         return Event::Closing;
@@ -457,11 +333,7 @@ async fn next_event(
             Poll::Ready(None) => true,
             Poll::Pending => false,
         };
-        if lifecycle_closed && ordinary_closed && running.is_empty() {
-            Poll::Ready(Event::Drained)
-        } else {
-            Poll::Pending
-        }
+        if lifecycle_closed && ordinary_closed && running.is_empty() { Poll::Ready(Event::Drained) } else { Poll::Pending }
     })
     .await
 }

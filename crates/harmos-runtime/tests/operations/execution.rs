@@ -210,10 +210,7 @@ async fn shutdown_releases_bindings() {
 async fn handler_panic_settles() {
     let runtime = runtime().await;
     runtime.operations.register_operation::<ComputeCall>("app", Lanes::Open, Arc::new(Owner::default())).unwrap();
-    assert!(matches!(
-        runtime.operations.call(Request { value: usize::MAX, ..request() }).await,
-        Err(Error::OperationPanicked { .. })
-    ));
+    assert!(matches!(runtime.operations.call(Request { value: usize::MAX, ..request() }).await, Err(Error::OperationPanicked { .. })));
     runtime.operations.unregister(Compute::ID).await.unwrap();
     runtime.stop().await.unwrap();
 }
@@ -250,7 +247,8 @@ async fn must_match_declarations() {
     }
     impl harmos_runtime::catalog::Catalog<harmos_runtime::operations::Implementations<Owner>> for Mismatched {
         type Entries = [harmos_runtime::operations::Binding<Owner>; 1];
-        const ENTRIES: Self::Entries = [<harmos_runtime::operations::Implementations<Owner> as harmos_runtime::catalog::Member<ComputeCall>>::ENTRY];
+        const ENTRIES: Self::Entries =
+            [<harmos_runtime::operations::Implementations<Owner> as harmos_runtime::catalog::Member<ComputeCall>>::ENTRY];
     }
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());

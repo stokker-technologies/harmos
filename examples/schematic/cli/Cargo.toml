@@ -50,12 +50,7 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = [
-  "macros",
-  "rt",
-  "rt-multi-thread",
-  "time",
-] }
+tokio = { workspace = true, default-features = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 
 # Networking
 

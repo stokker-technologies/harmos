@@ -33,8 +33,7 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::storage::{
-    ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends,
-    StorageManager, StoredObject,
+    ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends, StorageManager, StoredObject,
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
 
@@ -111,13 +110,8 @@ async fn query_operation_batches() {
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();
     let fixture = Fixture::new(settings).await;
-    harmos_runtime::storage::operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
+    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+        .unwrap();
     let schema = SchemaKey {
         id: Identifier::new("query-reading").unwrap(),
         version: NonZeroU32::new(1).unwrap(),
@@ -130,24 +124,12 @@ async fn query_operation_batches() {
     .unwrap();
     fixture.storage.write_schema(&schema, &graph).await.unwrap();
     let values = [9, 4, 7, 4, 1, 8];
-    let items = (0..values.len())
-        .map(|index| Identifier::new(format!("row-{index}")).unwrap())
-        .collect::<Vec<_>>();
-    let payloads = values
-        .iter()
-        .map(|value| Reading { value: *value }.encode_to_vec())
-        .collect::<Vec<_>>();
+    let items = (0..values.len()).map(|index| Identifier::new(format!("row-{index}")).unwrap()).collect::<Vec<_>>();
+    let payloads = values.iter().map(|value| Reading { value: *value }.encode_to_vec()).collect::<Vec<_>>();
     let records = items
         .iter()
         .zip(&payloads)
-        .map(|(item, payload)| RecordWrite {
-            schema: &schema,
-            scope: None,
-            item,
-            source: None,
-            source_time: None,
-            payload,
-        })
+        .map(|(item, payload)| RecordWrite { schema: &schema, scope: None, item, source: None, source_time: None, payload })
         .collect::<Vec<_>>();
     fixture.storage.write_records(&records).await.unwrap();
     let at = fixture.storage.flush().await.unwrap();
@@ -170,77 +152,38 @@ async fn query_operation_batches() {
     fixture.storage.flush().await.unwrap();
     let request = Request {
         at: at.clone(),
-        source: Source::Records(RecordSelection {
-            schema,
-            scope: None,
-            item: None,
-            source_start: None,
-            source_end: None,
-        }),
+        source: Source::Records(RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None }),
         transforms: vec![
             Transform::Filter(Filter {
                 clauses: vec![Clause {
                     terms: vec![Term {
                         field: "payload.value".into(),
-                        condition: Condition::Compare {
-                            op: Compare::Ge,
-                            value: ScalarValue::Unsigned(4),
-                        },
+                        condition: Condition::Compare { op: Compare::Ge, value: ScalarValue::Unsigned(4) },
                         negate: false,
                     }],
                 }],
             }),
-            Transform::Sort(Sort {
-                keys: vec![SortKey {
-                    field: "payload.value".into(),
-                    descending: false,
-                    nulls_first: false,
-                }],
-            }),
+            Transform::Sort(Sort { keys: vec![SortKey { field: "payload.value".into(), descending: false, nulls_first: false }] }),
             Transform::Project(Project {
                 fields: vec![
-                    Projection {
-                        field: "payload.value".into(),
-                        name: "value".into(),
-                    },
-                    Projection {
-                        field: "_storage.item".into(),
-                        name: "item".into(),
-                    },
+                    Projection { field: "payload.value".into(), name: "value".into() },
+                    Projection { field: "_storage.item".into(), name: "item".into() },
                 ],
             }),
         ],
-        slice: RowSlice {
-            offset: 1,
-            limit: Some(4),
-        },
+        slice: RowSlice { offset: 1, limit: Some(4) },
     };
-    let stream = harmos_runtime::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
-    };
-    let (sender, mut receiver) =
-        harmos_runtime::operations::stream::<harmos_runtime::storage::query::QueryOutput>(stream).unwrap();
-    let instance = fixture
-        .runtime
-        .operations
-        .submit_endpoints::<Query, _>(request, sender)
-        .unwrap();
+    let stream =
+        harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap() };
+    let (sender, mut receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::query::QueryOutput>(stream).unwrap();
+    let instance = fixture.runtime.operations.submit_endpoints::<Query, _>(request, sender).unwrap();
 
     // One Invocation Announces One Schema, Then Bounded Batches.
     let first = QueryArrow::try_from(&*receiver.recv().await.unwrap()).unwrap();
     let QueryArrow::Schema(header) = &first else {
         panic!("query must announce schema first");
     };
-    assert_eq!(
-        header
-            .as_schema()
-            .fields()
-            .iter()
-            .map(|field| field.name().as_str())
-            .collect::<Vec<_>>(),
-        vec!["value", "item"]
-    );
+    assert_eq!(header.as_schema().fields().iter().map(|field| field.name().as_str()).collect::<Vec<_>>(), vec!["value", "item"]);
     let announced = header.as_schema().clone();
     drop(first);
     let mut received = Vec::new();
@@ -254,18 +197,8 @@ async fn query_operation_batches() {
         batch.validate_schema(&announced).unwrap();
         let batch = batch.as_record_batch();
         assert!((1..=2).contains(&batch.num_rows()));
-        let values = batch
-            .column_by_name("value")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .unwrap();
-        let items = batch
-            .column_by_name("item")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<StringArray>()
-            .unwrap();
+        let values = batch.column_by_name("value").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+        let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
         received.extend(values.values().iter().copied());
         identities.extend(items.iter().map(|value| value.unwrap().to_owned()));
         batches += 1;
@@ -283,10 +216,7 @@ async fn query_operation_batches() {
 #[tokio::test]
 async fn query_heterogeneous_projection() {
     let storage = StorageManager::<Objects>::new(
-        StorageBackends {
-            primary: Arc::new(Data::<Objects>::with_catalog(history())),
-            state: Arc::new(Recovery::new(history())),
-        },
+        StorageBackends { primary: Arc::new(Data::<Objects>::with_catalog(history())), state: Arc::new(Recovery::new(history())) },
         config(),
     )
     .unwrap();
@@ -296,28 +226,9 @@ async fn query_heterogeneous_projection() {
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    storage
-        .write_object(&First {
-            id: "shared".into(),
-            value: 1,
-        })
-        .await
-        .unwrap();
-    storage
-        .write_object(&Second {
-            id: "different".into(),
-            value: 2,
-            annotation: "extra field".into(),
-        })
-        .await
-        .unwrap();
-    storage
-        .write_object(&Third {
-            id: "shared".into(),
-            value: 3,
-        })
-        .await
-        .unwrap();
+    storage.write_object(&First { id: "shared".into(), value: 1 }).await.unwrap();
+    storage.write_object(&Second { id: "different".into(), value: 2, annotation: "extra field".into() }).await.unwrap();
+    storage.write_object(&Third { id: "shared".into(), value: 3 }).await.unwrap();
     let at = storage.flush().await.unwrap();
     let selected = |key| {
         Source::Objects(harmos_runtime::storage::query::ObjectSelection {
@@ -331,9 +242,7 @@ async fn query_heterogeneous_projection() {
     let mut matching = storage
         .query(Request {
             at: at.clone(),
-            source: selected(Some(
-                ObjectKey::new("shared", NonZeroUsize::new(128).unwrap()).unwrap(),
-            )),
+            source: selected(Some(ObjectKey::new("shared", NonZeroUsize::new(128).unwrap()).unwrap())),
             transforms: vec![],
             slice: RowSlice::default(),
         })
@@ -342,19 +251,8 @@ async fn query_heterogeneous_projection() {
     let mut schema_ids = Vec::new();
     while let Some(output) = matching.next().await.unwrap() {
         if let QueryArrow::Batch(batch) = output {
-            let metadata = batch
-                .as_record_batch()
-                .column_by_name("_storage")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StructArray>()
-                .unwrap();
-            let ids = metadata
-                .column_by_name("schema_id")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
+            let metadata = batch.as_record_batch().column_by_name("_storage").unwrap().as_any().downcast_ref::<StructArray>().unwrap();
+            let ids = metadata.column_by_name("schema_id").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
             schema_ids.extend(ids.iter().map(|id| id.unwrap().to_owned()));
         }
     }
@@ -368,14 +266,8 @@ async fn query_heterogeneous_projection() {
             source: selected(None),
             transforms: vec![Transform::Project(Project {
                 fields: vec![
-                    Projection {
-                        field: "payload.value".into(),
-                        name: "value".into(),
-                    },
-                    Projection {
-                        field: "_storage.schema_id".into(),
-                        name: "schema".into(),
-                    },
+                    Projection { field: "payload.value".into(), name: "value".into() },
+                    Projection { field: "_storage.schema_id".into(), name: "schema".into() },
                 ],
             })],
             slice: RowSlice::default(),
@@ -392,12 +284,7 @@ async fn query_heterogeneous_projection() {
             panic!("one header");
         };
         batch.validate_schema(header.as_schema()).unwrap();
-        let column = batch
-            .as_record_batch()
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .unwrap();
+        let column = batch.as_record_batch().column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
         values.extend(column.values().iter().copied());
     }
     assert_eq!(values, vec![1, 2, 3]);
@@ -406,15 +293,8 @@ async fn query_heterogeneous_projection() {
     drop(projected);
 
     // Incompatible Unprojected Types Fail Before Publishing A Schema.
-    let mut incompatible = storage
-        .query(Request {
-            at,
-            source: selected(None),
-            transforms: vec![],
-            slice: RowSlice::default(),
-        })
-        .await
-        .unwrap();
+    let mut incompatible =
+        storage.query(Request { at, source: selected(None), transforms: vec![], slice: RowSlice::default() }).await.unwrap();
     assert!(incompatible.next().await.is_err());
     drop(incompatible);
     storage.close().await.unwrap();

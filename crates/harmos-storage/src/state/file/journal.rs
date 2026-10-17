@@ -55,11 +55,7 @@ struct Header {
 /* === Traits === */
 /* === Implementations === */
 impl StateLog {
-    pub(super) fn open(
-        root: &Path,
-        history: StoreHistory,
-        settings: StorageStateSettings,
-    ) -> Result<Self> {
+    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings) -> Result<Self> {
         let entry_bytes = settings.max_entry_bytes.get();
         let checkpoint_bytes = settings.max_checkpoint_bytes.get();
         let files = Files::open(root)?;
@@ -68,13 +64,7 @@ impl StateLog {
         let mut file = files.journal()?;
         let created = file.metadata().map_err(io)?.len() == 0;
         if created {
-            let header = Header {
-                version: VERSION,
-                after: RecoveryPosition {
-                    history: history.clone(),
-                    sequence: 0,
-                },
-            };
+            let header = Header { version: VERSION, after: RecoveryPosition { history: history.clone(), sequence: 0 } };
             format::write(&mut file, &header, HEADER_BYTES)?;
             file.sync_all().map_err(io)?;
             files.sync_directory()?;
@@ -118,32 +108,18 @@ impl StateLog {
         if saved < base {
             return Err(corrupt("state journal does not reach checkpoint"));
         }
-        Ok(Self {
-            files,
-            file,
-            poisoned: false,
-            history,
-            saved,
-            base,
-            entry_bytes,
-            checkpoint_bytes,
-        })
+        Ok(Self { files, file, poisoned: false, history, saved, base, entry_bytes, checkpoint_bytes })
     }
 
     pub(super) fn check(&self) -> Result<()> {
         if self.poisoned {
-            return Err(io(std::io::Error::other(
-                "state journal requires close and reopen after an unresolved I/O failure",
-            )));
+            return Err(io(std::io::Error::other("state journal requires close and reopen after an unresolved I/O failure")));
         }
         Ok(())
     }
 
     pub(super) fn position(&self) -> RecoveryPosition {
-        RecoveryPosition {
-            history: self.history.clone(),
-            sequence: self.saved,
-        }
+        RecoveryPosition { history: self.history.clone(), sequence: self.saved }
     }
 
     /// The caller bounds the snapshot value; the configured limit bounds the written record.
@@ -152,19 +128,11 @@ impl StateLog {
         self.files.snapshot(bound.min(self.checkpoint_bytes))
     }
 
-    pub(super) fn page(
-        &mut self,
-        after: &RecoveryPosition,
-        through: &RecoveryPosition,
-        limits: ReadLimits,
-    ) -> Result<RecoveryPage> {
+    pub(super) fn page(&mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits) -> Result<RecoveryPage> {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
         if after.sequence < self.base {
-            return Err(Error::Gap {
-                requested: after.sequence,
-                available: self.base,
-            });
+            return Err(Error::Gap { requested: after.sequence, available: self.base });
         }
         if after.sequence > through.sequence || through.sequence > self.saved {
             return Err(invalid("state read range is outside retained history"));
@@ -180,8 +148,7 @@ impl StateLog {
                 return Ok(false);
             }
             let size = crate::storage::manager::encoded_size(&entry)?;
-            if entries.len() == limits.rows.get() || size > limits.bytes.get().saturating_sub(bytes)
-            {
+            if entries.len() == limits.rows.get() || size > limits.bytes.get().saturating_sub(bytes) {
                 if entries.is_empty() {
                     return Err(invalid("state entry exceeds requested page size"));
                 }
@@ -192,14 +159,9 @@ impl StateLog {
             entries.push(entry);
             Ok(true)
         })?;
-        let next = (last < through.sequence).then(|| RecoveryPosition {
-            history: self.history.clone(),
-            sequence: last,
-        });
+        let next = (last < through.sequence).then(|| RecoveryPosition { history: self.history.clone(), sequence: last });
         let page = RecoveryPage { entries, next };
-        page.check(after, through, limits, |entry| {
-            crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX)
-        })?;
+        page.check(after, through, limits, |entry| crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX))?;
         Ok(page)
     }
 
@@ -281,14 +243,7 @@ impl StateLog {
         let history = self.history.clone();
         let maximum = self.entry_bytes;
         let replaced = self.files.replace_journal(|writer| {
-            format::write(
-                writer,
-                &Header {
-                    version: VERSION,
-                    after: snapshot.through.clone(),
-                },
-                HEADER_BYTES,
-            )?;
+            format::write(writer, &Header { version: VERSION, after: snapshot.through.clone() }, HEADER_BYTES)?;
             loop {
                 match format::read::<RecoveryEntry>(&mut reader, maximum)? {
                     Read::End => break,
@@ -346,10 +301,7 @@ fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header
         return Err(Error::backend(
             "open state root",
             BackendFailure::Unsupported,
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "state root uses a retired file format; open a fresh state root",
-            ),
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "state root uses a retired file format; open a fresh state root"),
         ));
     }
     history.check(&header.after.history)?;
@@ -357,11 +309,7 @@ fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header
 }
 
 fn conflict(reason: &'static str) -> Error {
-    Error::backend(
-        "write state file",
-        BackendFailure::Conflict,
-        std::io::Error::new(std::io::ErrorKind::InvalidData, reason),
-    )
+    Error::backend("write state file", BackendFailure::Conflict, std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
 }
 
 /* === Tests === */
@@ -377,14 +325,8 @@ mod tests {
         // A Read-Only Handle Forces Both Append And Rollback To Fail.
         journal.file = File::open(root.path().join("state.jsonl")).unwrap();
         let entry = RecoveryEntry {
-            position: RecoveryPosition {
-                history: history.clone(),
-                sequence: 1,
-            },
-            required_data: crate::storage::StorageCursor {
-                history: history.clone(),
-                sequence: 0,
-            },
+            position: RecoveryPosition { history: history.clone(), sequence: 1 },
+            required_data: crate::storage::StorageCursor { history: history.clone(), sequence: 0 },
             payload: vec![1],
         };
         assert!(journal.append(std::slice::from_ref(&entry)).is_err());
@@ -397,10 +339,7 @@ mod tests {
     }
 
     fn history() -> StoreHistory {
-        StoreHistory {
-            store: crate::Identifier::new("state.test").unwrap(),
-            epoch: crate::Identifier::new("epoch.one").unwrap(),
-        }
+        StoreHistory { store: crate::Identifier::new("state.test").unwrap(), epoch: crate::Identifier::new("epoch.one").unwrap() }
     }
 
     fn settings() -> StorageStateSettings {

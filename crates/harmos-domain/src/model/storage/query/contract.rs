@@ -21,9 +21,7 @@ use std::time::SystemTime;
 
 // Local Imports
 use crate::model::storage::ArrowIpc;
-use crate::model::storage::codec::{
-    Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants,
-};
+use crate::model::storage::codec::{Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants};
 use crate::model::storage::objects::Key;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
@@ -123,19 +121,17 @@ impl Source {
     /// unconstrained selection and does not introduce wildcard grant matching.
     pub fn grant_scope(&self) -> String {
         match self {
-            Self::Objects(selection) => selection.schema.as_ref().map_or_else(
-                || "objects:*".to_owned(),
-                |schema| format!("objects:schema:{}", schema.id),
-            ),
+            Self::Objects(selection) => {
+                selection.schema.as_ref().map_or_else(|| "objects:*".to_owned(), |schema| format!("objects:schema:{}", schema.id))
+            }
             Self::Records(selection) => format!("records:schema:{}", selection.schema.id),
-            Self::Stream(selection) => selection.stream.as_ref().map_or_else(
-                || format!("streams:schema:{}", selection.schema.id),
-                |stream| format!("streams:id:{stream}"),
-            ),
-            Self::Schemas(selection) => selection.schema.as_ref().map_or_else(
-                || "schemas:*".to_owned(),
-                |schema| format!("schemas:id:{}", schema.id),
-            ),
+            Self::Stream(selection) => selection
+                .stream
+                .as_ref()
+                .map_or_else(|| format!("streams:schema:{}", selection.schema.id), |stream| format!("streams:id:{stream}")),
+            Self::Schemas(selection) => {
+                selection.schema.as_ref().map_or_else(|| "schemas:*".to_owned(), |schema| format!("schemas:id:{}", schema.id))
+            }
             Self::Files(selection) => match (&selection.scope, &selection.item) {
                 (Some(scope), _) => format!("files:scope:{scope}"),
                 (None, Some(item)) => format!("files:id:{item}"),
@@ -212,21 +208,11 @@ impl MemorySize for Source {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
-                Self::Objects(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Records(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Stream(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Schemas(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Files(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
+                Self::Objects(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Records(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Stream(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Schemas(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Files(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
             }
     }
 }
@@ -234,12 +220,8 @@ impl MemorySize for QueryOutput {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
-                Self::Schema(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Batch(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
+                Self::Schema(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Batch(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
             }
     }
 }
@@ -251,9 +233,7 @@ fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
     match (start, end) {
         (None, None) => Ok(()),
         (Some(start), Some(end)) if start < end => Ok(()),
-        _ => Err(crate::model::storage::query::transform::invalid(
-            "source window requires increasing start and end",
-        )),
+        _ => Err(crate::model::storage::query::transform::invalid("source window requires increasing start and end")),
     }
 }
 

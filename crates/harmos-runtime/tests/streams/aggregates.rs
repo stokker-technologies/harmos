@@ -90,14 +90,8 @@ pub fn summary_refuses_order() {
 
     for kind in EVERY {
         if kind.mergeable() {
-            let (exact, merged) = (
-                series.aggregate(kind).unwrap(),
-                summary.aggregate(kind).unwrap(),
-            );
-            assert!(
-                (exact - merged).abs() < 1e-12,
-                "{kind:?}: {exact} and {merged}"
-            );
+            let (exact, merged) = (series.aggregate(kind).unwrap(), summary.aggregate(kind).unwrap());
+            assert!((exact - merged).abs() < 1e-12, "{kind:?}: {exact} and {merged}");
         } else {
             assert_eq!(summary.aggregate(kind), None, "{kind:?} needs the values");
             assert!(series.aggregate(kind).is_some());
@@ -113,10 +107,7 @@ pub fn wire_names() {
         assert_eq!(serde_json::from_str::<Aggregate>(&json).unwrap(), kind);
     }
     assert_eq!(serde_json::to_string(&Aggregate::Rms).unwrap(), "\"rms\"");
-    assert_eq!(
-        serde_json::to_string(&Aggregate::Percentile(95)).unwrap(),
-        "{\"percentile\":95}"
-    );
+    assert_eq!(serde_json::to_string(&Aggregate::Percentile(95)).unwrap(), "{\"percentile\":95}");
     assert_eq!(Aggregate::Percentile(95).name(), "p95");
     for refused in ["p101", "p", "p+5", "variance"] {
         assert_eq!(Aggregate::parse(refused), None, "{refused}");

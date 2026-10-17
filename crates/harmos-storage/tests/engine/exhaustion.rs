@@ -15,9 +15,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
-use harmos_storage::*;
-use harmos_storage::Error;
 use harmos_domain::Identifier;
+use harmos_storage::Error;
+use harmos_storage::*;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
@@ -39,14 +39,8 @@ async fn oversized_batch_refused() {
     let mut settings = storage_settings();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
-        },
-        settings,
-    )
-    .unwrap();
+    let storage: StorageManager =
+        StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
     crate::fixture::start(&storage).await;
 
     // An Impossible Batch Is Refused Before Ownership Or Cursor Advancement.
@@ -54,38 +48,20 @@ async fn oversized_batch_refused() {
     let item = Identifier::new("oversized").unwrap();
     let payload = waveforms::binary(16 * 1024);
     let result = storage
-        .write_records(&[RecordWrite {
-            schema: &schema,
-            scope: None,
-            item: &item,
-            source: None,
-            source_time: None,
-            payload: &payload,
-        }])
+        .write_records(&[RecordWrite { schema: &schema, scope: None, item: &item, source: None, source_time: None, payload: &payload }])
         .await;
-    assert!(matches!(
-        result,
-        Err(Error::ResourceExhausted { .. }) | Err(Error::InvalidInput { .. })
-    ));
+    assert!(matches!(result, Err(Error::ResourceExhausted { .. }) | Err(Error::InvalidInput { .. })));
     assert_eq!(storage.cursor_accepted().sequence, 0);
     assert_eq!(storage.status().pending_bytes, 0);
     assert!(data.records.lock().unwrap().is_empty());
 
     // Refusal Does Not Poison The Writer; A Following Small Batch Completes.
     storage
-        .write_records(&[RecordWrite {
-            schema: &schema,
-            scope: None,
-            item: &item,
-            source: None,
-            source_time: None,
-            payload: &[1, 2, 3],
-        }])
+        .write_records(&[RecordWrite { schema: &schema, scope: None, item: &item, source: None, source_time: None, payload: &[1, 2, 3] }])
         .await
         .unwrap();
     let durable = storage.flush().await.unwrap();
     assert_eq!(durable.sequence, 1);
     assert_eq!(data.records.lock().unwrap().len(), 1);
     storage.close().await.unwrap();
-
 }

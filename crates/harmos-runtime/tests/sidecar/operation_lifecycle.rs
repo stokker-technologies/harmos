@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Exercise Authored Operation Admission, Child Ownership And Cleanup.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 
@@ -56,10 +54,7 @@ async fn catalog_mismatch_refused() {
             2 => operations[0].visibility = Visibility::Shared,
             3 => operations[0].replay = harmos_runtime::operations::ReplaySafety::Idempotent,
             4 => operations[0].description.push('!'),
-            5 => operations.push(Definition {
-                id: harmos_runtime::Identifier::new("fixture.extra").unwrap(),
-                ..operations[0].clone()
-            }),
+            5 => operations.push(Definition { id: harmos_runtime::Identifier::new("fixture.extra").unwrap(), ..operations[0].clone() }),
             6 => operations.push(operations[0].clone()),
             _ => operations[0].policy.timeout = Duration::ZERO,
         }
@@ -67,17 +62,11 @@ async fn catalog_mismatch_refused() {
         source.operations = operations;
         let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
         assert!(fixture.initialize().await.is_err());
-        let status = service_status(
-            fixture.runtime.operations.watch_residents(),
-            "operation-handshake",
-            |status| matches!(status, ServiceStatus::Inactive { .. }),
-        )
+        let status = service_status(fixture.runtime.operations.watch_residents(), "operation-handshake", |status| {
+            matches!(status, ServiceStatus::Inactive { .. })
+        })
         .await;
-        let ServiceStatus::Inactive {
-            cause: ServiceExit::Application(reason),
-            ..
-        } = status
-        else {
+        let ServiceStatus::Inactive { cause: ServiceExit::Application(reason), .. } = status else {
             panic!("operation admission must fail before initialization: {status:?}");
         };
         let expected_reason = match change {
@@ -90,13 +79,7 @@ async fn catalog_mismatch_refused() {
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 0);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 0);
         assert!(!*fixture.host.ready.as_ref().unwrap().borrow());
-        assert!(matches!(
-            fixture.runtime.stop().await,
-            Err(harmos_runtime::Error::TaskFailed {
-                domain: "service",
-                ..
-            })
-        ));
+        assert!(matches!(fixture.runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     }
 }
 
@@ -107,13 +90,7 @@ async fn catalog_order_admission() {
     source.operations.reverse();
     let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
-    (fixture
-            .host
-            .ready
-            .as_mut()
-            .unwrap()
-            .wait_for(|ready| *ready)).await
-    .unwrap();
+    (fixture.host.ready.as_mut().unwrap().wait_for(|ready| *ready)).await.unwrap();
     assert_eq!(counts.attached.load(Ordering::SeqCst), 1);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     fixture.shutdown().await.unwrap();
@@ -146,9 +123,7 @@ async fn portable_call_context() {
     fixture.call(Read {}).await.unwrap();
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal).unwrap();
-    context
-        .insert_portable(Tenant { name: "lab".into() })
-        .unwrap();
+    context.insert_portable(Tenant { name: "lab".into() }).unwrap();
     fixture.call_in::<Read>(context, Read {}).await.unwrap();
     assert_eq!(
         *counts.tenants.lock().unwrap(),
@@ -165,8 +140,7 @@ async fn submitted_child_controls() {
     counts.submit_child.store(true, Ordering::SeqCst);
     counts.refresh_hold.store(true, Ordering::SeqCst);
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
-    harmos_runtime::builtin::Catalog::register(&fixture.runtime.operations, "host", Lanes::NativeOpen)
-        .unwrap();
+    harmos_runtime::builtin::Catalog::register(&fixture.runtime.operations, "host", Lanes::NativeOpen).unwrap();
     fixture.initialize().await.unwrap();
     fixture.call(Read {}).await.unwrap();
     assert_eq!(counts.children.load(Ordering::SeqCst), 4);
@@ -185,10 +159,7 @@ async fn cleanup_retry_once() {
     fixture.initialize().await.unwrap();
     let runtime = &fixture.runtime;
     counts.fail_cleanup.store(true, Ordering::SeqCst);
-    assert!(matches!(
-        fixture.call(Read {}).await,
-        Err(harmos_runtime::Error::OperationFinalization { .. })
-    ));
+    assert!(matches!(fixture.call(Read {}).await, Err(harmos_runtime::Error::OperationFinalization { .. })));
     assert!(runtime.operations.unregister(Read::ID).await.is_err());
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.finalized.load(Ordering::SeqCst), 0);
@@ -209,8 +180,7 @@ async fn preparation_refusal_state() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_prepare.store(true, Ordering::SeqCst);
-    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await
-    else {
+    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await else {
         panic!("preparation is refused before any attempt")
     };
     assert!(matches!(
@@ -229,11 +199,7 @@ async fn children_attempt_lifetime() {
     for serial in [false, true] {
         let counts = Arc::new(Counts::default());
         counts.call_child.store(true, Ordering::SeqCst);
-        let lane = if serial {
-            Lanes::NativeSerial
-        } else {
-            Lanes::NativeOpen
-        };
+        let lane = if serial { Lanes::NativeSerial } else { Lanes::NativeOpen };
         let mut fixture = Managed::new(source(counts.clone()), lane).await;
         fixture.initialize().await.unwrap();
         let result = fixture.call(Read {}).await;
@@ -260,14 +226,11 @@ async fn initialization_failure() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_initialize.store(true, Ordering::SeqCst);
-    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await
-    else {
+    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await else {
         panic!("initialization returns the original failure")
     };
-    assert!(
-        matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
-        Some(harmos_runtime::operations::NativeError::Preparation(failure)) if failure.code() == harmos_runtime::operations::FailureKind::Transient && failure.cause().contains("partial initialization failed"))
-    );
+    assert!(matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
+        Some(harmos_runtime::operations::NativeError::Preparation(failure)) if failure.code() == harmos_runtime::operations::FailureKind::Transient && failure.cause().contains("partial initialization failed")));
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
@@ -300,26 +263,13 @@ async fn cancelled_init_resources() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.block_initialize.store(true, Ordering::SeqCst);
-    let mut invocation = fixture
-        .runtime
-        .operations
-        .submit_encoded(Read::ID, Vec::new())
-        .unwrap();
+    let mut invocation = fixture.runtime.operations.submit_encoded(Read::ID, Vec::new()).unwrap();
     (counts.initialization_entered.notified()).await;
-    assert_eq!(
-        invocation.status().phase(),
-        harmos_runtime::operations::OperationPhase::Running
-    );
+    assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Running);
     invocation.cancel();
     let result = (&mut invocation).await;
-    assert!(matches!(
-        result,
-        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
-    ));
-    assert_eq!(
-        invocation.status().phase(),
-        harmos_runtime::operations::OperationPhase::Settled
-    );
+    assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
     // A failed or cancelled initialization owns no instance to clean up.
@@ -352,11 +302,7 @@ async fn grpc_original_owner() {
     };
     let attached = fixture.runtime.grpc().attach(settings).await.unwrap();
     let address = attached.local_addr();
-    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-        .unwrap()
-        .connect()
-        .await
-        .unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let settings = harmos_runtime::grpc::server::Settings::default();
@@ -386,4 +332,3 @@ async fn grpc_original_owner() {
 }
 
 /* === Tests === */
-

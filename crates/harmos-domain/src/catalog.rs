@@ -123,18 +123,12 @@ pub const fn count<E>(nodes: &[Node<E>]) -> usize {
     len
 }
 
-pub fn try_for_each<E, F>(
-    nodes: &[Node<E>],
-    mut visit: impl FnMut(&E) -> Result<(), F>,
-) -> Result<(), F> {
+pub fn try_for_each<E, F>(nodes: &[Node<E>], mut visit: impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
     visit_nodes(nodes, &mut visit)
 }
 
 /* === Private Functions === */
-fn visit_nodes<E, F>(
-    nodes: &[Node<E>],
-    visit: &mut impl FnMut(&E) -> Result<(), F>,
-) -> Result<(), F> {
+fn visit_nodes<E, F>(nodes: &[Node<E>], visit: &mut impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
     for node in nodes {
         match node {
             Node::Leaf(entry) => visit(entry)?,

@@ -74,29 +74,20 @@ impl Validator {
         if root >= self.definitions.len() {
             return Err(graph::Error::Reference { definition: root });
         }
-        Ok(Self {
-            root,
-            definitions: Arc::clone(&self.definitions),
-        })
+        Ok(Self { root, definitions: Arc::clone(&self.definitions) })
     }
-    pub fn construction_memory_bytes(
-        schema: &graph::Schema,
-        settings: &SchemaSettings,
-    ) -> Result<usize, graph::Error> {
+    pub fn construction_memory_bytes(schema: &graph::Schema, settings: &SchemaSettings) -> Result<usize, graph::Error> {
         schema
             .preparation(settings)?
             .bytes
-            .checked_add(schema.definitions.iter().try_fold(
-                std::mem::size_of::<Self>(),
-                |bytes, fields| {
-                    fields
-                        .len()
-                        .checked_mul(std::mem::size_of::<Checked>())
-                        .and_then(|size| size.checked_add(std::mem::size_of::<Box<[Checked]>>()))
-                        .and_then(|size| bytes.checked_add(size))
-                        .ok_or(graph::Error::Budget)
-                },
-            )?)
+            .checked_add(schema.definitions.iter().try_fold(std::mem::size_of::<Self>(), |bytes, fields| {
+                fields
+                    .len()
+                    .checked_mul(std::mem::size_of::<Checked>())
+                    .and_then(|size| size.checked_add(std::mem::size_of::<Box<[Checked]>>()))
+                    .and_then(|size| bytes.checked_add(size))
+                    .ok_or(graph::Error::Budget)
+            })?)
             .and_then(|bytes| bytes.checked_add(2 * std::mem::size_of::<usize>()))
             .and_then(|bytes| {
                 schema
@@ -110,10 +101,7 @@ impl Validator {
     pub fn validate(&self, bytes: &[u8]) -> Result<(), PayloadError> {
         self.read(self.root, bytes, 0)
     }
-    pub fn from_schema(
-        schema: &graph::Schema,
-        settings: &SchemaSettings,
-    ) -> Result<Self, graph::Error> {
+    pub fn from_schema(schema: &graph::Schema, settings: &SchemaSettings) -> Result<Self, graph::Error> {
         schema.prepare(settings)?;
         if Self::construction_memory_bytes(schema, settings)? > settings.preparation_bytes.get() {
             return Err(graph::Error::Budget);
@@ -128,11 +116,7 @@ impl Validator {
                         tag: field.tag,
                         repeated: field.cardinality == Cardinality::Repeated,
                         kind: match field.kind {
-                            graph::Kind::Bool
-                            | graph::Kind::U32
-                            | graph::Kind::U64
-                            | graph::Kind::I32
-                            | graph::Kind::I64 => Wire::Varint,
+                            graph::Kind::Bool | graph::Kind::U32 | graph::Kind::U64 | graph::Kind::I32 | graph::Kind::I64 => Wire::Varint,
                             graph::Kind::F32 => Wire::Bits32,
                             graph::Kind::F64 => Wire::Bits64,
                             graph::Kind::String => Wire::String,
@@ -145,10 +129,7 @@ impl Validator {
                 compiled.into_boxed_slice()
             })
             .collect::<Box<[_]>>();
-        Ok(Self {
-            root: schema.root,
-            definitions: definitions.into(),
-        })
+        Ok(Self { root: schema.root, definitions: definitions.into() })
     }
     fn read(&self, definition: usize, mut bytes: &[u8], depth: usize) -> Result<(), PayloadError> {
         if depth > DEPTH {
@@ -156,17 +137,12 @@ impl Validator {
         }
         while !bytes.is_empty() {
             let (tag, wire) = decode_key(&mut bytes)?;
-            let Ok(index) =
-                self.definitions[definition].binary_search_by_key(&tag, |field| field.tag)
-            else {
+            let Ok(index) = self.definitions[definition].binary_search_by_key(&tag, |field| field.tag) else {
                 skip(tag, wire, &mut bytes, depth)?;
                 continue;
             };
             let field = &self.definitions[definition][index];
-            if field.repeated
-                && wire == WireType::LengthDelimited
-                && matches!(field.kind, Wire::Varint | Wire::Bits32 | Wire::Bits64)
-            {
+            if field.repeated && wire == WireType::LengthDelimited && matches!(field.kind, Wire::Varint | Wire::Bits32 | Wire::Bits64) {
                 let mut packed = delimited(&mut bytes)?;
                 while !packed.is_empty() {
                     field.kind.scalar(&mut packed)?;
@@ -181,14 +157,11 @@ impl Validator {
 
 impl harmos_domain::MemorySize for Validator {
     fn memory_size(&self) -> usize {
-        self.definitions.iter().fold(
-            std::mem::size_of::<Self>().saturating_add(2 * std::mem::size_of::<usize>()),
-            |bytes, fields| {
-                bytes
-                    .saturating_add(std::mem::size_of::<Box<[Checked]>>())
-                    .saturating_add(fields.len().saturating_mul(std::mem::size_of::<Checked>()))
-            },
-        )
+        self.definitions.iter().fold(std::mem::size_of::<Self>().saturating_add(2 * std::mem::size_of::<usize>()), |bytes, fields| {
+            bytes
+                .saturating_add(std::mem::size_of::<Box<[Checked]>>())
+                .saturating_add(fields.len().saturating_mul(std::mem::size_of::<Checked>()))
+        })
     }
 }
 
@@ -208,13 +181,7 @@ impl Wire {
         }
         Ok(())
     }
-    fn read(
-        &self,
-        schema: &Validator,
-        wire: WireType,
-        bytes: &mut &[u8],
-        depth: usize,
-    ) -> Result<(), PayloadError> {
+    fn read(&self, schema: &Validator, wire: WireType, bytes: &mut &[u8], depth: usize) -> Result<(), PayloadError> {
         let expected = match self {
             Self::Varint => WireType::Varint,
             Self::Bits32 => WireType::ThirtyTwoBit,
@@ -222,9 +189,7 @@ impl Wire {
             _ => WireType::LengthDelimited,
         };
         if wire != expected {
-            return Err(malformed(
-                "field wire type differs from its admitted schema",
-            ));
+            return Err(malformed("field wire type differs from its admitted schema"));
         }
         match self {
             Self::Varint | Self::Bits32 | Self::Bits64 => self.scalar(bytes)?,
@@ -254,8 +219,7 @@ fn take<'a>(bytes: &mut &'a [u8], length: usize) -> Result<&'a [u8], PayloadErro
 
 fn delimited<'a>(bytes: &mut &'a [u8]) -> Result<&'a [u8], PayloadError> {
     let length = decode_varint(bytes)?;
-    let length = usize::try_from(length)
-        .map_err(|_| malformed("protobuf length exceeds the host address space"))?;
+    let length = usize::try_from(length).map_err(|_| malformed("protobuf length exceeds the host address space"))?;
     take(bytes, length)
 }
 

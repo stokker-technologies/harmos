@@ -80,7 +80,10 @@ async fn delete_removes_file() {
         .storage
         .query(harmos_runtime::storage::operations::Query {
             at: f.storage.cursor_saved(),
-            source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
+            source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
+                scope: None,
+                item: None,
+            }),
             transforms: Vec::new(),
             slice: harmos_runtime::storage::query::RowSlice::default(),
         })

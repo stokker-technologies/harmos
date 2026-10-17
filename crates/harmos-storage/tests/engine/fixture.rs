@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Own The Storage Engine Worker In Tests
 
 /* === Modules === */
@@ -29,7 +28,6 @@ use tokio::task::JoinHandle;
 // Local Imports
 pub(crate) use super::backend::{Data, Recovery, history, storage_settings};
 pub(crate) use harmos_storage::*;
-
 
 /* === Constants === */
 
@@ -69,9 +67,7 @@ impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(StorageBackends {
-            primary: data.clone(), state: recovery.clone(),
-        }, config).unwrap();
+        let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
         start(&storage).await;
         Self { storage, data, recovery }
     }
@@ -85,13 +81,16 @@ impl Fixture {
 
 /* === Public Functions === */
 pub(crate) async fn start<C>(storage: &StorageManager<C>) {
-    storage.start_with(Arc::new(()), |mut worker| {
+    storage
+        .start_with(Arc::new(()), |mut worker| {
             let task = tokio::spawn(async move {
                 worker.run().await?;
                 worker.cleanup().await
             });
             Ok(Box::new(Task(Mutex::new(Some(task)))))
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 }
 
 pub(crate) fn state_settings() -> harmos_storage::state::StorageStateSettings {
@@ -114,38 +113,17 @@ pub(crate) fn schema() -> SchemaKey {
     }
 }
 
-pub(crate) fn record<'a>(
-    schema: &'a SchemaKey,
-    item: &'a Identifier,
-    payload: &'a [u8],
-) -> RecordWrite<'a> {
-    RecordWrite {
-        schema,
-        scope: None,
-        item,
-        source: None,
-        source_time: None,
-        payload,
-    }
+pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordWrite<'a> {
+    RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
 }
 
 /// Whether one poll of `future` leaves it pending, without waiting for anything.
-pub(crate) async fn pending<F: std::future::Future + ?Sized>(
-    mut future: std::pin::Pin<&mut F>,
-) -> bool {
-    std::future::poll_fn(|context| {
-        std::task::Poll::Ready(future.as_mut().poll(context).is_pending())
-    })
-    .await
+pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
+    std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }
 
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
-    storage
-        .write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])])
-        .await
-        .unwrap()
+    storage.write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
-
-
 
 /* === Tests === */

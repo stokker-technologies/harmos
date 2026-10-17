@@ -17,8 +17,8 @@ use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
 use arrow_array::{
-    Array, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array,
-    ListArray, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array,
+    Array, BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, ListArray, StringArray, StructArray,
+    TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
 // Local Imports
 use super::DecodedBatch;
@@ -48,21 +48,13 @@ const MAX_DEPTH: usize = 64;
 /// Encode typed payload rows using the registered Harmos message schema. The
 /// allowance covers the returned row-vector allocation and all encoded bytes;
 /// validation and exact sizing finish before output allocation begins.
-pub fn encode_payloads(
-    schema: &Schema,
-    payload: &StructArray,
-    encoding: PayloadEncoding,
-    max_bytes: NonZeroUsize,
-) -> Result<Vec<Vec<u8>>> {
+pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
     let metadata = payload
         .len()
         .checked_mul(std::mem::size_of::<Vec<u8>>())
         .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<Vec<u8>>>()))
         .ok_or_else(exhausted)?;
-    let mut count = Counter {
-        bytes: metadata,
-        limit: max_bytes.get(),
-    };
+    let mut count = Counter { bytes: metadata, limit: max_bytes.get() };
     if metadata > max_bytes.get() {
         return Err(exhausted());
     }
@@ -71,10 +63,7 @@ pub fn encode_payloads(
     }
     let mut rows = Vec::with_capacity(payload.len());
     for row in 0..payload.len() {
-        let mut size = Counter {
-            bytes: 0,
-            limit: max_bytes.get(),
-        };
+        let mut size = Counter { bytes: 0, limit: max_bytes.get() };
         encode_message(schema, schema.root, payload, row, encoding, 0, &mut size)?;
         let mut bytes = Vec::with_capacity(size.bytes);
         encode_message(schema, schema.root, payload, row, encoding, 0, &mut bytes)?;
@@ -83,17 +72,9 @@ pub fn encode_payloads(
     Ok(rows)
 }
 
-pub fn records(
-    scope: Option<&Identifier>,
-    batch: &DecodedBatch,
-    schema: &Schema,
-) -> Result<Vec<RecordInput>> {
+pub fn records(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema) -> Result<Vec<RecordInput>> {
     let data = batch.data.as_record_batch();
-    let metadata = struct_column(
-        data.column_by_name("_storage")
-            .ok_or_else(invalid)?
-            .as_ref(),
-    )?;
+    let metadata = struct_column(data.column_by_name("_storage").ok_or_else(invalid)?.as_ref())?;
     let payload = struct_column(data.column_by_name("payload").ok_or_else(invalid)?.as_ref())?;
     (0..data.num_rows())
         .map(|row| {
@@ -101,11 +82,7 @@ pub fn records(
                 return Err(invalid());
             }
             let authored_scope = optional_id(metadata, "scope", row)?;
-            if scope.is_some_and(|expected| {
-                authored_scope
-                    .as_ref()
-                    .is_some_and(|actual| actual != expected)
-            }) {
+            if scope.is_some_and(|expected| authored_scope.as_ref().is_some_and(|actual| actual != expected)) {
                 return Err(invalid());
             }
             let source_time = metadata
@@ -122,15 +99,7 @@ pub fn records(
                 })
                 .transpose()?;
             let mut bytes = Vec::new();
-            encode_message(
-                schema,
-                schema.root,
-                payload,
-                row,
-                batch.schema.payload_encoding,
-                0,
-                &mut bytes,
-            )?;
+            encode_message(schema, schema.root, payload, row, batch.schema.payload_encoding, 0, &mut bytes)?;
             Ok(RecordInput {
                 schema: batch.schema.clone(),
                 scope: scope.cloned().or(authored_scope),
@@ -143,26 +112,10 @@ pub fn records(
         .collect()
 }
 
-pub fn streams(
-    scope: Option<&Identifier>,
-    batch: &DecodedBatch,
-    schema: &Schema,
-) -> Result<Vec<StreamInput>> {
+pub fn streams(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema) -> Result<Vec<StreamInput>> {
     let records = records(scope, batch, schema)?;
-    let metadata = struct_column(
-        batch
-            .data
-            .as_record_batch()
-            .column_by_name("_storage")
-            .ok_or_else(invalid)?
-            .as_ref(),
-    )?;
-    let sequence = typed::<UInt64Array>(
-        metadata
-            .column_by_name("sequence")
-            .ok_or_else(invalid)?
-            .as_ref(),
-    )?;
+    let metadata = struct_column(batch.data.as_record_batch().column_by_name("_storage").ok_or_else(invalid)?.as_ref())?;
+    let sequence = typed::<UInt64Array>(metadata.column_by_name("sequence").ok_or_else(invalid)?.as_ref())?;
     records
         .into_iter()
         .enumerate()
@@ -170,37 +123,18 @@ pub fn streams(
             if sequence.is_null(row) {
                 return Err(invalid());
             }
-            if optional_id(metadata, "stream", row)?
-                .is_some_and(|stream| stream != batch.destination)
-            {
+            if optional_id(metadata, "stream", row)?.is_some_and(|stream| stream != batch.destination) {
                 return Err(invalid());
             }
-            Ok(StreamInput {
-                record,
-                stream: batch.destination.clone(),
-                sequence: sequence.value(row),
-            })
+            Ok(StreamInput { record, stream: batch.destination.clone(), sequence: sequence.value(row) })
         })
         .collect()
 }
 
-pub fn objects(
-    batch: &DecodedBatch,
-    schema: &Schema,
-    max_key_bytes: NonZeroUsize,
-) -> Result<Vec<ObjectValue>> {
+pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsize) -> Result<Vec<ObjectValue>> {
     let data = batch.data.as_record_batch();
-    let metadata = struct_column(
-        data.column_by_name("_storage")
-            .ok_or_else(invalid)?
-            .as_ref(),
-    )?;
-    let items = typed::<StringArray>(
-        metadata
-            .column_by_name("item")
-            .ok_or_else(invalid)?
-            .as_ref(),
-    )?;
+    let metadata = struct_column(data.column_by_name("_storage").ok_or_else(invalid)?.as_ref())?;
+    let items = typed::<StringArray>(metadata.column_by_name("item").ok_or_else(invalid)?.as_ref())?;
     let payload = struct_column(data.column_by_name("payload").ok_or_else(invalid)?.as_ref())?;
     (0..data.num_rows())
         .map(|row| {
@@ -208,20 +142,8 @@ pub fn objects(
                 return Err(invalid());
             }
             let mut bytes = Vec::new();
-            encode_message(
-                schema,
-                schema.root,
-                payload,
-                row,
-                batch.schema.payload_encoding,
-                0,
-                &mut bytes,
-            )?;
-            Ok(ObjectValue {
-                schema: batch.schema.clone(),
-                item: ObjectKey::new(items.value(row), max_key_bytes)?,
-                payload: bytes,
-            })
+            encode_message(schema, schema.root, payload, row, batch.schema.payload_encoding, 0, &mut bytes)?;
+            Ok(ObjectValue { schema: batch.schema.clone(), item: ObjectKey::new(items.value(row), max_key_bytes)?, payload: bytes })
         })
         .collect()
 }
@@ -236,11 +158,7 @@ struct Counter {
 }
 impl Sink for Counter {
     fn append(&mut self, value: &[u8]) -> Result<()> {
-        self.bytes = self
-            .bytes
-            .checked_add(value.len())
-            .filter(|bytes| *bytes <= self.limit)
-            .ok_or_else(exhausted)?;
+        self.bytes = self.bytes.checked_add(value.len()).filter(|bytes| *bytes <= self.limit).ok_or_else(exhausted)?;
         Ok(())
     }
 }
@@ -256,22 +174,13 @@ fn scalar<T: serde::Serialize>(value: T, output: &mut impl Sink) -> Result<()> {
     output.append(encoded)
 }
 fn encode_message(
-    schema: &Schema,
-    definition: usize,
-    values: &StructArray,
-    row: usize,
-    encoding: PayloadEncoding,
-    depth: usize,
-    output: &mut impl Sink,
+    schema: &Schema, definition: usize, values: &StructArray, row: usize, encoding: PayloadEncoding, depth: usize, output: &mut impl Sink,
 ) -> Result<()> {
     if depth > MAX_DEPTH || values.is_null(row) {
         return Err(invalid());
     }
     let fields = schema.definitions.get(definition).ok_or_else(invalid)?;
-    if fields
-        .iter()
-        .any(|field| field.cardinality == Cardinality::Variant)
-    {
+    if fields.iter().any(|field| field.cardinality == Cardinality::Variant) {
         let mut selected = None;
         for (index, field) in fields.iter().enumerate() {
             if let Some(value) = values.column_by_name(&field.name)
@@ -284,27 +193,14 @@ fn encode_message(
             }
         }
         let (index, field, value) = selected.ok_or_else(invalid)?;
-        let discriminant = typed::<UInt32Array>(
-            values
-                .column_by_name("__variant")
-                .ok_or_else(invalid)?
-                .as_ref(),
-        )?;
+        let discriminant = typed::<UInt32Array>(values.column_by_name("__variant").ok_or_else(invalid)?.as_ref())?;
         if discriminant.is_null(row) || discriminant.value(row) as usize != index {
             return Err(invalid());
         }
         if encoding == PayloadEncoding::PostcardV1 {
             scalar(index as u32, output)?;
         }
-        return encode_value(
-            schema,
-            field,
-            value.as_ref(),
-            row,
-            encoding,
-            depth + 1,
-            output,
-        );
+        return encode_value(schema, field, value.as_ref(), row, encoding, depth + 1, output);
     }
     for field in fields {
         let value = values.column_by_name(&field.name).ok_or_else(invalid)?;
@@ -328,40 +224,18 @@ fn encode_message(
                     scalar((end - start) as u64, output)?;
                 }
                 for index in start..end {
-                    encode_value(
-                        schema,
-                        field,
-                        lists.values().as_ref(),
-                        index,
-                        encoding,
-                        depth + 1,
-                        output,
-                    )?;
+                    encode_value(schema, field, lists.values().as_ref(), index, encoding, depth + 1, output)?;
                 }
                 continue;
             }
             Cardinality::Required | Cardinality::Variant => {}
         }
-        encode_value(
-            schema,
-            field,
-            value.as_ref(),
-            row,
-            encoding,
-            depth + 1,
-            output,
-        )?;
+        encode_value(schema, field, value.as_ref(), row, encoding, depth + 1, output)?;
     }
     Ok(())
 }
 fn encode_value(
-    schema: &Schema,
-    field: &Field,
-    array: &dyn Array,
-    row: usize,
-    encoding: PayloadEncoding,
-    depth: usize,
-    output: &mut impl Sink,
+    schema: &Schema, field: &Field, array: &dyn Array, row: usize, encoding: PayloadEncoding, depth: usize, output: &mut impl Sink,
 ) -> Result<()> {
     if array.is_null(row) {
         return Err(invalid());
@@ -379,31 +253,13 @@ fn encode_value(
         }};
     }
     match field.kind {
-        Kind::Bool => number!(BooleanArray, 0, |value: bool, out: &mut _| varint(
-            u64::from(value),
-            out
-        )),
-        Kind::U32 => number!(UInt32Array, 0, |value: u32, out: &mut _| varint(
-            u64::from(value),
-            out
-        )),
+        Kind::Bool => number!(BooleanArray, 0, |value: bool, out: &mut _| varint(u64::from(value), out)),
+        Kind::U32 => number!(UInt32Array, 0, |value: u32, out: &mut _| varint(u64::from(value), out)),
         Kind::U64 => number!(UInt64Array, 0, |value: u64, out: &mut _| varint(value, out)),
-        Kind::I32 => number!(Int32Array, 0, |value: i32, out: &mut _| varint(
-            value as i64 as u64,
-            out
-        )),
-        Kind::I64 => number!(Int64Array, 0, |value: i64, out: &mut _| varint(
-            value as u64,
-            out
-        )),
-        Kind::F32 => number!(Float32Array, 5, |value: f32, out: &mut _| Sink::append(
-            out,
-            &value.to_le_bytes()
-        )),
-        Kind::F64 => number!(Float64Array, 1, |value: f64, out: &mut _| Sink::append(
-            out,
-            &value.to_le_bytes()
-        )),
+        Kind::I32 => number!(Int32Array, 0, |value: i32, out: &mut _| varint(value as i64 as u64, out)),
+        Kind::I64 => number!(Int64Array, 0, |value: i64, out: &mut _| varint(value as u64, out)),
+        Kind::F32 => number!(Float32Array, 5, |value: f32, out: &mut _| Sink::append(out, &value.to_le_bytes())),
+        Kind::F64 => number!(Float64Array, 1, |value: f64, out: &mut _| Sink::append(out, &value.to_le_bytes())),
         Kind::String => {
             let value = typed::<StringArray>(array)?.value(row);
             if protobuf {
@@ -425,19 +281,8 @@ fn encode_value(
         Kind::Message { definition } => {
             let values = struct_column(array)?;
             if protobuf {
-                let mut count = Counter {
-                    bytes: 0,
-                    limit: usize::MAX,
-                };
-                encode_message(
-                    schema,
-                    definition,
-                    values,
-                    row,
-                    encoding,
-                    depth + 1,
-                    &mut count,
-                )?;
+                let mut count = Counter { bytes: 0, limit: usize::MAX };
+                encode_message(schema, definition, values, row, encoding, depth + 1, &mut count)?;
                 header(field.tag, count.bytes, output)?;
             }
             encode_message(schema, definition, values, row, encoding, depth + 1, output)?;
@@ -460,9 +305,7 @@ fn optional_id(values: &StructArray, name: &str, row: usize) -> Result<Option<Id
     if strings.is_null(row) {
         return Ok(None);
     }
-    Identifier::new(strings.value(row))
-        .map(Some)
-        .map_err(|_| invalid())
+    Identifier::new(strings.value(row)).map(Some).map_err(|_| invalid())
 }
 fn required_id(values: &StructArray, name: &str, row: usize) -> Result<Identifier> {
     optional_id(values, name, row)?.ok_or_else(invalid)
@@ -483,15 +326,10 @@ fn header(tag: u32, length: usize, output: &mut impl Sink) -> Result<()> {
     varint(length as u64, output)
 }
 fn exhausted() -> Error {
-    Error::ResourceExhausted {
-        resource: "Arrow payload encoding bytes",
-    }
+    Error::ResourceExhausted { resource: "Arrow payload encoding bytes" }
 }
 fn invalid() -> Error {
-    Error::InvalidInput {
-        field: "write Arrow batch",
-        reason: "batch metadata or typed payload does not match its schema",
-    }
+    Error::InvalidInput { field: "write Arrow batch", reason: "batch metadata or typed payload does not match its schema" }
 }
 
 /* === Tests === */

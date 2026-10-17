@@ -27,8 +27,8 @@ use tokio::sync::watch;
 // Local Imports
 use super::window::Window;
 use super::{
-    Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand, Holding, Item,
-    Prefix, Stream, Table, Tier, Tracked, Wired, demand, window,
+    Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand, Holding, Item, Prefix, Stream, Table, Tier, Tracked,
+    Wired, demand, window,
 };
 use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
 
@@ -116,22 +116,11 @@ impl<A: Application> StreamFeed<A> {
 
 impl<A: Application> StreamManager<A> {
     pub(crate) fn wired(windows: Table, applied: watch::Receiver<Position>, tier: Tier) -> Self {
-        Self {
-            windows: Arc::new(windows),
-            applied,
-            tier,
-            closed: Arc::new(AtomicBool::new(false)),
-            marker: PhantomData,
-        }
+        Self { windows: Arc::new(windows), applied, tier, closed: Arc::new(AtomicBool::new(false)), marker: PhantomData }
     }
 
     pub fn follow(&self, resume: Cursor) -> StreamFeed<A> {
-        StreamFeed {
-            streams: self.clone(),
-            changed: self.delivery(),
-            cursor: resume,
-            intake: self.windows.ingest.engage(resume.0),
-        }
+        StreamFeed { streams: self.clone(), changed: self.delivery(), cursor: resume, intake: self.windows.ingest.engage(resume.0) }
     }
 
     pub fn frontier(&self) -> Cursor {
@@ -176,17 +165,10 @@ impl<A: Application> StreamManager<A> {
     }
 
     pub fn seal<S: Stream<A>>(&self) -> Seal<S> {
-        Seal {
-            definition: self.stream::<S>().definition.clone(),
-            tier: self.tier.clone(),
-            track: Vec::new(),
-            marker: PhantomData,
-        }
+        Seal { definition: self.stream::<S>().definition.clone(), tier: self.tier.clone(), track: Vec::new(), marker: PhantomData }
     }
 
-    pub fn watch<S: Stream<A>>(
-        &self,
-    ) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin + use<S, A> {
+    pub fn watch<S: Stream<A>>(&self) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin + use<S, A> {
         let window = Arc::clone(&self.stream::<S>().window);
         let held = demand::Holding::engage(Arc::clone(&window));
 
@@ -218,12 +200,7 @@ impl<A: Application> StreamManager<A> {
     pub(crate) fn batch(&self, resume: Cursor) -> Batch<A> {
         let delivery = self.windows.recorded_after(resume);
 
-        Batch {
-            rows: delivery.rows,
-            incomplete: delivery.incomplete,
-            reaches: delivery.reaches,
-            application: PhantomData,
-        }
+        Batch { rows: delivery.rows, incomplete: delivery.incomplete, reaches: delivery.reaches, application: PhantomData }
     }
 
     pub(crate) fn declared(&self) -> Vec<Arc<Wired>> {
@@ -233,10 +210,7 @@ impl<A: Application> StreamManager<A> {
     fn stream<S: Stream<A>>(&self) -> Arc<Wired> {
         self.windows
             .wired(S::ID, S::VERSION)
-            .filter(|wired| {
-                wired.definition.row() == TypeId::of::<S>()
-                    && wired.definition.version() == S::VERSION
-            })
+            .filter(|wired| wired.definition.row() == TypeId::of::<S>() && wired.definition.version() == S::VERSION)
             .unwrap_or_else(|| {
                 panic!(
                     "the stream \"{}\" is not in the registered catalog; \
@@ -261,9 +235,7 @@ impl<A: Application> Clone for StreamManager<A> {
 
 impl<A: Application> fmt::Debug for StreamManager<A> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("StreamManager")
-            .finish_non_exhaustive()
+        formatter.debug_struct("StreamManager").finish_non_exhaustive()
     }
 }
 
@@ -279,55 +251,25 @@ impl<S: Clone + Send + 'static> Query<S> {
     }
 
     async fn answer(self) -> Result<std::vec::IntoIter<At<S>>, BeneathWindow> {
-        let Self {
-            window,
-            definition,
-            tier,
-            start,
-            end,
-            as_of,
-            partition,
-            retained_only,
-            ..
-        } = self;
-        let retained = if retained_only {
-            window.snapshot_scope(start, end, as_of, false)
-        } else {
-            window.snapshot(start, end, as_of)
-        };
+        let Self { window, definition, tier, start, end, as_of, partition, retained_only, .. } = self;
+        let retained = if retained_only { window.snapshot_scope(start, end, as_of, false) } else { window.snapshot(start, end, as_of) };
         let mut rows = Vec::new();
 
         if retained.beneath && !retained_only {
-            let served = tier
-                .rows(
-                    definition,
-                    narrowed(partition.as_ref()),
-                    start,
-                    beneath(beneath_of(end, as_of), retained.floor),
-                )
-                .await?;
+            let served =
+                tier.rows(definition, narrowed(partition.as_ref()), start, beneath(beneath_of(end, as_of), retained.floor)).await?;
 
-            rows.extend(
-                served
-                    .into_iter()
-                    .map(|At { value, position }| (position, value)),
-            );
+            rows.extend(served.into_iter().map(|At { value, position }| (position, value)));
         }
         rows.extend(retained.rows);
 
         Ok(rows
             .into_iter()
             .map(|(position, row)| At {
-                value: super::row_value::<S>(row.as_ref())
-                    .expect("a stream's tiers hold only its own rows")
-                    .clone(),
+                value: super::row_value::<S>(row.as_ref()).expect("a stream's tiers hold only its own rows").clone(),
                 position,
             })
-            .filter(|At { value, .. }| {
-                partition
-                    .as_ref()
-                    .is_none_or(|partition| (partition.matches)(value))
-            })
+            .filter(|At { value, .. }| partition.as_ref().is_none_or(|partition| (partition.matches)(value)))
             .collect::<Vec<_>>()
             .into_iter())
     }
@@ -335,10 +277,7 @@ impl<S: Clone + Send + 'static> Query<S> {
 
 impl<S: Clone + Send + Tracked + 'static> Query<S> {
     pub fn track<K: Prefix<S::Track>>(mut self, track: K) -> Self {
-        self.partition = Some(Partition {
-            labels: track.labels(),
-            matches: Box::new(move |row: &S| track.selects(&row.track())),
-        });
+        self.partition = Some(Partition { labels: track.labels(), matches: Box::new(move |row: &S| track.selects(&row.track())) });
         self
     }
 }
@@ -354,21 +293,11 @@ impl<S: Clone + Send + 'static> IntoFuture for Query<S> {
 
 impl<S> Survey<S> {
     pub async fn budget(self, points: usize) -> Result<Vec<Bucket>, BeneathWindow> {
-        self.tier
-            .buckets(self.definition, self.track, self.start, self.end, points)
-            .await
+        self.tier.buckets(self.definition, self.track, self.start, self.end, points).await
     }
 
     pub async fn fold(self, kind: Aggregate) -> Result<Vec<Aggregated>, BeneathWindow> {
-        self.tier
-            .aggregate(
-                self.definition,
-                self.track,
-                self.start,
-                self.end,
-                checked(kind),
-            )
-            .await
+        self.tier.aggregate(self.definition, self.track, self.start, self.end, checked(kind)).await
     }
 }
 
@@ -399,17 +328,12 @@ impl<S> IntoFuture for Seal<S> {
 
 /* === Private Functions === */
 fn checked(kind: Aggregate) -> Aggregate {
-    assert!(
-        kind.answerable(),
-        "a percentile rank is a percentage, and {kind:?} names none"
-    );
+    assert!(kind.answerable(), "a percentile rank is a percentage, and {kind:?} names none");
     kind
 }
 
 fn narrowed<S>(partition: Option<&Partition<S>>) -> Vec<String> {
-    partition
-        .map(|partition| partition.labels.clone())
-        .unwrap_or_default()
+    partition.map(|partition| partition.labels.clone()).unwrap_or_default()
 }
 
 fn beneath(end: Bound<Position>, ceiling: Position) -> Bound<Position> {

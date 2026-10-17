@@ -65,22 +65,13 @@ enum Finalization<A: Application> {
 impl<A: Application> Active<A> {
     pub fn serve(mut self) -> Result<Serving<A>, Error> {
         if !self.store.data().active {
-            return Err(Error::Denied {
-                code: "revoked",
-                message: "serve".to_owned(),
-            });
+            return Err(Error::Denied { code: "revoked", message: "serve".to_owned() });
         }
         let instance = self.routing.take();
         let publications = self.store.data().publications.values().cloned().collect();
         let session = Session::start(self);
         let revocation = instance.as_ref().map(PluginEndpoint::revocation);
-        Ok(Serving {
-            instance,
-            session: Some(session),
-            publications,
-            revocation,
-            finalization: None,
-        })
+        Ok(Serving { instance, session: Some(session), publications, revocation, finalization: None })
     }
 }
 
@@ -98,14 +89,8 @@ impl<A: Application> Serving<A> {
         Ok(crate::operations::Component::new(endpoint))
     }
 
-    pub(crate) fn exit(
-        &self,
-    ) -> Result<impl Future<Output = Result<(), Error>> + Send + 'static, Error> {
-        let endpoint = self
-            .session
-            .as_ref()
-            .ok_or(DispatchError::Unavailable)?
-            .endpoint();
+    pub(crate) fn exit(&self) -> Result<impl Future<Output = Result<(), Error>> + Send + 'static, Error> {
+        let endpoint = self.session.as_ref().ok_or(DispatchError::Unavailable)?.endpoint();
         Ok(async move { endpoint.settle().await })
     }
 
@@ -130,49 +115,33 @@ impl<A: Application> Serving<A> {
             }
         };
         if let Some(mut cleanup) = cleanup {
-            self.finalization = Some(Finalization::Pending(crate::supervision::executor::task(
-                async move {
-                    let remaining = cleanup.within.saturating_sub(
-                        crate::supervision::executor::now().duration_since(cleanup.started),
-                    );
-                    let result = {
-                        let finalizing = cleanup.finalize();
-                        let mut finalizing = std::pin::pin!(finalizing);
-                        let guarded =
-                            std::future::poll_fn(|context| {
-                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    finalizing.as_mut().poll(context)
-                                })) {
-                                    Ok(poll) => poll,
-                                    Err(_) => std::task::Poll::Ready(Err(Error::Guest {
-                                        message: "guest cleanup machinery panicked".to_owned(),
-                                    })),
-                                }
-                            });
-                        let mut guarded = std::pin::pin!(guarded);
-                        match crate::supervision::executor::timeout(remaining, guarded.as_mut())
-                            .await
-                        {
-                            Ok(result) => result,
-                            Err(_) => {
-                                tracing::warn!(
-                                    "guest finalization is still draining after its grace window"
-                                );
-                                guarded.await
-                            }
+            self.finalization = Some(Finalization::Pending(crate::supervision::executor::task(async move {
+                let remaining = cleanup.within.saturating_sub(crate::supervision::executor::now().duration_since(cleanup.started));
+                let result = {
+                    let finalizing = cleanup.finalize();
+                    let mut finalizing = std::pin::pin!(finalizing);
+                    let guarded = std::future::poll_fn(|context| {
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| finalizing.as_mut().poll(context))) {
+                            Ok(poll) => poll,
+                            Err(_) => std::task::Poll::Ready(Err(Error::Guest { message: "guest cleanup machinery panicked".to_owned() })),
                         }
-                    };
-                    let outcome =
-                        result.map_err(|error| Arc::new(error) as Arc<dyn StdError + Send + Sync>);
-                    (cleanup, outcome)
-                },
-            )));
+                    });
+                    let mut guarded = std::pin::pin!(guarded);
+                    match crate::supervision::executor::timeout(remaining, guarded.as_mut()).await {
+                        Ok(result) => result,
+                        Err(_) => {
+                            tracing::warn!("guest finalization is still draining after its grace window");
+                            guarded.await
+                        }
+                    }
+                };
+                let outcome = result.map_err(|error| Arc::new(error) as Arc<dyn StdError + Send + Sync>);
+                (cleanup, outcome)
+            })));
         }
         if let Some(Finalization::Pending(task)) = &mut self.finalization {
-            let (cleanup, outcome) = task.await.map_err(|source| crate::Error::TaskFailed {
-                domain: "guest finalization",
-                source: Arc::new(source),
-            })?;
+            let (cleanup, outcome) =
+                task.await.map_err(|source| crate::Error::TaskFailed { domain: "guest finalization", source: Arc::new(source) })?;
             self.finalization = Some(match outcome {
                 Ok(()) => {
                     drop(cleanup);
@@ -183,10 +152,9 @@ impl<A: Application> Serving<A> {
         }
         match &self.finalization {
             Some(Finalization::Complete) => Ok(()),
-            Some(Finalization::Failed(_, source)) => Err(crate::Error::TaskFailed {
-                domain: "guest finalization",
-                source: Arc::clone(source),
-            }),
+            Some(Finalization::Failed(_, source)) => {
+                Err(crate::Error::TaskFailed { domain: "guest finalization", source: Arc::clone(source) })
+            }
             _ => unreachable!("the original ending receipt was awaited"),
         }
     }

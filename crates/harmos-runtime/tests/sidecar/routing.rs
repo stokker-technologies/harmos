@@ -23,14 +23,12 @@ use super::*;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
 use harmos_runtime::plugin::{
-    PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager,
-    PluginTransition, Requirement, Router,
+    PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager, PluginTransition, Requirement, Router,
 };
 
 /* === Constants === */
 static NEXT_PROVIDER_SEED: AtomicUsize = AtomicUsize::new(1);
-static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Provider>>> =
-    Mutex::new(std::collections::BTreeMap::new());
+static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Provider>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
@@ -222,8 +220,7 @@ impl Drop for ProviderSeed {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for ProviderEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy =
-        <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -248,10 +245,7 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
     fn resources(&self) -> Arc<Provider> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Amplifying>(self.resources.clone())?;
         table.bind_operation::<Retrying>(self.resources.clone())
     }
@@ -264,8 +258,7 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for CallerEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy =
-        <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -276,9 +269,7 @@ impl harmos_runtime::Plugin for CallerEndpoint {
     type Error = Refusal;
     type Resources = Forwarder;
     fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Arc::new(Forwarder),
-        })
+        Ok(Self { resources: Arc::new(Forwarder) })
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -286,10 +277,7 @@ impl harmos_runtime::Plugin for CallerEndpoint {
     fn resources(&self) -> Arc<Forwarder> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Forwarding<Forward>>(self.resources.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
@@ -301,8 +289,7 @@ impl harmos_runtime::Plugin for CallerEndpoint {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for UnauthorizedEndpoint {
-    const INITIALIZATION_POLICY: OperationPolicy =
-        <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = <Dependent as harmos_runtime::operations::lifecycle::Policy>::INITIALIZATION_POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
@@ -313,9 +300,7 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
     type Error = Refusal;
     type Resources = Forwarder;
     fn prepare(_: ()) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Arc::new(Forwarder),
-        })
+        Ok(Self { resources: Arc::new(Forwarder) })
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -323,10 +308,7 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
     fn resources(&self) -> Arc<Forwarder> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<Forwarding<UnauthorizedForward>>(self.resources.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
@@ -354,21 +336,13 @@ impl harmos_runtime::operations::Operation for PublishingCall {
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
     async fn initialize<'ctx>(resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut PublishPulse,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut PublishPulse, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            host.publisher::<Publishing>()
-                .publish_on::<MeterPulse>(&support::pulse(request.sample))
-                .await
-                .map_err(Refusal::from)
+            host.publisher::<Publishing>().publish_on::<MeterPulse>(&support::pulse(request.sample)).await.map_err(Refusal::from)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -382,10 +356,7 @@ impl harmos_runtime::Plugin for Publishing {
     type Error = Refusal;
     type Resources = ();
     fn prepare(publish_on_cleanup: bool) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Arc::new(()),
-            publish_on_cleanup,
-        })
+        Ok(Self { resources: Arc::new(()), publish_on_cleanup })
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         for sample in [41, 42] {
@@ -400,10 +371,7 @@ impl harmos_runtime::Plugin for Publishing {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         table.bind_operation::<PublishingCall>(self.resources())
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
@@ -438,38 +406,23 @@ impl harmos_runtime::Plugin for Dependent {
     type Error = Refusal;
     type Resources = ();
     fn prepare(notify: bool) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Arc::new(()),
-            notify,
-        })
+        Ok(Self { resources: Arc::new(()), notify })
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context
-            .call(Amplify { value: 11 })
-            .await
-            .map_err(Refusal::from)?;
+        context.call(Amplify { value: 11 }).await.map_err(Refusal::from)?;
         if self.notify {
-            context
-                .call(Sample { value: 99 })
-                .await
-                .map_err(Refusal::from)?;
+            context.call(Sample { value: 99 }).await.map_err(Refusal::from)?;
         }
         Ok(())
     }
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        _: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context
-            .call(Amplify { value: 22 })
-            .await
-            .expect("provider remains available through cleanup");
+        context.call(Amplify { value: 22 }).await.expect("provider remains available through cleanup");
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -493,17 +446,11 @@ impl harmos_runtime::operations::Operation for Amplifying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Provider>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<Provider>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Amplify,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Amplify, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value == 0 {
@@ -512,9 +459,7 @@ impl harmos_runtime::operations::Operation for Amplifying {
                 std::future::pending::<()>().await;
             }
             self.resources.observed.lock().unwrap().push(request.value);
-            Ok(Amplified {
-                value: request.value * self.resources.multiplier,
-            })
+            Ok(Amplified { value: request.value * self.resources.multiplier })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -531,18 +476,12 @@ impl harmos_runtime::operations::Operation for Retrying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Provider>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<Provider>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Retry,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Retry, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             self.resources.attempts.fetch_add(1, Ordering::SeqCst);
@@ -550,9 +489,7 @@ impl harmos_runtime::operations::Operation for Retrying {
             if request.value == 2 {
                 return Err(Refusal::of("one transient failure"));
             }
-            Ok(Amplified {
-                value: request.value,
-            })
+            Ok(Amplified { value: request.value })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -580,33 +517,19 @@ impl<F: Forwarded> harmos_runtime::operations::Operation for Forwarding<F> {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Forwarder>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-            forwarded: std::marker::PhantomData,
-        })
+    async fn initialize<'ctx>(resources: Arc<Forwarder>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources, forwarded: std::marker::PhantomData })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut F,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut F, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            host.call(Amplify {
-                value: request.value(),
-            })
-                .await
-                .map(harmos_runtime::operations::Response::into_owned)
-                .map_err(|error| match error {
-                    harmos_sidecar::CallError::Refused { code, failure } => {
-                        Refusal::failed(code, failure)
-                    }
+            host.call(Amplify { value: request.value() }).await.map(harmos_runtime::operations::Response::into_owned).map_err(|error| {
+                match error {
+                    harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
                     error => Refusal::of(error),
-                })
+                }
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -618,17 +541,13 @@ impl Attach for Attachment {
     fn owner(&self) -> &str {
         &self.id
     }
-    fn operation_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_runtime::operations::Contract>>> {
+    fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_runtime::operations::Contract>>> {
         if !self.canonical {
             return Ok(None);
         }
         let contracts = match self.id.as_str() {
             "provider" => harmos_runtime::operations::Contracts::of::<ProviderOperations>().unwrap(),
-            "caller" if self.publishing => {
-                harmos_runtime::operations::Contracts::of::<PublishingOperations>().unwrap()
-            }
+            "caller" if self.publishing => harmos_runtime::operations::Contracts::of::<PublishingOperations>().unwrap(),
             "caller" if self.lifecycle => Vec::new(),
             "caller" => harmos_runtime::operations::Contracts::of::<CallerOperations>().unwrap(),
             _ => harmos_runtime::operations::Contracts::of::<UnauthorizedOperations>().unwrap(),
@@ -646,27 +565,20 @@ impl Attach for Attachment {
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
         if self.publishing && self.id == "caller" {
-            harmos_sidecar::PluginNative::<Publishing>::new(NonZeroUsize::new(1).unwrap())
-                .unwrap()
-                .publications()
+            harmos_sidecar::PluginNative::<Publishing>::new(NonZeroUsize::new(1).unwrap()).unwrap().publications()
         } else {
             vec![]
         }
     }
-    fn sdk_lifecycle(
-        &self,
-    ) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
         use harmos_runtime::operations::lifecycle::Descriptor;
         let pair = match self.id.as_str() {
             "provider" => [
-                Descriptor::of_initialize::<ProviderEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
-                Descriptor::of_shutdown::<ProviderEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
+                Descriptor::of_initialize::<ProviderEndpoint>().expect("valid fixture lifecycle contract"),
+                Descriptor::of_shutdown::<ProviderEndpoint>().expect("valid fixture lifecycle contract"),
             ],
             "caller" if self.publishing => [
-                Descriptor::of_initialize::<Publishing>()
-                    .expect("valid fixture lifecycle contract"),
+                Descriptor::of_initialize::<Publishing>().expect("valid fixture lifecycle contract"),
                 Descriptor::of_shutdown::<Publishing>().expect("valid fixture lifecycle contract"),
             ],
             "caller" if self.lifecycle => [
@@ -674,37 +586,26 @@ impl Attach for Attachment {
                 Descriptor::of_shutdown::<Dependent>().expect("valid fixture lifecycle contract"),
             ],
             "caller" => [
-                Descriptor::of_initialize::<CallerEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
-                Descriptor::of_shutdown::<CallerEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
+                Descriptor::of_initialize::<CallerEndpoint>().expect("valid fixture lifecycle contract"),
+                Descriptor::of_shutdown::<CallerEndpoint>().expect("valid fixture lifecycle contract"),
             ],
             _ => [
-                Descriptor::of_initialize::<UnauthorizedEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
-                Descriptor::of_shutdown::<UnauthorizedEndpoint>()
-                    .expect("valid fixture lifecycle contract"),
+                Descriptor::of_initialize::<UnauthorizedEndpoint>().expect("valid fixture lifecycle contract"),
+                Descriptor::of_shutdown::<UnauthorizedEndpoint>().expect("valid fixture lifecycle contract"),
             ],
         };
         Ok(Some(pair))
     }
-    fn required_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
+    fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         let requirements = if self.id == "caller" && !self.publishing {
             harmos_runtime::operations::Contracts::of::<DependentRequirements>()
                 .expect("valid fixture requirements")
                 .into_iter()
-                .map(|contract| harmos_domain::inventory::contracts::Required {
-                    contract,
-                    grants: Vec::new(),
-                })
+                .map(|contract| harmos_domain::inventory::contracts::Required { contract, grants: Vec::new() })
                 .collect()
         } else if self.id == "caller" {
-            harmos_domain::inventory::contracts::Required::from_tree(
-                <Publishing as harmos_domain::plugin::Declared>::REQUIRES,
-            )
-            .expect("valid fixture requirements")
+            harmos_domain::inventory::contracts::Required::from_tree(<Publishing as harmos_domain::plugin::Declared>::REQUIRES)
+                .expect("valid fixture requirements")
         } else {
             Vec::new()
         };
@@ -712,32 +613,16 @@ impl Attach for Attachment {
     }
     async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {
         if self.publishing && self.id == "caller" {
-            return harmos_sidecar::PluginNative::<Publishing>::new(NonZeroUsize::new(1).unwrap())?
-                .attach()
-                .await;
+            return harmos_sidecar::PluginNative::<Publishing>::new(NonZeroUsize::new(1).unwrap())?.attach().await;
         }
         if self.lifecycle && self.id == "caller" {
-            return harmos_sidecar::PluginNative::<Dependent>::new(NonZeroUsize::new(1).unwrap())?
-                .attach()
-                .await;
+            return harmos_sidecar::PluginNative::<Dependent>::new(NonZeroUsize::new(1).unwrap())?.attach().await;
         }
         let capacity = NonZeroUsize::new(64).unwrap();
         match self.id.as_str() {
-            "provider" => {
-                harmos_sidecar::PluginNative::<ProviderEndpoint>::new(capacity)?
-                    .attach()
-                    .await
-            }
-            "caller" => {
-                harmos_sidecar::PluginNative::<CallerEndpoint>::new(capacity)?
-                    .attach()
-                    .await
-            }
-            _ => {
-                harmos_sidecar::PluginNative::<UnauthorizedEndpoint>::new(capacity)?
-                    .attach()
-                    .await
-            }
+            "provider" => harmos_sidecar::PluginNative::<ProviderEndpoint>::new(capacity)?.attach().await,
+            "caller" => harmos_sidecar::PluginNative::<CallerEndpoint>::new(capacity)?.attach().await,
+            _ => harmos_sidecar::PluginNative::<UnauthorizedEndpoint>::new(capacity)?.attach().await,
         }
     }
 }
@@ -756,52 +641,34 @@ impl PluginLifecycle for Host {
                 }
             });
             let mut resident: Resident = Supervised::new(
-                Attachment {
-                    id: "caller".into(),
-                    lifecycle: self.lifecycle,
-                    publishing: true,
-                    canonical: self.canonical,
-                },
+                Attachment { id: "caller".into(), lifecycle: self.lifecycle, publishing: true, canonical: self.canonical },
                 handler,
             );
             if self.project_publications {
                 resident = resident.ingest::<MeterPulse>();
             }
-            self.operations
-                .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-                    "routing-publication-core",
-                    HostLanes::Open,
-                    Arc::new(resident.clone()),
-                )?;
+            self.operations.register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
+                "routing-publication-core",
+                HostLanes::Open,
+                Arc::new(resident.clone()),
+            )?;
             self.publication_resident = Some(resident);
         }
         self.operations.validate_requirements(candidate)
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos_runtime::Result<Backends> {
-        Ok(PluginBackend::Sidecar(Resources {
-            services: Some(self.operations.clone()),
-            ..Resources::default()
-        }))
+        Ok(PluginBackend::Sidecar(Resources { services: Some(self.operations.clone()), ..Resources::default() }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
         Ok(())
     }
     async fn start(
-        &mut self,
-        definition: &PluginDefinition,
-        router: &Router,
-        authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>,
+        &mut self, definition: &PluginDefinition, router: &Router, authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> harmos_runtime::Result<()> {
-        let PluginBackend::Sidecar(resources) = backend else {
-            unreachable!()
-        };
+        let PluginBackend::Sidecar(resources) = backend else { unreachable!() };
         let resident = if definition.id == "caller" && self.publication_start.is_some() {
-            self.publication_resident
-                .as_ref()
-                .expect("publication provider preflighted")
-                .clone()
-                .routed(router)
+            self.publication_resident.as_ref().expect("publication provider preflighted").clone().routed(router)
         } else {
             let notices = self.notices.clone();
             let handler: NoticeHandler = Box::new(move |_, notice| {
@@ -811,90 +678,55 @@ impl PluginLifecycle for Host {
                 }
             });
             Supervised::new(
-                Attachment {
-                    id: definition.id.clone(),
-                    lifecycle: self.lifecycle,
-                    publishing: false,
-                    canonical: self.canonical,
-                },
+                Attachment { id: definition.id.clone(), lifecycle: self.lifecycle, publishing: false, canonical: self.canonical },
                 handler,
             )
             .routed(router)
         };
         resources.resident = Some(resident.clone());
         let policy = harmos_runtime::services::POLICY;
-        self.operations.register_service(
-            harmos_runtime::services::ServiceDefinition {
-                id: definition.id.clone(),
-                policy,
-            },
-            move |_: Arc<()>| resident.clone(),
-        )?;
+        self.operations
+            .register_service(harmos_runtime::services::ServiceDefinition { id: definition.id.clone(), policy }, move |_: Arc<()>| {
+                resident.clone()
+            })?;
         resources.registered = true;
         resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
-        let native = resources.resident.as_ref().unwrap().staged_operations().await
-        .map_err(|source| harmos_runtime::Error::OperationFailed {
-            operation: definition.id.clone(),
-            source: Arc::new(source),
-        })?;
+        let native = resources
+            .resident
+            .as_ref()
+            .unwrap()
+            .staged_operations()
+            .await
+            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
         let handle = Arc::new(native);
-        resources.registration = Some(self.operations.stage_plugin(
-            handle.scope().unwrap(),
-            |bindings| {
-                if self.dynamic {
-                    if let Some(previous) = &self.previous_native {
-                        assert!(matches!(
-                            bindings.register_native(
-                                HostLanes::Open,
-                                previous.clone(),
-                                self.capacity
-                            ),
-                            Err(harmos_runtime::Error::InvalidInput {
-                                field: "native operation scope",
-                                ..
-                            })
-                        ));
-                    }
-                    bindings.register_native(HostLanes::Open, handle.clone(), self.capacity)?;
-                    // A Handled Duplicate Must Preserve The First Complete Binding Set.
-                    if !definition.contributions.operations.is_empty() {
-                        assert!(matches!(
-                            bindings.register_native(
-                                HostLanes::Open,
-                                handle.clone(),
-                                self.capacity
-                            ),
-                            Err(harmos_runtime::Error::AlreadyRegistered { .. })
-                        ));
-                    }
-                    return Ok(());
+        resources.registration = Some(self.operations.stage_plugin(handle.scope().unwrap(), |bindings| {
+            if self.dynamic {
+                if let Some(previous) = &self.previous_native {
+                    assert!(matches!(
+                        bindings.register_native(HostLanes::Open, previous.clone(), self.capacity),
+                        Err(harmos_runtime::Error::InvalidInput { field: "native operation scope", .. })
+                    ));
                 }
-                match definition.id.as_str() {
-                    "provider" => bindings.register_native_catalog::<ProviderOperations>(
-                        HostLanes::Open,
-                        handle.clone(),
-                        self.capacity,
-                    ),
-                    "caller" if self.publication_start.is_some() => bindings
-                        .register_native_catalog::<PublishingOperations>(
-                            HostLanes::Open,
-                            handle.clone(),
-                            self.capacity,
-                        ),
-                    "caller" if self.lifecycle => Ok(()),
-                    "caller" => bindings.register_native_catalog::<CallerOperations>(
-                        HostLanes::Open,
-                        handle.clone(),
-                        self.capacity,
-                    ),
-                    _ => bindings.register_native_catalog::<UnauthorizedOperations>(
-                        HostLanes::Open,
-                        handle.clone(),
-                        self.capacity,
-                    ),
+                bindings.register_native(HostLanes::Open, handle.clone(), self.capacity)?;
+                // A Handled Duplicate Must Preserve The First Complete Binding Set.
+                if !definition.contributions.operations.is_empty() {
+                    assert!(matches!(
+                        bindings.register_native(HostLanes::Open, handle.clone(), self.capacity),
+                        Err(harmos_runtime::Error::AlreadyRegistered { .. })
+                    ));
                 }
-            },
-        )?);
+                return Ok(());
+            }
+            match definition.id.as_str() {
+                "provider" => bindings.register_native_catalog::<ProviderOperations>(HostLanes::Open, handle.clone(), self.capacity),
+                "caller" if self.publication_start.is_some() => {
+                    bindings.register_native_catalog::<PublishingOperations>(HostLanes::Open, handle.clone(), self.capacity)
+                }
+                "caller" if self.lifecycle => Ok(()),
+                "caller" => bindings.register_native_catalog::<CallerOperations>(HostLanes::Open, handle.clone(), self.capacity),
+                _ => bindings.register_native_catalog::<UnauthorizedOperations>(HostLanes::Open, handle.clone(), self.capacity),
+            }
+        })?);
         if definition.contributions.lifecycle.is_some() {
             let sdk = handle.stage_sdk(&self.operations, HostLanes::Open)?;
             resources.sdk = Some(sdk);
@@ -910,10 +742,7 @@ impl PluginLifecycle for Host {
         }
         if self.dynamic {
             assert!(definition.contributions.operations.iter().all(|operation| {
-                matches!(
-                    self.operations.definition(operation.id.as_str()),
-                    Err(harmos_runtime::Error::NotReady { .. })
-                )
+                matches!(self.operations.definition(operation.id.as_str()), Err(harmos_runtime::Error::NotReady { .. }))
             }));
         }
         self.previous_native = Some(handle);
@@ -922,21 +751,11 @@ impl PluginLifecycle for Host {
         {
             assert!(self.notices.values.lock().unwrap().is_empty());
             assert!(self.streams.publication("meter.pulse", 1).is_none());
-            assert!(
-                self.streams
-                    .query::<support::Pulse>(..)
-                    .await
-                    .unwrap()
-                    .next()
-                    .is_none()
-            );
+            assert!(self.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
             match start {
                 PublicationStart::Commit => {}
                 PublicationStart::Refuse => {
-                    return Err(harmos_runtime::Error::InvalidInput {
-                        field: "fixture activation",
-                        reason: "startup refused",
-                    });
+                    return Err(harmos_runtime::Error::InvalidInput { field: "fixture activation", reason: "startup refused" });
                 }
                 PublicationStart::Pause(started) => {
                     started.notify_one();
@@ -947,14 +766,9 @@ impl PluginLifecycle for Host {
         Ok(())
     }
     async fn stop(
-        definition: &PluginDefinition,
-        authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>,
-
-        backend: &mut Backends,
+        definition: &PluginDefinition, authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>, backend: &mut Backends,
     ) -> harmos_runtime::Result<()> {
-        let PluginBackend::Sidecar(resources) = backend else {
-            unreachable!()
-        };
+        let PluginBackend::Sidecar(resources) = backend else { unreachable!() };
         if let Some(sdk) = &resources.sdk {
             sdk.settle().await?;
             resources.initializing.take();
@@ -976,12 +790,7 @@ impl PluginLifecycle for Host {
             lease.release().await?;
         }
         if resources.registered {
-            let retired = resources
-                .services
-                .as_ref()
-                .unwrap()
-                .unregister_resident(&definition.id)
-                .await;
+            let retired = resources.services.as_ref().unwrap().unregister_resident(&definition.id).await;
             resources.registered = false;
             retired?;
         }

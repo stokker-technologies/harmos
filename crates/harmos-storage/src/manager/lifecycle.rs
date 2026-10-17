@@ -13,11 +13,7 @@ use super::*;
 /* === Implementations === */
 impl<C> StorageManager<C> {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
-    pub async fn start_with(
-        &self,
-        owner: Arc<()>,
-        spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>,
-    ) -> Result<()> {
+    pub async fn start_with(&self, owner: Arc<()>, spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>) -> Result<()> {
         self.claim_owner(owner)?;
         let mut lifecycle = self.inner.lifecycle.write().await;
         {
@@ -29,10 +25,7 @@ impl<C> StorageManager<C> {
                 return Ok(());
             }
             if state.ready {
-                return Err(Error::AlreadyRegistered {
-                    domain: "storage",
-                    name: WORKER_NAME.into(),
-                });
+                return Err(Error::AlreadyRegistered { domain: "storage", name: WORKER_NAME.into() });
             }
         }
         self.acquire_locked(&mut lifecycle).await?;
@@ -110,10 +103,7 @@ impl<C> StorageManager<C> {
         }
         if let Some(current) = &state.service_owner {
             if !Arc::ptr_eq(current, &owner) {
-                return Err(Error::AlreadyRegistered {
-                    domain: "storage owner",
-                    name: WORKER_NAME.to_owned(),
-                });
+                return Err(Error::AlreadyRegistered { domain: "storage owner", name: WORKER_NAME.to_owned() });
             }
         } else {
             state.service_owner = Some(owner);

@@ -47,8 +47,8 @@ mod retirement;
 
 use harmos_runtime::catalog::{Catalog, Member};
 use harmos_runtime::operations::{
-    Bindings, Context, Definition, Operation, OperationDeclaration, OperationManager,
-    OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, Visibility,
+    Bindings, Context, Definition, Operation, OperationDeclaration, OperationManager, OperationPolicy, PluginRegistration, RestartPolicy,
+    RetryPolicy, Visibility,
 };
 use harmos_runtime::plugin::*;
 use harmos_runtime::plugin::{PluginEndpoint, PluginKind, Requirement};
@@ -140,20 +140,10 @@ impl PluginLifecycle for Shutdown {
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
     }
-    async fn start(
-        &mut self,
-        _: &PluginDefinition,
-        _: &Router,
-        _: &PluginLifecycleAuthority<'_>,
-        _: &mut Backends,
-    ) -> Result<()> {
+    async fn start(&mut self, _: &PluginDefinition, _: &Router, _: &PluginLifecycleAuthority<'_>, _: &mut Backends) -> Result<()> {
         panic!("shutdown cannot start an activation")
     }
-    async fn stop(
-        _: &PluginDefinition,
-        _: &PluginLifecycleAuthority<'_>,
-        _: &mut Backends,
-    ) -> Result<()> {
+    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, _: &mut Backends) -> Result<()> {
         panic!("shutdown must retain the original activation adapter")
     }
 }
@@ -187,68 +177,43 @@ impl harmos_runtime::Application for Fixture {
 
 const RUN_NAME: &str = concat!(module_path!(), "::Run");
 const RUN_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
-    {
-        harmos_runtime::schema::declaration::encoded_len(
-            RUN_NAME,
-            <RunRequest as harmos_runtime::schema::Described>::FIELDS,
-        )
-    },
->(
-    RUN_NAME,
-    <RunRequest as harmos_runtime::schema::Described>::FIELDS,
-);
+    { harmos_runtime::schema::declaration::encoded_len(RUN_NAME, <RunRequest as harmos_runtime::schema::Described>::FIELDS) },
+>(RUN_NAME, <RunRequest as harmos_runtime::schema::Described>::FIELDS);
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Run<OWNER, MILLIS, PRIVATE> {
     fn wire(&self) -> RunRequest {
-        RunRequest {
-            value: self.value.clone(),
-        }
+        RunRequest { value: self.value.clone() }
     }
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::Message
-    for Run<OWNER, MILLIS, PRIVATE>
-{
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::Message for Run<OWNER, MILLIS, PRIVATE> {
     fn encode_to_vec(&self) -> Vec<u8> {
         harmos_runtime::Message::encode_to_vec(&self.wire())
     }
     fn encoded_len(&self) -> usize {
         harmos_runtime::Message::encoded_len(&self.wire())
     }
-    fn decoding_memory(
-        bytes: &[u8],
-    ) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
+    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
         <RunRequest as harmos_runtime::Message>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
-        <RunRequest as harmos_runtime::Message>::decode(bytes).map(|request| Self {
-            value: request.value,
-        })
+        <RunRequest as harmos_runtime::Message>::decode(bytes).map(|request| Self { value: request.value })
     }
 }
 
-
-
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::MemorySize
-    for Run<OWNER, MILLIS, PRIVATE>
-{
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::MemorySize for Run<OWNER, MILLIS, PRIVATE> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.value.capacity()
     }
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::schema::Described
-    for Run<OWNER, MILLIS, PRIVATE>
-{
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::schema::Described for Run<OWNER, MILLIS, PRIVATE> {
     const NAME: &'static str = RUN_NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] =
-        <RunRequest as harmos_runtime::schema::Described>::FIELDS;
+    const FIELDS: &'static [harmos_runtime::schema::Field] = <RunRequest as harmos_runtime::schema::Described>::FIELDS;
     const MARKER: &'static [u8] = RUN_MARKER;
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclaration
-    for Run<OWNER, MILLIS, PRIVATE>
-{
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclaration for Run<OWNER, MILLIS, PRIVATE> {
     type Response = String;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
@@ -258,11 +223,7 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclar
         1 => "client.run",
         _ => "other.run",
     };
-    const VISIBILITY: Visibility = if PRIVATE {
-        Visibility::Private
-    } else {
-        Visibility::Shared
-    };
+    const VISIBILITY: Visibility = if PRIVATE { Visibility::Private } else { Visibility::Shared };
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_millis(MILLIS),
         attempt_timeout: Duration::from_millis(MILLIS),
@@ -271,36 +232,24 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclar
     };
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation
-    for Running<OWNER, MILLIS, PRIVATE>
-{
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation for Running<OWNER, MILLIS, PRIVATE> {
     type Declaration = Run<OWNER, MILLIS, PRIVATE>;
     type Resources = Owner;
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> std::io::Result<Self> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::io::Result<Self> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Run<OWNER, MILLIS, PRIVATE>,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Run<OWNER, MILLIS, PRIVATE>, _endpoints: &mut Self::Endpoints,
     ) -> std::io::Result<harmos_runtime::operations::Response<String>> {
-        let result: ::core::result::Result<String, Self::Error> =
-            async move { Ok(request.value.clone()) }.await;
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.value.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl<V, const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Catalog<V>
-    for Operations<OWNER, MILLIS, PRIVATE>
+impl<V, const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Catalog<V> for Operations<OWNER, MILLIS, PRIVATE>
 where
     V: Member<Running<OWNER, MILLIS, PRIVATE>>,
 {
@@ -309,33 +258,15 @@ where
 }
 
 fn request_payload() -> Vec<u8> {
-    harmos_runtime::Message::encode_to_vec(&RunRequest {
-        value: String::new(),
-    })
+    harmos_runtime::Message::encode_to_vec(&RunRequest { value: String::new() })
 }
 
 fn bind<const OWNER: usize>(bindings: &mut Bindings<'_>, definition: &Definition) -> Result<()> {
     match (definition.policy.timeout.as_millis(), definition.visibility) {
-        (100, Visibility::Shared) => bindings
-            .register_wire_operations::<Operations<OWNER, 100, false>, _>(
-                Lanes::Open,
-                Arc::new(Owner),
-            ),
-        (100, Visibility::Private) => bindings
-            .register_wire_operations::<Operations<OWNER, 100, true>, _>(
-                Lanes::Open,
-                Arc::new(Owner),
-            ),
-        (200, Visibility::Shared) => bindings
-            .register_wire_operations::<Operations<OWNER, 200, false>, _>(
-                Lanes::Open,
-                Arc::new(Owner),
-            ),
-        (200, Visibility::Private) => bindings
-            .register_wire_operations::<Operations<OWNER, 200, true>, _>(
-                Lanes::Open,
-                Arc::new(Owner),
-            ),
+        (100, Visibility::Shared) => bindings.register_wire_operations::<Operations<OWNER, 100, false>, _>(Lanes::Open, Arc::new(Owner)),
+        (100, Visibility::Private) => bindings.register_wire_operations::<Operations<OWNER, 100, true>, _>(Lanes::Open, Arc::new(Owner)),
+        (200, Visibility::Shared) => bindings.register_wire_operations::<Operations<OWNER, 200, false>, _>(Lanes::Open, Arc::new(Owner)),
+        (200, Visibility::Private) => bindings.register_wire_operations::<Operations<OWNER, 200, true>, _>(Lanes::Open, Arc::new(Owner)),
         _ => panic!("fixture has no authored handler for this operation policy"),
     }
 }
@@ -351,19 +282,13 @@ impl Host {
             .runtime()
             .await
             .unwrap();
-        Self {
-            runtime: Some(runtime),
-            ..Self::default()
-        }
+        Self { runtime: Some(runtime), ..Self::default() }
     }
     fn operations(&self) -> &OperationManager {
         &self.runtime.as_ref().unwrap().operations
     }
     async fn call(&self, source: &PluginCaller, method: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
-        self.operations()
-            .caller(source)?
-            .call_encoded(method, payload)
-            .await
+        self.operations().caller(source)?.call_encoded(method, payload).await
     }
 }
 
@@ -393,42 +318,25 @@ impl PluginLifecycle for Host {
         })
     }
 
-    async fn fence(
-        &mut self,
-        transition: PluginTransition,
-        affected: &[PluginDefinition],
-    ) -> Result<()> {
+    async fn fence(&mut self, transition: PluginTransition, affected: &[PluginDefinition]) -> Result<()> {
         self.transitions.push(transition);
-        self.control.lock().unwrap().events.push(format!(
-            "fence:{}",
-            affected
-                .iter()
-                .map(|artifact| artifact.id.as_str())
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-        if self.block_fence {
-            std::future::pending::<()>().await;
-        }
-        if self.fail_fence {
-            return Err(Error::ResourceExhausted {
-                resource: "plugin execution drain",
-            });
-        }
-        Ok(())
-    }
-    async fn start(
-        &mut self,
-        artifact: &PluginDefinition,
-        router: &Router,
-        authority: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
-    ) -> Result<()> {
         self.control
             .lock()
             .unwrap()
             .events
-            .push(format!("start:{}", artifact.id));
+            .push(format!("fence:{}", affected.iter().map(|artifact| artifact.id.as_str()).collect::<Vec<_>>().join(",")));
+        if self.block_fence {
+            std::future::pending::<()>().await;
+        }
+        if self.fail_fence {
+            return Err(Error::ResourceExhausted { resource: "plugin execution drain" });
+        }
+        Ok(())
+    }
+    async fn start(
+        &mut self, artifact: &PluginDefinition, router: &Router, authority: &PluginLifecycleAuthority<'_>, backend: &mut Backends,
+    ) -> Result<()> {
+        self.control.lock().unwrap().events.push(format!("start:{}", artifact.id));
         let owned = activation(backend);
         owned.endpoint = Some(router.enter(&artifact.id).unwrap());
         let instance = owned.endpoint.as_ref().unwrap();
@@ -436,36 +344,21 @@ impl PluginLifecycle for Host {
         assert!(authority.matches_scope(scope, artifact.kind(), PluginLifecyclePhase::Initialize));
         assert!(!authority.matches_scope(scope, artifact.kind(), PluginLifecyclePhase::Shutdown));
         let caller = instance.caller();
-        self.control
-            .lock()
-            .unwrap()
-            .callers
-            .insert(artifact.id.clone(), caller.clone());
-        for dependency in artifact
-            .requires
-            .iter()
-            .filter(|_| !self.control.lock().unwrap().skip_dependency_calls)
-        {
-            self.call(
-                &caller,
-                &format!("{}.run", dependency.id),
-                request_payload(),
-            )
-            .await?;
+        self.control.lock().unwrap().callers.insert(artifact.id.clone(), caller.clone());
+        for dependency in artifact.requires.iter().filter(|_| !self.control.lock().unwrap().skip_dependency_calls) {
+            self.call(&caller, &format!("{}.run", dependency.id), request_payload()).await?;
         }
-        let registration =
-            self.operations()
-                .stage_plugin(instance.scope().unwrap(), |bindings| {
-                    for definition in &artifact.contributions.operations {
-                        match artifact.id.as_str() {
-                            "provider" => bind::<0>(bindings, definition)?,
-                            "client" => bind::<1>(bindings, definition)?,
-                            "other" => bind::<2>(bindings, definition)?,
-                            _ => panic!("unknown fixture owner"),
-                        }
-                    }
-                    Ok(())
-                })?;
+        let registration = self.operations().stage_plugin(instance.scope().unwrap(), |bindings| {
+            for definition in &artifact.contributions.operations {
+                match artifact.id.as_str() {
+                    "provider" => bind::<0>(bindings, definition)?,
+                    "client" => bind::<1>(bindings, definition)?,
+                    "other" => bind::<2>(bindings, definition)?,
+                    _ => panic!("unknown fixture owner"),
+                }
+            }
+            Ok(())
+        })?;
         owned.registration = Some(registration);
         if let Some(started) = &self.started {
             started.send_replace(artifact.id.clone());
@@ -482,20 +375,13 @@ impl PluginLifecycle for Host {
         }
         Ok(())
     }
-    async fn stop(
-        artifact: &PluginDefinition,
-        authority: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
-    ) -> Result<()> {
+    async fn stop(artifact: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
         assert_eq!(authority.owner(), artifact.id);
         assert_eq!(authority.phase(), PluginLifecyclePhase::Shutdown);
         assert_eq!(authority.backend_kind(), backend.kind());
         let owned = activation(backend);
         let context = owned.stopping.as_ref().unwrap();
-        let _wait = StopWait {
-            owner: artifact.id.clone(),
-            control: context.control.clone(),
-        };
+        let _wait = StopWait { owner: artifact.id.clone(), control: context.control.clone() };
         {
             let mut control = context.control.lock().unwrap();
             control.events.push(format!("stop:{}", artifact.id));
@@ -503,11 +389,7 @@ impl PluginLifecycle for Host {
         }
         context.entered.notify_one();
         if let Some(instance) = &owned.endpoint {
-            assert!(authority.matches_scope(
-                instance.scope().unwrap(),
-                artifact.kind(),
-                PluginLifecyclePhase::Shutdown
-            ));
+            assert!(authority.matches_scope(instance.scope().unwrap(), artifact.kind(), PluginLifecyclePhase::Shutdown));
         }
         if !owned.dependencies_stopped {
             if let Some(instance) = &owned.endpoint {
@@ -551,9 +433,7 @@ impl PluginLifecycle for Host {
 
 fn activation(backend: &mut Backends) -> &mut Activation {
     match backend {
-        PluginBackend::Guest(endpoint)
-        | PluginBackend::Sidecar(endpoint)
-        | PluginBackend::Embedded(endpoint) => endpoint,
+        PluginBackend::Guest(endpoint) | PluginBackend::Sidecar(endpoint) | PluginBackend::Embedded(endpoint) => endpoint,
     }
 }
 
@@ -569,25 +449,13 @@ fn plan() -> PluginGraph {
             id: id.to_owned(),
             version: "1.0.0".parse().unwrap(),
             artifact: match kind {
-                PluginKind::Guest => {
-                    harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] }
-                }
-                PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar {
-                    revision: "fixture".into(),
-                },
-                PluginKind::Embedded => harmos_runtime::plugin::PluginArtifact::Embedded {
-                    revision: "fixture".into(),
-                },
+                PluginKind::Guest => harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] },
+                PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar { revision: "fixture".into() },
+                PluginKind::Embedded => harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
             },
             configuration: b"null".to_vec(),
             contributions: harmos_runtime::plugin::PluginContributions::default(),
-            requires: requires
-                .into_iter()
-                .map(|id| Requirement {
-                    id: id.to_owned(),
-                    version: "*".parse().unwrap(),
-                })
-                .collect(),
+            requires: requires.into_iter().map(|id| Requirement { id: id.to_owned(), version: "*".parse().unwrap() }).collect(),
         }),
     )
     .unwrap()
@@ -616,26 +484,16 @@ fn failure(error: Error) -> PluginFailure {
 }
 
 trait ReloadParts {
-    async fn reload_parts<
-        L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>,
-    >(
-        &mut self,
-        graph: PluginGraph,
-        inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
-        rebuilt: impl IntoIterator<Item = String>,
-        lifecycle: &mut L,
+    async fn reload_parts<L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>>(
+        &mut self, graph: PluginGraph, inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
+        rebuilt: impl IntoIterator<Item = String>, lifecycle: &mut L,
     ) -> Result<()>;
 }
 
 impl ReloadParts for Manager {
-    async fn reload_parts<
-        L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>,
-    >(
-        &mut self,
-        graph: PluginGraph,
-        inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
-        rebuilt: impl IntoIterator<Item = String>,
-        lifecycle: &mut L,
+    async fn reload_parts<L: PluginLifecycle<Guest = Activation, Sidecar = Activation, Embedded = Activation>>(
+        &mut self, graph: PluginGraph, inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
+        rebuilt: impl IntoIterator<Item = String>, lifecycle: &mut L,
     ) -> Result<()> {
         let candidate = candidate_parts(&graph, inventories, rebuilt)?;
         self.reload(candidate, lifecycle).await
@@ -643,14 +501,11 @@ impl ReloadParts for Manager {
 }
 
 fn candidate_parts(
-    graph: &PluginGraph,
-    inventories: impl IntoIterator<Item = (String, Vec<Definition>)>,
-    rebuilt: impl IntoIterator<Item = String>,
+    graph: &PluginGraph, inventories: impl IntoIterator<Item = (String, Vec<Definition>)>, rebuilt: impl IntoIterator<Item = String>,
 ) -> Result<PluginDefinitions> {
     let mut inventories: BTreeMap<_, _> = inventories.into_iter().collect();
     let definitions = graph.ordered().iter().cloned().map(|mut definition| {
-        definition.contributions.operations =
-            inventories.remove(&definition.id).unwrap_or_default();
+        definition.contributions.operations = inventories.remove(&definition.id).unwrap_or_default();
         definition
     });
     PluginDefinitions::new(definitions, rebuilt)

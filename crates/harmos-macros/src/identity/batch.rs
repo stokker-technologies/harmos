@@ -17,10 +17,7 @@
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{
-    Error, Item, LitInt, LitStr, Meta, Token, Type, parse::Parser, punctuated::Punctuated,
-    spanned::Spanned,
-};
+use syn::{Error, Item, LitInt, LitStr, Meta, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 // Local Imports
 use crate::path::HarmosPath;
 
@@ -53,45 +50,29 @@ pub(super) fn samples(list: &syn::MetaList) -> Result<LitInt, Error> {
             Meta::NameValue(pair) if pair.path.is_ident("gaps") => {
                 let value: LitStr = syn::parse2(pair.value.to_token_stream())?;
                 if value.value() != "report" {
-                    return Err(Error::new(
-                        value.span(),
-                        "batch gaps supports only \"report\"",
-                    ));
+                    return Err(Error::new(value.span(), "batch gaps supports only \"report\""));
                 }
                 if gaps.replace(value).is_some() {
                     return Err(Error::new(pair.span(), "batch gaps declared twice"));
                 }
             }
             other => {
-                return Err(Error::new(
-                    other.span(),
-                    "batch accepts samples = N and gaps = \"report\"",
-                ));
+                return Err(Error::new(other.span(), "batch accepts samples = N and gaps = \"report\""));
             }
         }
     }
     let samples = samples.ok_or_else(|| Error::new(list.span(), "batch requires samples = N"))?;
     let value = samples.base10_parse::<u64>()?;
     if value == 0 || value > u32::MAX as u64 || !matches!(samples.suffix(), "" | "u64" | "u32") {
-        return Err(Error::new(
-            samples.span(),
-            "batch samples must be an integer in 1..=4294967295",
-        ));
+        return Err(Error::new(samples.span(), "batch samples must be an integer in 1..=4294967295"));
     }
     Ok(LitInt::new(&value.to_string(), samples.span()))
 }
 
-pub(super) fn expand(
-    item: &mut Item,
-    samples: Option<&LitInt>,
-    harmos: &HarmosPath,
-) -> Result<TokenStream, Error> {
+pub(super) fn expand(item: &mut Item, samples: Option<&LitInt>, harmos: &HarmosPath) -> Result<TokenStream, Error> {
     let Item::Struct(row) = item else {
         return if samples.is_some() {
-            Err(Error::new(
-                item.span(),
-                "batch requires a struct with named scalar fields",
-            ))
+            Err(Error::new(item.span(), "batch requires a struct with named scalar fields"))
         } else {
             Ok(quote!())
         };
@@ -104,10 +85,7 @@ pub(super) fn expand(
             if attribute.path().is_ident("harmos") {
                 let meta: syn::Ident = attribute.parse_args()?;
                 if meta != "measure" || marked {
-                    return Err(Error::new(
-                        attribute.span(),
-                        "a field accepts one #[harmos(measure)]",
-                    ));
+                    return Err(Error::new(attribute.span(), "a field accepts one #[harmos(measure)]"));
                 }
                 marked = true;
             } else {
@@ -117,51 +95,30 @@ pub(super) fn expand(
         field.attrs = retained;
         if marked {
             if samples.is_none() {
-                return Err(Error::new(
-                    field.span(),
-                    "measure requires stream batch(samples = N)",
-                ));
+                return Err(Error::new(field.span(), "measure requires stream batch(samples = N)"));
             }
             let Type::Path(path) = &field.ty else {
-                return Err(Error::new(
-                    field.span(),
-                    "measure requires a numeric scalar",
-                ));
+                return Err(Error::new(field.span(), "measure requires a numeric scalar"));
             };
-            let Some(segment) = path.path.segments.last() else {
-                unreachable!()
-            };
-            if !matches!(
-                segment.ident.to_string().as_str(),
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
-            ) || !matches!(segment.arguments, syn::PathArguments::None)
+            let Some(segment) = path.path.segments.last() else { unreachable!() };
+            if !matches!(segment.ident.to_string().as_str(), "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64")
+                || !matches!(segment.arguments, syn::PathArguments::None)
             {
                 return Err(Error::new(
                     field.span(),
                     "measure supports numeric scalar integers through 64 bits and f32/f64; arrays, buffers and optional values are not samples",
                 ));
             }
-            fields.push(
-                field
-                    .ident
-                    .clone()
-                    .ok_or_else(|| Error::new(field.span(), "measure requires named fields"))?,
-            );
+            fields.push(field.ident.clone().ok_or_else(|| Error::new(field.span(), "measure requires named fields"))?);
         }
     }
     let Some(samples) = samples else {
         return Ok(quote!());
     };
     if fields.is_empty() {
-        return Err(Error::new(
-            row.span(),
-            "batch requires at least one #[harmos(measure)] numeric scalar field",
-        ));
+        return Err(Error::new(row.span(), "batch requires at least one #[harmos(measure)] numeric scalar field"));
     }
-    let names: Vec<_> = fields
-        .iter()
-        .map(|field| field.to_string().trim_start_matches("r#").to_owned())
-        .collect();
+    let names: Vec<_> = fields.iter().map(|field| field.to_string().trim_start_matches("r#").to_owned()).collect();
     let name = &row.ident;
     Ok(quote! {
         impl #harmos::streams::Batched for #name {

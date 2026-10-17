@@ -44,24 +44,14 @@ pub struct FileBackend {
 /* === Implementations === */
 impl FileBackend {
     pub fn new(root: PathBuf, history: StoreHistory, settings: StorageStateSettings) -> Self {
-        Self {
-            root,
-            history,
-            settings,
-            journal: Arc::new(Mutex::new(None)),
-        }
+        Self { root, history, settings, journal: Arc::new(Mutex::new(None)) }
     }
 
-    async fn call<T: Send + 'static>(
-        &self,
-        action: impl FnOnce(&mut StateLog) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
+    async fn call<T: Send + 'static>(&self, action: impl FnOnce(&mut StateLog) -> Result<T> + Send + 'static) -> Result<T> {
         // Acquire Before Dispatch So Cancellation Cannot Enqueue An Older Write.
         let mut owner = self.journal.clone().lock_owned().await;
         tokio::task::spawn_blocking(move || {
-            let journal = owner
-                .as_mut()
-                .ok_or_else(|| format::invalid("state backend is closed"))?;
+            let journal = owner.as_mut().ok_or_else(|| format::invalid("state backend is closed"))?;
             journal.check()?;
             action(journal)
         })
@@ -102,24 +92,19 @@ impl StateBackend for FileBackend {
         Box::pin(async move {
             self.history.check(&snapshot.through.history)?;
             let snapshot = snapshot.clone();
-            self.call(move |journal| journal.checkpoint(&snapshot))
-                .await
+            self.call(move |journal| journal.checkpoint(&snapshot)).await
         })
     }
 
     fn read_entries<'a>(
-        &'a self,
-        after: &'a RecoveryPosition,
-        through: &'a RecoveryPosition,
-        limits: ReadLimits,
+        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             self.history.check(&after.history)?;
             self.history.check(&through.history)?;
             let after = after.clone();
             let through = through.clone();
-            self.call(move |journal| journal.page(&after, &through, limits))
-                .await
+            self.call(move |journal| journal.page(&after, &through, limits)).await
         })
     }
 

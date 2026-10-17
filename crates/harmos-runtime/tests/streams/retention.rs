@@ -17,13 +17,13 @@ use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 // Third Party Imports
-use tokio::sync::watch;
 use support::{Bank, Change, Ledger, booted, catalog, deposit};
+use tokio::sync::watch;
 // Local Imports
 use crate::streams::support;
 use harmos_runtime::{
-    Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded,
-    storage::Horizon, storage::JournalConsumer, storage::Recovery, storage::Source,
+    Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Horizon, storage::JournalConsumer,
+    storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -92,11 +92,7 @@ impl Prunable {
 
 impl Snapshot {
     fn new(save: impl FnMut() -> io::Result<()> + Send + 'static) -> Self {
-        Self {
-            taken: Position::ORIGIN,
-            durable: Position::ORIGIN,
-            save: Box::new(save),
-        }
+        Self { taken: Position::ORIGIN, durable: Position::ORIGIN, save: Box::new(save) }
     }
 }
 
@@ -105,11 +101,7 @@ impl JournalConsumer<Bank> for Snapshot {
         self.taken
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        _applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, _applied: Position) -> Position {
         if let Some(last) = entries.last() {
             self.taken = last.position;
         }
@@ -126,15 +118,8 @@ impl JournalConsumer<Bank> for Prunable {
         self.taken
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        _applied: Position,
-    ) -> Position {
-        self.batches
-            .lock()
-            .expect("the probe is never poisoned")
-            .push(entries.iter().map(|entry| entry.position).collect());
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, _applied: Position) -> Position {
+        self.batches.lock().expect("the probe is never poisoned").push(entries.iter().map(|entry| entry.position).collect());
         if self.take
             && let Some(last) = entries.last()
         {
@@ -172,21 +157,11 @@ async fn snapshot_blocks_pruning() {
         let attempts = attempts.clone();
         move || {
             attempts.send_modify(|attempts| *attempts += 1);
-            if failing.load(Ordering::Acquire) {
-                Err(io::Error::other("injected snapshot failure"))
-            } else {
-                Ok(())
-            }
+            if failing.load(Ordering::Acquire) { Err(io::Error::other("injected snapshot failure")) } else { Ok(()) }
         }
     });
-    let runtime = booted(Ledger::default(), |builder| {
-        builder
-            .recover(source)
-            .snapshot(snapshot)
-            .retain(Horizon::BeneathSnapshot)
-            .tail(1)
-    })
-    .await;
+    let runtime =
+        booted(Ledger::default(), |builder| builder.recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot).tail(1)).await;
 
     let first = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(first.position).await;
@@ -198,10 +173,7 @@ async fn snapshot_blocks_pruning() {
     runtime.state.wait_until_stored(second.position).await;
     pruned(&watched, second.position).await;
 
-    assert!(matches!(
-        runtime.state.query::<Change>(Position::ORIGIN).await.next(),
-        Some(Err(Error::BeyondTail))
-    ));
+    assert!(matches!(runtime.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeyondTail))));
     runtime.stop().await.unwrap();
 }
 
@@ -216,13 +188,7 @@ async fn checkpoint_blocks_pruning() {
             Ok(())
         }
     });
-    let runtime = booted(Ledger::default(), |builder| {
-        builder
-            .recover(source)
-            .snapshot(snapshot)
-            .retain(Horizon::BeneathSnapshot)
-    })
-    .await;
+    let runtime = booted(Ledger::default(), |builder| builder.recover(source).snapshot(snapshot).retain(Horizon::BeneathSnapshot)).await;
 
     runtime.state.commit(deposit(1)).await.expect("accepted");
     saved(&writes).await;
@@ -237,20 +203,12 @@ async fn checkpoint_blocks_pruning() {
 
 #[tokio::test]
 async fn retention_requires_snapshot() {
-    let started = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .retain(Horizon::BeneathSnapshot)
-        .runtime()
-        .await;
+    let started = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).retain(Horizon::BeneathSnapshot).runtime().await;
     let Err(refused) = started else {
         panic!("retention without its snapshot must be refused at assembly");
     };
 
-    assert!(
-        refused
-            .to_string()
-            .contains("requires a snapshot declaration")
-    );
+    assert!(refused.to_string().contains("requires a snapshot declaration"));
 }
 
 #[tokio::test]
@@ -259,18 +217,12 @@ async fn stalled_redelivery_tail() {
     let within = run_stalled(3).await;
 
     assert_eq!(beneath.iter().rev().nth(1), Some(&Vec::new()));
-    assert_eq!(
-        within.iter().rev().nth(1),
-        Some(&vec![Position(1), Position(2), Position(3)])
-    );
+    assert_eq!(within.iter().rev().nth(1), Some(&vec![Position(1), Position(2), Position(3)]));
 }
 
 async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
     let (source, watched) = Prunable::stalled();
-    let runtime = booted(Ledger::default(), |builder| {
-        builder.recover(source).tail(tail)
-    })
-    .await;
+    let runtime = booted(Ledger::default(), |builder| builder.recover(source).tail(tail)).await;
     for _ in 0..3 {
         runtime.state.commit(deposit(1)).await.expect("accepted");
     }
@@ -280,20 +232,11 @@ async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
 }
 
 async fn saved(attempts: &watch::Sender<usize>) {
-    attempts
-        .subscribe()
-        .wait_for(|attempts| *attempts > 0)
-        .await
-        .expect("the snapshot keeps its counter");
+    attempts.subscribe().wait_for(|attempts| *attempts > 0).await.expect("the snapshot keeps its counter");
 }
 
 async fn pruned(watched: &Watched, beneath: Position) {
-    watched
-        .pruned
-        .subscribe()
-        .wait_for(|pruned| *pruned == Some(beneath))
-        .await
-        .expect("the source keeps its prune record");
+    watched.pruned.subscribe().wait_for(|pruned| *pruned == Some(beneath)).await.expect("the source keeps its prune record");
 }
 
 /* === Tests === */

@@ -29,8 +29,7 @@ use crate::catalog::Catalog;
 use crate::config::PluginSettings;
 use crate::guest::{Loaded, Serving};
 use crate::operations::{
-    ComponentBindings, Declarations, EncodedInvocation, Lane, OperationManager, PluginRegistration,
-    PluginSdkRegistration,
+    ComponentBindings, Declarations, EncodedInvocation, Lane, OperationManager, PluginRegistration, PluginSdkRegistration,
 };
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
@@ -66,37 +65,21 @@ struct Guest<A: Application, C, L> {
 
 /* === Implementations === */
 impl<A: Application> PluginHost<A> {
-    pub async fn register_guest<C>(
-        &self,
-        loaded: Loaded<A>,
-        settings: PluginSettings,
-        lane: impl Lane + Clone + Sync,
-    ) -> Result<()>
+    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, false).await
     }
 
-    pub async fn reload_guest<C>(
-        &self,
-        loaded: Loaded<A>,
-        settings: PluginSettings,
-        lane: impl Lane + Clone + Sync,
-    ) -> Result<()>
+    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, true).await
     }
 
-    async fn guest<C>(
-        &self,
-        loaded: Loaded<A>,
-        settings: PluginSettings,
-        lane: impl Lane + Clone + Sync,
-        replace: bool,
-    ) -> Result<()>
+    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync, replace: bool) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
@@ -104,25 +87,16 @@ impl<A: Application> PluginHost<A> {
         let mut definition = PluginDefinition::guest(&loaded, settings.configuration.clone())
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();
-        let declarations =
-            Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
-        harmos_domain::inventory::operations::validate_match(
-            &declarations,
-            &definition.contributions.operations,
-        )
-        .map_err(|_| Error::InvalidInput {
-            field: "guest operation catalog",
-            reason: "catalog must match the inspected component",
-        })?;
+        let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
+        harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations)
+            .map_err(|_| Error::InvalidInput { field: "guest operation catalog", reason: "catalog must match the inspected component" })?;
         let grants = settings.host_operations.iter().cloned().collect();
         let operations = self.shared.operations.clone();
         let initialization_timeout = settings.initialization_timeout;
         let shutdown_timeout = settings.shutdown_timeout;
         let encoding_memory_bytes = settings.encoding_memory_bytes;
         let factory: Factory = Arc::new(move || {
-            let inspected = loaded
-                .duplicate()
-                .map_err(|source| failed(&loaded.declaration().id, source))?;
+            let inspected = loaded.duplicate().map_err(|source| failed(&loaded.declaration().id, source))?;
             Ok(Box::new(Guest::<A, C, _> {
                 loaded: Some(inspected),
                 serving: None,
@@ -141,8 +115,7 @@ impl<A: Application> PluginHost<A> {
                 catalog: PhantomData,
             }))
         });
-        self.register(definition, factory, grants, settings.restart, replace)
-            .await
+        self.register(definition, factory, grants, settings.restart, replace).await
     }
 }
 
@@ -153,59 +126,29 @@ where
     L: Lane + Clone + Sync,
 {
     fn start<'a>(
-        &'a mut self,
-        definition: &'a PluginDefinition,
-        router: &'a Router,
-        authority: &'a PluginLifecycleAuthority<'a>,
+        &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
     ) -> LifecycleFuture<'a> {
         Box::pin(async move {
             let timeout = self.initialization_timeout;
             let starting = async {
                 let loaded = self.loaded.take().expect("one inspected guest per attempt");
-                let registered = loaded
-                    .register()
-                    .await
-                    .map_err(|source| failed(&definition.id, source))?;
+                let registered = loaded.register().await.map_err(|source| failed(&definition.id, source))?;
                 let mut collected = definition.clone();
                 collected.contributions.registrations = registered.registrations().to_vec();
-                collected
-                    .validate()
-                    .map_err(|source| failed(&definition.id, source))?;
-                let registered = registered
-                    .routed(router)
-                    .map_err(|source| failed(&definition.id, source))?;
-                self.serving = Some(
-                    registered
-                        .serve_sdk()
-                        .await
-                        .map_err(|source| failed(&definition.id, source))?,
-                );
+                collected.validate().map_err(|source| failed(&definition.id, source))?;
+                let registered = registered.routed(router).map_err(|source| failed(&definition.id, source))?;
+                self.serving = Some(registered.serve_sdk().await.map_err(|source| failed(&definition.id, source))?);
                 let serving = self.serving.as_ref().unwrap();
-                let exited = serving
-                    .exit()
-                    .map_err(|source| failed(&definition.id, source))?;
+                let exited = serving.exit().map_err(|source| failed(&definition.id, source))?;
                 let owner = definition.id.clone();
-                self.exited = Some(Box::pin(async move {
-                    exited.await.map_err(|source| failed(&owner, source))
-                }));
-                let component = Arc::new(
-                    serving
-                        .operations()
-                        .map_err(|source| failed(&definition.id, source))?,
-                );
-                self.registration = Some(self.operations.stage_plugin(
-                    serving.scope().unwrap(),
-                    |bindings| {
-                        bindings
-                            .register_component_catalog::<C>(self.lane.clone(), component.clone())
-                    },
-                )?);
+                self.exited = Some(Box::pin(async move { exited.await.map_err(|source| failed(&owner, source)) }));
+                let component = Arc::new(serving.operations().map_err(|source| failed(&definition.id, source))?);
+                self.registration = Some(self.operations.stage_plugin(serving.scope().unwrap(), |bindings| {
+                    bindings.register_component_catalog::<C>(self.lane.clone(), component.clone())
+                })?);
                 self.sdk = Some(component.stage_sdk(&self.operations, self.lane.clone())?);
-                self.initializing = Some(self.sdk.as_ref().unwrap().submit_initialize(
-                    authority,
-                    &definition.configuration,
-                    self.encoding_memory_bytes,
-                )?);
+                self.initializing =
+                    Some(self.sdk.as_ref().unwrap().submit_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?);
                 let result = self.initializing.as_mut().unwrap().await;
                 self.initializing.take();
                 result?;
@@ -214,23 +157,15 @@ where
             };
             crate::supervision::executor::timeout(timeout, starting)
                 .await
-                .map_err(|_| Error::NotReady {
-                    domain: "guest plugin initialization timeout",
-                })?
+                .map_err(|_| Error::NotReady { domain: "guest plugin initialization timeout" })?
         })
     }
 
     fn poll(&mut self, context: &mut Context<'_>) -> Poll<Result<()>> {
-        self.exited
-            .as_mut()
-            .map_or(Poll::Pending, |exited| exited.as_mut().poll(context))
+        self.exited.as_mut().map_or(Poll::Pending, |exited| exited.as_mut().poll(context))
     }
 
-    fn stop<'a>(
-        &'a mut self,
-        _: &'a PluginDefinition,
-        authority: &'a PluginLifecycleAuthority<'a>,
-    ) -> LifecycleFuture<'a> {
+    fn stop<'a>(&'a mut self, _: &'a PluginDefinition, authority: &'a PluginLifecycleAuthority<'a>) -> LifecycleFuture<'a> {
         Box::pin(async move {
             let stopping = async {
                 if let Some(sdk) = &self.sdk {
@@ -271,9 +206,7 @@ where
             // A Timed-Out Wait Retains SDK Invocations And Physical Cleanup Owners.
             crate::supervision::executor::timeout(self.shutdown_timeout, stopping)
                 .await
-                .map_err(|_| Error::NotReady {
-                    domain: "guest plugin shutdown timeout",
-                })?
+                .map_err(|_| Error::NotReady { domain: "guest plugin shutdown timeout" })?
         })
     }
 }
@@ -282,10 +215,7 @@ where
 
 /* === Private Functions === */
 fn failed(id: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::OperationFailed {
-        operation: id.to_owned(),
-        source: Arc::new(source),
-    }
+    Error::OperationFailed { operation: id.to_owned(), source: Arc::new(source) }
 }
 
 /* === Tests === */

@@ -46,19 +46,11 @@ criterion::criterion_group!(benches, benchmarks);
 
 /* === Private Functions === */
 fn benchmarks(c: &mut criterion::Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let mut group = c.benchmark_group("streams");
     group.sample_size(10);
-    group.bench_function("waveform", |b| {
-        b.iter(|| runtime.block_on(allocation::streams_ac006_concurrent_waveform_measurement()))
-    });
-    group.bench_function("summary", |b| {
-        b.iter(|| runtime.block_on(batches::summary_cost()))
-    });
+    group.bench_function("waveform", |b| b.iter(|| runtime.block_on(allocation::streams_ac006_concurrent_waveform_measurement())));
+    group.bench_function("summary", |b| b.iter(|| runtime.block_on(batches::summary_cost())));
     group.finish();
     #[cfg(feature = "plugin-sidecar")]
     {
@@ -67,21 +59,16 @@ fn benchmarks(c: &mut criterion::Criterion) {
         for carrier in ["in_process"] {
             for size in [64 * 1024, 1024 * 1024] {
                 let fixture = if carrier == "executable" {
-                    let path =
-                        std::path::Path::new(env!("CARGO_BIN_EXE_harmos-stream-consumer-fixture"));
+                    let path = std::path::Path::new(env!("CARGO_BIN_EXE_harmos-stream-consumer-fixture"));
                     runtime.block_on(native::Fixture::executable(path))
                 } else {
                     runtime.block_on(native::Fixture::new())
                 };
                 let mut sequence = 0;
                 consumers.throughput(criterion::Throughput::Bytes((8 * size) as u64));
-                consumers.bench_with_input(
-                    criterion::BenchmarkId::new(carrier, size),
-                    &size,
-                    |b, &size| {
-                        b.iter(|| runtime.block_on(transfer(&fixture, &mut sequence, size)));
-                    },
-                );
+                consumers.bench_with_input(criterion::BenchmarkId::new(carrier, size), &size, |b, &size| {
+                    b.iter(|| runtime.block_on(transfer(&fixture, &mut sequence, size)));
+                });
                 runtime.block_on(fixture.runtime.stop()).unwrap();
             }
         }
@@ -91,50 +78,29 @@ fn benchmarks(c: &mut criterion::Criterion) {
 
 fn main() {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    if let Some(index) = arguments
-        .iter()
-        .position(|argument| argument == "--native-seconds")
-    {
-        let seconds: u64 = arguments
-            .get(index + 1)
-            .expect("--native-seconds requires 1 through 60")
-            .parse()
-            .expect("duration is an integer");
-        assert!(
-            (1..=60).contains(&seconds),
-            "duration must be from 1 through 60 seconds"
-        );
+    if let Some(index) = arguments.iter().position(|argument| argument == "--native-seconds") {
+        let seconds: u64 =
+            arguments.get(index + 1).expect("--native-seconds requires 1 through 60").parse().expect("duration is an integer");
+        assert!((1..=60).contains(&seconds), "duration must be from 1 through 60 seconds");
         #[cfg(feature = "plugin-sidecar")]
         {
-            let executable = arguments
-                .iter()
-                .position(|argument| argument == "--native-executable")
-                .map(|index| {
-                    std::path::Path::new(
-                        arguments
-                            .get(index + 1)
-                            .expect("--native-executable requires a prebuilt consumer path"),
-                    )
-                });
+            let executable = arguments.iter().position(|argument| argument == "--native-executable").map(|index| {
+                std::path::Path::new(arguments.get(index + 1).expect("--native-executable requires a prebuilt consumer path"))
+            });
             sustained(seconds, executable);
         }
         #[cfg(not(feature = "plugin-sidecar"))]
         panic!("native consumption requires sidecar and sidecar-host features");
     } else {
         benches();
-        criterion::Criterion::default()
-            .configure_from_args()
-            .final_summary();
+        criterion::Criterion::default().configure_from_args().final_summary();
     }
 }
 
 #[cfg(feature = "plugin-sidecar")]
 async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
     for _ in 0..8 {
-        fixture.runtime.streams.publish(native::Payload {
-            sequence: *sequence,
-            bytes: vec![(*sequence % 251) as u8; size],
-        });
+        fixture.runtime.streams.publish(native::Payload { sequence: *sequence, bytes: vec![(*sequence % 251) as u8; size] });
         *sequence += 1;
     }
     let acknowledged = fixture.acknowledged(*sequence).await;
@@ -145,11 +111,7 @@ async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
 #[cfg(feature = "plugin-sidecar")]
 fn sustained(seconds: u64, executable: Option<&std::path::Path>) {
     use std::time::{Duration, Instant};
-    let executor = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let executor = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     for size in [64 * 1024, 1024 * 1024] {
         let fixture = match executable {
             Some(path) => executor.block_on(native::Fixture::executable(path)),

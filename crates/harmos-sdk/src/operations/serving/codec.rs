@@ -155,138 +155,40 @@ impl WireCommand {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::Prepare {
-                invocation,
-                operation,
-                payload,
-            } => Self::Prepare {
-                invocation,
-                operation: operation.to_owned(),
-                payload: payload.to_vec(),
-            },
-            Envelope::PrepareGrpc {
-                invocation,
-                operation,
-                payload,
-            } => Self::PrepareGrpc {
-                invocation,
-                operation: operation.to_owned(),
-                payload: payload.to_vec(),
-            },
-            Envelope::Initialize {
-                invocation,
-                context,
-            } => Self::Initialize {
-                invocation,
-                context,
-            },
-            Envelope::Attempt {
-                invocation,
-                context,
-                values,
-            } => Self::Attempt {
-                invocation,
-                context,
-                values: owned(values)?,
-            },
+            Envelope::Prepare { invocation, operation, payload } => {
+                Self::Prepare { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            }
+            Envelope::PrepareGrpc { invocation, operation, payload } => {
+                Self::PrepareGrpc { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            }
+            Envelope::Initialize { invocation, context } => Self::Initialize { invocation, context },
+            Envelope::Attempt { invocation, context, values } => Self::Attempt { invocation, context, values: owned(values)? },
             Envelope::Finalize { invocation } => Self::Finalize { invocation },
-            Envelope::StreamAttempt {
-                invocation,
-                epoch,
-                context,
-                values,
-            } => Self::StreamAttempt {
-                invocation,
-                epoch,
-                context,
-                values: owned(values)?,
-            },
-            Envelope::StreamSend {
-                invocation,
-                epoch,
-                payload,
-            } => Self::StreamSend {
-                invocation,
-                epoch,
-                payload: payload.to_vec(),
-            },
-            Envelope::StreamFinish { invocation, epoch } => {
-                Self::StreamFinish { invocation, epoch }
+            Envelope::StreamAttempt { invocation, epoch, context, values } => {
+                Self::StreamAttempt { invocation, epoch, context, values: owned(values)? }
             }
-            Envelope::StreamReceive { invocation, epoch } => {
-                Self::StreamReceive { invocation, epoch }
-            }
+            Envelope::StreamSend { invocation, epoch, payload } => Self::StreamSend { invocation, epoch, payload: payload.to_vec() },
+            Envelope::StreamFinish { invocation, epoch } => Self::StreamFinish { invocation, epoch },
+            Envelope::StreamReceive { invocation, epoch } => Self::StreamReceive { invocation, epoch },
             _ => return Err(WireCodecError::Kind),
         })
     }
 
     fn envelope(&self) -> Envelope<'_> {
         match self {
-            Self::Prepare {
-                invocation,
-                operation,
-                payload,
-            } => Envelope::Prepare {
-                invocation: *invocation,
-                operation,
-                payload,
-            },
-            Self::PrepareGrpc {
-                invocation,
-                operation,
-                payload,
-            } => Envelope::PrepareGrpc {
-                invocation: *invocation,
-                operation,
-                payload,
-            },
-            Self::Initialize {
-                invocation,
-                context,
-            } => Envelope::Initialize {
-                invocation: *invocation,
-                context: *context,
-            },
-            Self::Attempt {
-                invocation,
-                context,
-                values,
-            } => Envelope::Attempt {
-                invocation: *invocation,
-                context: *context,
-                values: borrowed(values),
-            },
-            Self::StreamAttempt {
-                invocation,
-                epoch,
-                context,
-                values,
-            } => Envelope::StreamAttempt {
-                invocation: *invocation,
-                epoch: *epoch,
-                context: *context,
-                values: borrowed(values),
-            },
-            Self::StreamSend {
-                invocation,
-                epoch,
-                payload,
-            } => Envelope::StreamSend {
-                invocation: *invocation,
-                epoch: *epoch,
-                payload,
-            },
-            Self::StreamFinish { invocation, epoch } => Envelope::StreamFinish {
-                invocation: *invocation,
-                epoch: *epoch,
-            },
-            Self::StreamReceive { invocation, epoch } => Envelope::StreamReceive {
-                invocation: *invocation,
-                epoch: *epoch,
-            },
-            Self::Finalize { invocation } => Envelope::Finalize {
-                invocation: *invocation,
-            },
+            Self::Prepare { invocation, operation, payload } => Envelope::Prepare { invocation: *invocation, operation, payload },
+            Self::PrepareGrpc { invocation, operation, payload } => Envelope::PrepareGrpc { invocation: *invocation, operation, payload },
+            Self::Initialize { invocation, context } => Envelope::Initialize { invocation: *invocation, context: *context },
+            Self::Attempt { invocation, context, values } => {
+                Envelope::Attempt { invocation: *invocation, context: *context, values: borrowed(values) }
+            }
+            Self::StreamAttempt { invocation, epoch, context, values } => {
+                Envelope::StreamAttempt { invocation: *invocation, epoch: *epoch, context: *context, values: borrowed(values) }
+            }
+            Self::StreamSend { invocation, epoch, payload } => Envelope::StreamSend { invocation: *invocation, epoch: *epoch, payload },
+            Self::StreamFinish { invocation, epoch } => Envelope::StreamFinish { invocation: *invocation, epoch: *epoch },
+            Self::StreamReceive { invocation, epoch } => Envelope::StreamReceive { invocation: *invocation, epoch: *epoch },
+            Self::Finalize { invocation } => Envelope::Finalize { invocation: *invocation },
         }
     }
 }
@@ -295,49 +197,20 @@ impl WireAnswer {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         let envelope = match self {
             Self::Ready { payload } => Envelope::Ready { payload },
-            Self::Stream {
-                epoch,
-                transferred,
-                payload: Some(payload),
-            } => Envelope::StreamItem {
-                epoch: *epoch,
-                transferred: *transferred,
-                payload,
-            },
-            Self::Stream {
-                epoch,
-                transferred,
-                payload: None,
-            } => Envelope::StreamEnd {
-                epoch: *epoch,
-                transferred: *transferred,
-            },
-            Self::Failed { failure } => Envelope::Failed {
-                failure: failure.clone(),
-            },
+            Self::Stream { epoch, transferred, payload: Some(payload) } => {
+                Envelope::StreamItem { epoch: *epoch, transferred: *transferred, payload }
+            }
+            Self::Stream { epoch, transferred, payload: None } => Envelope::StreamEnd { epoch: *epoch, transferred: *transferred },
+            Self::Failed { failure } => Envelope::Failed { failure: failure.clone() },
         };
         encode(envelope)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::StreamItem {
-                epoch,
-                transferred,
-                payload,
-            } => Self::Stream {
-                epoch,
-                transferred,
-                payload: Some(payload.to_vec()),
-            },
-            Envelope::StreamEnd { epoch, transferred } => Self::Stream {
-                epoch,
-                transferred,
-                payload: None,
-            },
-            Envelope::Ready { payload } => Self::Ready {
-                payload: payload.to_vec(),
-            },
+            Envelope::StreamItem { epoch, transferred, payload } => Self::Stream { epoch, transferred, payload: Some(payload.to_vec()) },
+            Envelope::StreamEnd { epoch, transferred } => Self::Stream { epoch, transferred, payload: None },
+            Envelope::Ready { payload } => Self::Ready { payload: payload.to_vec() },
             Envelope::Failed { failure } => Self::Failed { failure },
             _ => return Err(WireCodecError::Kind),
         })
@@ -367,25 +240,14 @@ impl WireChildCall {
 
 impl WireChildControl {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
-        encode(Envelope::ChildControl {
-            context: self.context,
-            instance: self.instance,
-            action: self.action,
-        })
+        encode(Envelope::ChildControl { context: self.context, instance: self.instance, action: self.action })
     }
 }
 
 impl WireChild {
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         let child = match decode(bytes)? {
-            Envelope::Child {
-                context,
-                generation_context,
-                values,
-                operation,
-                payload,
-                submit,
-            } => Self::Call(WireChildCall {
+            Envelope::Child { context, generation_context, values, operation, payload, submit } => Self::Call(WireChildCall {
                 context,
                 generation_context,
                 values: owned(values)?,
@@ -393,15 +255,7 @@ impl WireChild {
                 payload: payload.to_vec(),
                 submit,
             }),
-            Envelope::ChildControl {
-                context,
-                instance,
-                action,
-            } => Self::Control(WireChildControl {
-                context,
-                instance,
-                action,
-            }),
+            Envelope::ChildControl { context, instance, action } => Self::Control(WireChildControl { context, instance, action }),
             _ => return Err(WireCodecError::Kind),
         };
         Ok(child)
@@ -419,18 +273,12 @@ impl WireChild {
 
 /* === Private Functions === */
 fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError> {
-    let bytes = values
-        .iter()
-        .map(|value| value.key.len().saturating_add(value.payload.len()))
-        .fold(0usize, usize::saturating_add);
+    let bytes = values.iter().map(|value| value.key.len().saturating_add(value.payload.len())).fold(0usize, usize::saturating_add);
     if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
         return Err(WireCodecError::Oversized);
     }
     for (index, value) in values.iter().enumerate() {
-        if values[..index]
-            .iter()
-            .any(|previous| previous.key == value.key)
-        {
+        if values[..index].iter().any(|previous| previous.key == value.key) {
             return Err(WireCodecError::Kind);
         }
     }
@@ -438,30 +286,15 @@ fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError
 }
 
 fn borrowed(values: &[super::super::CallValue]) -> Vec<Value<'_>> {
-    values
-        .iter()
-        .map(|value| Value {
-            key: &value.key,
-            payload: &value.payload,
-        })
-        .collect()
+    values.iter().map(|value| Value { key: &value.key, payload: &value.payload }).collect()
 }
 
 fn owned(values: Vec<Value<'_>>) -> Result<Vec<super::super::CallValue>, WireCodecError> {
-    let bytes = values
-        .iter()
-        .map(|value| value.key.len() + value.payload.len())
-        .sum::<usize>();
+    let bytes = values.iter().map(|value| value.key.len() + value.payload.len()).sum::<usize>();
     if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
         return Err(WireCodecError::Oversized);
     }
-    Ok(values
-        .into_iter()
-        .map(|value| super::super::CallValue {
-            key: value.key.to_owned(),
-            payload: value.payload.to_vec(),
-        })
-        .collect())
+    Ok(values.into_iter().map(|value| super::super::CallValue { key: value.key.to_owned(), payload: value.payload.to_vec() }).collect())
 }
 
 fn encode(envelope: Envelope<'_>) -> Result<Vec<u8>, WireCodecError> {

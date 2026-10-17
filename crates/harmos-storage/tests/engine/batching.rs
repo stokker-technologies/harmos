@@ -22,9 +22,9 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos_storage::Identifier;
+use harmos_storage::StreamWrite;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
-use harmos_storage::StreamWrite;
 
 /* === Constants === */
 
@@ -47,16 +47,7 @@ use harmos_storage::StreamWrite;
 #[tokio::test]
 async fn append_kinds_coalesce() {
     let f = Fixture::new(config()).await;
-    f.storage
-        .write_schema(
-            &schema(),
-            &harmos_storage::schema::graph::Schema {
-                root: 0,
-                definitions: vec![vec![]],
-            },
-        )
-        .await
-        .unwrap();
+    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "one").await;
     write(&f.storage, "two").await;
     for sequence in 1..=2 {
@@ -64,39 +55,20 @@ async fn append_kinds_coalesce() {
             .write_stream(&[StreamWrite {
                 stream: &Identifier::new("voltage").unwrap(),
                 sequence,
-                record: record(
-                    &schema(),
-                    &Identifier::new(format!("row-{sequence}")).unwrap(),
-                    &[1],
-                ),
+                record: record(&schema(), &Identifier::new(format!("row-{sequence}")).unwrap(), &[1]),
             }])
             .await
             .unwrap();
     }
-    f.storage
-        .write_schema(
-            &schema(),
-            &harmos_storage::schema::graph::Schema {
-                root: 0,
-                definitions: vec![vec![]],
-            },
-        )
-        .await
-        .unwrap();
+    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "three").await;
     write(&f.storage, "four").await;
     f.storage.write_recovery(&[b"first"]).await.unwrap();
     f.storage.write_recovery(&[b"second"]).await.unwrap();
     f.storage.flush().await.unwrap();
     f.storage.flush_recovery().await.unwrap();
-    assert_eq!(
-        *f.data.control.write_sizes.lock().unwrap(),
-        vec![1, 2, 2, 1, 2]
-    );
-    assert_eq!(
-        *f.data.control.writes.lock().unwrap(),
-        (1..=8).collect::<Vec<_>>()
-    );
+    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 2, 2, 1, 2]);
+    assert_eq!(*f.data.control.writes.lock().unwrap(), (1..=8).collect::<Vec<_>>());
     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), vec![2]);
     f.finish().await;
 }
@@ -205,11 +177,7 @@ async fn reservation_never_flush() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
     let f = Fixture::new(policy).await;
     write(&f.storage, "one").await;
-    let snapshot = f
-        .storage
-        .read_snapshot(NonZeroUsize::new(7000).unwrap())
-        .await
-        .unwrap();
+    let snapshot = f.storage.read_snapshot(NonZeroUsize::new(7000).unwrap()).await.unwrap();
     assert!(snapshot.is_none());
     assert_eq!(f.storage.status().saved.sequence, 0);
     f.finish().await;
@@ -251,10 +219,7 @@ async fn queued_writes_wait() {
         },
         async {
             f.recovery.control.flush_entered.notified().await;
-            f.recovery
-                .control
-                .block_flush
-                .store(false, Ordering::SeqCst);
+            f.recovery.control.block_flush.store(false, Ordering::SeqCst);
             f.recovery.control.flush_release.notify_one();
         }
     );
@@ -350,10 +315,7 @@ async fn item_refuses_whole() {
     let item = Identifier::new("oversized").unwrap();
     let large = vec![255; 8192];
     let inputs = [record(&key, &item, b"small"), record(&key, &item, &large)];
-    assert!(matches!(
-        f.storage.write_records(&inputs).await,
-        Err(harmos_storage::Error::ResourceExhausted { .. })
-    ));
+    assert!(matches!(f.storage.write_records(&inputs).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);
     assert!(f.data.control.writes.lock().unwrap().is_empty());
@@ -374,15 +336,7 @@ async fn whole_batch_retries() {
     assert_eq!(f.storage.status().pending_batches, 1);
     assert_eq!(f.storage.flush_until(&accepted).await.unwrap(), accepted);
     assert_eq!(f.data.records.lock().unwrap().len(), 8);
-    assert!(
-        f.data
-            .control
-            .write_sizes
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|size| *size == 8)
-    );
+    assert!(f.data.control.write_sizes.lock().unwrap().iter().all(|size| *size == 8));
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
@@ -390,17 +344,9 @@ async fn whole_batch_retries() {
 #[tokio::test]
 async fn schema_decoding_bounded() {
     let fields: Vec<_> = (1..=64)
-        .map(|tag| Field {
-            name: Cow::Owned(format!("field-{tag}")),
-            tag,
-            kind: Kind::U64,
-            cardinality: Cardinality::Required,
-        })
+        .map(|tag| Field { name: Cow::Owned(format!("field-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
         .collect();
-    let graph = harmos_storage::schema::graph::Schema {
-        root: 0,
-        definitions: vec![fields],
-    };
+    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] };
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;
@@ -426,14 +372,10 @@ async fn schema_decoding_bounded() {
             metadata.schema.definitions = vec![Vec::new(); definitions];
             metadata.schema.definitions[0] = fields;
             let encoded = serde_json::to_vec(&metadata).unwrap();
-            let admitted =
-                harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
+            let admitted = harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
             let decoded: harmos_storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
             assert_eq!(decoded, metadata);
-            assert!(
-                harmos_storage::MemorySize::memory_size(&decoded)
-                    <= admitted + std::mem::size_of::<harmos_storage::StorageSchema>()
-            );
+            assert!(harmos_storage::MemorySize::memory_size(&decoded) <= admitted + std::mem::size_of::<harmos_storage::StorageSchema>());
         }
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
@@ -445,32 +387,18 @@ async fn schema_decoding_bounded() {
 async fn schema_validation_reserves() {
     static CHILDREN: std::sync::LazyLock<Vec<Field>> = std::sync::LazyLock::new(|| {
         (1..=256)
-            .map(|tag| Field {
-                name: Cow::Owned(format!("child-{tag}")),
-                tag,
-                kind: Kind::U64,
-                cardinality: Cardinality::Required,
-            })
+            .map(|tag| Field { name: Cow::Owned(format!("child-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
             .collect()
     });
-    let fields = [Field {
-        name: Cow::Borrowed("parent"),
-        tag: 1,
-        kind: Kind::Message { definition: 1 },
-        cardinality: Cardinality::Required,
-    }];
-    let graph = harmos_storage::schema::graph::Schema {
-        root: 0,
-        definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
-    };
+    let fields =
+        [Field { name: Cow::Borrowed("parent"), tag: 1, kind: Kind::Message { definition: 1 }, cardinality: Cardinality::Required }];
+    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields.to_vec(), CHILDREN.to_vec()] };
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
     let f = Fixture::new(policy.clone()).await;
     assert!(matches!(
         f.storage.write_schema(&schema(), &graph).await,
-        Err(harmos_storage::Error::ResourceExhausted {
-            resource: "storage write memory"
-        })
+        Err(harmos_storage::Error::ResourceExhausted { resource: "storage write memory" })
     ));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);

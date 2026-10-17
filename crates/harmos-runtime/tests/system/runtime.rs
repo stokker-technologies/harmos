@@ -23,8 +23,7 @@ use arrow_array::{Array, Int64Array, StringArray, StructArray};
 
 // Local Imports
 use super::fixture::{
-    Bank, Data, Identifier, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog,
-    SchemaKey, config, history, record, schema,
+    Bank, Data, Identifier, Ledger, Recovery, Runtime, SchemaKey, StorageBackends, StorageManager, catalog, config, history, record, schema,
 };
 use super::operations::Lanes;
 use harmos_runtime::Message;
@@ -58,13 +57,7 @@ struct Reading {
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = Query {
         at: storage.cursor_saved(),
-        source: Source::Records(RecordSelection {
-            schema: schema.clone(),
-            scope: None,
-            item: None,
-            source_start: None,
-            source_end: None,
-        }),
+        source: Source::Records(RecordSelection { schema: schema.clone(), scope: None, item: None, source_start: None, source_end: None }),
         transforms: Vec::new(),
         slice: RowSlice::default(),
     };
@@ -93,12 +86,7 @@ async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64
 }
 
 fn served(runtime: &Runtime<Bank>) -> Vec<String> {
-    runtime
-        .operations
-        .definitions()
-        .into_iter()
-        .map(|definition| definition.id.to_string())
-        .collect()
+    runtime.operations.definitions().into_iter().map(|definition| definition.id.to_string()).collect()
 }
 
 /* === Tests === */
@@ -108,10 +96,7 @@ async fn runtime_baseline_walks() {
     let root = tempfile::tempdir().unwrap();
     let data = Arc::new(Data::<()>::journaled(root.path(), history()).unwrap());
     let recovery = Arc::new(Recovery::new(history()));
-    let backends = StorageBackends {
-        primary: data.clone(),
-        state: recovery.clone(),
-    };
+    let backends = StorageBackends { primary: data.clone(), state: recovery.clone() };
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
@@ -122,17 +107,8 @@ async fn runtime_baseline_walks() {
     assert!(storage.status().running);
 
     // Read The Catalog Before And After Serving Storage
-    assert!(
-        !served(&runtime).iter().any(|id| id.starts_with("storage.")),
-        "nothing is served before the host registers it"
-    );
-    harmos_runtime::storage::operations::register(
-        &runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(storage.clone()),
-    )
-    .unwrap();
+    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage.")), "nothing is served before the host registers it");
+    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
     let catalogue = served(&runtime);
     for required in ["storage.query", "storage.write_records", "storage.read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
@@ -147,10 +123,7 @@ async fn runtime_baseline_walks() {
     let second = Identifier::new("second").unwrap();
     let low = Message::encode_to_vec(&Reading { value: -3 });
     let high = Message::encode_to_vec(&Reading { value: 8 });
-    let records = [
-        record(&schema, &first, &low),
-        record(&schema, &second, &high),
-    ];
+    let records = [record(&schema, &first, &low), record(&schema, &second, &high)];
     let written = storage.write_records(&records).await.unwrap();
     storage.flush().await.unwrap();
     assert!(storage.cursor_saved().sequence >= written.sequence);

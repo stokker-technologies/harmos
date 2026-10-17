@@ -74,27 +74,17 @@ impl<'a> StorageBatch<'a> {
             if through.sequence.checked_add(1) != Some(entry.position().sequence) {
                 return Err(invalid("batch positions are not contiguous"));
             }
-            bytes = bytes
-                .checked_add(entry.encoded_bytes()?)
-                .ok_or(invalid("batch byte count overflow"))?;
+            bytes = bytes.checked_add(entry.encoded_bytes()?).ok_or(invalid("batch byte count overflow"))?;
             if bytes > max_bytes.get() {
                 return Err(invalid("batch exceeds the encoded byte bound"));
             }
-            len = len
-                .checked_add(1)
-                .ok_or(invalid("batch entry count overflow"))?;
+            len = len.checked_add(1).ok_or(invalid("batch entry count overflow"))?;
             through = entry.position();
         }
         if bytes > max_bytes.get() {
             return Err(invalid("batch exceeds the encoded byte bound"));
         }
-        Ok(Self {
-            parts,
-            first: first.position(),
-            through,
-            len,
-            bytes,
-        })
+        Ok(Self { parts, first: first.position(), through, len, bytes })
     }
 
     pub fn parts(&self) -> impl Iterator<Item = StoragePart<'a>> + '_ {
@@ -138,13 +128,7 @@ impl<'a> StoragePart<'a> {
         let mut end = self.len();
         while start < end {
             let middle = start + (end - start) / 2;
-            let position = self
-                .slice(middle, middle + 1)
-                .entries()
-                .next()
-                .unwrap()
-                .position()
-                .sequence;
+            let position = self.slice(middle, middle + 1).entries().next().unwrap().position().sequence;
             if position < sequence || (inclusive && position == sequence) {
                 start = middle + 1;
             } else {
@@ -218,10 +202,7 @@ impl<'a> StorageEntry<'a> {
 
 /* === Private Functions === */
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "storage batch",
-        reason,
-    }
+    Error::InvalidInput { field: "storage batch", reason }
 }
 
 /* === Tests === */

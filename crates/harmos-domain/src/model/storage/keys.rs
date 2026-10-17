@@ -78,9 +78,7 @@ pub enum ObjectRetention {
 impl SchemaKey {
     pub fn require_postcard(&self) -> Result<()> {
         if self.payload_encoding != PayloadEncoding::PostcardV1 {
-            return Err(invalid(
-                "payload requires an explicitly selected legacy decoder or migration",
-            ));
+            return Err(invalid("payload requires an explicitly selected legacy decoder or migration"));
         }
         Ok(())
     }
@@ -88,27 +86,15 @@ impl SchemaKey {
 
 impl MemorySize for SchemaKey {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.id
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<Identifier>()),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.id.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
     }
 }
 
 impl MemorySize for ObjectValue {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.schema
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<SchemaKey>()),
-            )
-            .saturating_add(
-                self.item
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<ObjectKey>()),
-            )
+            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
+            .saturating_add(self.item.memory_size().saturating_sub(std::mem::size_of::<ObjectKey>()))
             .saturating_add(self.payload.capacity())
     }
 }
@@ -144,9 +130,7 @@ impl fmt::Display for ObjectKey {
 }
 
 impl<'de> Deserialize<'de> for ObjectKey {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         Self::from_owned(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
@@ -176,12 +160,8 @@ impl ObjectRetention {
 
 /* === Public Functions === */
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {
-    let mut writer = KeyWriter {
-        value: String::new(),
-        limit: limit.get(),
-    };
-    fmt::write(&mut writer, format_args!("{key}"))
-        .map_err(|_| invalid("invalid or oversized object key"))?;
+    let mut writer = KeyWriter { value: String::new(), limit: limit.get() };
+    fmt::write(&mut writer, format_args!("{key}")).map_err(|_| invalid("invalid or oversized object key"))?;
     ObjectKey::from_owned(writer.value)
 }
 
@@ -193,10 +173,7 @@ pub fn check_length(length: usize, max_payload_bytes: NonZeroUsize) -> Result<()
 }
 
 pub fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "object catalog",
-        reason,
-    }
+    Error::InvalidInput { field: "object catalog", reason }
 }
 
 /* === Private Functions === */

@@ -54,11 +54,7 @@ pub struct Bundle {
 /* === Implementations === */
 impl Bundle {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn build(
-        identity: Identity,
-        sources: &[Source<'_>],
-        limits: Limits,
-    ) -> Result<Self, Error> {
+    pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Result<Self, Error> {
         if sources.len() > limits.files {
             return Err(Error::Limit("file count"));
         }
@@ -68,52 +64,26 @@ impl Bundle {
         let mut metadata_bytes = metadata::identity_size(&identity, limits.manifest_bytes)?;
         for source in sources {
             archive::path(source.path)?;
-            total = total
-                .checked_add(source.bytes.len())
-                .ok_or(Error::Limit("total file bytes"))?;
+            total = total.checked_add(source.bytes.len()).ok_or(Error::Limit("total file bytes"))?;
             if source.bytes.len() > limits.file_bytes || total > limits.total_file_bytes {
                 return Err(Error::Limit("file bytes"));
             }
-            if contents
-                .insert(source.path.to_owned(), source.bytes)
-                .is_some()
-            {
+            if contents.insert(source.path.to_owned(), source.bytes).is_some() {
                 return Err(invalid("duplicate file path"));
             }
-            if source
-                .executable
-                .as_ref()
-                .is_some_and(|value| value.registrations.len() > limits.registrations)
-            {
+            if source.executable.as_ref().is_some_and(|value| value.registrations.len() > limits.registrations) {
                 return Err(Error::Limit("registration count"));
             }
             let sha256 = crate::digest(source.bytes);
-            metadata::file_size(
-                source,
-                &sha256,
-                !files.is_empty(),
-                &mut metadata_bytes,
-                limits.manifest_bytes,
-            )?;
+            metadata::file_size(source, &sha256, !files.is_empty(), &mut metadata_bytes, limits.manifest_bytes)?;
             let mut executable = source.executable.clone();
             if let Some(executable) = &mut executable {
-                executable
-                    .registrations
-                    .sort_by(|left, right| left.namespace.cmp(&right.namespace));
+                executable.registrations.sort_by(|left, right| left.namespace.cmp(&right.namespace));
             }
-            files.push(File {
-                path: source.path.to_owned(),
-                size: source.bytes.len() as u64,
-                sha256,
-                executable,
-            });
+            files.push(File { path: source.path.to_owned(), size: source.bytes.len() as u64, sha256, executable });
         }
         files.sort_by(|left, right| left.path.cmp(&right.path));
-        let manifest = Manifest {
-            schema: 1,
-            identity,
-            files,
-        };
+        let manifest = Manifest { schema: 1, identity, files };
         validate(&manifest, limits)?;
         let bytes = archive::encode(&manifest, &contents, limits)?;
         Self::inspect(&bytes, limits)
@@ -131,24 +101,14 @@ impl Bundle {
                     Facility::Sidecar => harmos_domain::inventory::Facility::Sidecar,
                     Facility::Guest => harmos_domain::inventory::Facility::Guest,
                 };
-                let declaration = Declaration::inspect(content, facility)
-                    .map_err(|error| invalid(error.to_string()))?;
-                if !owners.insert((
-                    executable.facility,
-                    declaration.id.clone(),
-                    &executable.target,
-                )) {
+                let declaration = Declaration::inspect(content, facility).map_err(|error| invalid(error.to_string()))?;
+                if !owners.insert((executable.facility, declaration.id.clone(), &executable.target)) {
                     return Err(invalid("duplicate executable facility, owner, and target"));
                 }
                 declarations.insert(file.path.clone(), declaration);
             }
         }
-        Ok(Self {
-            manifest,
-            bytes: bytes.to_vec(),
-            contents,
-            declarations,
-        })
+        Ok(Self { manifest, bytes: bytes.to_vec(), contents, declarations })
     }
 
     pub fn manifest(&self) -> &Manifest {
@@ -163,9 +123,7 @@ impl Bundle {
     }
 
     pub fn file(&self, path: &str) -> Option<&[u8]> {
-        self.contents
-            .get(path)
-            .map(|range| &self.bytes[range.clone()])
+        self.contents.get(path).map(|range| &self.bytes[range.clone()])
     }
 
     pub fn extract(&self, parent: &Path) -> Result<tempfile::TempDir, Error> {
@@ -173,23 +131,12 @@ impl Bundle {
         for file in &self.manifest.files {
             let path = directory.path().join(&file.path);
             std::fs::create_dir_all(path.parent().expect("a file has a staging parent"))?;
-            let mut output = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)?;
+            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
             output.write_all(self.file(&file.path).expect("verified file exists"))?;
-            archive::permissions(
-                &output,
-                file.executable
-                    .as_ref()
-                    .is_some_and(|value| value.facility == Facility::Sidecar),
-            )?;
+            archive::permissions(&output, file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar))?;
         }
         let path = directory.path().join("manifest.json");
-        let mut output = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)?;
+        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
         serde_json::to_writer(&mut output, &self.manifest)?;
         archive::permissions(&output, false)?;
         Ok(directory)
@@ -208,11 +155,7 @@ fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
         return Err(invalid("unsupported schema"));
     }
     let name = &manifest.identity.name;
-    if name.is_empty()
-        || !name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-    {
+    if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')) {
         return Err(invalid("invalid Cargo package name"));
     }
     if manifest.files.len() > limits.files {
@@ -232,10 +175,7 @@ fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
         if let Some(executable) = &file.executable {
             if executable.target.is_empty()
                 || executable.target.len() > 128
-                || !executable
-                    .target
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || !executable.target.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
             {
                 return Err(invalid("invalid executable target"));
             }

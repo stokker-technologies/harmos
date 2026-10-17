@@ -138,7 +138,9 @@ impl harmos_runtime::Plugin for Independent {
     fn resources(&self) -> Arc<Witness> {
         self.resources.clone()
     }
-    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(
+        &self, _: &mut harmos_runtime::operations::WireTable<Supervisor>,
+    ) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {

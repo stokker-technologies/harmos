@@ -59,28 +59,15 @@ impl Uploading {
     }
 
     async fn run(
-        &mut self,
-        context: &Supervisor,
-        request: &mut AnalyzeUpload,
-        input: &mut StreamInput<Snapshot>,
+        &mut self, context: &Supervisor, request: &mut AnalyzeUpload, input: &mut StreamInput<Snapshot>,
     ) -> Result<Analysis, Error> {
         validate_title(&request.title)?;
-        let _permit = self
-            .resources
-            .analysis
-            .acquire()
-            .await
-            .map_err(|_| Error::Unavailable)?;
+        let _permit = self.resources.analysis.acquire().await.map_err(|_| Error::Unavailable)?;
         let mut checked = 0u32;
         while let Some(snapshot) = input.recv().await {
             snapshot.validate().map_err(|_| Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(Error::InvalidInput)?;
-            context
-                .publish_on::<AnalysisProgress>(&AnalysisProgress {
-                    title: request.title.clone(),
-                    checked,
-                })
-                .await?;
+            context.publish_on::<AnalysisProgress>(&AnalysisProgress { title: request.title.clone(), checked }).await?;
         }
         Ok(Analysis { checked })
     }
@@ -96,39 +83,18 @@ impl Exchanging {
     }
 
     async fn run(
-        &mut self,
-        context: &Supervisor,
-        request: &mut AnalyzeExchange,
-        input: &mut StreamInput<Snapshot>,
+        &mut self, context: &Supervisor, request: &mut AnalyzeExchange, input: &mut StreamInput<Snapshot>,
         output: &mut StreamOutput<Finding>,
     ) -> Result<Analysis, Error> {
         validate_title(&request.title)?;
-        let _permit = self
-            .resources
-            .analysis
-            .acquire()
-            .await
-            .map_err(|_| Error::Unavailable)?;
+        let _permit = self.resources.analysis.acquire().await.map_err(|_| Error::Unavailable)?;
         let mut checked = 0u32;
         while let Some(snapshot) = input.recv().await {
             snapshot.validate().map_err(|_| Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(Error::InvalidInput)?;
-            let finding = Finding {
-                text: format!(
-                    "{} Symbols, {} Connections",
-                    snapshot.symbols.len(),
-                    snapshot.connections.len()
-                ),
-            };
-            output
-                .send_with(finding.memory_size(), || Ok(finding))
-                .await?;
-            context
-                .publish_on::<AnalysisProgress>(&AnalysisProgress {
-                    title: request.title.clone(),
-                    checked,
-                })
-                .await?;
+            let finding = Finding { text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()) };
+            output.send_with(finding.memory_size(), || Ok(finding)).await?;
+            context.publish_on::<AnalysisProgress>(&AnalysisProgress { title: request.title.clone(), checked }).await?;
         }
         Ok(Analysis { checked })
     }

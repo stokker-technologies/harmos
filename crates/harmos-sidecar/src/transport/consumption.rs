@@ -56,11 +56,7 @@ pub struct Consumption {
 /* === Implementations === */
 impl ReceiveCredit {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            ledger: Mutex::new(Ledger::default()),
-            released: watch::channel(0).0,
-            closed: watch::channel(false).0,
-        })
+        Arc::new(Self { ledger: Mutex::new(Ledger::default()), released: watch::channel(0).0, closed: watch::channel(false).0 })
     }
 
     pub fn admit(self: &Arc<Self>, encoded: usize) -> io::Result<Consumption> {
@@ -68,29 +64,16 @@ impl ReceiveCredit {
             return Err(invalid("invalid credited packet length"));
         }
         let charge = encoded.max(MINIMUM) as u64;
-        let mut ledger = self
-            .ledger
-            .lock()
-            .map_err(|_| invalid("receive credit ledger poisoned"))?;
+        let mut ledger = self.ledger.lock().map_err(|_| invalid("receive credit ledger poisoned"))?;
         if ledger.closed {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "receive credit closed",
-            ));
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "receive credit closed"));
         }
-        let received = ledger
-            .received
-            .checked_add(charge)
-            .ok_or_else(|| invalid("receive credit counter overflow"))?;
+        let received = ledger.received.checked_add(charge).ok_or_else(|| invalid("receive credit counter overflow"))?;
         if received - ledger.consumed > WINDOW as u64 {
             return Err(invalid("peer exceeded sidecar byte credit"));
         }
         ledger.received = received;
-        Ok(Consumption {
-            credit: self.clone(),
-            charge,
-            acknowledged: false,
-        })
+        Ok(Consumption { credit: self.clone(), charge, acknowledged: false })
     }
 
     pub fn released(&self) -> watch::Receiver<u64> {
@@ -111,21 +94,11 @@ impl ReceiveCredit {
 
 impl Consumption {
     pub fn consumed(mut self) -> io::Result<()> {
-        let mut ledger = self
-            .credit
-            .ledger
-            .lock()
-            .map_err(|_| invalid("receive credit ledger poisoned"))?;
+        let mut ledger = self.credit.ledger.lock().map_err(|_| invalid("receive credit ledger poisoned"))?;
         if ledger.closed {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "receive credit closed",
-            ));
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "receive credit closed"));
         }
-        let consumed = ledger
-            .consumed
-            .checked_add(self.charge)
-            .ok_or_else(|| invalid("consumption counter overflow"))?;
+        let consumed = ledger.consumed.checked_add(self.charge).ok_or_else(|| invalid("consumption counter overflow"))?;
         if consumed > ledger.received {
             return Err(invalid("consumption exceeds received credit"));
         }

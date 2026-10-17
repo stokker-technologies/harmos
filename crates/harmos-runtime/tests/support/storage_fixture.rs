@@ -57,33 +57,14 @@ impl Fixture {
             .unwrap();
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(
-            StorageBackends {
-                primary: data.clone(),
-                state: recovery.clone(),
-            },
-            config,
-        )
-        .unwrap();
+        let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
         storage.start(&runtime).await.unwrap();
-        Self {
-            runtime,
-            storage,
-            data,
-            recovery,
-        }
+        Self { runtime, storage, data, recovery }
     }
 
     pub(crate) async fn finish(self) {
         self.storage.close().await.unwrap();
-        assert!(
-            self.runtime
-                .operations
-                .resident(&harmos_runtime::operations::resident::Key::root(
-                    "harmos-storage"
-                ))
-                .is_none()
-        );
+        assert!(self.runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("harmos-storage")).is_none());
         self.runtime.stop().await.unwrap();
     }
 }
@@ -109,26 +90,12 @@ pub(crate) fn schema() -> SchemaKey {
     }
 }
 
-pub(crate) fn record<'a>(
-    schema: &'a SchemaKey,
-    item: &'a Identifier,
-    payload: &'a [u8],
-) -> RecordWrite<'a> {
-    RecordWrite {
-        schema,
-        scope: None,
-        item,
-        source: None,
-        source_time: None,
-        payload,
-    }
+pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordWrite<'a> {
+    RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
 }
 
 /// Saved records of `schema` as (position, item), read through the Query operation contract.
-pub(crate) async fn saved_records<C>(
-    storage: &StorageManager<C>,
-    schema: &SchemaKey,
-) -> Vec<(u64, Identifier)> {
+pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_runtime::storage::operations::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
@@ -152,43 +119,22 @@ pub(crate) async fn saved_records<C>(
             continue;
         };
         let batch = batch.as_record_batch();
-        let positions = batch
-            .column_by_name("position")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<arrow_array::UInt64Array>()
-            .unwrap();
-        let items = batch
-            .column_by_name("item")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<arrow_array::StringArray>()
-            .unwrap();
+        let positions = batch.column_by_name("position").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+        let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
         for row in 0..batch.num_rows() {
-            records.push((
-                positions.value(row),
-                Identifier::new(items.value(row)).unwrap(),
-            ));
+            records.push((positions.value(row), Identifier::new(items.value(row)).unwrap()));
         }
     }
     records
 }
 
 /// Whether one poll of `future` leaves it pending, without waiting for anything.
-pub(crate) async fn pending<F: std::future::Future + ?Sized>(
-    mut future: std::pin::Pin<&mut F>,
-) -> bool {
-    std::future::poll_fn(|context| {
-        std::task::Poll::Ready(future.as_mut().poll(context).is_pending())
-    })
-    .await
+pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
+    std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }
 
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
-    storage
-        .write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])])
-        .await
-        .unwrap()
+    storage.write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
 
 /* === Tests === */

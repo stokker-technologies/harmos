@@ -76,13 +76,9 @@ impl PluginGeneration {
 
     pub(super) fn fresh() -> Result<Self> {
         NEXT_GENERATION
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                next.checked_add(1)
-            })
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| next.checked_add(1))
             .map(Self)
-            .map_err(|_| Error::ResourceExhausted {
-                resource: "plugin generations",
-            })
+            .map_err(|_| Error::ResourceExhausted { resource: "plugin generations" })
     }
 }
 

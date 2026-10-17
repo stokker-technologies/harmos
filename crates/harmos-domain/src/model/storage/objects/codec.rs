@@ -66,9 +66,7 @@ impl crate::__private::PostcardValue for ObjectKey {
     }
 
     fn size(&self) -> usize {
-        self.as_str()
-            .len()
-            .saturating_add(crate::__private::PostcardValue::size(&self.as_str().len()))
+        self.as_str().len().saturating_add(crate::__private::PostcardValue::size(&self.as_str().len()))
     }
 
     fn memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
@@ -84,8 +82,7 @@ impl crate::__private::PostcardValue for ObjectKey {
         if text.is_empty() {
             return Err(MessageError::borrowed("empty object key"));
         }
-        Self::from_owned(Box::<str>::from(text).into_string())
-            .map_err(|_| MessageError::borrowed("empty object key"))
+        Self::from_owned(Box::<str>::from(text).into_string()).map_err(|_| MessageError::borrowed("empty object key"))
     }
 }
 

@@ -25,21 +25,8 @@ bench = false
 [features]
 default = []
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
-plugin-sidecar = [
-  "plugin",
-  "dep:harmos-sidecar",
-  "harmos-sidecar/kit",
-  "harmos-sidecar/derive",
-  "tokio/io-util",
-  "tokio/process",
-]
-plugin-guest = [
-  "plugin",
-  "dep:harmos-guest",
-  "harmos-guest/kit",
-  "harmos-guest/derive",
-  "dep:wasmtime",
-]
+plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
+plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
   "harmos-sdk/grpc",
   "bindings-proto",
@@ -107,12 +94,7 @@ tempfile = { workspace = true, default-features = true }
 # Async
 futures-core = { workspace = true, default-features = true }
 futures-util = { workspace = true }
-tokio = { workspace = true, default-features = true, features = [
-  "rt",
-  "sync",
-  "time",
-  "macros",
-] }
+tokio = { workspace = true, default-features = true, features = ["rt", "sync", "time", "macros"] }
 
 # Networking
 http-body = { workspace = true, optional = true }
@@ -195,10 +177,7 @@ criterion = { workspace = true, default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 # Utilities
-windows-sys = { workspace = true, features = [
-  "Win32_Storage_FileSystem",
-  "Win32_System_WindowsProgramming",
-] }
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
@@ -225,9 +204,7 @@ wasmtime = { workspace = true, optional = true }
 
 # Async
 # The executable throughput fixture owns four native runtime workers.
-tokio = { workspace = true, default-features = true, features = [
-  "rt-multi-thread",
-] }
+tokio = { workspace = true, default-features = true, features = ["rt-multi-thread"] }
 
 # Networking
 

@@ -60,15 +60,8 @@ pub enum Error<E = Infallible> {
     OperationRefused(#[from] crate::Refusal),
 
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
-    OperationLaneCycle {
-        parent: &'static str,
-        child: &'static str,
-    },
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    OperationLaneCycle { parent: &'static str, child: &'static str },
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     #[error("operation caller is unavailable: {source}")]
     OperationCaller {
         #[source]
@@ -76,11 +69,7 @@ pub enum Error<E = Infallible> {
     },
 
     #[error("caller `{caller}` may not invoke operation `{operation}` on `{owner}`")]
-    OperationUnauthorized {
-        caller: String,
-        owner: String,
-        operation: String,
-    },
+    OperationUnauthorized { caller: String, owner: String, operation: String },
 
     #[error("operation `{operation}` payload is unreadable: {source}")]
     OperationPayload {
@@ -119,11 +108,7 @@ pub enum Error<E = Infallible> {
         #[source]
         source: std::sync::Arc<Error>,
     },
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     #[error("plugin lifecycle failed: {source}")]
     PluginLifecycle {
         #[source]
@@ -156,10 +141,7 @@ pub enum Error<E = Infallible> {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     #[error("invalid {field}: {reason}")]
-    InvalidInput {
-        field: &'static str,
-        reason: &'static str,
-    },
+    InvalidInput { field: &'static str, reason: &'static str },
     #[error("{resource} capacity is exhausted")]
     ResourceExhausted { resource: &'static str },
     #[error("positions belong to different store histories")]
@@ -208,45 +190,19 @@ impl<E> From<harmos_storage::Error> for Error<E> {
     fn from(error: harmos_storage::Error) -> Self {
         use harmos_storage::Error as Storage;
         match error {
-            Storage::OperationFailed { operation, source } => {
-                Self::OperationFailed { operation, source }
-            }
+            Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
             Storage::NotReady { domain } => Self::NotReady { domain },
             Storage::Persistence { source } => Self::Persistence {
-                source: std::sync::Arc::new(
-                    std::sync::Arc::try_unwrap(source)
-                        .map(Error::from)
-                        .unwrap_or_else(|source| {
-                            Error::backend(
-                                "storage persistence",
-                                source
-                                    .backend_failure()
-                                    .unwrap_or(BackendFailure::Permanent),
-                                source,
-                            )
-                        }),
-                ),
+                source: std::sync::Arc::new(std::sync::Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
+                    Error::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source)
+                })),
             },
             Storage::Closing { domain } => Self::Closing { domain },
             Storage::AlreadyRegistered { domain, name } => Self::AlreadyRegistered { domain, name },
-            Storage::Backend {
-                operation,
-                kind,
-                source,
-            } => Self::Backend {
-                operation,
-                kind,
-                source,
-            },
+            Storage::Backend { operation, kind, source } => Self::Backend { operation, kind, source },
             Storage::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
             Storage::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
-            Storage::Gap {
-                requested,
-                available,
-            } => Self::Gap {
-                requested,
-                available,
-            },
+            Storage::Gap { requested, available } => Self::Gap { requested, available },
             Storage::Domain(source) => source.into(),
         }
     }
@@ -255,16 +211,10 @@ impl<E> From<harmos_storage::Error> for Error<E> {
 impl<E> From<harmos_domain::Error> for Error<E> {
     fn from(error: harmos_domain::Error) -> Self {
         match error {
-            harmos_domain::Error::InvalidInput { field, reason } => {
-                Self::InvalidInput { field, reason }
-            }
-            harmos_domain::Error::ResourceExhausted { resource } => {
-                Self::ResourceExhausted { resource }
-            }
+            harmos_domain::Error::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            harmos_domain::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
             harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
-            harmos_domain::Error::Corrupt { operation, source } => {
-                Self::backend(operation, BackendFailure::Corrupt, source)
-            }
+            harmos_domain::Error::Corrupt { operation, source } => Self::backend(operation, BackendFailure::Corrupt, source),
             source => Self::OperationDeclaration { source },
         }
     }
@@ -274,22 +224,10 @@ impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
     fn from(error: harmos_domain::operations::ContextError) -> Self {
         use harmos_domain::operations::ContextError;
         match error {
-            ContextError::Duplicate { name } => Self::AlreadyRegistered {
-                domain: "call context",
-                name,
-            },
-            ContextError::Missing { name } => Self::NotRegistered {
-                domain: "call context",
-                name,
-            },
-            ContextError::Decode { .. } => Self::InvalidInput {
-                field: "call context",
-                reason: "portable value is unreadable",
-            },
-            ContextError::Budget => Self::InvalidInput {
-                field: "call context",
-                reason: "portable values exceed their budget",
-            },
+            ContextError::Duplicate { name } => Self::AlreadyRegistered { domain: "call context", name },
+            ContextError::Missing { name } => Self::NotRegistered { domain: "call context", name },
+            ContextError::Decode { .. } => Self::InvalidInput { field: "call context", reason: "portable value is unreadable" },
+            ContextError::Budget => Self::InvalidInput { field: "call context", reason: "portable values exceed their budget" },
         }
     }
 }
@@ -299,37 +237,18 @@ impl<E> Error<E> {
     // written once at the origin and the operation frame the host added.
     pub fn failure(&self) -> Option<&harmos_domain::Failure> {
         match self {
-            Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => {
-                carried(source.as_ref())
-            }
+            Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => carried(source.as_ref()),
             // The Attempt's Outcome Names The Failure; Cleanup Is Secondary
-            Self::OperationFinalization {
-                outcome, source, ..
-            } => outcome
-                .as_deref()
-                .and_then(Error::failure)
-                .or_else(|| source.failure()),
+            Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),
             Self::OperationSettlement { source } => source.failure(),
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,
         }
     }
 
-    pub fn backend(
-        operation: &'static str,
-        kind: BackendFailure,
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> Self {
-        Self::Backend {
-            operation,
-            kind,
-            source: Box::new(source),
-        }
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Backend { operation, kind, source: Box::new(source) }
     }
 }
 
@@ -338,9 +257,7 @@ impl<E> Error<E> {
 /* === Private Functions === */
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.
-fn carried<'a>(
-    source: &'a (dyn std::error::Error + 'static),
-) -> Option<&'a harmos_domain::Failure> {
+fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_domain::Failure> {
     std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();

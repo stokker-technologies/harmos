@@ -82,8 +82,8 @@ impl Operation for WireClient {
 
 #[tokio::test]
 async fn embedded_wire_contracts() {
-    use harmos_runtime::operations::{AuthoredContracts, Contract};
     use harmos_domain::inventory::contracts::Required;
+    use harmos_runtime::operations::{AuthoredContracts, Contract};
     let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ())
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
@@ -127,7 +127,12 @@ async fn embedded_wire_contracts() {
         let mut client = tonic::client::Grpc::new(channel);
         client.ready().await.unwrap();
         let settings = harmos_runtime::grpc::server::Settings::default();
-        let codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, String, harmos_runtime::operations::Response<RunRequest>>::new(settings.decode, settings.encode).unwrap();
+        let codec =
+            harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, String, harmos_runtime::operations::Response<RunRequest>>::new(
+                settings.decode,
+                settings.encode,
+            )
+            .unwrap();
         let response: tonic::Response<harmos_runtime::operations::StreamItem<String>> = client
             .unary(
                 tonic::Request::new(harmos_runtime::operations::Response::new(RunRequest { value: "grpc embedded provider".into() })),
@@ -350,7 +355,8 @@ async fn initialization_retains_cleanup() {
                 outcome = &mut initialization => panic!("initialization completed before cancellation: {outcome:?}"),
                 reached = starting.wait_for(|owner| owner == "provider") => { reached.unwrap(); }
             }
-        }).await;
+        })
+        .await;
     }
     let original = session.status("provider").unwrap().generation.unwrap();
     {
@@ -395,7 +401,8 @@ async fn start_retains_backend() {
                 outcome = &mut start => panic!("initialization completed before cancellation: {outcome:?}"),
                 reached = starting.wait_for(|owner| owner == "client") => { reached.unwrap(); }
             }
-        }).await;
+        })
+        .await;
     }
 
     let retained = manager.status("client").unwrap();

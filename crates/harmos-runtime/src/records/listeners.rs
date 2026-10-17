@@ -25,8 +25,7 @@ use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{
-    Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record,
-    state::RecordProjection, state::Recorded,
+    Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record, state::RecordProjection, state::Recorded,
 };
 use harmos_domain::listeners::{Context, Source};
 
@@ -37,8 +36,7 @@ const REGISTRATIONS: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type Submit<A> =
-    fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>>;
+type Submit<A> = fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>>;
 
 /* === Structs === */
 pub struct PluginListenerBindings<'a, A: Application> {
@@ -72,32 +70,18 @@ pub(super) struct Listening {
 /* === Implementations === */
 impl<A: Application> RecordManager<A> {
     pub fn stage_listeners(
-        &self,
-        scope: &PluginScope,
-        operations: &OperationManager,
-        after: Position,
+        &self, scope: &PluginScope, operations: &OperationManager, after: Position,
         configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
     ) -> Result<PluginListenerRegistration> {
         if scope.is_closed() || scope.has_committed() {
-            return Err(Error::Closing {
-                domain: "record listener staging",
-            });
+            return Err(Error::Closing { domain: "record listener staging" });
         }
         if after > self.state.applied() {
             return Err(Error::FrontierAhead);
         }
-        let mut bindings = PluginListenerBindings {
-            records: self,
-            scope,
-            operations,
-            entries: Vec::new(),
-        };
+        let mut bindings = PluginListenerBindings { records: self, scope, operations, entries: Vec::new() };
         configure(&mut bindings)?;
-        let expected = scope
-            .listeners()
-            .iter()
-            .filter(|listener| matches!(listener.source(), Source::Record { .. }))
-            .count();
+        let expected = scope.listeners().iter().filter(|listener| matches!(listener.source(), Source::Record { .. })).count();
         if bindings.entries.len() != expected {
             return Err(Error::InvalidInput {
                 field: "record listeners",
@@ -105,53 +89,28 @@ impl<A: Application> RecordManager<A> {
             });
         }
         if expected == 0 {
-            return Ok(PluginListenerRegistration {
-                registry: Arc::clone(&self.schemas),
-                listening: None,
-            });
+            return Ok(PluginListenerRegistration { registry: Arc::clone(&self.schemas), listening: None });
         }
         bindings.entries.sort_by_key(|entry| entry.ordinal);
-        let mut registry = self
-            .schemas
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned");
+        let mut registry = self.schemas.listeners.lock().expect("record listener registry poisoned");
         registry.retain(|_, listening| !listening.delivery.cleaned());
         if registry.contains_key(scope.owner()) {
-            return Err(Error::AlreadyRegistered {
-                domain: "record listeners",
-                name: scope.owner().to_owned(),
-            });
+            return Err(Error::AlreadyRegistered { domain: "record listeners", name: scope.owner().to_owned() });
         }
         if registry.len() >= REGISTRATIONS {
-            return Err(Error::ResourceExhausted {
-                resource: "record listener registrations",
-            });
+            return Err(Error::ResourceExhausted { resource: "record listener registrations" });
         }
         let frontier = Arc::new(AtomicU64::new(after.0));
         let delivery = Listener::spawn(scope, {
             let journal = self.state.clone();
             let scope = scope.clone();
             let frontier = Arc::clone(&frontier);
-            move |delivery, stopping| async move {
-                deliver(
-                    journal,
-                    &scope,
-                    bindings.entries,
-                    &delivery,
-                    &frontier,
-                    stopping,
-                )
-                .await
-            }
+            move |delivery, stopping| async move { deliver(journal, &scope, bindings.entries, &delivery, &frontier, stopping).await }
         });
         let listening = Arc::new(Listening { delivery, frontier });
         registry.insert(scope.owner().to_owned(), Arc::clone(&listening));
         drop(registry);
-        let mut registration = PluginListenerRegistration {
-            registry: Arc::clone(&self.schemas),
-            listening: Some(listening),
-        };
+        let mut registration = PluginListenerRegistration { registry: Arc::clone(&self.schemas), listening: Some(listening) };
         // The Receipt Is Retained Before Publishing Its Readiness Contribution.
         if let Err(error) = scope.bind_record_listeners() {
             registration.stop();
@@ -161,50 +120,26 @@ impl<A: Application> RecordManager<A> {
     }
 
     pub(crate) fn stop_listeners(&self) {
-        let owners: Vec<_> = self
-            .schemas
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned")
-            .values()
-            .cloned()
-            .collect();
+        let owners: Vec<_> = self.schemas.listeners.lock().expect("record listener registry poisoned").values().cloned().collect();
         for owner in owners {
             owner.stop();
         }
     }
 
     pub async fn shutdown_listeners(&self) -> Result<()> {
-        let owners: Vec<_> = self
-            .schemas
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned")
-            .values()
-            .cloned()
-            .collect();
+        let owners: Vec<_> = self.schemas.listeners.lock().expect("record listener registry poisoned").values().cloned().collect();
         for owner in &owners {
             owner.stop();
         }
         for owner in owners {
             owner.shutdown().await?;
         }
-        self.schemas
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned")
-            .retain(|_, owner| !owner.delivery.cleaned());
+        self.schemas.listeners.lock().expect("record listener registry poisoned").retain(|_, owner| !owner.delivery.cleaned());
         Ok(())
     }
 
     pub async fn shutdown_listeners_for(&self, scope: &PluginScope) -> Result<()> {
-        let original = self
-            .schemas
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned")
-            .get(scope.owner())
-            .cloned();
+        let original = self.schemas.listeners.lock().expect("record listener registry poisoned").get(scope.owner()).cloned();
         let Some(original) = original else {
             return Ok(());
         };
@@ -227,48 +162,23 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         A::Record: RecordProjection<R>,
     {
         let (id, version) = R::definition();
-        if !self
-            .records
-            .catalog
-            .has_record(&id, version)
-            .map_err(|source| Error::RecordDeclaration { source })?
-        {
-            return Err(Error::NotRegistered {
-                domain: "native listener record",
-                name: id.to_string(),
-            });
+        if !self.records.catalog.has_record(&id, version).map_err(|source| Error::RecordDeclaration { source })? {
+            return Err(Error::NotRegistered { domain: "native listener record", name: id.to_string() });
         }
         let mut selected = false;
         for (ordinal, listener) in self.scope.listeners().iter().enumerate() {
-            let Source::Record {
-                id: source,
-                version: revision,
-                ..
-            } = listener.source()
-            else {
+            let Source::Record { id: source, version: revision, .. } = listener.source() else {
                 continue;
             };
             if source.as_ref() != id.as_str() || *revision != version {
                 continue;
             }
-            let graph = crate::schema::graph::Schema::from_declaration(
-                R::DEFINITION,
-                &harmos_domain::config::SchemaSettings::default(),
-            )
-            .map_err(|source| Error::RecordSchema {
-                source: source.into(),
-            })?;
+            let graph = crate::schema::graph::Schema::from_declaration(R::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+                .map_err(|source| Error::RecordSchema { source: source.into() })?;
             let source_graph = listener.source().schema();
             if !graph
-                .equivalent(
-                    graph.root,
-                    source_graph,
-                    source_graph.root,
-                    &harmos_domain::config::SchemaSettings::default(),
-                )
-                .map_err(|source| Error::RecordSchema {
-                    source: source.into(),
-                })?
+                .equivalent(graph.root, source_graph, source_graph.root, &harmos_domain::config::SchemaSettings::default())
+                .map_err(|source| Error::RecordSchema { source: source.into() })?
             {
                 return Err(Error::InvalidInput {
                     field: "record listener source",
@@ -276,25 +186,17 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 });
             }
             if self.entries.iter().any(|entry| entry.ordinal == ordinal) {
-                return Err(Error::AlreadyRegistered {
-                    domain: "record listener source",
-                    name: listener.id().to_string(),
-                });
+                return Err(Error::AlreadyRegistered { domain: "record listener source", name: listener.id().to_string() });
             }
             self.entries.push(Binding {
                 ordinal,
-                callback: self
-                    .operations
-                    .capture_callback(self.scope, listener.callback())?,
+                callback: self.operations.capture_callback(self.scope, listener.callback())?,
                 submit: submit::<A, R>,
             });
             selected = true;
         }
         if !selected {
-            return Err(Error::NotRegistered {
-                domain: "record listener source",
-                name: id.to_string(),
-            });
+            return Err(Error::NotRegistered { domain: "record listener source", name: id.to_string() });
         }
         Ok(())
     }
@@ -302,15 +204,11 @@ impl<A: Application> PluginListenerBindings<'_, A> {
 
 impl PluginListenerRegistration {
     pub fn frontier(&self) -> Option<Position> {
-        self.listening
-            .as_ref()
-            .map(|owner| Position(owner.frontier.load(Ordering::Acquire)))
+        self.listening.as_ref().map(|owner| Position(owner.frontier.load(Ordering::Acquire)))
     }
 
     pub fn failure(&self) -> Option<Arc<Error>> {
-        self.listening
-            .as_ref()
-            .and_then(|owner| owner.delivery.failure())
+        self.listening.as_ref().and_then(|owner| owner.delivery.failure())
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
@@ -331,14 +229,8 @@ impl PluginListenerRegistration {
 
 impl Registry {
     fn remove_listening(&self, owner: &Arc<Listening>) {
-        let mut registry = self
-            .listeners
-            .lock()
-            .expect("record listener registry poisoned");
-        if registry
-            .get(owner.delivery.scope().owner())
-            .is_some_and(|current| Arc::ptr_eq(current, owner))
-        {
+        let mut registry = self.listeners.lock().expect("record listener registry poisoned");
+        if registry.get(owner.delivery.scope().owner()).is_some_and(|current| Arc::ptr_eq(current, owner)) {
             registry.remove(owner.delivery.scope().owner());
         }
     }
@@ -363,11 +255,7 @@ impl Listening {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn submit<A, R>(
-    record: &A::Record,
-    context: Context,
-    callback: &PluginCallback,
-) -> Result<Option<EncodedInvocation>>
+fn submit<A, R>(record: &A::Record, context: Context, callback: &PluginCallback) -> Result<Option<EncodedInvocation>>
 where
     A: Application,
     R: Record + Message + Described,
@@ -383,35 +271,22 @@ where
             reason: "projection differs from the original native catalog member",
         });
     }
-    let bytes =
-        harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(|source| {
-            Error::OperationFailed {
-                operation: callback.contract().operation().id.to_string(),
-                source: Arc::new(source),
-            }
-        })?;
-    let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted {
-        resource: "record callback encoding",
-    })?;
+    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row)
+        .map_err(|source| Error::OperationFailed { operation: callback.contract().operation().id.to_string(), source: Arc::new(source) })?;
+    let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "record callback encoding" })?;
     callback
         .submit_with(bytes, |budget| {
-            harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(|source| {
-                Error::OperationFailed {
-                    operation: callback.contract().operation().id.to_string(),
-                    source: Arc::new(source),
-                }
+            harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(|source| Error::OperationFailed {
+                operation: callback.contract().operation().id.to_string(),
+                source: Arc::new(source),
             })
         })
         .map(Some)
 }
 
 async fn deliver<A: Application>(
-    journal: crate::state::StateManager<A>,
-    scope: &PluginScope,
-    entries: Vec<Binding<A>>,
-    delivery: &ListenerDelivery,
-    frontier: &AtomicU64,
-    mut stopping: watch::Receiver<bool>,
+    journal: crate::state::StateManager<A>, scope: &PluginScope, entries: Vec<Binding<A>>, delivery: &ListenerDelivery,
+    frontier: &AtomicU64, mut stopping: watch::Receiver<bool>,
 ) -> Result<()> {
     tokio::select! {
         biased;
@@ -426,13 +301,7 @@ async fn deliver<A: Application>(
             return Ok(());
         }
         let after = Position(frontier.load(Ordering::Acquire));
-        let page = feed
-            .shared_page(
-                after,
-                journal.applied(),
-                NonZeroUsize::new(PAGE_ROWS).unwrap(),
-            )
-            .await?;
+        let page = feed.shared_page(after, journal.applied(), NonZeroUsize::new(PAGE_ROWS).unwrap()).await?;
         if page.entries.is_empty() {
             tokio::select! {
                 biased;
@@ -448,20 +317,11 @@ async fn deliver<A: Application>(
             }
             if let Recorded::Record(record) = &source.value {
                 for binding in &entries {
-                    let Some(invocation) = (binding.submit)(
-                        record,
-                        Context::Record {
-                            position: source.position,
-                        },
-                        &binding.callback,
-                    )?
+                    let Some(invocation) = (binding.submit)(record, Context::Record { position: source.position }, &binding.callback)?
                     else {
                         continue;
                     };
-                    if !delivery
-                        .invoke(invocation, source.clone(), scope, &mut stopping)
-                        .await?
-                    {
+                    if !delivery.invoke(invocation, source.clone(), scope, &mut stopping).await? {
                         return Ok(());
                     }
                 }

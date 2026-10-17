@@ -45,11 +45,7 @@ pub struct DecodeField<'a> {
 #[derive(Clone, Copy)]
 enum Source<'a> {
     Bytes(&'a [u8]),
-    Fields {
-        parent: &'a DecodeInput<'a>,
-        tag: u32,
-        after: usize,
-    },
+    Fields { parent: &'a DecodeInput<'a>, tag: u32, after: usize },
 }
 
 #[derive(Clone, Copy)]
@@ -73,10 +69,7 @@ pub enum DecodeScalar {
 /* === Implementations === */
 impl<'a> DecodeInput<'a> {
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            source: Source::Bytes(bytes),
-            depth: 0,
-        }
+        Self { source: Source::Bytes(bytes), depth: 0 }
     }
 
     pub fn child(&self, bytes: &'a [u8]) -> Result<Self, MessageError> {
@@ -84,11 +77,7 @@ impl<'a> DecodeInput<'a> {
     }
 
     pub fn field(&self, tag: u32) -> Result<DecodeInput<'_>, MessageError> {
-        self.at(Source::Fields {
-            parent: self,
-            tag,
-            after: 0,
-        })
+        self.at(Source::Fields { parent: self, tag, after: 0 })
     }
 
     // Selects The Last Declared Variant; None Only When No Variant Appears.
@@ -115,11 +104,7 @@ impl<'a> DecodeInput<'a> {
         let Some(tag) = selected else {
             return Ok(None);
         };
-        let input = self.at(Source::Fields {
-            parent: self,
-            tag,
-            after,
-        })?;
+        let input = self.at(Source::Fields { parent: self, tag, after })?;
         Ok(Some((tag, input)))
     }
 
@@ -127,9 +112,7 @@ impl<'a> DecodeInput<'a> {
         let mut part = None;
         self.parts(&mut |bytes| {
             if part.is_some() {
-                return Err(MessageError::borrowed(
-                    "merged decoding memory bound is unsupported",
-                ));
+                return Err(MessageError::borrowed("merged decoding memory bound is unsupported"));
             }
             part = Some(bytes);
             Ok(())
@@ -137,10 +120,7 @@ impl<'a> DecodeInput<'a> {
         Ok(part.unwrap_or(&[]))
     }
 
-    pub fn fields(
-        &self,
-        visit: &mut dyn FnMut(DecodeField<'a>) -> Result<(), MessageError>,
-    ) -> Result<(), MessageError> {
+    pub fn fields(&self, visit: &mut dyn FnMut(DecodeField<'a>) -> Result<(), MessageError>) -> Result<(), MessageError> {
         self.parts(&mut |mut bytes| {
             while !bytes.is_empty() {
                 visit(read(&mut bytes, self.depth)?)?;
@@ -152,17 +132,12 @@ impl<'a> DecodeInput<'a> {
     fn at<'b>(&self, source: Source<'b>) -> Result<DecodeInput<'b>, MessageError> {
         let depth = add(self.depth, 1)?;
         if depth > DEPTH {
-            return Err(MessageError::borrowed(
-                "protobuf decode exceeds 32 nested levels",
-            ));
+            return Err(MessageError::borrowed("protobuf decode exceeds 32 nested levels"));
         }
         Ok(DecodeInput { source, depth })
     }
 
-    fn parts(
-        &self,
-        visit: &mut dyn FnMut(&'a [u8]) -> Result<(), MessageError>,
-    ) -> Result<(), MessageError> {
+    fn parts(&self, visit: &mut dyn FnMut(&'a [u8]) -> Result<(), MessageError>) -> Result<(), MessageError> {
         match self.source {
             Source::Bytes(bytes) => visit(bytes),
             Source::Fields { parent, tag, after } => {
@@ -183,15 +158,12 @@ impl<'a> DecodeField<'a> {
     pub fn bytes(self) -> Result<&'a [u8], MessageError> {
         match self.value {
             DecodeValue::Bytes(bytes) => Ok(bytes),
-            _ => Err(MessageError::borrowed(
-                "expected length-delimited protobuf field",
-            )),
+            _ => Err(MessageError::borrowed("expected length-delimited protobuf field")),
         }
     }
 
     pub fn text(self) -> Result<&'a str, MessageError> {
-        std::str::from_utf8(self.bytes()?)
-            .map_err(|_| MessageError::borrowed("invalid protobuf string UTF-8"))
+        std::str::from_utf8(self.bytes()?).map_err(|_| MessageError::borrowed("invalid protobuf string UTF-8"))
     }
 
     pub fn scalar(self, kind: DecodeScalar) -> Result<DecodeValue<'a>, MessageError> {
@@ -204,9 +176,7 @@ impl<'a> DecodeField<'a> {
     }
 
     pub fn scalars(
-        self,
-        kind: DecodeScalar,
-        visit: &mut dyn FnMut(DecodeValue<'a>) -> Result<(), MessageError>,
+        self, kind: DecodeScalar, visit: &mut dyn FnMut(DecodeValue<'a>) -> Result<(), MessageError>,
     ) -> Result<(), MessageError> {
         let DecodeValue::Bytes(mut bytes) = self.value else {
             return visit(self.scalar(kind)?);
@@ -214,12 +184,8 @@ impl<'a> DecodeField<'a> {
         while !bytes.is_empty() {
             let value = match kind {
                 DecodeScalar::Varint => DecodeValue::Varint(varint(&mut bytes)?),
-                DecodeScalar::Bits32 => DecodeValue::Bits32(u32::from_le_bytes(
-                    take(&mut bytes, 4)?.try_into().expect("four bytes"),
-                )),
-                DecodeScalar::Bits64 => DecodeValue::Bits64(u64::from_le_bytes(
-                    take(&mut bytes, 8)?.try_into().expect("eight bytes"),
-                )),
+                DecodeScalar::Bits32 => DecodeValue::Bits32(u32::from_le_bytes(take(&mut bytes, 4)?.try_into().expect("four bytes"))),
+                DecodeScalar::Bits64 => DecodeValue::Bits64(u64::from_le_bytes(take(&mut bytes, 8)?.try_into().expect("eight bytes"))),
             };
             visit(value)?;
         }
@@ -256,8 +222,7 @@ fn take<'a>(bytes: &mut &'a [u8], length: usize) -> Result<&'a [u8], MessageErro
 
 fn key(bytes: &mut &[u8]) -> Result<(u32, u8), MessageError> {
     let key = varint(bytes)?;
-    let tag =
-        u32::try_from(key >> 3).map_err(|_| MessageError::borrowed("invalid protobuf tag"))?;
+    let tag = u32::try_from(key >> 3).map_err(|_| MessageError::borrowed("invalid protobuf tag"))?;
     if tag == 0 || tag > 536_870_911 {
         return Err(MessageError::borrowed("invalid protobuf tag"));
     }
@@ -270,30 +235,18 @@ fn read<'a>(bytes: &mut &'a [u8], depth: usize) -> Result<DecodeField<'a>, Messa
     Ok(DecodeField { tag, value })
 }
 
-fn value<'a>(
-    tag: u32,
-    wire: u8,
-    bytes: &mut &'a [u8],
-    depth: usize,
-) -> Result<DecodeValue<'a>, MessageError> {
+fn value<'a>(tag: u32, wire: u8, bytes: &mut &'a [u8], depth: usize) -> Result<DecodeValue<'a>, MessageError> {
     Ok(match wire {
         0 => DecodeValue::Varint(varint(bytes)?),
-        1 => DecodeValue::Bits64(u64::from_le_bytes(
-            take(bytes, 8)?.try_into().expect("eight bytes"),
-        )),
+        1 => DecodeValue::Bits64(u64::from_le_bytes(take(bytes, 8)?.try_into().expect("eight bytes"))),
         2 => {
-            let length = usize::try_from(varint(bytes)?)
-                .map_err(|_| MessageError::borrowed("protobuf length exceeds address space"))?;
+            let length = usize::try_from(varint(bytes)?).map_err(|_| MessageError::borrowed("protobuf length exceeds address space"))?;
             DecodeValue::Bytes(take(bytes, length)?)
         }
-        5 => DecodeValue::Bits32(u32::from_le_bytes(
-            take(bytes, 4)?.try_into().expect("four bytes"),
-        )),
+        5 => DecodeValue::Bits32(u32::from_le_bytes(take(bytes, 4)?.try_into().expect("four bytes"))),
         3 => {
             if depth >= DEPTH {
-                return Err(MessageError::borrowed(
-                    "protobuf decode exceeds 32 nested levels",
-                ));
+                return Err(MessageError::borrowed("protobuf decode exceeds 32 nested levels"));
             }
             loop {
                 let (nested, wire) = key(bytes)?;

@@ -86,19 +86,13 @@ impl Transaction<Schematic> for RenameNet {
 
 impl Invert<Schematic> for RenameNet {
     fn invert(&self, before: &Schematic) -> Self {
-        Self {
-            net: self.net,
-            to: before.net(self.net).name.clone(),
-        }
+        Self { net: self.net, to: before.net(self.net).name.clone() }
     }
 }
 
 impl From<history::RenameNetV1> for RenameNet {
     fn from(old: history::RenameNetV1) -> Self {
-        Self {
-            net: old.net,
-            to: NetName::verbatim(old.to),
-        }
+        Self { net: old.net, to: NetName::verbatim(old.to) }
     }
 }
 

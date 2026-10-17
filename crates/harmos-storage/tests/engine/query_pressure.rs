@@ -72,21 +72,14 @@ async fn pressure_reloads_page() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(harmos_storage::state::file::FileBackend::new(
-                directory.path().join("state"),
-                history(),
-                state_settings(),
-            )),
+            state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
         },
         settings,
     )
     .unwrap();
     super::fixture::start(&storage).await;
     let schema = waveforms::schema();
-    storage
-        .write_schema(&schema, &waveforms::definition())
-        .await
-        .unwrap();
+    storage.write_schema(&schema, &waveforms::definition()).await.unwrap();
     let samples = waveforms::samples(1);
     let inputs = waveforms::inputs(&samples);
     let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
@@ -110,39 +103,22 @@ async fn pressure_reloads_page() {
                     terms: vec![Term {
                         field: "payload.phase".into(),
                         negate: false,
-                        condition: Condition::Compare {
-                            op: Compare::Eq,
-                            value: ScalarValue::Unsigned(0),
-                        },
+                        condition: Condition::Compare { op: Compare::Eq, value: ScalarValue::Unsigned(0) },
                     }],
                 }],
             }),
             Transform::Aggregate(Aggregate {
                 groups: vec![],
                 measures: vec![
-                    Measure {
-                        field: "payload.value".into(),
-                        statistic: harmos_domain::Aggregate::Count,
-                        name: "count".into(),
-                    },
-                    Measure {
-                        field: "payload.value".into(),
-                        statistic: harmos_domain::Aggregate::Rms,
-                        name: "rms".into(),
-                    },
+                    Measure { field: "payload.value".into(), statistic: harmos_domain::Aggregate::Count, name: "count".into() },
+                    Measure { field: "payload.value".into(), statistic: harmos_domain::Aggregate::Rms, name: "rms".into() },
                 ],
             }),
         ],
-        slice: RowSlice {
-            offset: 0,
-            limit: None,
-        },
+        slice: RowSlice { offset: 0, limit: None },
     };
     let mut reader = storage.query(query()).await.unwrap();
-    assert!(matches!(
-        reader.next().await.unwrap(),
-        Some(QueryArrow::Schema(_))
-    ));
+    assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     let prepared = storage.status().read_bytes;
 
     // Stall A Native Page After Its Original Reservation Was Acquired.
@@ -157,19 +133,14 @@ async fn pressure_reloads_page() {
     let probe = storage.reserve_arrow_memory(0).unwrap();
     let overhead = storage.status().read_bytes - occupied;
     drop(probe);
-    let external = storage
-        .reserve_arrow_memory(capacity - occupied - overhead)
-        .unwrap();
+    let external = storage.reserve_arrow_memory(capacity - occupied - overhead).unwrap();
     assert_eq!(storage.status().read_bytes, capacity);
     data.control.read_release.notify_one();
 
     // Poll Through Conversion Refusal Into WorkingCredit Admission. No
     // Reducer Mutation Or Cursor Commit May Survive This Abandoned Page.
     assert!(pending(next.as_mut()).await);
-    assert!(
-        storage.status().read_bytes < capacity,
-        "raw page must be released before waiting"
-    );
+    assert!(storage.status().read_bytes < capacity, "raw page must be released before waiting");
     assert!(storage.status().read_bytes >= prepared);
 
     // The Gate Must Be Entered A Second Time: A Native Page Is Reloaded
@@ -190,28 +161,12 @@ async fn pressure_reloads_page() {
 }
 
 fn assert_result(output: QueryArrow) {
-    let QueryArrow::Batch(batch) = output else {
-        panic!("expected aggregate batch")
-    };
+    let QueryArrow::Batch(batch) = output else { panic!("expected aggregate batch") };
     let batch = batch.as_record_batch();
     assert_eq!(batch.num_rows(), 1);
-    let count = batch
-        .column_by_name("count")
-        .unwrap()
-        .as_any()
-        .downcast_ref::<UInt64Array>()
-        .unwrap();
-    let rms = batch
-        .column_by_name("rms")
-        .unwrap()
-        .as_any()
-        .downcast_ref::<Float64Array>()
-        .unwrap();
-    assert_eq!(
-        count.value(0),
-        waveforms::SAMPLES_PER_PERIOD as u64,
-        "retry must neither omit nor duplicate rows"
-    );
+    let count = batch.column_by_name("count").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+    let rms = batch.column_by_name("rms").unwrap().as_any().downcast_ref::<Float64Array>().unwrap();
+    assert_eq!(count.value(0), waveforms::SAMPLES_PER_PERIOD as u64, "retry must neither omit nor duplicate rows");
     assert!((rms.value(0) - waveforms::AMPLITUDE / 2.0_f64.sqrt()).abs() < 1e-12);
 }
 
@@ -224,11 +179,7 @@ async fn cancelled_advance_poisons() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap()),
-            state: Arc::new(harmos_storage::state::file::FileBackend::new(
-                directory.path().join("state"),
-                history(),
-                state_settings(),
-            )),
+            state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
         },
         settings,
     )
@@ -237,24 +188,16 @@ async fn cancelled_advance_poisons() {
     let at = storage.flush().await.unwrap();
     let query = || Query {
         at: at.clone(),
-        source: Source::Files(harmos_storage::query::FileSelection {
-            scope: None,
-            item: None,
-        }),
+        source: Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],
-        slice: RowSlice {
-            offset: 0,
-            limit: None,
-        },
+        slice: RowSlice { offset: 0, limit: None },
     };
     let mut reader = storage.query(query()).await.unwrap();
     let occupied = storage.status().read_bytes;
     let probe = storage.reserve_arrow_memory(0).unwrap();
     let overhead = storage.status().read_bytes - occupied;
     drop(probe);
-    let external = storage
-        .reserve_arrow_memory(capacity - occupied - overhead)
-        .unwrap();
+    let external = storage.reserve_arrow_memory(capacity - occupied - overhead).unwrap();
     let mut next = Box::pin(reader.next());
     assert!(pending(next.as_mut()).await);
     drop(next);
@@ -264,10 +207,7 @@ async fn cancelled_advance_poisons() {
     drop(external);
 
     let mut successor = storage.query(query()).await.unwrap();
-    assert!(matches!(
-        successor.next().await.unwrap(),
-        Some(QueryArrow::Schema(_))
-    ));
+    assert!(matches!(successor.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     assert!(successor.next().await.unwrap().is_none());
     assert_eq!(successor.completion().unwrap().rows, 0);
     drop(successor);
@@ -279,10 +219,7 @@ async fn captures_refuse_cycles() {
     // Each Capture Alone Fits, But Together They Exceed The Budget.
     let (f, query) = loaded(CONTENTION_PERIODS).await;
     let (batches, retained) = alone(&f, &query).await;
-    assert!(
-        retained * 2 > CONTENTION_BUDGET,
-        "capture retains {retained} of {CONTENTION_BUDGET} bytes"
-    );
+    assert!(retained * 2 > CONTENTION_BUDGET, "capture retains {retained} of {CONTENTION_BUDGET} bytes");
 
     // Both Hold A Third Of Their Capture Before Advancing Together: One Must Be
     // Refused Rather Than Both Waiting On Each Other's Retained Batches.
@@ -298,20 +235,8 @@ async fn captures_refuse_cycles() {
     }
     let outcomes = tokio::join!(capture(first, first_kept), capture(second, second_kept));
     let outcomes = [outcomes.0, outcomes.1];
-    assert_eq!(
-        outcomes
-            .iter()
-            .filter(|outcome| matches!(outcome, Ok(count) if *count == batches))
-            .count(),
-        1,
-        "{outcomes:?}"
-    );
-    assert!(
-        outcomes
-            .iter()
-            .any(|outcome| matches!(outcome, Err(harmos_storage::Error::ResourceExhausted { .. }))),
-        "{outcomes:?}"
-    );
+    assert_eq!(outcomes.iter().filter(|outcome| matches!(outcome, Ok(count) if *count == batches)).count(), 1, "{outcomes:?}");
+    assert!(outcomes.iter().any(|outcome| matches!(outcome, Err(harmos_storage::Error::ResourceExhausted { .. }))), "{outcomes:?}");
     assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
@@ -321,10 +246,7 @@ async fn fitting_captures_complete() {
     // Two Captures That Fit Together Advance In Alternation Without Refusal.
     let (f, query) = loaded(FITTING_PERIODS).await;
     let (batches, retained) = alone(&f, &query).await;
-    assert!(
-        retained * 3 < CONTENTION_BUDGET,
-        "capture retains {retained} of {CONTENTION_BUDGET} bytes"
-    );
+    assert!(retained * 3 < CONTENTION_BUDGET, "capture retains {retained} of {CONTENTION_BUDGET} bytes");
     let first = f.storage.query(query.clone()).await.unwrap();
     let second = f.storage.query(query.clone()).await.unwrap();
     let outcomes = tokio::join!(capture(first, Vec::new()), capture(second, Vec::new()));
@@ -338,33 +260,19 @@ async fn fitting_captures_complete() {
 async fn settlement_preserves_readers() {
     let (f, query) = loaded(1).await;
     let inputs = waveforms::inputs(&waveforms::samples(1));
-    let records = |range: std::ops::Range<usize>| {
-        inputs[range]
-            .iter()
-            .map(|input| input.record.borrowed())
-            .collect::<Vec<_>>()
-    };
+    let records = |range: std::ops::Range<usize>| inputs[range].iter().map(|input| input.record.borrowed()).collect::<Vec<_>>();
     let saved = f.storage.write_records(&records(0..9)).await.unwrap();
     f.storage.await_durable(&saved).await.unwrap();
 
     // A Query Holding Its Schema And A Record Reader Holding Its Description
     // Both Wait For Growth While The Pool Is Taken.
     let mut reader = f.storage.query(query).await.unwrap();
-    assert!(matches!(
-        reader.next().await.unwrap(),
-        Some(QueryArrow::Schema(_))
-    ));
+    assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     let typed = f
         .storage
         .read_records::<waveforms::Sample>(RecordRead {
             at: saved,
-            selection: RecordSelection {
-                schema: waveforms::schema(),
-                scope: None,
-                item: None,
-                source_start: None,
-                source_end: None,
-            },
+            selection: RecordSelection { schema: waveforms::schema(), scope: None, item: None, source_start: None, source_end: None },
             after: 0,
         })
         .await
@@ -400,10 +308,7 @@ async fn small_readers_progress() {
     let mut readers = Vec::new();
     for _ in 0..SMALL_READERS {
         let mut reader = f.storage.query(query.clone()).await.unwrap();
-        assert!(matches!(
-            reader.next().await.unwrap(),
-            Some(QueryArrow::Schema(_))
-        ));
+        assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
         readers.push(reader);
     }
 
@@ -411,10 +316,7 @@ async fn small_readers_progress() {
     let external = fill(&f);
     let mut report = Box::pin(capture(report, kept));
     assert!(pending(report.as_mut()).await);
-    let mut small = readers
-        .into_iter()
-        .map(|reader| Box::pin(capture(reader, Vec::new())))
-        .collect::<Vec<_>>();
+    let mut small = readers.into_iter().map(|reader| Box::pin(capture(reader, Vec::new()))).collect::<Vec<_>>();
     for reader in &mut small {
         assert!(pending(reader.as_mut()).await);
     }
@@ -435,10 +337,7 @@ async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
     settings.request.max_active_queries = NonZeroUsize::new(CONTENTION_QUERIES).unwrap();
     let f = super::fixture::Fixture::new(settings).await;
     let schema = waveforms::schema();
-    f.storage
-        .write_schema(&schema, &waveforms::definition())
-        .await
-        .unwrap();
+    f.storage.write_schema(&schema, &waveforms::definition()).await.unwrap();
     let inputs = waveforms::inputs(&waveforms::samples(periods));
     let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
     f.storage.write_stream(&borrowed).await.unwrap();
@@ -491,10 +390,7 @@ fn fill(f: &super::fixture::Fixture) -> harmos_storage::arrow::RetainedMemory {
     let probe = f.storage.reserve_arrow_memory(0).unwrap();
     let overhead = f.storage.status().read_bytes - occupied;
     drop(probe);
-    let external = f
-        .storage
-        .reserve_arrow_memory(CONTENTION_BUDGET - occupied - overhead)
-        .unwrap();
+    let external = f.storage.reserve_arrow_memory(CONTENTION_BUDGET - occupied - overhead).unwrap();
     assert_eq!(f.storage.status().read_bytes, CONTENTION_BUDGET);
     external
 }

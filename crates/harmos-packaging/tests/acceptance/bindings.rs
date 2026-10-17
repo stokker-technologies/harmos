@@ -27,17 +27,18 @@ use std::process::{Command, Stdio};
 // Third Party Imports
 
 // Local Imports
-use harmos_sdk::grpc::{self, DecodeInput};
-use harmos_packaging::{proto::Artifacts, python::{self, Settings}};
-use harmos_domain::operations::{
-    Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy,
-};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_domain::schema::{
     Cardinality, Described,
     graph::{Field, Kind, Schema},
 };
-use harmos_domain::config::SchemaSettings;
 use harmos_domain::{Aggregate, Identifier};
+use harmos_packaging::{
+    proto::Artifacts,
+    python::{self, Settings},
+};
+use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -51,7 +52,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 const CONSUMER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/acceptance/bindings.py");
 
 // The Generated Python Surface Of A Request Carrying Aggregates
-const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi");
+const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi.snapshot");
 
 // A Wide Schema Shared With The Domain's Graph Stories
 const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/checkpoint-schema.json");
@@ -70,19 +71,35 @@ struct Payload {
 
 #[harmos_domain::message]
 #[harmos_domain::operation(response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-struct Read { text: String, optional: Option<u32>, values: Vec<i64> }
+struct Read {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
 #[harmos_domain::message]
 #[harmos_domain::operation(response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-struct Exchange { text: String, optional: Option<u32>, values: Vec<i64> }
+struct Exchange {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
 #[harmos_domain::message]
 #[harmos_domain::operation(response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-struct Upload { text: String, optional: Option<u32>, values: Vec<i64> }
+struct Upload {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
 #[harmos_domain::message]
 #[harmos_domain::operation(response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-struct Download { text: String, optional: Option<u32>, values: Vec<i64> }
+struct Download {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
 #[harmos_domain::message]
 #[derive(PartialEq)]
@@ -141,26 +158,25 @@ fn export() -> Exported {
     let target = tempfile::tempdir().unwrap();
     let alpha = target.path().join("alpha");
     let beta = target.path().join("beta");
-    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &alpha).unwrap();
-    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_beta"), protoc: &protoc() }, &beta).unwrap();
+    python::generate(
+        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        &alpha,
+    )
+    .unwrap();
+    python::generate(
+        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_beta"), protoc: &protoc() },
+        &beta,
+    )
+    .unwrap();
 
-    Exported {
-        target,
-        alpha,
-        beta,
-    }
+    Exported { target, alpha, beta }
 }
 
 fn reserved() -> Schema {
     Schema {
         root: 0,
         definitions: vec![
-            vec![Field {
-                name: Cow::Borrowed("Clear"),
-                tag: 7,
-                cardinality: Cardinality::Variant,
-                kind: Kind::Message { definition: 1 },
-            }],
+            vec![Field { name: Cow::Borrowed("Clear"), tag: 7, cardinality: Cardinality::Variant, kind: Kind::Message { definition: 1 } }],
             vec![],
         ],
     }
@@ -189,18 +205,13 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
             name: Cow::Borrowed(name),
             tag,
             cardinality: Cardinality::Required,
-            kind: Kind::Message {
-                definition: direction,
-            },
+            kind: Kind::Message { definition: direction },
         })
         .collect();
     schema.root = schema.definitions.len();
     schema.definitions.push(root);
 
-    Contract::new(operation, 2, Codec::Postcard, schema)
-        .unwrap()
-        .with_grpc(Some(Grpc::new("test.v1", "Shapes", method)))
-        .unwrap()
+    Contract::new(operation, 2, Codec::Postcard, schema).unwrap().with_grpc(Some(Grpc::new("test.v1", "Shapes", method))).unwrap()
 }
 
 fn protoc() -> PathBuf {
@@ -228,16 +239,8 @@ fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 // Run One Consumer Scene; `pure` Selects The Pure-Python Protobuf Runtime
 fn scene(name: &str, arguments: &[&Path], pure: bool, input: &[u8]) -> Vec<u8> {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let interpreter = repository.join(if cfg!(windows) {
-        ".venv/Scripts/python.exe"
-    } else {
-        ".venv/bin/python"
-    });
-    assert!(
-        interpreter.is_file(),
-        "{} is missing; run `uv sync --locked --project tools/python --group test`",
-        interpreter.display()
-    );
+    let interpreter = repository.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
+    assert!(interpreter.is_file(), "{} is missing; run `uv sync --locked --project tools/python --group test`", interpreter.display());
     let mut command = Command::new(interpreter);
     command
         .arg(CONSUMER)
@@ -267,10 +270,7 @@ fn scene(name: &str, arguments: &[&Path], pure: bool, input: &[u8]) -> Vec<u8> {
 fn both(name: &str, exported: &Exported, input: &[u8]) -> Vec<Vec<u8>> {
     let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
 
-    [false, true]
-        .into_iter()
-        .map(|pure| scene(name, &arguments, pure, input))
-        .collect()
+    [false, true].into_iter().map(|pure| scene(name, &arguments, pure, input)).collect()
 }
 
 /* === Tests === */
@@ -280,7 +280,12 @@ fn export_refuses_invalid() {
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let output = target.path().join("package");
-    let refused = |settings: &Settings| python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: settings, protoc: &protoc() }, &output);
+    let refused = |settings: &Settings| {
+        python::generate(
+            python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: settings, protoc: &protoc() },
+            &output,
+        )
+    };
 
     // Selections, Module Names And Versions Python Cannot Carry
     let mut settings = settings("bindings_alpha");
@@ -300,7 +305,10 @@ fn export_refuses_invalid() {
     let unsupported = contracts[0].clone().with_grpc(None).unwrap();
     let unsupported = Artifacts::new([&unsupported]).unwrap();
     assert!(matches!(
-        python::generate(python::Catalog { contracts: &unsupported.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+        python::generate(
+            python::Catalog { contracts: &unsupported.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() },
+            &output
+        ),
         Err(python::Error::Unsupported(_))
     ));
     let mut collision = reserved();
@@ -327,8 +335,16 @@ fn export_is_deterministic() {
     let target = tempfile::tempdir().unwrap();
     let first = target.path().join("first");
     let repeat = target.path().join("repeat");
-    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &first).unwrap();
-    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &repeat).unwrap();
+    python::generate(
+        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        &first,
+    )
+    .unwrap();
+    python::generate(
+        python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() },
+        &repeat,
+    )
+    .unwrap();
 
     assert_eq!(files(&first), files(&repeat));
 }
@@ -337,12 +353,12 @@ fn export_is_deterministic() {
 fn python_reads_rust() {
     // Rust Encodes, Python Decodes And Re-Encodes, Rust Decodes The Same Value
     let exported = export();
-    let value = Payload {
-        text: "line\n∞".into(),
-        optional: Some(u32::MAX),
-        values: vec![i64::MIN, -1, 0, i64::MAX],
+    let value = Payload { text: "line\n∞".into(), optional: Some(u32::MAX), values: vec![i64::MIN, -1, 0, i64::MAX] };
+    let encoded = {
+        let mut bytes = Vec::new();
+        grpc::encode(&value, &mut bytes).unwrap();
+        bytes
     };
-    let encoded = { let mut bytes = Vec::new(); grpc::encode(&value, &mut bytes).unwrap(); bytes };
 
     for echoed in both("wire", &exported, &encoded) {
         let decoded = grpc::decode::<Payload>(DecodeInput::new(&echoed[..])).unwrap();
@@ -407,22 +423,27 @@ fn aggregate_members_typed() {
     let artifacts = Artifacts::new([&summary]).unwrap();
     let target = tempfile::tempdir().unwrap();
     let package = target.path().join("package");
-    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_aggregate"), protoc: &protoc() }, &package).unwrap();
+    python::generate(
+        python::Catalog {
+            contracts: &artifacts.operation_contracts().unwrap(),
+            settings: &settings("bindings_aggregate"),
+            protoc: &protoc(),
+        },
+        &package,
+    )
+    .unwrap();
     let module = package.join("src/bindings_aggregate");
     let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");
-    let generated = format!(
-        "{}\n{}",
-        fs::read_to_string(module.join("__init__.pyi")).unwrap(),
-        fs::read_to_string(messages).unwrap()
-    );
+    let generated = format!("{}\n{}", fs::read_to_string(module.join("__init__.pyi")).unwrap(), fs::read_to_string(messages).unwrap());
     assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
 
     // Python Selects The Percentile Member And Its Rank As Typed Fields
-    let value = Summary {
-        aggregate: Aggregate::Percentile(95),
-        aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],
-    };
+    let value = Summary { aggregate: Aggregate::Percentile(95), aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)] };
     let source = package.join("src");
-    let output = scene("aggregate", &[&source], false, &{ let mut bytes = Vec::new(); grpc::encode(&value, &mut bytes).unwrap(); bytes });
+    let output = scene("aggregate", &[&source], false, &{
+        let mut bytes = Vec::new();
+        grpc::encode(&value, &mut bytes).unwrap();
+        bytes
+    });
     assert!(grpc::decode::<Summary>(DecodeInput::new(&output[..])).unwrap() == value);
 }

@@ -40,16 +40,9 @@ use crate::path::HarmosPath;
 // A Message Enum Is A Oneof: Each Variant Selects One Payload Shape Whose Fields
 // Are The Variant's Fields. Payload Shapes Are Unit Markers Carrying Only Their
 // Described Fields; Values Live In The Enum And Its Postcard Encoding.
-pub(super) fn expand(
-    mut item: ItemEnum,
-    harmos: HarmosPath,
-    skip_debug: bool,
-) -> Result<TokenStream, Error> {
+pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() || item.variants.is_empty() {
-        return Err(Error::new(
-            item.span(),
-            "a message enum requires non-generic variants",
-        ));
+        return Err(Error::new(item.span(), "a message enum requires non-generic variants"));
     }
     let postcard = super::postcard::declare(&syn::Item::Enum(item.clone()), &harmos);
     let name = &item.ident;
@@ -61,10 +54,7 @@ pub(super) fn expand(
     let mut defaultable = true;
     for (index, variant) in item.variants.iter_mut().enumerate() {
         if variant.discriminant.is_some() {
-            return Err(Error::new(
-                variant.span(),
-                "message variants use name-derived tags, without discriminants",
-            ));
+            return Err(Error::new(variant.span(), "message variants use name-derived tags, without discriminants"));
         }
         let variant_name = &variant.ident;
         let authored = variant_name.to_string();
@@ -73,9 +63,7 @@ pub(super) fn expand(
         if let Some(previous) = tags.insert(number, authored.to_owned()) {
             return Err(Error::new(
                 variant.span(),
-                format!(
-                    "message variants `{previous}` and `{authored}` collide at protobuf tag {number}; rename a variant explicitly"
-                ),
+                format!("message variants `{previous}` and `{authored}` collide at protobuf tag {number}; rename a variant explicitly"),
             ));
         }
         let payload = format_ident!("{name}Payload{index}");
@@ -86,10 +74,7 @@ pub(super) fn expand(
         let mut owned = Vec::new();
         let mut initial = Vec::new();
         for (position, field) in variant.fields.iter_mut().enumerate() {
-            let ident = field
-                .ident
-                .clone()
-                .unwrap_or_else(|| format_ident!("field_{position}"));
+            let ident = field.ident.clone().unwrap_or_else(|| format_ident!("field_{position}"));
             // Validate The Same Portable Field Shapes As Struct Messages
             let (required_message, kind, cardinality) = encoding(&field.ty, &harmos)?;
             if index == 0 && required_message {
@@ -113,9 +98,7 @@ pub(super) fn expand(
                 }
             });
             // Row Presentation Describes Struct Rows; A Variant Field Has None
-            field
-                .attrs
-                .retain(|attribute| !attribute.path().is_ident("row"));
+            field.attrs.retain(|attribute| !attribute.path().is_ident("row"));
             let binding = format_ident!("__harmos_field_{position}");
             owned.push(quote! {
                 let owned = #harmos::MemorySize::memory_size(#binding);
@@ -141,9 +124,7 @@ pub(super) fn expand(
             struct #payload;
             #described
         });
-        memories.push(
-            quote! { #pattern => { let bytes = ::std::mem::size_of::<Self>(); #(#owned)* bytes } },
-        );
+        memories.push(quote! { #pattern => { let bytes = ::std::mem::size_of::<Self>(); #(#owned)* bytes } });
         schemas.push(quote! { #harmos::schema::graph::Field {
             name: ::std::borrow::Cow::Borrowed(#authored), tag: #number,
             kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },
@@ -154,36 +135,17 @@ pub(super) fn expand(
         .attrs
         .iter()
         .filter(|attr| attr.path().is_ident("derive"))
-        .map(|attr| {
-            attr.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
-            )
-        })
+        .map(|attr| attr.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
         .collect();
-    let has_default = derives.iter().any(|path| {
-        path.segments
-            .last()
-            .is_some_and(|part| part.ident == "Default")
-    });
+    let has_default = derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Default"));
     // An Absent Oneof Decodes To The `#[default]` Unit Variant, Else The First.
     let default_variant = item.variants.iter().position(|variant| {
-        has_default
-            && matches!(variant.fields, Fields::Unit)
-            && variant
-                .attrs
-                .iter()
-                .any(|attribute| attribute.path().is_ident("default"))
+        has_default && matches!(variant.fields, Fields::Unit) && variant.attrs.iter().any(|attribute| attribute.path().is_ident("default"))
     });
-    if !skip_debug
-        && !derives.iter().any(|path| {
-            path.segments
-                .last()
-                .is_some_and(|part| part.ident == "Debug")
-        })
-    {
+    if !skip_debug && !derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Debug")) {
         item.attrs.push(syn::parse_quote!(#[derive(Debug)]));
     }
     let default = &defaults[0];
@@ -192,7 +154,8 @@ pub(super) fn expand(
             impl ::std::default::Default for #name { fn default() -> Self { #default } }
         }
     });
-    let extra = default_variant.map(|index| quote!(const DEFAULT_VARIANT: ::std::option::Option<usize> = ::std::option::Option::Some(#index);));
+    let extra =
+        default_variant.map(|index| quote!(const DEFAULT_VARIANT: ::std::option::Option<usize> = ::std::option::Option::Some(#index);));
     let schemas = schemas.into_iter();
     let schema = super::described(name, quote!(&[#(#schemas),*]), quote!(#extra), &harmos);
     Ok(quote! {

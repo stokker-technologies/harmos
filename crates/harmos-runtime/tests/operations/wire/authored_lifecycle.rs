@@ -172,7 +172,8 @@ async fn transfer_blocks_retry() {
         .unwrap();
     let runs = Arc::new(AtomicUsize::new(0));
     runtime.operations.register_operation::<Streaming>("owner", LifecycleLanes::Owned, runs.clone()).unwrap();
-    let settings = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
+    let settings =
+        harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
     for mode in [0, 1, 2, 3] {
         runs.store(0, Ordering::SeqCst);
         let (send, input) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
@@ -180,7 +181,13 @@ async fn transfer_blocks_retry() {
         let instance = runtime.operations.submit_endpoints(StreamingDeclaration { mode }, (input, output)).unwrap();
         if mode == 2 {
             // The input item arrives while the failed attempt waits to retry.
-            drop(instance.subscribe().wait_for(|status| status.phase() == harmos_runtime::operations::OperationPhase::RetryWaiting).await.unwrap());
+            drop(
+                instance
+                    .subscribe()
+                    .wait_for(|status| status.phase() == harmos_runtime::operations::OperationPhase::RetryWaiting)
+                    .await
+                    .unwrap(),
+            );
             send.send_with(4, || Ok(9)).await.unwrap();
         }
         assert!(instance.join().await.is_err());

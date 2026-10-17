@@ -60,29 +60,13 @@ pub(crate) struct Child {
 /* === Implementations === */
 impl Children {
     pub(crate) async fn call(
-        &self,
-        call: WireChildCall,
-        submitted: tokio::time::Instant,
-        mut cancelled: oneshot::Receiver<()>,
+        &self, call: WireChildCall, submitted: tokio::time::Instant, mut cancelled: oneshot::Receiver<()>,
     ) -> Result<Vec<u8>, Refusal> {
         let (answer, answered) = oneshot::channel();
-        let request = ChildRequest {
-            operation: call.operation,
-            payload: call.payload,
-            values: call.values,
-            submitted,
-            answer,
-        };
+        let request = ChildRequest { operation: call.operation, payload: call.payload, values: call.values, submitted, answer };
         let admission = async {
-            self.requests
-                .send(request)
-                .await
-                .map_err(|_| Error::Closing {
-                    domain: "carrier attempt",
-                })?;
-            answered.await.map_err(|_| Error::Closing {
-                domain: "carrier attempt",
-            })?
+            self.requests.send(request).await.map_err(|_| Error::Closing { domain: "carrier attempt" })?;
+            answered.await.map_err(|_| Error::Closing { domain: "carrier attempt" })?
         };
         let invocation = tokio::select! {
             biased;
@@ -92,50 +76,27 @@ impl Children {
             }
             admitted = admission => admitted.map_err(refused)?,
         };
-        let invocation = Child {
-            invocation: Some(invocation),
-        };
+        let invocation = Child { invocation: Some(invocation) };
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
-            self.submitted
-                .lock()
-                .expect("submitted child lock is healthy")
-                .insert(id.value(), invocation);
+            self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
             return Ok(id.value().encode_to_vec());
         }
         drained(invocation, cancelled).await
     }
 
-    pub(crate) async fn control(
-        &self,
-        control: WireChildControl,
-        cancelled: oneshot::Receiver<()>,
-    ) -> Result<Vec<u8>, Refusal> {
+    pub(crate) async fn control(&self, control: WireChildControl, cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
         let instance = control.instance;
-        let take = || {
-            self.submitted
-                .lock()
-                .expect("submitted child lock is healthy")
-                .remove(&instance)
-                .ok_or_else(|| unknown(instance))
-        };
+        let take = || self.submitted.lock().expect("submitted child lock is healthy").remove(&instance).ok_or_else(|| unknown(instance));
         match control.action {
             WireChildAction::Join => drained(take()?, cancelled).await,
             WireChildAction::Status | WireChildAction::Cancel => {
-                let submitted = self
-                    .submitted
-                    .lock()
-                    .expect("submitted child lock is healthy");
-                let invocation = submitted
-                    .get(&instance)
-                    .and_then(|child| child.invocation.as_ref())
-                    .ok_or_else(|| unknown(instance))?;
+                let submitted = self.submitted.lock().expect("submitted child lock is healthy");
+                let invocation = submitted.get(&instance).and_then(|child| child.invocation.as_ref()).ok_or_else(|| unknown(instance))?;
                 if control.action == WireChildAction::Cancel {
                     invocation.cancel();
                 }
-                let state = harmos_domain::operations::lifecycle::InstanceState::from(
-                    invocation.control.status().portable(),
-                );
+                let state = harmos_domain::operations::lifecycle::InstanceState::from(invocation.control.status().portable());
                 Ok(state.encode_to_vec())
             }
             WireChildAction::Release => {
@@ -174,14 +135,9 @@ impl Drop for Child {
 /* === Public Functions === */
 
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
-pub(crate) async fn lifecycle(
-    invocation: EncodedInvocation,
-    mut cancelled: oneshot::Receiver<()>,
-) -> crate::Result<Vec<u8>> {
+pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: oneshot::Receiver<()>) -> crate::Result<Vec<u8>> {
     let control = std::sync::Arc::clone(&invocation.control);
-    let mut invocation = Child {
-        invocation: Some(invocation),
-    };
+    let mut invocation = Child { invocation: Some(invocation) };
     let outcome = tokio::select! {
         biased;
         _ = &mut cancelled => {
@@ -190,38 +146,26 @@ pub(crate) async fn lifecycle(
         }
         outcome = &mut invocation => outcome,
     };
-    control
-        .settle()
-        .await
-        .map_err(|source| Error::OperationSettlement { source })?;
+    control.settle().await.map_err(|source| Error::OperationSettlement { source })?;
     outcome
 }
 
 pub(crate) fn refused(error: Error) -> Refusal {
     match error {
         Error::OperationCaller { source } => source.into_refusal(),
-        Error::OperationFailed {
-            ref operation,
-            ref source,
-        } => {
+        Error::OperationFailed { ref operation, ref source } => {
             if let Some(refusal) = source.downcast_ref::<Refusal>() {
                 let failure = refusal.failure().clone().in_operation(operation.as_str());
                 return Refusal::failed(refusal.code(), failure);
             }
             // A Carried Failure Keeps Its Cause And Any Frame Closer To The Origin
             let failure = error.failure().cloned().unwrap_or_else(|| {
-                harmos_domain::Failure::originate(
-                    crate::operations::FailureKind::Permanent,
-                    &error,
-                    harmos_domain::failure::Origin::Host,
-                )
+                harmos_domain::Failure::originate(crate::operations::FailureKind::Permanent, &error, harmos_domain::failure::Origin::Host)
             });
             let failure = failure.in_operation(operation.as_str());
             Refusal::failed(harmos_domain::FAILED, failure)
         }
-        Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => {
-            Refusal::new(-32_604, error)
-        }
+        Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
         Error::NotRegistered { .. } => Refusal::new(harmos_domain::UNKNOWN, error),
         Error::OperationPayload { .. } => Refusal::new(harmos_domain::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut) => Refusal::new(-32_607, error),
@@ -238,10 +182,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
 /* === Private Functions === */
 // Await one child; cancellation requests interruption and the same child still
 // drains before its outcome is reported.
-async fn drained(
-    mut invocation: Child,
-    mut cancelled: oneshot::Receiver<()>,
-) -> Result<Vec<u8>, Refusal> {
+async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
     tokio::select! {
         biased;
         _ = &mut cancelled => {
@@ -253,10 +194,7 @@ async fn drained(
 }
 
 fn unknown(instance: u64) -> Refusal {
-    Refusal::new(
-        harmos_domain::UNKNOWN,
-        format!("operation instance {instance} is not a child this attempt owns"),
-    )
+    Refusal::new(harmos_domain::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
 }
 
 /* === Tests === */

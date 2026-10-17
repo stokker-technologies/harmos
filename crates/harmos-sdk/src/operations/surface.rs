@@ -51,31 +51,20 @@ pub trait Host: Send + Sync + Sized {
 
     fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError>;
 
-    fn submit<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+    fn submit<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
-    fn call<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
+    fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
     // Activate a resident declaration (an observer or a service) over
     // caller-owned resources. Activations sharing the same resources share one
     // instance and each handle holds its own lease; releasing the last lease
     // stops it. Bindings that cannot carry process-local resources refuse.
     fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self,
-        request: O,
-        resources: std::sync::Arc<R>,
+        &self, request: O, resources: std::sync::Arc<R>,
     ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
     // Publish one row on a declared stream through the host's `host.publish`.
-    fn publish_on<S: StreamSpec>(
-        &self,
-        row: &S::Row,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send
+    fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
         S::Row: Message,
     {
@@ -94,10 +83,7 @@ pub trait Host: Send + Sync + Sized {
         }
     }
 
-    fn publish<S: StreamSpec<Row = S> + Message>(
-        &self,
-        row: &S,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+    fn publish<S: StreamSpec<Row = S> + Message>(&self, row: &S) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.publish_on::<S>(row)
     }
 }

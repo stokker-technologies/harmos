@@ -18,14 +18,8 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::{
-    Bank, Data, Fixture, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog,
-    config, history, write,
-};
-use harmos_runtime::{
-    Error, services::Fault, services::Service, state::Entry, state::Position, state::Recorded,
-    storage::JournalConsumer,
-};
+use super::{Bank, Data, Fixture, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
+use harmos_runtime::{Error, services::Fault, services::Service, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Constants === */
 
@@ -46,11 +40,7 @@ impl JournalConsumer<Bank> for FinalDrain {
         Position::ORIGIN
     }
 
-    async fn drain(
-        &mut self,
-        _entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         applied
     }
 
@@ -64,28 +54,12 @@ impl JournalConsumer<Bank> for FinalDrain {
 
 /* === Private Functions === */
 async fn dormant() -> Fixture {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap();
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     let settings = config();
-    let storage = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: recovery.clone(),
-        },
-        settings,
-    )
-    .unwrap();
-    Fixture {
-        runtime,
-        storage,
-        data,
-        recovery,
-    }
+    let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, settings).unwrap();
+    Fixture { runtime, storage, data, recovery }
 }
 
 #[tokio::test]
@@ -97,10 +71,7 @@ async fn runtime_owns_storage() {
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     assert!(matches!(
         f.runtime.operations.submit_resident("harmos-storage").await,
-        Err(Error::InvalidInput {
-            field: "service definition",
-            ..
-        })
+        Err(Error::InvalidInput { field: "service definition", .. })
     ));
     write(handle.storage().unwrap(), "final").await;
     f.storage.write_recovery(&[b"logical-state"]).await.unwrap();
@@ -132,10 +103,7 @@ async fn producers_flush_storage() {
     f.runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition {
-                id: "final-evidence".into(),
-                policy: harmos_runtime::services::POLICY,
-            },
+            harmos_runtime::services::ServiceDefinition { id: "final-evidence".into(), policy: harmos_runtime::services::POLICY },
             move |_: Arc<()>| {
                 let storage = storage.clone();
                 let started = started.clone();
@@ -153,12 +121,7 @@ async fn producers_flush_storage() {
             },
         )
         .unwrap();
-    let _lease = f
-        .runtime
-        .operations
-        .submit_resident("final-evidence")
-        .await
-        .unwrap();
+    let _lease = f.runtime.operations.submit_resident("final-evidence").await.unwrap();
     entered.notified().await;
     let mut participant = f.runtime.stop_participant();
     let storage = f.storage.clone();
@@ -184,10 +147,7 @@ async fn stop_retains_frontier() {
     assert!(f.runtime.stop().await.is_err());
     assert!(f.data.control.open.load(Ordering::SeqCst));
     assert!(f.storage.status().closing);
-    assert!(matches!(
-        f.runtime.start_storage(f.storage.clone()).await,
-        Err(Error::Closing { domain: "runtime" })
-    ));
+    assert!(matches!(f.runtime.start_storage(f.storage.clone()).await, Err(Error::Closing { domain: "runtime" })));
     f.data.control.permanent.store(false, Ordering::SeqCst);
     assert_eq!(f.runtime.stop().await.unwrap(), Position::ORIGIN);
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
@@ -237,11 +197,7 @@ async fn cancelled_acquisition_retained() {
     for recovery in [false, true] {
         let f = dormant().await;
         let handle = f.runtime.handle();
-        let control = if recovery {
-            &f.recovery.control
-        } else {
-            &f.data.control
-        };
+        let control = if recovery { &f.recovery.control } else { &f.data.control };
         control.block_open.store(true, Ordering::SeqCst);
         {
             let start = f.runtime.start_storage(f.storage.clone());
@@ -273,25 +229,9 @@ async fn failure_retains_acquisition() {
 async fn manager_replacement_refused() {
     let first = dormant().await;
     let second = dormant().await;
-    first
-        .runtime
-        .start_storage(first.storage.clone())
-        .await
-        .unwrap();
-    assert!(
-        first
-            .runtime
-            .start_storage(second.storage.clone())
-            .await
-            .is_err()
-    );
-    assert!(
-        second
-            .runtime
-            .start_storage(first.storage.clone())
-            .await
-            .is_err()
-    );
+    first.runtime.start_storage(first.storage.clone()).await.unwrap();
+    assert!(first.runtime.start_storage(second.storage.clone()).await.is_err());
+    assert!(second.runtime.start_storage(first.storage.clone()).await.is_err());
     assert!(second.runtime.storage().is_none());
     second.runtime.stop().await.unwrap();
     write(&first.storage, "still-owned").await;
@@ -323,20 +263,9 @@ async fn cancelled_acquisition_retried() {
 async fn final_drain_saved() {
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
-    let storage = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: recovery,
-        },
-        config(),
-    )
-    .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .attach(FinalDrain(storage.clone()))
-        .runtime()
-        .await
-        .unwrap();
+    let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, config()).unwrap();
+    let runtime =
+        Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).attach(FinalDrain(storage.clone())).runtime().await.unwrap();
     runtime.start_storage(storage).await.unwrap();
     runtime.stop().await.unwrap();
     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
@@ -357,18 +286,12 @@ async fn stop_seals_registration() {
         }
         let stop = f.runtime.stop();
         tokio::pin!(stop);
-        assert!(
-            crate::storage::pending(stop.as_mut()).await,
-            "shutdown retains the participant and startup owners"
-        );
+        assert!(crate::storage::pending(stop.as_mut()).await, "shutdown retains the participant and startup owners");
     }
     // The Original Shutdown Driver Advances Without Another Waiter.
     participant.stopping().await;
     participant.finish();
-    assert!(matches!(
-        f.runtime.start_storage(f.storage.clone()).await,
-        Err(Error::Closing { domain: "runtime" })
-    ));
+    assert!(matches!(f.runtime.start_storage(f.storage.clone()).await, Err(Error::Closing { domain: "runtime" })));
     f.runtime.stop().await.unwrap();
     assert!(!f.data.control.open.load(Ordering::SeqCst));
     assert!(!f.recovery.control.open.load(Ordering::SeqCst));

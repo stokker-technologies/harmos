@@ -106,9 +106,7 @@ impl Default for BuildSettings {
 
 impl Default for DevSettings {
     fn default() -> Self {
-        Self {
-            debounce: Duration::from_millis(100),
-        }
+        Self { debounce: Duration::from_millis(100) }
     }
 }
 

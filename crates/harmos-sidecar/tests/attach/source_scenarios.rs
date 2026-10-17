@@ -51,9 +51,7 @@ fn invalid_path_refused() {
     let temporary = tempfile::tempdir().unwrap();
     let directory = temporary.path();
     let missing = directory.join("harmos-nonexistent").join("recorder");
-    assert!(
-        refused("relative/recorder", "a relative path is refused").contains("not an absolute path")
-    );
+    assert!(refused("relative/recorder", "a relative path is refused").contains("not an absolute path"));
     assert!(refused(&missing, "a missing path is refused").contains("cannot be read"));
     assert!(refused(directory, "a directory is refused").contains("not a file"));
 }

@@ -14,11 +14,7 @@
 /* === Imports === */
 // Standard Library Imports
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
@@ -53,11 +49,7 @@ pub(crate) struct Wired {
     pub(crate) window: Arc<Window>,
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) staged: Option<super::registration::Staged>,
 }
 
@@ -69,11 +61,7 @@ pub(crate) struct Table {
     pub(super) visibility: Arc<RwLock<()>>,
     pub(super) publications: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -89,9 +77,7 @@ pub(crate) enum Refused {
 }
 
 /* === Traits === */
-pub trait Stream<A: Application>:
-    Clone + Send + Sync + Serialize + DeserializeOwned + 'static
-{
+pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
 
     const VERSION: u32;
@@ -103,11 +89,7 @@ pub trait Stream<A: Application>:
     }
 
     fn metadata() -> crate::Metadata {
-        crate::Metadata::new(
-            crate::Identifier::declared(Self::ID, "stream"),
-            Self::ID,
-            None,
-        )
+        crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
     }
 
     fn row_metadata() -> Vec<crate::StreamField> {
@@ -145,11 +127,7 @@ where
 }
 
 impl Table {
-    pub(crate) fn resuming(
-        definitions: impl IntoIterator<Item = Definition>,
-        floor: Position,
-        resume: Cursor,
-    ) -> Result<Self, Refused> {
+    pub(crate) fn resuming(definitions: impl IntoIterator<Item = Definition>, floor: Position, resume: Cursor) -> Result<Self, Refused> {
         let (pump, _) = watch::channel(());
         let table = Self {
             windows: RwLock::new(HashMap::new()),
@@ -158,11 +136,7 @@ impl Table {
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
             ingest: Arc::new(super::ingest::Ingest::new()),
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             listeners: Mutex::new(BTreeMap::new()),
         };
 
@@ -173,11 +147,7 @@ impl Table {
         Ok(table)
     }
 
-    pub(crate) fn insert(
-        &self,
-        definition: Definition,
-        floor: Position,
-    ) -> Result<Arc<Wired>, Refused> {
+    pub(crate) fn insert(&self, definition: Definition, floor: Position) -> Result<Arc<Wired>, Refused> {
         if definition.window() == 0 {
             return Err(Refused::EmptyWindow(definition.id().into()));
         }
@@ -189,44 +159,27 @@ impl Table {
         }
 
         let window = Arc::new(
-            Window::wired(
-                definition.window(),
-                floor,
-                Arc::clone(&self.sequence),
-                self.pump.clone(),
-            )
-            .visible_with(self.visibility.clone())
-            .batching(definition.batch()),
+            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone())
+                .visible_with(self.visibility.clone())
+                .batching(definition.batch()),
         );
         let wired = Arc::new(Wired {
             validation: None,
             definition,
             window,
             publisher: Mutex::new(Weak::new()),
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             staged: None,
         });
-        windows.insert(
-            Arc::<str>::from(wired.definition.id()),
-            HashMap::from([(wired.definition.version(), Arc::clone(&wired))]),
-        );
+        windows.insert(Arc::<str>::from(wired.definition.id()), HashMap::from([(wired.definition.version(), Arc::clone(&wired))]));
 
         Ok(wired)
     }
 
     pub(crate) fn wired(&self, id: &str, version: u32) -> Option<Arc<Wired>> {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        let wired = self
-            .windows
-            .read()
-            .expect("stream registry poisoned")
-            .get(id)
-            .and_then(|revisions| revisions.get(&version))
-            .cloned()?;
+        let wired =
+            self.windows.read().expect("stream registry poisoned").get(id).and_then(|revisions| revisions.get(&version)).cloned()?;
         wired.admitted()
     }
 
@@ -243,10 +196,7 @@ impl Table {
         )
     }
 
-    pub(crate) fn hold(
-        &self,
-        selections: impl IntoIterator<Item = Vec<Definition>>,
-    ) -> Result<Vec<Holding>, Refused> {
+    pub(crate) fn hold(&self, selections: impl IntoIterator<Item = Vec<Definition>>) -> Result<Vec<Holding>, Refused> {
         let mut held = Vec::new();
 
         for selections in selections {
@@ -255,9 +205,8 @@ impl Table {
                 if !distinct.insert((Arc::<str>::from(definition.id()), definition.version())) {
                     continue;
                 }
-                let wired = self
-                    .wired(definition.id(), definition.version())
-                    .ok_or(Refused::UndeclaredSelection(definition.id().into()))?;
+                let wired =
+                    self.wired(definition.id(), definition.version()).ok_or(Refused::UndeclaredSelection(definition.id().into()))?;
                 held.push(Holding::engage(Arc::clone(&wired.window)));
             }
         }
@@ -291,45 +240,25 @@ impl Table {
             let Some(wired) = wired.admitted() else {
                 continue;
             };
-            rows.extend(retained.into_iter().map(|(cursor, position, row)| {
-                (Cursor(cursor), wired.definition.clone(), position, row)
-            }));
+            rows.extend(retained.into_iter().map(|(cursor, position, row)| (Cursor(cursor), wired.definition.clone(), position, row)));
             if lost {
                 incomplete.push(wired.definition.clone());
             }
         }
         rows.sort_unstable_by_key(|(cursor, ..)| *cursor);
 
-        Delivery {
-            rows,
-            reaches: Cursor(reaches),
-            incomplete,
-        }
+        Delivery { rows, reaches: Cursor(reaches), incomplete }
     }
 
     pub(crate) fn frontier(&self) -> Cursor {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let windows = self.windows.read().expect("stream registry poisoned");
-        Cursor(
-            windows
-                .values()
-                .flat_map(|revisions| revisions.values())
-                .map(|wired| wired.window.latest_locked())
-                .max()
-                .unwrap_or(0),
-        )
+        Cursor(windows.values().flat_map(|revisions| revisions.values()).map(|wired| wired.window.latest_locked()).max().unwrap_or(0))
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) fn can_advance(&self, count: u64) -> bool {
-        self.sequence
-            .load(std::sync::atomic::Ordering::Relaxed)
-            .checked_add(count)
-            .is_some()
+        self.sequence.load(std::sync::atomic::Ordering::Relaxed).checked_add(count).is_some()
     }
 
     pub(crate) fn wake(&self) {
@@ -342,11 +271,7 @@ impl Table {
 
 impl Wired {
     fn admitted(self: &Arc<Self>) -> Option<Arc<Self>> {
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if let Some(staged) = &self.staged
             && !staged.scope.has_committed()
         {
@@ -361,18 +286,12 @@ impl Wired {
 /* === Private Functions === */
 fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
     let wires = wires.into_iter();
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     let wires = {
         let mut commits = std::collections::BTreeMap::new();
         wires.filter_map(move |wired| {
             if let Some(staged) = &wired.staged {
-                let committed = *commits
-                    .entry(staged.scope.generation())
-                    .or_insert_with(|| staged.scope.has_committed());
+                let committed = *commits.entry(staged.scope.generation()).or_insert_with(|| staged.scope.has_committed());
                 if !committed {
                     return staged.previous.clone();
                 }

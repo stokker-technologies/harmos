@@ -57,9 +57,7 @@ pub enum ContextError {
         #[source]
         source: MessageError,
     },
-    #[error(
-        "call context portable values exceed {PORTABLE_VALUES} entries or {PORTABLE_BYTES} bytes"
-    )]
+    #[error("call context portable values exceed {PORTABLE_VALUES} entries or {PORTABLE_BYTES} bytes")]
     Budget,
 }
 
@@ -73,9 +71,7 @@ impl CallContext {
     pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Result<(), ContextError> {
         let key = TypeId::of::<T>();
         if self.values.contains_key(&key) {
-            return Err(ContextError::Duplicate {
-                name: type_name::<T>().to_owned(),
-            });
+            return Err(ContextError::Duplicate { name: type_name::<T>().to_owned() });
         }
         self.values.insert(key, Arc::new(value));
         Ok(())
@@ -83,18 +79,10 @@ impl CallContext {
 
     pub fn insert_portable<T: ContextValue>(&mut self, value: T) -> Result<(), ContextError> {
         if self.portable.contains_key(T::KEY) {
-            return Err(ContextError::Duplicate {
-                name: T::KEY.to_owned(),
-            });
+            return Err(ContextError::Duplicate { name: T::KEY.to_owned() });
         }
         let payload = value.encode_to_vec();
-        let bytes = self
-            .portable
-            .iter()
-            .map(|(key, value)| key.len() + value.len())
-            .sum::<usize>()
-            + T::KEY.len()
-            + payload.len();
+        let bytes = self.portable.iter().map(|(key, value)| key.len() + value.len()).sum::<usize>() + T::KEY.len() + payload.len();
         if self.portable.len() >= PORTABLE_VALUES || bytes > PORTABLE_BYTES {
             return Err(ContextError::Budget);
         }
@@ -109,14 +97,9 @@ impl CallContext {
     pub fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError> {
         let kind = TypeId::of::<T>();
         if self.values.contains_key(&kind) && self.portable_types.get(T::KEY) != Some(&kind) {
-            return Err(ContextError::Duplicate {
-                name: type_name::<T>().to_owned(),
-            });
+            return Err(ContextError::Duplicate { name: type_name::<T>().to_owned() });
         }
-        let replacement = CallValue {
-            key: T::KEY.to_owned(),
-            payload: value.encode_to_vec(),
-        };
+        let replacement = CallValue { key: T::KEY.to_owned(), payload: value.encode_to_vec() };
         let mut child = self.with_values(vec![replacement])?;
         child.values.insert(kind, Arc::new(value));
         child.portable_types.insert(T::KEY, kind);
@@ -127,16 +110,10 @@ impl CallContext {
     // Replaced typed projections are invalidated; read wire values with `value`.
     pub fn with_values(&self, values: Vec<CallValue>) -> Result<Self, ContextError> {
         let replacements = Self::from_portable(values)?;
-        let retained = self
-            .portable
-            .iter()
-            .filter(|(key, _)| !replacements.portable.contains_key(*key));
+        let retained = self.portable.iter().filter(|(key, _)| !replacements.portable.contains_key(*key));
         let mut entries = replacements.portable.len();
-        let mut bytes = replacements
-            .portable
-            .iter()
-            .map(|(key, value)| key.len().saturating_add(value.len()))
-            .fold(0usize, usize::saturating_add);
+        let mut bytes =
+            replacements.portable.iter().map(|(key, value)| key.len().saturating_add(value.len())).fold(0usize, usize::saturating_add);
         for (key, value) in retained {
             entries = entries.saturating_add(1);
             bytes = bytes.saturating_add(key.len()).saturating_add(value.len());
@@ -155,10 +132,7 @@ impl CallContext {
     }
 
     pub fn from_portable(values: Vec<CallValue>) -> Result<Self, ContextError> {
-        let bytes = values
-            .iter()
-            .map(|value| value.key.len() + value.payload.len())
-            .sum::<usize>();
+        let bytes = values.iter().map(|value| value.key.len() + value.payload.len()).sum::<usize>();
         if values.len() > PORTABLE_VALUES || bytes > PORTABLE_BYTES {
             return Err(ContextError::Budget);
         }
@@ -177,31 +151,18 @@ impl CallContext {
     }
 
     pub fn require<T: Send + Sync + 'static>(&self) -> Result<&T, ContextError> {
-        self.get().ok_or_else(|| ContextError::Missing {
-            name: type_name::<T>().to_owned(),
-        })
+        self.get().ok_or_else(|| ContextError::Missing { name: type_name::<T>().to_owned() })
     }
 
     pub fn value<T: ContextValue>(&self) -> Result<Option<T>, ContextError> {
         let Some(payload) = self.portable.get(T::KEY) else {
             return Ok(None);
         };
-        T::decode(payload)
-            .map(Some)
-            .map_err(|source| ContextError::Decode {
-                key: T::KEY.to_owned(),
-                source,
-            })
+        T::decode(payload).map(Some).map_err(|source| ContextError::Decode { key: T::KEY.to_owned(), source })
     }
 
     pub fn portable(&self) -> Vec<CallValue> {
-        self.portable
-            .iter()
-            .map(|(key, payload)| CallValue {
-                key: key.clone(),
-                payload: payload.to_vec(),
-            })
-            .collect()
+        self.portable.iter().map(|(key, payload)| CallValue { key: key.clone(), payload: payload.to_vec() }).collect()
     }
 
     pub fn is_empty(&self) -> bool {

@@ -41,14 +41,7 @@ use std::process::{Command, Output};
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn author(
-    rustc: &OsStr,
-    fixtures: &Path,
-    dependencies: &Path,
-    output: &Path,
-    facade: &Path,
-    fixture: &str,
-) -> Output {
+fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str) -> Output {
     Command::new(rustc)
         .arg("--edition=2024")
         .arg("--crate-type=bin")
@@ -94,17 +87,9 @@ fn crate_builds_against() {
         .arg(&output)
         .output()
         .expect("rustc builds the facade fixture");
-    assert!(
-        compiled.status.success(),
-        "the facade fixture failed to build:\n{}",
-        String::from_utf8_lossy(&compiled.stderr)
-    );
+    assert!(compiled.status.success(), "the facade fixture failed to build:\n{}", String::from_utf8_lossy(&compiled.stderr));
     let facade = output.join("libfacade.rlib");
-    assert!(
-        facade.is_file(),
-        "the facade build did not produce {}",
-        facade.display()
-    );
+    assert!(facade.is_file(), "the facade build did not produce {}", facade.display());
 
     for fixture in [
         "facade_message_with_override.rs",
@@ -133,9 +118,6 @@ fn crate_builds_against() {
             "{fixture} unexpectedly built against the facade alone: the default `::harmos` path \
              must fail to resolve when `harmos` is not linked, or the override is not load-bearing"
         );
-        assert!(
-            stderr.contains("harmos"),
-            "{fixture} failed for a reason other than the unresolved default path:\n{stderr}"
-        );
+        assert!(stderr.contains("harmos"), "{fixture} failed for a reason other than the unresolved default path:\n{stderr}");
     }
 }

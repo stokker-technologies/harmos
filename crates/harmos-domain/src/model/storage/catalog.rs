@@ -18,9 +18,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 // Third Party Imports
 // Local Imports
 use crate::catalog::{Catalog, Contains, Member, Projection, Visitor};
-use crate::model::storage::{
-    ObjectRetention, ObjectValue, SchemaKey, check_length, invalid, object_key,
-};
+use crate::model::storage::{ObjectRetention, ObjectValue, SchemaKey, check_length, invalid, object_key};
 use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
 
 /* === Constants === */
@@ -56,9 +54,7 @@ struct KeyMatch<'a> {
 /* === Enums === */
 
 /* === Traits === */
-pub trait StoredObject:
-    Identified + schema::Described + crate::Message + MemorySize + 'static
-{
+pub trait StoredObject: Identified + schema::Described + crate::Message + MemorySize + 'static {
     type Key: fmt::Display + ?Sized;
 
     const RETENTION: ObjectRetention;
@@ -98,11 +94,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         }
         let bytes = count
             .checked_mul(std::mem::size_of::<(SchemaKey, ObjectRetention)>() + MAX_IDENTITY_BYTES)
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    MAX_IDENTITY_BYTES + std::mem::size_of::<Vec<(SchemaKey, ObjectRetention)>>(),
-                )
-            })
+            .and_then(|bytes| bytes.checked_add(MAX_IDENTITY_BYTES + std::mem::size_of::<Vec<(SchemaKey, ObjectRetention)>>()))
             .ok_or_else(|| invalid("object catalog validation size overflow"))?;
         if bytes > VALIDATION_BYTES {
             return Err(invalid("object catalog exceeds its validation byte limit"));
@@ -117,13 +109,8 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
                 return Err(invalid("object schema identity exceeds its byte limit"));
             }
             let mut settings = crate::config::SchemaSettings::default();
-            settings.preparation_bytes = NonZeroUsize::new(
-                settings
-                    .preparation_bytes
-                    .get()
-                    .min(VALIDATION_BYTES - bytes),
-            )
-            .ok_or_else(|| invalid("object schema preparation exceeds allowance"))?;
+            settings.preparation_bytes = NonZeroUsize::new(settings.preparation_bytes.get().min(VALIDATION_BYTES - bytes))
+                .ok_or_else(|| invalid("object schema preparation exceeds allowance"))?;
             entry.graph(&settings)?;
             identities.push((key, entry.retention));
             Ok(())
@@ -131,9 +118,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         if identities.len() != count {
             return Err(invalid("object catalog projection count differs"));
         }
-        identities.sort_unstable_by(|(left, _), (right, _)| {
-            (left.id.as_str(), left.version).cmp(&(right.id.as_str(), right.version))
-        });
+        identities.sort_unstable_by(|(left, _), (right, _)| (left.id.as_str(), left.version).cmp(&(right.id.as_str(), right.version)));
         for pair in identities.windows(2) {
             if pair[0].0.id == pair[1].0.id {
                 if pair[0].1 != pair[1].1 {
@@ -161,11 +146,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         if payload.len() != length {
             return Err(invalid("object codec reported an inconsistent length"));
         }
-        Ok(ObjectValue {
-            schema,
-            item,
-            payload,
-        })
+        Ok(ObjectValue { schema, item, payload })
     }
 
     fn decode<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T>
@@ -213,12 +194,7 @@ impl ObjectDefinition {
             .map_err(|_| invalid("invalid object schema or preparation allowance"))
     }
 
-    pub fn validate_admitted(
-        &self,
-        value: &ObjectValue,
-        payload: NonZeroUsize,
-        allowance: usize,
-    ) -> Result<()> {
+    pub fn validate_admitted(&self, value: &ObjectValue, payload: NonZeroUsize, allowance: usize) -> Result<()> {
         check_length(value.payload.len(), payload)?;
         check_length(value.item.as_str().len(), payload)?;
         (self.verify_admitted)(value, payload, allowance)
@@ -282,17 +258,10 @@ pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey)
     if &value.schema != schema {
         return Err(invalid("object schema does not match the requested type"));
     }
-    let decoded = T::decode(&value.payload).map_err(|error| Error::Corrupt {
-        operation: "decode object",
-        source: error,
-    })?;
+    let decoded = T::decode(&value.payload).map_err(|error| Error::Corrupt { operation: "decode object", source: error })?;
     decoded.validate()?;
-    let mut key = KeyMatch {
-        expected: value.item.as_str(),
-        offset: 0,
-    };
-    fmt::write(&mut key, format_args!("{}", decoded.key()))
-        .map_err(|_| invalid("decoded object identity differs from stored key"))?;
+    let mut key = KeyMatch { expected: value.item.as_str(), offset: 0 };
+    fmt::write(&mut key, format_args!("{}", decoded.key())).map_err(|_| invalid("decoded object identity differs from stored key"))?;
     if key.offset != value.item.as_str().len() {
         return Err(invalid("decoded object identity differs from stored key"));
     }
@@ -310,22 +279,13 @@ fn verify<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize)
     decode::<T>(value, max_payload_bytes).map(|_| ())
 }
 
-fn verify_admitted<T: StoredObject>(
-    value: &ObjectValue,
-    payload: NonZeroUsize,
-    allowance: usize,
-) -> Result<()> {
+fn verify_admitted<T: StoredObject>(value: &ObjectValue, payload: NonZeroUsize, allowance: usize) -> Result<()> {
     let overhead = std::mem::size_of::<crate::MessageError>() + MAX_IDENTITY_BYTES * 2;
-    let native = allowance
-        .checked_sub(overhead)
-        .ok_or_else(verification_limit)?;
+    let native = allowance.checked_sub(overhead).ok_or_else(verification_limit)?;
     if std::mem::size_of::<T>() > native {
         return Err(verification_limit());
     }
-    let required = T::decoding_memory(&value.payload).map_err(|error| Error::Corrupt {
-        operation: "preflight object",
-        source: error,
-    })?;
+    let required = T::decoding_memory(&value.payload).map_err(|error| Error::Corrupt { operation: "preflight object", source: error })?;
     if required > native {
         return Err(verification_limit());
     }
@@ -337,9 +297,7 @@ fn verify_admitted<T: StoredObject>(
 }
 
 fn verification_limit() -> Error {
-    Error::ResourceExhausted {
-        resource: "storage object verification",
-    }
+    Error::ResourceExhausted { resource: "storage object verification" }
 }
 
 /* === Tests === */

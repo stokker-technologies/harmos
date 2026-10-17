@@ -40,11 +40,7 @@ pub trait ObserverPublisher<R: Sync, V: Send>: Send + Sync + Sized {
     type Error: std::error::Error + From<PublicationError> + Send + Sync + 'static;
     const STREAM: Option<publications::Entry> = None;
 
-    fn publish(
-        &self,
-        context: &ObserverContext<'_, R, Self>,
-        value: V,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn publish(&self, context: &ObserverContext<'_, R, Self>, value: V) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 pub trait ObserverStreamPublisher<R: Sync, S: StreamSpec>: Send + Sync + Sized
@@ -53,11 +49,7 @@ where
 {
     type Error: std::error::Error + From<PublicationError> + Send + Sync + 'static;
 
-    fn publish_on(
-        &self,
-        context: &ObserverContext<'_, R, Self>,
-        row: &S::Row,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn publish_on(&self, context: &ObserverContext<'_, R, Self>, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 pub trait ObserverCaller<R: Sync, C>: Send + Sync + Sized {
@@ -66,9 +58,7 @@ pub trait ObserverCaller<R: Sync, C>: Send + Sync + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn call(
-        &self,
-        context: &ObserverContext<'_, R, Self>,
-        request: Self::Request,
+        &self, context: &ObserverContext<'_, R, Self>, request: Self::Request,
     ) -> impl Future<Output = Result<Self::Response, Self::Error>> + Send;
 }
 
@@ -87,16 +77,9 @@ where
     type Response = C::Response;
     type Error = CallError;
 
-    async fn call(
-        &self,
-        _: &ObserverContext<'_, R, Self>,
-        request: Self::Request,
-    ) -> Result<Self::Response, Self::Error> {
+    async fn call(&self, _: &ObserverContext<'_, R, Self>, request: Self::Request) -> Result<Self::Response, Self::Error> {
         let bytes = self.child_call::<C>(&request, false).await?;
-        C::Response::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
-            method: C::ID,
-            message: error.to_string(),
-        })
+        C::Response::decode(bytes.as_slice()).map_err(|error| CallError::Malformed { method: C::ID, message: error.to_string() })
     }
 }
 

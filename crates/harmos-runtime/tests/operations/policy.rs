@@ -29,8 +29,9 @@ use harmos_runtime::{Error, Refusal};
 
 /* === Constants === */
 const POLICY_NAME: &str = concat!(module_path!(), "::Policy");
-const POLICY_MARKER: &[u8] =
-    &harmos_runtime::schema::declaration::encode::<{ harmos_runtime::schema::declaration::encoded_len(POLICY_NAME, &[]) }>(POLICY_NAME, &[]);
+const POLICY_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
+    { harmos_runtime::schema::declaration::encoded_len(POLICY_NAME, &[]) },
+>(POLICY_NAME, &[]);
 
 /* === Macros === */
 // A Policy Request Exposes Its Scripted Behavior To The Shared Handler.
@@ -229,8 +230,6 @@ impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: 
         Err(harmos_runtime::MessageError::borrowed("in-process fixture values are never decoded"))
     }
 }
-
-
 
 impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> harmos_runtime::schema::Described
     for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>

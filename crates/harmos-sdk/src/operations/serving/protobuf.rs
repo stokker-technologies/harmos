@@ -87,34 +87,28 @@ fn item<T: Portable>() -> ItemCodec {
         memory: |payload| grpc::decoding_memory::<T>(DecodeInput::new(payload)),
         decode: decode::<T>,
         length: |value| {
-            value
-                .downcast_ref::<T>()
-                .ok_or_else(|| {
-                    MessageError::borrowed("protobuf stream item type differs from operation")
-                })
-                .and_then(|value| {
+            value.downcast_ref::<T>().ok_or_else(|| MessageError::borrowed("protobuf stream item type differs from operation")).and_then(
+                |value| {
                     let mut bytes = Vec::new();
                     grpc::encode(value, &mut bytes)?;
                     Ok(bytes.len())
-                })
+                },
+            )
         },
         encode: encode::<T>,
     }
 }
 
 fn decode<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
-    let target = target
-        .downcast_mut::<Option<T>>()
-        .ok_or_else(|| MessageError::borrowed("protobuf request type differs from operation"))?;
+    let target =
+        target.downcast_mut::<Option<T>>().ok_or_else(|| MessageError::borrowed("protobuf request type differs from operation"))?;
     grpc::decoding_memory::<T>(DecodeInput::new(payload))?;
     *target = Some(grpc::decode::<T>(DecodeInput::new(payload))?);
     Ok(())
 }
 
 fn encode<T: Portable>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
-    let value = value
-        .downcast_ref::<T>()
-        .ok_or_else(|| MessageError::borrowed("protobuf response type differs from operation"))?;
+    let value = value.downcast_ref::<T>().ok_or_else(|| MessageError::borrowed("protobuf response type differs from operation"))?;
     let mut bytes = Vec::new();
     grpc::encode(value, &mut bytes)?;
     Ok(bytes)

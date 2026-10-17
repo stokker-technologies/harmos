@@ -52,49 +52,24 @@ pub(super) enum Kind {
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn resume_file_once(
-        &self,
-        mutation: &MutationId,
-        token: &FileSession,
-    ) -> Result<FileProducer> {
+    pub async fn resume_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProducer> {
         self.inner.primary.history().check(&token.history)?;
         let next = token.generation.checked_add(1).ok_or_else(size_error)?;
         let fingerprint = fingerprint("storage.resume_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;
-            if matches!(
-                file.command,
-                Some(Command::Finish { .. } | Command::Abort | Command::Resume { .. })
-            ) {
+            if matches!(file.command, Some(Command::Finish { .. } | Command::Abort | Command::Resume { .. })) {
                 return Err(invalid("production is ending or another resume owns it"));
             }
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            let outcome = MutationValue::Producer(FileProducer {
-                session: FileSession {
-                    generation: next,
-                    ..token.clone()
-                },
-                length: file.length,
-            });
-            reserve(
-                state,
-                mutation,
-                fingerprint,
-                outcome.memory_size(),
-                0,
-                &self.inner.settings,
-            )?;
+            let outcome =
+                MutationValue::Producer(FileProducer { session: FileSession { generation: next, ..token.clone() }, length: file.length });
+            reserve(state, mutation, fingerprint, outcome.memory_size(), 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
-            file.mutation = Some(Mutation {
-                id: mutation.clone(),
-                kind: Kind::Resume,
-            });
-            file.command = Some(Command::Resume {
-                expected: token.generation,
-                next,
-            });
+            file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Resume });
+            file.command = Some(Command::Resume { expected: token.generation, next });
             file.progress.lock().unwrap().generation = next;
             Ok(true)
         })
@@ -103,10 +78,7 @@ impl<C> StorageManager<C> {
     }
 
     async fn mutate_file(
-        &self,
-        mutation: &MutationId,
-        fingerprint: [u8; 32],
-        mut admit: impl FnMut(&mut State) -> Result<bool>,
+        &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<bool>,
     ) -> Result<MutationValue> {
         if !self.inner.primary.supports_mutation_receipts() {
             return Err(invalid("backend does not support mutation receipts"));
@@ -121,9 +93,7 @@ impl<C> StorageManager<C> {
                     return Err(closed());
                 }
                 if !state.ready || !state.status.running {
-                    return Err(Error::NotReady {
-                        domain: "storage mutations",
-                    });
+                    return Err(Error::NotReady { domain: "storage mutations" });
                 }
                 state.expire_files();
                 state.collect();
@@ -133,11 +103,7 @@ impl<C> StorageManager<C> {
                         let file = state
                             .files
                             .values_mut()
-                            .find(|file| {
-                                file.mutation
-                                    .as_ref()
-                                    .is_some_and(|held| held.id == *mutation)
-                            })
+                            .find(|file| file.mutation.as_ref().is_some_and(|held| held.id == *mutation))
                             .ok_or_else(|| invalid("pending receipt lost its file owner"))?;
                         let retrying = file.retrying;
                         let failure = file.progress.lock().unwrap().failure.clone();
@@ -146,9 +112,7 @@ impl<C> StorageManager<C> {
                             if let Some(source) = &state.status.failure
                                 && !failure.as_ref().is_some_and(|own| Arc::ptr_eq(source, own))
                             {
-                                return Err(Error::Persistence {
-                                    source: source.clone(),
-                                });
+                                return Err(Error::Persistence { source: source.clone() });
                             }
                             if let Some(source) = failure {
                                 if !retry {
@@ -209,15 +173,9 @@ fn hash_session(hash: &mut Sha256, session: &FileSession) {
 }
 
 fn active<'a>(state: &'a State, token: &FileSession) -> Result<(u64, &'a FileState)> {
-    let (id, file) = state
-        .files
-        .iter()
-        .find(|(_, file)| file.staging.id == token.id)
-        .ok_or_else(|| invalid("session unavailable or expired"))?;
-    let session = file
-        .session
-        .as_ref()
-        .ok_or_else(|| invalid("private staging is not resumable"))?;
+    let (id, file) =
+        state.files.iter().find(|(_, file)| file.staging.id == token.id).ok_or_else(|| invalid("session unavailable or expired"))?;
+    let session = file.session.as_ref().ok_or_else(|| invalid("private staging is not resumable"))?;
     if session.generation != token.generation || file.abandoned {
         tracing::error!(file = %token.id, generation = token.generation, reason = "expired or fenced producer", "file mutation rejected");
         return Err(invalid("expired or fenced producer"));
@@ -226,38 +184,23 @@ fn active<'a>(state: &'a State, token: &FileSession) -> Result<(u64, &'a FileSta
 }
 
 fn reserve(
-    state: &mut State,
-    mutation: &MutationId,
-    fingerprint: [u8; 32],
-    outcome_bytes: usize,
-    command_bytes: usize,
-    settings: &StorageSettings,
+    state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], outcome_bytes: usize, command_bytes: usize, settings: &StorageSettings,
 ) -> Result<()> {
     let bytes = mutation
         .memory_size()
         .checked_add(std::mem::size_of::<Mutation>() - std::mem::size_of::<MutationId>())
         .and_then(|bytes| bytes.checked_add(command_bytes))
         .ok_or_else(size_error)?;
-    if bytes
-        > settings
-            .request
-            .max_pending_write_bytes
-            .get()
-            .saturating_sub(state.status.pending_bytes)
+    if bytes > settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes)
         || state.status.pending_batches >= settings.request.max_pending_write_batches.get()
     {
-        return Err(Error::ResourceExhausted {
-            resource: "file mutation command",
-        });
+        return Err(Error::ResourceExhausted { resource: "file mutation command" });
     }
     state.receipts.insert(mutation, fingerprint, outcome_bytes)
 }
 
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "file mutation",
-        reason,
-    }
+    Error::InvalidInput { field: "file mutation", reason }
 }
 
 /* === Tests === */

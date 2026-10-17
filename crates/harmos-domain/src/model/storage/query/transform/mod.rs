@@ -65,9 +65,7 @@ pub enum Transform {
 /* === Implementations === */
 impl From<&str> for FieldPath {
     fn from(name: &str) -> Self {
-        Self {
-            fields: name.split('.').map(str::to_owned).collect(),
-        }
+        Self { fields: name.split('.').map(str::to_owned).collect() }
     }
 }
 impl Transform {
@@ -77,45 +75,26 @@ impl Transform {
 }
 impl MemorySize for FieldPath {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .fields
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.fields))
+        std::mem::size_of::<Self>() + self.fields.memory_size().saturating_sub(std::mem::size_of_val(&self.fields))
     }
 }
 impl MemorySize for Transform {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
-                Self::Filter(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Project(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Aggregate(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Histogram(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Downsample(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Sort(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
+                Self::Filter(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Project(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Aggregate(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Histogram(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Downsample(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Sort(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
             }
     }
 }
 
 /* === Public Functions === */
 pub fn invalid(reason: &'static str) -> crate::Error {
-    crate::Error::InvalidInput {
-        field: "storage query transform",
-        reason,
-    }
+    crate::Error::InvalidInput { field: "storage query transform", reason }
 }
 
 /* === Private Functions === */

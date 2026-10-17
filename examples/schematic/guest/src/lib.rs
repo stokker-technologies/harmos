@@ -23,9 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use harmos_guest::Context;
-use harmos_guest::operations::{
-    OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable,
-};
+use harmos_guest::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
 
 /* === Constants === */
 
@@ -57,9 +55,7 @@ impl harmos_guest::Plugin for Plugin {
     type Resources = ();
 
     fn prepare(_: ()) -> Result<Self, Error> {
-        Ok(Self {
-            resources: Arc::new(()),
-        })
+        Ok(Self { resources: Arc::new(()) })
     }
 
     fn resources(&self) -> Arc<()> {
@@ -67,14 +63,8 @@ impl harmos_guest::Plugin for Plugin {
     }
 
     fn bind_operations(&self, table: &mut WireTable<Context>) -> Result<(), ServingError> {
-        let direction = StreamSettings {
-            items: NonZeroUsize::MIN,
-            bytes: NonZeroUsize::new(4096).unwrap(),
-        };
-        let limits = WireStreamLimits {
-            input: direction,
-            output: direction,
-        };
+        let direction = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
+        let limits = WireStreamLimits { input: direction, output: direction };
         table.bind_streaming_operations::<operations::Operations, ()>(self.resources(), limits)
     }
 

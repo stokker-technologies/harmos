@@ -23,9 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use harmos_sidecar::Supervisor;
-use harmos_sidecar::operations::{
-    OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable,
-};
+use harmos_sidecar::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
 
 /* === Constants === */
 
@@ -60,11 +58,7 @@ impl harmos_sidecar::Plugin for Plugin {
     type Resources = Resources;
 
     fn prepare(_: ()) -> Result<Self, Error> {
-        Ok(Self {
-            resources: Arc::new(Resources {
-                analysis: tokio::sync::Semaphore::new(1),
-            }),
-        })
+        Ok(Self { resources: Arc::new(Resources { analysis: tokio::sync::Semaphore::new(1) }) })
     }
 
     fn resources(&self) -> Arc<Resources> {
@@ -72,18 +66,9 @@ impl harmos_sidecar::Plugin for Plugin {
     }
 
     fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
-        let direction = StreamSettings {
-            items: NonZeroUsize::MIN,
-            bytes: NonZeroUsize::new(4096).unwrap(),
-        };
-        let limits = WireStreamLimits {
-            input: direction,
-            output: direction,
-        };
-        table.bind_streaming_operations::<operations::Operations, Resources>(
-            self.resources(),
-            limits,
-        )
+        let direction = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
+        let limits = WireStreamLimits { input: direction, output: direction };
+        table.bind_streaming_operations::<operations::Operations, Resources>(self.resources(), limits)
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Error> {

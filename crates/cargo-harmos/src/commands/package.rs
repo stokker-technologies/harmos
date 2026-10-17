@@ -52,30 +52,21 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn run(
-    arguments: Arguments,
-    backend: BuildBackend,
-    cancellation: &BuildCancellation,
-) -> Result<(), Error> {
+pub fn run(arguments: Arguments, backend: BuildBackend, cancellation: &BuildCancellation) -> Result<(), Error> {
     let file = std::fs::File::open(&arguments.build_json)?;
     let mut bytes = Vec::new();
     file.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
     if bytes.len() > 16 * 1024 * 1024 {
-        return Err(Error::Settings(
-            "build receipt exceeds its byte limit".into(),
-        ));
+        return Err(Error::Settings("build receipt exceeds its byte limit".into()));
     }
     let mut build: Build = serde_json::from_slice(&bytes)?;
     if build.backend != backend {
-        return Err(Error::Settings(
-            "build receipt belongs to another backend".into(),
-        ));
+        return Err(Error::Settings("build receipt belongs to another backend".into()));
     }
     if let (Some(from), Some(to)) = (&arguments.relocate_from, &arguments.relocate_to) {
         build.relocate(from, to)?;
     }
-    let packages =
-        harmos_packaging::package_with_cancellation(&build, &arguments.output, cancellation)?;
+    let packages = harmos_packaging::package_with_cancellation(&build, &arguments.output, cancellation)?;
     if arguments.json {
         println!("{}", serde_json::to_string_pretty(&packages)?);
     } else {

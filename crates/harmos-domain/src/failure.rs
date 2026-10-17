@@ -103,12 +103,7 @@ pub enum CodecError {
 /* === Implementations === */
 impl Failure {
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
-        Self(Box::new(Record {
-            code,
-            cause: cause.into(),
-            context: Context::default(),
-            diagnostics: None,
-        }))
+        Self(Box::new(Record { code, cause: cause.into(), context: Context::default(), diagnostics: None }))
     }
 
     // Writes the cause once from an error chain. A failure already carried in
@@ -116,11 +111,7 @@ impl Failure {
     // classification of the handler that returned it; otherwise the deepest
     // meaningful message becomes the cause and the whole chain moves into
     // diagnostics.
-    pub fn originate(
-        code: operations::FailureKind,
-        error: &(dyn std::error::Error + 'static),
-        origin: Origin,
-    ) -> Self {
+    pub fn originate(code: operations::FailureKind, error: &(dyn std::error::Error + 'static), origin: Origin) -> Self {
         if let Some(carried) = carried(error) {
             let mut forwarded = carried.clone();
             forwarded.0.code = code;
@@ -134,27 +125,13 @@ impl Failure {
                 None => error.to_string(),
             })
             .collect();
-        let cause = chain
-            .iter()
-            .rev()
-            .find(|message| !message.trim().is_empty())
-            .cloned()
-            .unwrap_or_else(|| "operation failed".to_owned());
+        let cause = chain.iter().rev().find(|message| !message.trim().is_empty()).cloned().unwrap_or_else(|| "operation failed".to_owned());
 
         // Keep The Full Chain And Any Capture As Origin Diagnostics
         let backtrace = Backtrace::capture();
-        let backtrace = (backtrace.status() == BacktraceStatus::Captured)
-            .then(|| bounded(backtrace.to_string(), BACKTRACE_LIMIT));
-        let chain = chain
-            .into_iter()
-            .take(CHAIN_LIMIT)
-            .map(|message| bounded(message, LINK_LIMIT))
-            .collect();
-        let diagnostics = Diagnostics {
-            origin,
-            chain,
-            backtrace,
-        };
+        let backtrace = (backtrace.status() == BacktraceStatus::Captured).then(|| bounded(backtrace.to_string(), BACKTRACE_LIMIT));
+        let chain = chain.into_iter().take(CHAIN_LIMIT).map(|message| bounded(message, LINK_LIMIT)).collect();
+        let diagnostics = Diagnostics { origin, chain, backtrace };
 
         let mut failure = Self::new(code, cause);
         failure.0.diagnostics = Some(diagnostics);
@@ -185,10 +162,7 @@ impl Failure {
     // The host adds the operation frame where a call crosses from a plugin.
     // The frame closest to the origin wins, so a forwarded failure keeps it.
     pub fn in_operation(mut self, operation: impl Into<String>) -> Self {
-        self.0
-            .context
-            .operation
-            .get_or_insert_with(|| operation.into());
+        self.0.context.operation.get_or_insert_with(|| operation.into());
         self
     }
 
@@ -208,13 +182,11 @@ impl Failure {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let (version, rest) =
-            postcard::take_from_bytes::<u8>(bytes).map_err(CodecError::Encoding)?;
+        let (version, rest) = postcard::take_from_bytes::<u8>(bytes).map_err(CodecError::Encoding)?;
         if version != VERSION {
             return Err(CodecError::Version);
         }
-        let (failure, rest) =
-            postcard::take_from_bytes::<Self>(rest).map_err(CodecError::Encoding)?;
+        let (failure, rest) = postcard::take_from_bytes::<Self>(rest).map_err(CodecError::Encoding)?;
         if !rest.is_empty() {
             return Err(CodecError::Trailing);
         }
@@ -274,20 +246,13 @@ impl Diagnostics {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn sources<'a>(
-    error: &'a (dyn std::error::Error + 'static),
-) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
+fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
     std::iter::successors(Some(error), |error| error.source())
 }
 
 fn carried<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Failure> {
-    sources(error).find_map(|error| {
-        error.downcast_ref::<Failure>().or_else(|| {
-            error
-                .downcast_ref::<crate::Refusal>()
-                .map(crate::Refusal::failure)
-        })
-    })
+    sources(error)
+        .find_map(|error| error.downcast_ref::<Failure>().or_else(|| error.downcast_ref::<crate::Refusal>().map(crate::Refusal::failure)))
 }
 
 fn bounded(mut text: String, limit: usize) -> String {

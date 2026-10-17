@@ -71,8 +71,13 @@ async fn resume_receipt_replays() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", crate::storage::operations::Lanes::Open, Arc::new(f.storage.clone()))
-        .unwrap();
+    harmos_runtime::storage::operations::register(
+        &f.runtime.operations,
+        "storage",
+        crate::storage::operations::Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
     let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
@@ -134,8 +139,13 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", crate::storage::operations::Lanes::Open, Arc::new(f.storage.clone()))
-        .unwrap();
+    harmos_runtime::storage::operations::register(
+        &f.runtime.operations,
+        "storage",
+        crate::storage::operations::Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
     let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);

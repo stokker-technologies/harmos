@@ -44,16 +44,8 @@ pub struct Manifest {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NamedSource {
-    Record {
-        id: String,
-        version: u32,
-        row: String,
-    },
-    Stream {
-        id: String,
-        schema_ordinal: u32,
-        row: String,
-    },
+    Record { id: String, version: u32, row: String },
+    Stream { id: String, schema_ordinal: u32, row: String },
 }
 
 #[derive(Deserialize)]
@@ -96,11 +88,7 @@ pub enum Error {
 /* === Implementations === */
 
 impl NamedManifest {
-    pub fn resolve(
-        self,
-        declarations: &[Named],
-        settings: &mut SchemaSettings,
-    ) -> Result<Manifest, Error> {
+    pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
         if self.listeners.len() > LIMIT {
             return Err(Error::Inventory);
         }
@@ -112,57 +100,33 @@ impl NamedManifest {
                     NamedSource::Record { id, version, row } => Source::Record {
                         id: id.into(),
                         version,
-                        row: super::retain_schema(
-                            Schema::from_named(&row, declarations, settings)?,
-                            settings,
-                        )?,
+                        row: super::retain_schema(Schema::from_named(&row, declarations, settings)?, settings)?,
                     },
-                    NamedSource::Stream {
-                        id,
-                        schema_ordinal,
-                        row,
-                    } => Source::Stream {
+                    NamedSource::Stream { id, schema_ordinal, row } => Source::Stream {
                         id: id.into(),
                         schema_ordinal,
-                        row: super::retain_schema(
-                            Schema::from_named(&row, declarations, settings)?,
-                            settings,
-                        )?,
+                        row: super::retain_schema(Schema::from_named(&row, declarations, settings)?, settings)?,
                     },
                 };
                 let callback = entry.callback.resolve(declarations, settings)?;
                 Ok(Definition::new(entry.id, source, callback)?)
             })
             .collect::<Result<_, Error>>()?;
-        Ok(Manifest {
-            facility: self.facility,
-            owner: self.owner,
-            listeners,
-        })
+        Ok(Manifest { facility: self.facility, owner: self.owner, listeners })
     }
 }
 
 /* === Public Functions === */
-pub fn select(
-    manifests: Vec<Manifest>,
-    facility: &str,
-    owner: &str,
-    provides: &[Contract],
-) -> Result<Option<Vec<Definition>>, Error> {
+pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, provides: &[Contract]) -> Result<Option<Vec<Definition>>, Error> {
     let mut selected = None;
     for manifest in manifests {
         if manifest.facility != facility || manifest.owner != owner {
             continue;
         }
         if selected.is_some() {
-            return Err(Error::Duplicate {
-                facility: facility.into(),
-                owner: owner.into(),
-            });
+            return Err(Error::Duplicate { facility: facility.into(), owner: owner.into() });
         }
-        if !contracts::valid_identity(&manifest.facility, &manifest.owner)
-            || manifest.listeners.len() > LIMIT
-        {
+        if !contracts::valid_identity(&manifest.facility, &manifest.owner) || manifest.listeners.len() > LIMIT {
             return Err(Error::Inventory);
         }
         validate(&manifest.listeners, provides)?;
@@ -182,10 +146,7 @@ pub fn validate(listeners: &[Definition], provides: &[Contract]) -> Result<(), E
         if !ids.insert(listener.id().as_str()) || !callbacks.insert(id) {
             return Err(Error::Entry { id: id.into() });
         }
-        if !provides
-            .iter()
-            .any(|contract| contract == listener.callback())
-        {
+        if !provides.iter().any(|contract| contract == listener.callback()) {
             return Err(Error::Callback { id: id.into() });
         }
     }
@@ -196,37 +157,17 @@ pub const fn encoded_len(facility: &str, owner: &str, entries: &[Node<Entry>]) -
     encoded::<0>(facility, owner, entries).cursor
 }
 
-pub const fn encode<const N: usize>(
-    facility: &str,
-    owner: &str,
-    entries: &[Node<Entry>],
-) -> [u8; N] {
+pub const fn encode<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> [u8; N] {
     let out = encoded::<N>(facility, owner, entries);
-    assert!(
-        out.cursor == N,
-        "listener inventory length disagrees with encoder"
-    );
+    assert!(out.cursor == N, "listener inventory length disagrees with encoder");
     out.bytes
 }
 
 /* === Private Functions === */
-const fn encoded<const N: usize>(
-    facility: &str,
-    owner: &str,
-    entries: &[Node<Entry>],
-) -> Encoder<N> {
-    assert!(
-        contracts::valid_identity(facility, owner),
-        "invalid listener inventory identity"
-    );
-    assert!(
-        crate::catalog::count(entries) <= LIMIT,
-        "listener inventory exceeds leaf limit"
-    );
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
+    assert!(contracts::valid_identity(facility, owner), "invalid listener inventory identity");
+    assert!(crate::catalog::count(entries) <= LIMIT, "listener inventory exceeds leaf limit");
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(crate::PREFIX);
     out.raw(b"{\"kind\":\"listeners\",\"facility\":");
     out.quoted(facility);
@@ -235,10 +176,7 @@ const fn encoded<const N: usize>(
     out.raw(b",\"listeners\":[");
     tree(&mut out, entries, &mut true);
     out.raw(b"]}\0");
-    assert!(
-        out.cursor <= crate::FRAGMENT_LIMIT,
-        "listener inventory exceeds fragment limit"
-    );
+    assert!(out.cursor <= crate::FRAGMENT_LIMIT, "listener inventory exceeds fragment limit");
     out
 }
 
@@ -257,11 +195,7 @@ const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], fir
                 out.raw(b",\"source\":{\"kind\":");
                 let (kind, id, version, row) = match &entry.source {
                     SourceDeclaration::Record { id, version, row } => ("record", id, *version, row),
-                    SourceDeclaration::Stream {
-                        id,
-                        schema_ordinal,
-                        row,
-                    } => ("stream", id, *schema_ordinal, row),
+                    SourceDeclaration::Stream { id, schema_ordinal, row } => ("stream", id, *schema_ordinal, row),
                 };
                 out.quoted(kind);
                 out.raw(b",\"id\":");

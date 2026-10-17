@@ -23,13 +23,10 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::query::{
-    FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection,
-};
+use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use super::{
-    FileCheckpoint, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectEntry,
-    ObjectKey, ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema,
-    StoreHistory, StoredRecord, StoredRow,
+    FileCheckpoint, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectEntry, ObjectKey, ObjectPoint, SchemaKey, StagedFile,
+    StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 use crate::{Error, Result};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
@@ -94,78 +91,39 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
     fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
     fn read_schemas<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a SchemaSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>>;
     fn read_objects<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a ObjectSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>>;
     fn read_records<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a RecordSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>>;
     fn read_stream<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a StreamSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>>;
     fn read_files<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a FileSelection,
-        page: ScanPage,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>>;
-    fn read_object<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        point: &'a ObjectPoint,
-    ) -> StorageFuture<'a, Option<ObjectEntry>>;
+    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>>;
     fn read_file<'a>(
-        &'a self,
-        snapshot: &'a BackendSnapshot,
-        file: &'a FileReference,
-        offset: u64,
-        max_bytes: NonZeroUsize,
+        &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>>;
 
     // Object Lifecycle Retention
     /// Persist a monotonic release frontier before its stale revisions may be
     /// reclaimed. Repeating a covered release must not advance metadata.
     fn release_object_history<'a>(
-        &'a self,
-        schema: &'a SchemaKey,
-        item: &'a ObjectKey,
-        through: &'a StorageCursor,
+        &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()>;
     /// Reclaim released revisions through `through`; `true` when nothing remains.
-    fn prune_objects<'a>(
-        &'a self,
-        through: &'a StorageCursor,
-        max_entries: NonZeroUsize,
-    ) -> StorageFuture<'a, bool>;
+    fn prune_objects<'a>(&'a self, through: &'a StorageCursor, max_entries: NonZeroUsize) -> StorageFuture<'a, bool>;
 
     // Finished File Publication
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile>;
-    fn write_file<'a>(
-        &'a self,
-        staging: &'a StagedFile,
-        offset: u64,
-        bytes: &'a [u8],
-    ) -> StorageFuture<'a, ()>;
+    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: &'a [u8]) -> StorageFuture<'a, ()>;
     fn finish_file<'a>(
-        &'a self,
-        staging: &'a StagedFile,
-        position: &'a StorageCursor,
-        length: u64,
-        sha256: [u8; 32],
+        &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference>;
     fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()>;
 
@@ -173,18 +131,10 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn supports_file_sessions(&self) -> bool {
         false
     }
-    fn create_production<'a>(
-        &'a self,
-        _metadata: &'a FileMetadata,
-    ) -> StorageFuture<'a, StagedFile> {
+    fn create_production<'a>(&'a self, _metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         unsupported("file session")
     }
-    fn fence_production<'a>(
-        &'a self,
-        _file: &'a StagedFile,
-        _expected: u64,
-        _next: u64,
-    ) -> StorageFuture<'a, ()> {
+    fn fence_production<'a>(&'a self, _file: &'a StagedFile, _expected: u64, _next: u64) -> StorageFuture<'a, ()> {
         unsupported("file session")
     }
     fn save_production<'a>(&'a self, _checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
@@ -196,12 +146,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn file_progress<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         unsupported("file following")
     }
-    fn read_production<'a>(
-        &'a self,
-        _file: &'a StagedFile,
-        _offset: u64,
-        _max_bytes: NonZeroUsize,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(&'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         unsupported("file following")
     }
     fn abandon_file<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> {
@@ -234,10 +179,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// a page costs O(page), never a scan of the rows or revisions behind it.
     /// Backends without that index refuse rather than derive identities.
     fn read_identities<'a>(
-        &'a self,
-        _snapshot: &'a BackendSnapshot,
-        _selection: &'a IdentitySelection,
-        _page: ScanPage,
+        &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a IdentitySelection, _page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredIdentity>> {
         unsupported("storage identity catalog")
     }
@@ -247,10 +189,7 @@ pub trait StorageBackend: Send + Sync + 'static {
 impl ReadLimits {
     pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
         if rows > self.rows.get() || bytes > self.bytes.get() {
-            return Err(Error::InvalidInput {
-                field: "read page",
-                reason: "row or byte bound exceeded",
-            });
+            return Err(Error::InvalidInput { field: "read page", reason: "row or byte bound exceeded" });
         }
         Ok(())
     }
@@ -260,12 +199,7 @@ impl ReadLimits {
 
 /* === Private Functions === */
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
-    Box::pin(async move {
-        Err(Error::InvalidInput {
-            field,
-            reason: "backend does not support this capability",
-        })
-    })
+    Box::pin(async move { Err(Error::InvalidInput { field, reason: "backend does not support this capability" }) })
 }
 
 /* === Tests === */

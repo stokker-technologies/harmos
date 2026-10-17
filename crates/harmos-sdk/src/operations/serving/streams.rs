@@ -89,11 +89,7 @@ pub trait WireEndpoints: EndpointSet + Sized {
 }
 
 trait Input: Send + Sync {
-    fn send<'a>(
-        &'a self,
-        payload: &'a [u8],
-        #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
-    ) -> Pending<'a, ()>;
+    fn send<'a>(&'a self, payload: &'a [u8], #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>) -> Pending<'a, ()>;
     #[cfg(feature = "grpc")]
     fn item_type(&self) -> std::any::TypeId;
     fn finish(&self) -> Result<(), ServingError>;
@@ -125,10 +121,7 @@ impl WireStreamLimits {
 
 impl WireStreams {
     fn new(input: Option<Arc<dyn Input>>, output: Option<Arc<dyn Encoder>>) -> Self {
-        let (state, _) = watch::channel(State {
-            epoch: 0,
-            phase: Phase::Waiting,
-        });
+        let (state, _) = watch::channel(State { epoch: 0, phase: Phase::Waiting });
         Self {
             input,
             output,
@@ -142,10 +135,8 @@ impl WireStreams {
 
     #[cfg(feature = "grpc")]
     pub(super) fn protobuf(mut self, codec: super::protobuf::Codec) -> Result<Self, ServingError> {
-        if self.input.as_ref().map(|input| input.item_type())
-            != codec.input.map(|codec| codec.item_type)
-            || self.output.as_ref().map(|output| output.item_type())
-                != codec.output.map(|codec| codec.item_type)
+        if self.input.as_ref().map(|input| input.item_type()) != codec.input.map(|codec| codec.item_type)
+            || self.output.as_ref().map(|output| output.item_type()) != codec.output.map(|codec| codec.item_type)
         {
             return Err(ServingError::Catalog);
         }
@@ -155,11 +146,7 @@ impl WireStreams {
     }
 
     pub fn transferred(&self) -> bool {
-        self.input.as_ref().is_some_and(|input| input.transferred())
-            || self
-                .output
-                .as_ref()
-                .is_some_and(|output| output.transferred())
+        self.input.as_ref().is_some_and(|input| input.transferred()) || self.output.as_ref().is_some_and(|output| output.transferred())
     }
 
     pub async fn send(&self, epoch: u64, payload: &[u8]) -> Result<(), ServingError> {
@@ -192,25 +179,16 @@ impl WireStreams {
 
     pub fn finish_input(&self, epoch: u64) -> Result<(), ServingError> {
         self.check_input(epoch)?;
-        self.input
-            .as_ref()
-            .ok_or(ServingError::StreamPhase)?
-            .finish()
+        self.input.as_ref().ok_or(ServingError::StreamPhase)?.finish()
     }
 
     pub async fn receive(&self, epoch: u64) -> Result<Option<Vec<u8>>, ServingError> {
-        self.output
-            .as_ref()
-            .ok_or(ServingError::StreamPhase)?
-            .receive(self, epoch)
-            .await
+        self.output.as_ref().ok_or(ServingError::StreamPhase)?.receive(self, epoch).await
     }
 
     fn check_input(&self, epoch: u64) -> Result<(), ServingError> {
         let state = *self.state.borrow();
-        if (state.epoch == epoch && state.phase == Phase::Running)
-            || (state.epoch == 0 && epoch == 1 && state.phase == Phase::Waiting)
-        {
+        if (state.epoch == epoch && state.phase == Phase::Running) || (state.epoch == 0 && epoch == 1 && state.phase == Phase::Waiting) {
             return Ok(());
         }
         Err(ServingError::StreamPhase)
@@ -219,9 +197,7 @@ impl WireStreams {
     pub(super) fn start(&self, expected: u64) -> Result<Attempt, ServingError> {
         let mut epoch = None;
         self.state.send_if_modified(|state| {
-            if matches!(state.phase, Phase::Running | Phase::Closed)
-                || (state.epoch != 0 && self.transferred())
-            {
+            if matches!(state.phase, Phase::Running | Phase::Closed) || (state.epoch != 0 && self.transferred()) {
                 return false;
             }
             let Some(next) = state.epoch.checked_add(1) else {
@@ -235,11 +211,7 @@ impl WireStreams {
             epoch = Some(next);
             true
         });
-        Ok(Attempt {
-            streams: self.clone(),
-            epoch: epoch.ok_or(ServingError::StreamPhase)?,
-            ended: false,
-        })
+        Ok(Attempt { streams: self.clone(), epoch: epoch.ok_or(ServingError::StreamPhase)?, ended: false })
     }
 
     pub(super) fn close(&self) {
@@ -258,10 +230,7 @@ impl WireStreams {
             };
         }
         if state.epoch.checked_add(1) == Some(epoch)
-            && matches!(
-                state.phase,
-                Phase::Waiting | Phase::Ended | Phase::Interrupted
-            )
+            && matches!(state.phase, Phase::Waiting | Phase::Ended | Phase::Interrupted)
             && (state.epoch == 0 || !self.transferred())
         {
             return Ok(Phase::Waiting);
@@ -301,26 +270,14 @@ impl<T: Message + MemorySize + Send + 'static> WireEndpoints for StreamInput<T> 
     fn bind(limits: WireStreamLimits) -> Result<(Self, WireStreams), ServingError> {
         let (sender, receiver) = streaming::stream(limits.input).map_err(ServingError::Stream)?;
         let transferred = sender.transfer_flag();
-        Ok((
-            receiver,
-            WireStreams::new(
-                Some(Arc::new(Sending(Mutex::new(Some(sender)), transferred))),
-                None,
-            ),
-        ))
+        Ok((receiver, WireStreams::new(Some(Arc::new(Sending(Mutex::new(Some(sender)), transferred))), None)))
     }
 }
 impl<T: Message + MemorySize + Send + 'static, E: 'static> WireEndpoints for StreamOutput<T, E> {
     fn bind(limits: WireStreamLimits) -> Result<(Self, WireStreams), ServingError> {
         let (sender, receiver) = streaming::stream(limits.output).map_err(ServingError::Stream)?;
         let transferred = sender.transfer_flag();
-        Ok((
-            sender.failing_with(),
-            WireStreams::new(
-                None,
-                Some(Arc::new(Receiving(Mutex::new(receiver), transferred))),
-            ),
-        ))
+        Ok((sender.failing_with(), WireStreams::new(None, Some(Arc::new(Receiving(Mutex::new(receiver), transferred))))))
     }
 }
 impl<I, O, E> WireEndpoints for (StreamInput<I>, StreamOutput<O, E>)
@@ -332,10 +289,7 @@ where
     fn bind(limits: WireStreamLimits) -> Result<(Self, WireStreams), ServingError> {
         let (input, incoming) = StreamInput::<I>::bind(limits)?;
         let (output, outgoing) = StreamOutput::<O, E>::bind(limits)?;
-        Ok((
-            (input, output),
-            WireStreams::new(incoming.input, outgoing.output),
-        ))
+        Ok(((input, output), WireStreams::new(incoming.input, outgoing.output)))
     }
 }
 
@@ -344,11 +298,7 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
     fn item_type(&self) -> std::any::TypeId {
         std::any::TypeId::of::<T>()
     }
-    fn send<'a>(
-        &'a self,
-        payload: &'a [u8],
-        #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
-    ) -> Pending<'a, ()> {
+    fn send<'a>(&'a self, payload: &'a [u8], #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>) -> Pending<'a, ()> {
         Box::pin(async move {
             let input = self.0.try_lock().map_err(|_| ServingError::StreamBusy)?;
             let input = input.as_ref().ok_or(ServingError::StreamPhase)?;
@@ -359,11 +309,7 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
                     .send_with(bytes, || {
                         let mut item = None::<T>;
                         (codec.decode)(payload, &mut item).map_err(streaming::Error::Codec)?;
-                        item.ok_or_else(|| {
-                            streaming::Error::Codec(crate::MessageError::borrowed(
-                                "protobuf stream item projection failed",
-                            ))
-                        })
+                        item.ok_or_else(|| streaming::Error::Codec(crate::MessageError::borrowed("protobuf stream item projection failed")))
                     })
                     .await
                     .map_err(ServingError::Stream);
@@ -438,8 +384,7 @@ impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
 
 /* === Private Functions === */
 fn encode<T: Message + 'static>(
-    item: &T,
-    #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
+    item: &T, #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
 ) -> Result<Vec<u8>, ServingError> {
     #[cfg(feature = "grpc")]
     if let Some(codec) = codec {

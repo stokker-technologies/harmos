@@ -14,10 +14,7 @@ use super::*;
 impl<C> StorageManager<C> {
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
         if !self.cursor_saved().covers(required)? {
-            return Err(Error::InvalidInput {
-                field: "state evidence dependency",
-                reason: "required primary evidence is not durable",
-            });
+            return Err(Error::InvalidInput { field: "state evidence dependency", reason: "required primary evidence is not durable" });
         }
         Ok(())
     }
@@ -31,13 +28,7 @@ impl<C> StorageManager<C> {
         while let Error::Persistence { source } = cause {
             cause = source.as_ref();
         }
-        if !matches!(
-            cause,
-            Error::Backend {
-                kind: crate::BackendFailure::Transient,
-                ..
-            }
-        ) {
+        if !matches!(cause, Error::Backend { kind: crate::BackendFailure::Transient, .. }) {
             return false;
         }
         state.status.failure = None;
@@ -49,9 +40,7 @@ impl<C> StorageManager<C> {
 
     /// Charge consumer-retained Arrow data to the shared read budget without waiting.
     pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
-        Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes)
-            .map(Reservation::retain)
-            .map_err(Refusal::into_error)
+        Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error)
     }
 
     pub fn write_receipt_capacity(&self) -> usize {
@@ -63,26 +52,12 @@ impl<C> StorageManager<C> {
         self.flush_domain(Domain::Data, Some(cursor)).await
     }
 
-    pub async fn release_object_history(
-        &self,
-        schema: &SchemaKey,
-        item: &crate::ObjectKey,
-        through: &StorageCursor,
-    ) -> Result<()> {
+    pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
-            return Err(Error::InvalidInput {
-                field: "object retention",
-                reason: "release exceeds durable frontier",
-            });
+            return Err(Error::InvalidInput { field: "object retention", reason: "release exceeds durable frontier" });
         }
-        self.inner
-            .bounded(
-                self.inner
-                    .primary
-                    .release_object_history(schema, item, through),
-            )
-            .await?;
+        self.inner.bounded(self.inner.primary.release_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())

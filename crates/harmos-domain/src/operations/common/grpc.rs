@@ -43,11 +43,7 @@ pub struct Grpc {
 /* === Implementations === */
 impl Grpc {
     pub const fn new(package: &'static str, service: &'static str, method: &'static str) -> Self {
-        Self {
-            package: Cow::Borrowed(package),
-            service: Cow::Borrowed(service),
-            method: Cow::Borrowed(method),
-        }
+        Self { package: Cow::Borrowed(package), service: Cow::Borrowed(service), method: Cow::Borrowed(method) }
     }
 
     pub fn validate(&self) -> Result<(), super::ContractError> {
@@ -74,9 +70,7 @@ impl Grpc {
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     value.len() <= 255
-        && bytes
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        && bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 

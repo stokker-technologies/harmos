@@ -39,11 +39,7 @@ use crate::Result;
 pub trait ProjectExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
@@ -54,14 +50,7 @@ impl ProjectExecution for Project {
         }
         let mut fields = Vec::with_capacity(self.fields.len());
         for projected in &self.fields {
-            if projected.name.is_empty()
-                || self
-                    .fields
-                    .iter()
-                    .filter(|field| field.name == projected.name)
-                    .count()
-                    != 1
-            {
+            if projected.name.is_empty() || self.fields.iter().filter(|field| field.name == projected.name).count() != 1 {
                 return Err(invalid("projection names must be nonempty and unique"));
             }
             let field = projected.field.field(input)?.with_name(&projected.name);
@@ -70,11 +59,7 @@ impl ProjectExecution for Project {
         Ok(Schema::new_with_metadata(fields, input.metadata().clone()))
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         let schema = Arc::new(self.output_schema(input.schema().as_ref())?);
         let mut columns = Vec::with_capacity(self.fields.len());
         for projected in &self.fields {
@@ -82,9 +67,7 @@ impl ProjectExecution for Project {
             // A nested projection must propagate parent Struct validity.
             let mut array = Arc::clone(projected.field.array(input)?);
             for depth in 1..projected.field.fields.len() {
-                let parent = FieldPath {
-                    fields: projected.field.fields[..depth].to_vec(),
-                };
+                let parent = FieldPath { fields: projected.field.fields[..depth].to_vec() };
                 let parent = parent.array(input)?;
                 if let Some(nulls) = parent.nulls() {
                     let combined = arrow_buffer::NullBuffer::union(array.nulls(), Some(nulls));

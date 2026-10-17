@@ -134,10 +134,7 @@ impl FromStr for Phase {
             "stopped" => Self::Stopped,
             "settled" => Self::Settled,
             _ => {
-                return Err(ParseError {
-                    kind: "phase",
-                    value: value.to_owned(),
-                });
+                return Err(ParseError { kind: "phase", value: value.to_owned() });
             }
         };
         Ok(phase)
@@ -167,10 +164,7 @@ impl FromStr for Outcome {
             "timed_out" => Self::TimedOut,
             "unavailable" => Self::Unavailable,
             _ => {
-                return Err(ParseError {
-                    kind: "outcome",
-                    value: value.to_owned(),
-                });
+                return Err(ParseError { kind: "outcome", value: value.to_owned() });
             }
         };
         Ok(outcome)

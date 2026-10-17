@@ -34,13 +34,7 @@ use super::*;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn append_file_once(
-        &self,
-        mutation: &MutationId,
-        token: &FileSession,
-        offset: u64,
-        bytes: &[u8],
-    ) -> Result<FileProducer> {
+    pub async fn append_file_once(&self, mutation: &MutationId, token: &FileSession, offset: u64, bytes: &[u8]) -> Result<FileProducer> {
         self.inner.primary.history().check(&token.history)?;
         let mut hash = Sha256::new();
         hash_part(&mut hash, b"storage.append_file:v1");

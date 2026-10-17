@@ -49,9 +49,7 @@ pub trait Value: Sized + Send + Sync {
     fn read(input: &mut Reader<'_>) -> Result<Self, MessageError>;
 
     fn size_many(values: &[Self]) -> usize {
-        values
-            .iter()
-            .fold(0usize, |size, value| size.saturating_add(value.size()))
+        values.iter().fold(0usize, |size, value| size.saturating_add(value.size()))
     }
     fn write_many(values: &[Self], bytes: &mut Vec<u8>) {
         for value in values {
@@ -62,10 +60,7 @@ pub trait Value: Sized + Send + Sync {
         input.claim(count)?;
         let mut bytes = decoding_multiply(count, std::mem::size_of::<Self>())?;
         for _ in 0..count {
-            bytes = decoding_add(
-                bytes,
-                Self::memory(input)?.saturating_sub(std::mem::size_of::<Self>()),
-            )?;
+            bytes = decoding_add(bytes, Self::memory(input)?.saturating_sub(std::mem::size_of::<Self>()))?;
         }
         Ok(bytes)
     }
@@ -87,48 +82,31 @@ impl Extend<u8> for Append<'_> {
 }
 impl<'a> Reader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            bytes,
-            depth: 0,
-            remaining: MAX_VALUES,
-        }
+        Self { bytes, depth: 0, remaining: MAX_VALUES }
     }
     pub fn remaining(&self) -> &'a [u8] {
         self.bytes
     }
     pub fn finish(self) -> Result<(), MessageError> {
-        if self.bytes.is_empty() {
-            Ok(())
-        } else {
-            Err(MessageError::borrowed("trailing Postcard bytes"))
-        }
+        if self.bytes.is_empty() { Ok(()) } else { Err(MessageError::borrowed("trailing Postcard bytes")) }
     }
     pub fn value<T: serde::Deserialize<'a>>(&mut self) -> Result<T, MessageError> {
         self.claim(1)?;
-        let (value, rest) = ::postcard::take_from_bytes(self.bytes)
-            .map_err(|_| MessageError::borrowed("invalid Postcard value"))?;
+        let (value, rest) = ::postcard::take_from_bytes(self.bytes).map_err(|_| MessageError::borrowed("invalid Postcard value"))?;
         self.bytes = rest;
         Ok(value)
     }
     pub fn take(&mut self, count: usize) -> Result<&'a [u8], MessageError> {
-        let (value, rest) = self
-            .bytes
-            .split_at_checked(count)
-            .ok_or_else(|| MessageError::borrowed("truncated Postcard bytes"))?;
+        let (value, rest) = self.bytes.split_at_checked(count).ok_or_else(|| MessageError::borrowed("truncated Postcard bytes"))?;
         self.bytes = rest;
         Ok(value)
     }
     pub fn claim(&mut self, count: usize) -> Result<(), MessageError> {
-        self.remaining = self
-            .remaining
-            .checked_sub(count)
-            .ok_or_else(|| MessageError::borrowed("Postcard structural work limit exceeded"))?;
+        self.remaining =
+            self.remaining.checked_sub(count).ok_or_else(|| MessageError::borrowed("Postcard structural work limit exceeded"))?;
         Ok(())
     }
-    pub fn nested<T>(
-        &mut self,
-        read: impl FnOnce(&mut Self) -> Result<T, MessageError>,
-    ) -> Result<T, MessageError> {
+    pub fn nested<T>(&mut self, read: impl FnOnce(&mut Self) -> Result<T, MessageError>) -> Result<T, MessageError> {
         if self.depth >= MAX_DEPTH {
             return Err(MessageError::borrowed("Postcard nesting limit exceeded"));
         }
@@ -224,9 +202,7 @@ impl<const N: usize> Value for [u8; N] {
 
     fn read(input: &mut Reader<'_>) -> Result<Self, MessageError> {
         if input.value::<usize>()? != N {
-            return Err(MessageError::borrowed(
-                "fixed byte value has the wrong length",
-            ));
+            return Err(MessageError::borrowed("fixed byte value has the wrong length"));
         }
         Ok(input.take(N)?.try_into().expect("checked fixed byte size"))
     }
@@ -297,22 +273,12 @@ impl<T: Value> Value for Option<T> {
     fn memory(input: &mut Reader<'_>) -> Result<usize, MessageError> {
         input.nested(|input| {
             let present: bool = input.value()?;
-            let allocation = if present {
-                T::memory(input)?.saturating_sub(std::mem::size_of::<T>())
-            } else {
-                0
-            };
+            let allocation = if present { T::memory(input)?.saturating_sub(std::mem::size_of::<T>()) } else { 0 };
             decoding_add(std::mem::size_of::<Self>(), allocation)
         })
     }
     fn read(input: &mut Reader<'_>) -> Result<Self, MessageError> {
-        input.nested(|input| {
-            if input.value::<bool>()? {
-                T::read(input).map(Some)
-            } else {
-                Ok(None)
-            }
-        })
+        input.nested(|input| if input.value::<bool>()? { T::read(input).map(Some) } else { Ok(None) })
     }
 }
 

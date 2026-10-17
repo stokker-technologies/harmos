@@ -46,11 +46,7 @@ criterion::criterion_main!(benches);
 // One sidecar `host.publish` child call end to end: kit encode, transport
 // frame, host admission, managed operation dispatch, staging and the answer.
 fn benchmarks(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let fixture = runtime.block_on(native::Fixture::new());
     // Warm The Pools And Caches Before Any Measurement
     runtime.block_on(fixture.publish(PROFILE_CALLS, 1));
@@ -76,10 +72,7 @@ fn benchmarks(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("batch_rows", size), &size, |b, &size| {
             b.iter_custom(|iterations| {
                 let rows = u32::try_from(iterations).expect("bounded iteration count") * size;
-                runtime
-                    .block_on(fixture.publish(rows, size))
-                    .into_iter()
-                    .sum()
+                runtime.block_on(fixture.publish(rows, size)).into_iter().sum()
             });
         });
     }

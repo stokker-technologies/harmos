@@ -40,17 +40,11 @@ pub trait Plugin: lifecycle::Policy + Send + Sync + Sized + 'static {
 
     fn prepare(config: Self::Config) -> Result<Self, Self::Error>;
 
-    fn initialize(
-        &mut self,
-        context: &Self::Context,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn initialize(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn bind_operations(&self, table: &mut WireTable<Self::Context>) -> Result<(), ServingError>;
 
-    fn stop(
-        &mut self,
-        context: &Self::Context,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn stop(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send;
 

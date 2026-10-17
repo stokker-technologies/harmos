@@ -107,25 +107,13 @@ impl OperationDeclaration for Encoded {
 }
 
 impl PluginSdkRegistration {
-    pub(super) fn new(
-        operations: OperationManager,
-        scope: &PluginScope,
-        mut entries: [Arc<Entry>; 2],
-        kind: PluginKind,
-    ) -> Result<Self> {
+    pub(super) fn new(operations: OperationManager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {
         scope.issue_generation_context()?;
-        let pair = scope.lifecycle().ok_or(Error::InvalidInput {
-            field: "SDK lifecycle",
-            reason: "generation has no frozen SDK pair",
-        })?;
+        let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
         for (entry, descriptor) in entries.iter_mut().zip(pair) {
-            let selected = entry.plugin().ok_or(Error::InvalidInput {
-                field: "SDK lifecycle",
-                reason: "entry has no original generation",
-            })?;
-            if !selected.same_activation(scope)
-                || entry.contract.as_ref() != Some(descriptor.contract())
-            {
+            let selected =
+                entry.plugin().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "entry has no original generation" })?;
+            if !selected.same_activation(scope) || entry.contract.as_ref() != Some(descriptor.contract()) {
                 return Err(Error::InvalidInput {
                     field: "SDK lifecycle",
                     reason: "entry differs from the frozen SDK descriptor or generation",
@@ -138,86 +126,48 @@ impl PluginSdkRegistration {
                 Action::Shutdown => "shutdown",
             };
             expected.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
-                .map_err(|source| Error::OperationDeclaration {
-                    source: harmos_domain::Error::from(source),
-                })?;
+                .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
             if entry.declared() != &expected {
-                return Err(Error::InvalidInput {
-                    field: "SDK lifecycle",
-                    reason: "entry is not the exact qualified SDK definition",
-                });
+                return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry is not the exact qualified SDK definition" });
             }
-            Arc::get_mut(entry)
-                .expect("new SDK entry has one owner")
-                .sdk = Some(action);
+            Arc::get_mut(entry).expect("new SDK entry has one owner").sdk = Some(action);
         }
         operations.reserve(&entries)?;
-        Ok(Self {
-            operations,
-            entries,
-            kind,
-        })
+        Ok(Self { operations, entries, kind })
     }
 
     pub fn submit_initialize(
-        &self,
-        authority: &PluginLifecycleAuthority<'_>,
-        config_json: &[u8],
-        encoding_memory_bytes: NonZeroUsize,
+        &self, authority: &PluginLifecycleAuthority<'_>, config_json: &[u8], encoding_memory_bytes: NonZeroUsize,
     ) -> Result<EncodedInvocation> {
         self.authorize(authority, 0)?;
-        let generation_context = self.entries[0]
-            .plugin()
-            .expect("SDK retains its original scope")
-            .issue_generation_context()?;
-        harmos_domain::validate_config(config_json).map_err(|source| Error::OperationFailed {
-            operation: self.entries[0].id().to_owned(),
-            source: Arc::new(source),
-        })?;
+        let generation_context = self.entries[0].plugin().expect("SDK retains its original scope").issue_generation_context()?;
+        harmos_domain::validate_config(config_json)
+            .map_err(|source| Error::OperationFailed { operation: self.entries[0].id().to_owned(), source: Arc::new(source) })?;
         self.submit(0, encoding_memory_bytes, |allowance| {
             let peak = config_json
                 .len()
                 .checked_mul(2)
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Initialize>() + 64 + 20))
-                .ok_or(Error::ResourceExhausted {
-                    resource: "SDK encoding memory",
-                })?;
+                .ok_or(Error::ResourceExhausted { resource: "SDK encoding memory" })?;
             if peak > allowance {
-                return Err(Error::ResourceExhausted {
-                    resource: "SDK encoding memory",
-                });
+                return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
             }
-            let request = Initialize {
-                config_json: config_json.to_vec(),
-                generation_context: generation_context.to_vec(),
-            };
+            let request = Initialize { config_json: config_json.to_vec(), generation_context: generation_context.to_vec() };
             Ok(request.encode_to_vec())
         })
     }
 
-    pub fn submit_shutdown(
-        &self,
-        authority: &PluginLifecycleAuthority<'_>,
-    ) -> Result<EncodedInvocation> {
+    pub fn submit_shutdown(&self, authority: &PluginLifecycleAuthority<'_>) -> Result<EncodedInvocation> {
         self.authorize(authority, 1)?;
         self.submit(1, NonZeroUsize::new(1).unwrap(), |_| Ok(Vec::new()))
     }
 
     fn authorize(&self, authority: &PluginLifecycleAuthority<'_>, index: usize) -> Result<()> {
         let entry = &self.entries[index];
-        let scope = entry
-            .plugin()
-            .expect("SDK entries retain their original scope");
-        let phase = if index == 0 {
-            PluginLifecyclePhase::Initialize
-        } else {
-            PluginLifecyclePhase::Shutdown
-        };
+        let scope = entry.plugin().expect("SDK entries retain their original scope");
+        let phase = if index == 0 { PluginLifecyclePhase::Initialize } else { PluginLifecyclePhase::Shutdown };
         if !authority.matches_scope(scope, self.kind, phase)
-            || authority
-                .declaration()
-                .map(|descriptor| descriptor.contract())
-                != entry.contract.as_ref()
+            || authority.declaration().map(|descriptor| descriptor.contract()) != entry.contract.as_ref()
         {
             return Err(Error::InvalidInput {
                 field: "SDK lifecycle authority",
@@ -227,19 +177,12 @@ impl PluginSdkRegistration {
         Ok(())
     }
 
-    fn submit(
-        &self,
-        index: usize,
-        bytes: NonZeroUsize,
-        encode: impl FnOnce(usize) -> Result<Vec<u8>>,
-    ) -> Result<EncodedInvocation> {
+    fn submit(&self, index: usize, bytes: NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>) -> Result<EncodedInvocation> {
         let submitted = executor::now();
         let entry = &self.entries[index];
         entry.available()?;
         if !entry.settled() {
-            return Err(Error::ResourceExhausted {
-                resource: "SDK physical settlement",
-            });
+            return Err(Error::ResourceExhausted { resource: "SDK physical settlement" });
         }
         let preparation = self.operations.claim_preparation(bytes)?;
         #[cfg(feature = "plugin-sidecar")]
@@ -248,28 +191,15 @@ impl PluginSdkRegistration {
             .as_ref()
             .map(|binding| binding.reserve())
             .transpose()
-            .map_err(|source| Error::OperationFailed {
-                operation: entry.id().to_owned(),
-                source: Arc::new(source),
-            })?;
+            .map_err(|source| Error::OperationFailed { operation: entry.id().to_owned(), source: Arc::new(source) })?;
         let payload = encode(bytes.get())?;
         if payload.capacity() > bytes.get() {
-            return Err(Error::ResourceExhausted {
-                resource: "SDK encoding memory",
-            });
+            return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
         }
-        let dispatch = entry.wire.ok_or(Error::InvalidInput {
-            field: "SDK lifecycle",
-            reason: "entry has no original wire adapter",
-        })?;
+        let dispatch = entry.wire.ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "entry has no original wire adapter" })?;
         let mut invocation = dispatch(
             &self.operations,
-            Submission {
-                submitted,
-                entry: Arc::clone(entry),
-                cause: None,
-                preparation: None,
-            },
+            Submission { submitted, entry: Arc::clone(entry), cause: None, preparation: None },
             Source::Host,
             None,
             EncodedInput {
@@ -284,15 +214,9 @@ impl PluginSdkRegistration {
         invocation.outcome = Box::pin(async move {
             let payload = outcome.await?;
             if !payload.is_empty() {
-                return Err(Error::InvalidInput {
-                    field: "SDK response",
-                    reason: "expected the exact empty SDK acknowledgement",
-                });
+                return Err(Error::InvalidInput { field: "SDK response", reason: "expected the exact empty SDK acknowledgement" });
             }
-            control
-                .settle()
-                .await
-                .map_err(|source| Error::OperationSettlement { source })?;
+            control.settle().await.map_err(|source| Error::OperationSettlement { source })?;
             Ok(payload)
         });
         Ok(invocation)

@@ -79,8 +79,7 @@ use tonic::Status;
 
 /* === Type Aliases === */
 
-type Settlement<R, E> =
-    Pin<Box<dyn Future<Output = Result<crate::operations::Response<R>, E>> + Send>>;
+type Settlement<R, E> = Pin<Box<dyn Future<Output = Result<crate::operations::Response<R>, E>> + Send>>;
 
 /* === Structs === */
 
@@ -123,10 +122,7 @@ enum State<R> {
 /* === Implementations === */
 
 impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for ResponseStream<O, T, E> {
-    type Item = Result<
-        Event<crate::operations::StreamItem<T>, crate::operations::Response<O::Response>>,
-        E,
-    >;
+    type Item = Result<Event<crate::operations::StreamItem<T>, crate::operations::Response<O::Response>>, E>;
 
     fn poll_next(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -224,10 +220,7 @@ impl<R> Completion<R> {
 }
 
 impl Opening {
-    fn validate<R, I>(
-        &mut self,
-        envelope: InputEnvelope<R, I>,
-    ) -> Result<InputEnvelope<R, I>, Status> {
+    fn validate<R, I>(&mut self, envelope: InputEnvelope<R, I>) -> Result<InputEnvelope<R, I>, Status> {
         match &envelope {
             InputEnvelope::Request(_) => self.request()?,
             InputEnvelope::Item(_) => self.item()?,
@@ -284,44 +277,27 @@ pub fn stream<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::OperationInstance<O>,
     items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
-    ResponseStream {
-        pending: Box::pin(response(instance)),
-        items: Some(items.into_receiver()),
-        result: None,
-    }
+    ResponseStream { pending: Box::pin(response(instance)), items: Some(items.into_receiver()), result: None }
 }
 
 pub fn exchange<O, S>(
     instance: crate::operations::OperationInstance<O>,
-    input: crate::operations::StreamOutput<<O::Input as crate::operations::Direction>::Item>,
-    incoming: S,
+    input: crate::operations::StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
     output: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item, InputError>
 where
     O: crate::operations::OperationDeclaration,
-    S: Stream<
-            Item = Result<
-                crate::operations::StreamItem<<O::Input as crate::operations::Direction>::Item>,
-                tonic::Status,
-            >,
-        > + Send
+    S: Stream<Item = Result<crate::operations::StreamItem<<O::Input as crate::operations::Direction>::Item>, tonic::Status>>
+        + Send
         + 'static,
 {
-    ResponseStream {
-        pending: Box::pin(self::input(instance, input, incoming)),
-        items: Some(output.into_receiver()),
-        result: None,
-    }
+    ResponseStream { pending: Box::pin(self::input(instance, input, incoming)), items: Some(output.into_receiver()), result: None }
 }
 
 pub fn response<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::OperationInstance<O>,
-) -> impl std::future::Future<Output = crate::Result<crate::operations::Response<O::Response>>> + Send
-{
-    let pending = Pending {
-        instance,
-        delivered: false,
-    };
+) -> impl std::future::Future<Output = crate::Result<crate::operations::Response<O::Response>>> + Send {
+    let pending = Pending { instance, delivered: false };
     async move {
         let mut pending = pending;
         let result = (&mut pending.instance).await;

@@ -56,20 +56,12 @@ pub enum RemoteStreamError {
 
 pub trait StreamPeer: Sync {
     type Error: From<RemoteStreamError> + Send;
-    fn stream_phase(
-        &self,
-        command: WireCommand,
-    ) -> impl Future<Output = Result<WireAnswer, Self::Error>> + Send;
+    fn stream_phase(&self, command: WireCommand) -> impl Future<Output = Result<WireAnswer, Self::Error>> + Send;
 }
 
 pub trait StreamEndpoints: EndpointSet {
     fn pump<P: StreamPeer>(
-        &mut self,
-        peer: &P,
-        invocation: u64,
-        epoch: u64,
-        ended: watch::Receiver<bool>,
-        transferred: &AtomicBool,
+        &mut self, peer: &P, invocation: u64, epoch: u64, ended: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> impl Future<Output = Result<(), P::Error>> + Send;
 }
 
@@ -105,47 +97,25 @@ impl RemoteStreamError {
     }
 }
 impl StreamEndpoints for () {
-    async fn pump<P: StreamPeer>(
-        &mut self,
-        _: &P,
-        _: u64,
-        _: u64,
-        _: watch::Receiver<bool>,
-        _: &AtomicBool,
-    ) -> Result<(), P::Error> {
+    async fn pump<P: StreamPeer>(&mut self, _: &P, _: u64, _: u64, _: watch::Receiver<bool>, _: &AtomicBool) -> Result<(), P::Error> {
         Ok(())
     }
 }
 impl<T: Message + 'static> StreamEndpoints for StreamInput<T> {
     async fn pump<P: StreamPeer>(
-        &mut self,
-        peer: &P,
-        invocation: u64,
-        epoch: u64,
-        mut ended: watch::Receiver<bool>,
-        _: &AtomicBool,
+        &mut self, peer: &P, invocation: u64, epoch: u64, mut ended: watch::Receiver<bool>, _: &AtomicBool,
     ) -> Result<(), P::Error> {
         let sending = async {
             while let Some(item) = self.recv().await {
                 if item.encoded_len() > WireCommand::LIMIT {
-                    return Err(
-                        RemoteStreamError::Protocol("stream item exceeds frame limit").into(),
-                    );
+                    return Err(RemoteStreamError::Protocol("stream item exceeds frame limit").into());
                 }
-                let command = WireCommand::StreamSend {
-                    invocation,
-                    epoch,
-                    payload: item.encode_to_vec(),
-                };
+                let command = WireCommand::StreamSend { invocation, epoch, payload: item.encode_to_vec() };
                 acknowledge(peer.stream_phase(command).await?).map_err(P::Error::from)?;
                 // The Original Item Claim Is Retained Until Provider Admission.
                 drop(item);
             }
-            acknowledge(
-                peer.stream_phase(WireCommand::StreamFinish { invocation, epoch })
-                    .await?,
-            )
-            .map_err(P::Error::from)
+            acknowledge(peer.stream_phase(WireCommand::StreamFinish { invocation, epoch }).await?).map_err(P::Error::from)
         };
         tokio::select! {
             biased;
@@ -156,23 +126,12 @@ impl<T: Message + 'static> StreamEndpoints for StreamInput<T> {
 }
 impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
     async fn pump<P: StreamPeer>(
-        &mut self,
-        peer: &P,
-        invocation: u64,
-        epoch: u64,
-        _: watch::Receiver<bool>,
-        transferred: &AtomicBool,
+        &mut self, peer: &P, invocation: u64, epoch: u64, _: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> Result<(), P::Error> {
         loop {
-            let answer = peer
-                .stream_phase(WireCommand::StreamReceive { invocation, epoch })
-                .await?;
+            let answer = peer.stream_phase(WireCommand::StreamReceive { invocation, epoch }).await?;
             let payload = match answer {
-                WireAnswer::Stream {
-                    epoch: received,
-                    transferred: observed,
-                    payload,
-                } if received == epoch => {
+                WireAnswer::Stream { epoch: received, transferred: observed, payload } if received == epoch => {
                     if observed {
                         transferred.store(true, Ordering::Release);
                     }
@@ -182,26 +141,18 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
                     return Err(RemoteStreamError::Remote(failure).into());
                 }
                 _ => {
-                    return Err(RemoteStreamError::Protocol(
-                        "expected stream reply for the original attempt",
-                    )
-                    .into());
+                    return Err(RemoteStreamError::Protocol("expected stream reply for the original attempt").into());
                 }
             };
             let Some(payload) = payload else {
                 return Ok(());
             };
             if payload.capacity() > WireCommand::LIMIT {
-                return Err(
-                    RemoteStreamError::Protocol("stream response exceeds frame limit").into(),
-                );
+                return Err(RemoteStreamError::Protocol("stream response exceeds frame limit").into());
             }
             // Actual Items Fence Retry Even If A Malformed Peer Omits Its Flag.
             transferred.store(true, Ordering::Release);
-            self.decode(&payload)
-                .await
-                .map_err(RemoteStreamError::Output)
-                .map_err(P::Error::from)?;
+            self.decode(&payload).await.map_err(RemoteStreamError::Output).map_err(P::Error::from)?;
         }
     }
 }
@@ -211,16 +162,10 @@ where
     O: Message + MemorySize + 'static,
 {
     async fn pump<P: StreamPeer>(
-        &mut self,
-        peer: &P,
-        invocation: u64,
-        epoch: u64,
-        ended: watch::Receiver<bool>,
-        transferred: &AtomicBool,
+        &mut self, peer: &P, invocation: u64, epoch: u64, ended: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> Result<(), P::Error> {
         tokio::try_join!(
-            self.0
-                .pump(peer, invocation, epoch, ended.clone(), transferred),
+            self.0.pump(peer, invocation, epoch, ended.clone(), transferred),
             self.1.pump(peer, invocation, epoch, ended, transferred),
         )?;
         Ok(())
@@ -231,17 +176,10 @@ where
 
 /* === Private Functions === */
 pub(super) async fn attempt<P: StreamPeer, E: StreamEndpoints>(
-    peer: &P,
-    endpoints: &mut E,
-    invocation: u64,
-    epoch: u64,
-    transferred: &AtomicBool,
+    peer: &P, endpoints: &mut E, invocation: u64, epoch: u64, transferred: &AtomicBool,
     running: impl Future<Output = Result<WireAnswer, P::Error>> + Send,
 ) -> Result<WireAnswer, P::Error> {
-    let mut transfer = Transfer {
-        observed: transferred,
-        completed: false,
-    };
+    let mut transfer = Transfer { observed: transferred, completed: false };
     let (stop, ended) = watch::channel(false);
     let pumping = endpoints.pump(peer, invocation, epoch, ended, transferred);
     tokio::pin!(running, pumping);
@@ -267,9 +205,7 @@ fn acknowledge(answer: WireAnswer) -> Result<(), RemoteStreamError> {
     match answer {
         WireAnswer::Ready { payload } if payload.is_empty() => Ok(()),
         WireAnswer::Failed { failure } => Err(RemoteStreamError::Remote(failure)),
-        _ => Err(RemoteStreamError::Protocol(
-            "expected empty stream acknowledgement",
-        )),
+        _ => Err(RemoteStreamError::Protocol("expected empty stream acknowledgement")),
     }
 }
 

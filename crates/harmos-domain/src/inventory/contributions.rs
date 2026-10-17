@@ -81,10 +81,7 @@ pub enum Error {
 /* === Implementations === */
 impl Section {
     pub const fn new(namespace: &'static str, payload: &'static str) -> Self {
-        Self {
-            namespace: Cow::Borrowed(namespace),
-            payload: Cow::Borrowed(payload),
-        }
+        Self { namespace: Cow::Borrowed(namespace), payload: Cow::Borrowed(payload) }
     }
 
     pub fn decode<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
@@ -103,39 +100,23 @@ impl TryFrom<Decoded> for Manifest {
     type Error = Error;
 
     fn try_from(value: Decoded) -> Result<Self, Error> {
-        if value
-            .kind
-            .as_deref()
-            .is_some_and(|kind| kind != "contributions")
-        {
+        if value.kind.as_deref().is_some_and(|kind| kind != "contributions") {
             return Err(Error::Identity);
         }
-        let manifest = Self {
-            facility: value.facility,
-            owner: value.owner,
-            sections: value.sections,
-        };
+        let manifest = Self { facility: value.facility, owner: value.owner, sections: value.sections };
         validate(&manifest)?;
         Ok(manifest)
     }
 }
 
 /* === Public Functions === */
-pub fn select(
-    manifests: Vec<Manifest>,
-    facility: &str,
-    owner: &str,
-) -> Result<Vec<Section>, Error> {
-    let mut matching = manifests
-        .into_iter()
-        .filter(|manifest| manifest.facility == facility && manifest.owner == owner);
+pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<Section>, Error> {
+    let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
     let Some(manifest) = matching.next() else {
         return Ok(Vec::new());
     };
     if matching.next().is_some() {
-        return Err(Error::Duplicate {
-            owner: owner.to_owned(),
-        });
+        return Err(Error::Duplicate { owner: owner.to_owned() });
     }
     Ok(manifest.sections)
 }
@@ -150,14 +131,10 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
     let mut namespaces = BTreeSet::new();
     for section in &manifest.sections {
         if !crate::artifact_subset(&section.namespace) || !namespaces.insert(&section.namespace) {
-            return Err(Error::Namespace {
-                namespace: section.namespace.to_string(),
-            });
+            return Err(Error::Namespace { namespace: section.namespace.to_string() });
         }
-        serde_json::from_str::<IgnoredAny>(&section.payload).map_err(|source| Error::Payload {
-            namespace: section.namespace.to_string(),
-            source,
-        })?;
+        serde_json::from_str::<IgnoredAny>(&section.payload)
+            .map_err(|source| Error::Payload { namespace: section.namespace.to_string(), source })?;
     }
     Ok(())
 }
@@ -199,14 +176,8 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, sections: &[Sec
 /* === Private Functions === */
 const fn encoded<const N: usize>(facility: &str, owner: &str, sections: &[Section]) -> Encoder<N> {
     assert!(valid_identity(facility, owner));
-    assert!(
-        sections.len() <= ENTRY_LIMIT,
-        "contribution sections exceed their budget"
-    );
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+    assert!(sections.len() <= ENTRY_LIMIT, "contribution sections exceed their budget");
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(PREFIX);
     out.raw(b"{\"kind\":\"contributions\",\"facility\":");
     out.quoted(facility);
@@ -219,10 +190,7 @@ const fn encoded<const N: usize>(facility: &str, owner: &str, sections: &[Sectio
             out.raw(b",");
         }
         let (namespace, payload) = sections[index].borrowed();
-        assert!(
-            crate::artifact_subset(namespace),
-            "contribution namespaces use the portable artifact subset"
-        );
+        assert!(crate::artifact_subset(namespace), "contribution namespaces use the portable artifact subset");
         out.raw(b"{\"namespace\":");
         out.quoted(namespace);
         out.raw(b",\"payload\":");

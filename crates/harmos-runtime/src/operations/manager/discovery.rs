@@ -73,11 +73,7 @@ impl Write for Bounded {
 }
 
 impl OperationManager {
-    pub(in crate::operations) fn discover(
-        &self,
-        source: &Source,
-        request: &Catalog,
-    ) -> Result<CatalogPage> {
+    pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
         let origin = source.check()?;
         let (rows, bytes) = limits(request)?;
         let after: Option<(String, String)> = request
@@ -85,53 +81,30 @@ impl OperationManager {
             .as_ref()
             .map(|cursor| {
                 if cursor.len() > CURSOR_BYTES {
-                    return Err(Error::InvalidInput {
-                        field: "discovery cursor",
-                        reason: "cursor is too large",
-                    });
+                    return Err(Error::InvalidInput { field: "discovery cursor", reason: "cursor is too large" });
                 }
-                let key: (String, String) =
-                    serde_json::from_str(cursor).map_err(|_| Error::InvalidInput {
-                        field: "discovery cursor",
-                        reason: "cursor must contain an operation and owner",
-                    })?;
+                let key: (String, String) = serde_json::from_str(cursor)
+                    .map_err(|_| Error::InvalidInput { field: "discovery cursor", reason: "cursor must contain an operation and owner" })?;
                 for value in [&key.0, &key.1] {
-                    Identifier::new(value.as_str()).map_err(|_| Error::InvalidInput {
-                        field: "discovery cursor",
-                        reason: "cursor contains an invalid identifier",
-                    })?;
+                    Identifier::new(value.as_str())
+                        .map_err(|_| Error::InvalidInput { field: "discovery cursor", reason: "cursor contains an invalid identifier" })?;
                 }
                 Ok(key)
             })
             .transpose()?;
 
-        let mut output = Bounded {
-            bytes: vec![b'['],
-            limit: bytes - 1,
-        };
+        let mut output = Bounded { bytes: vec![b'['], limit: bytes - 1 };
         let mut count = 0;
         let mut last = None;
         let mut next = None;
         let mut position = after;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
-            if !entry.active.load(Ordering::Acquire)
-                || entry.available().is_err()
-                || entry.authorize(&origin).is_err()
-            {
+            if !entry.active.load(Ordering::Acquire) || entry.available().is_err() || entry.authorize(&origin).is_err() {
                 continue;
             }
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
-            if entry.sdk.is_some()
-                || entry
-                    .plugin
-                    .as_ref()
-                    .is_some_and(|scope| !scope.is_ready() || scope.is_closed())
-            {
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            if entry.sdk.is_some() || entry.plugin.as_ref().is_some_and(|scope| !scope.is_ready() || scope.is_closed()) {
                 continue;
             }
             let Some(contract) = &entry.contract else {
@@ -147,22 +120,11 @@ impl OperationManager {
             if !entry.active.load(Ordering::Acquire) || entry.available().is_err() {
                 continue;
             }
-            let state = self
-                .registry
-                .state
-                .lock()
-                .expect("operation registry lock is healthy");
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
             if state.closing || !self.instances.is_accepting() {
-                return Err(Error::Closing {
-                    domain: "operations",
-                });
+                return Err(Error::Closing { domain: "operations" });
             }
-            if !state
-                .entries
-                .get(&id)
-                .and_then(|owners| owners.get(&owner))
-                .is_some_and(|registered| Arc::ptr_eq(registered, &entry))
-            {
+            if !state.entries.get(&id).and_then(|owners| owners.get(&owner)).is_some_and(|registered| Arc::ptr_eq(registered, &entry)) {
                 continue;
             }
             #[cfg(not(feature = "grpc"))]
@@ -170,20 +132,11 @@ impl OperationManager {
             #[cfg(feature = "grpc")]
             let grpc_available = entry.grpc.is_some()
                 && contract.grpc().is_some_and(|binding| {
-                    state
-                        .grpc
-                        .get(&binding.path())
-                        .is_some_and(|registered| registered.as_ptr() == Arc::as_ptr(&entry))
+                    state.grpc.get(&binding.path()).is_some_and(|registered| registered.as_ptr() == Arc::as_ptr(&entry))
                 });
             drop(state);
-            let grants: &[Grant] = required
-                .as_ref()
-                .map_or(&[], |selected| selected.grants.as_slice());
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            let grants: &[Grant] = required.as_ref().map_or(&[], |selected| selected.grants.as_slice());
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             let grants = origin
                 .scope
                 .as_ref()
@@ -191,23 +144,10 @@ impl OperationManager {
                 .map_or(grants, |required| required.grants.as_slice());
             let selected_grants;
             let grants = if let Some(required) = &required {
-                #[cfg(any(
-                    feature = "plugin",
-                    feature = "plugin-guest",
-                    feature = "plugin-sidecar"
-                ))]
-                let plugin_required = origin
-                    .scope
-                    .as_ref()
-                    .and_then(|caller| caller.requirement(&entry.definition.id));
-                #[cfg(not(any(
-                    feature = "plugin",
-                    feature = "plugin-guest",
-                    feature = "plugin-sidecar"
-                )))]
-                let plugin_required: Option<
-                    &harmos_domain::inventory::contracts::Required,
-                > = None;
+                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                let plugin_required = origin.scope.as_ref().and_then(|caller| caller.requirement(&entry.definition.id));
+                #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+                let plugin_required: Option<&harmos_domain::inventory::contracts::Required> = None;
                 selected_grants = required
                     .grants
                     .iter()
@@ -233,9 +173,7 @@ impl OperationManager {
             if count == rows || serde_json::to_writer(&mut output, &metadata).is_err() {
                 output.bytes.truncate(start);
                 if count == 0 {
-                    return Err(Error::ResourceExhausted {
-                        resource: "discovery schema bytes",
-                    });
+                    return Err(Error::ResourceExhausted { resource: "discovery schema bytes" });
                 }
                 next = last.take();
                 break;
@@ -244,28 +182,17 @@ impl OperationManager {
             count += 1;
         }
         output.bytes.push(b']');
-        Ok(CatalogPage {
-            entries: output.bytes,
-            next,
-        })
+        Ok(CatalogPage { entries: output.bytes, next })
     }
 
     fn next_discovery(&self, after: Option<&(String, String)>) -> Result<Option<ProviderEntry>> {
-        let state = self
-            .registry
-            .state
-            .lock()
-            .expect("operation registry lock is healthy");
+        let state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || !self.instances.is_accepting() {
-            return Err(Error::Closing {
-                domain: "operations",
-            });
+            return Err(Error::Closing { domain: "operations" });
         }
         let start = after.map_or(Bound::Unbounded, |key| Bound::Included(key.0.as_str()));
         for (id, owners) in state.entries.range::<str, _>((start, Bound::Unbounded)) {
-            let start = after
-                .filter(|key| key.0 == *id)
-                .map_or(Bound::Unbounded, |key| Bound::Excluded(key.1.as_str()));
+            let start = after.filter(|key| key.0 == *id).map_or(Bound::Unbounded, |key| Bound::Excluded(key.1.as_str()));
             if let Some((owner, entry)) = owners.range::<str, _>((start, Bound::Unbounded)).next() {
                 return Ok(Some((id.clone(), owner.clone(), entry.clone())));
             }
@@ -280,10 +207,7 @@ pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)>
     let rows = request.rows.unwrap_or(64);
     let bytes = request.bytes.unwrap_or(64 * 1024);
     if rows == 0 || rows > MAX_ROWS || !(2..=MAX_BYTES).contains(&bytes) {
-        return Err(Error::InvalidInput {
-            field: "catalog limits",
-            reason: "rows must be 1..=256 and bytes must be 2..=4194304",
-        });
+        return Err(Error::InvalidInput { field: "catalog limits", reason: "rows must be 1..=256 and bytes must be 2..=4194304" });
     }
     Ok((rows, bytes))
 }

@@ -57,17 +57,9 @@ fn identity() -> Identity {
 
 fn executable(facility: Facility) -> Executable {
     let mut registrar = Registrar::new();
-    registrar
-        .register("zeta.catalog", 1, &json!({"suite":"probe"}))
-        .unwrap();
-    registrar
-        .register("alpha.catalog", 2, &json!([1, 2]))
-        .unwrap();
-    Executable {
-        facility,
-        target: "test-target".into(),
-        registrations: registrar.finish(),
-    }
+    registrar.register("zeta.catalog", 1, &json!({"suite":"probe"})).unwrap();
+    registrar.register("alpha.catalog", 2, &json!([1, 2])).unwrap();
+    Executable { facility, target: "test-target".into(), registrations: registrar.finish() }
 }
 
 fn fragments(facility: &str, owner: &str) -> Vec<u8> {
@@ -81,18 +73,14 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     };
-    let lifecycle = [
-        Descriptor::new(Action::Initialize, policy).unwrap(),
-        Descriptor::new(Action::Shutdown, policy).unwrap(),
-    ];
+    let lifecycle = [Descriptor::new(Action::Initialize, policy).unwrap(), Descriptor::new(Action::Shutdown, policy).unwrap()];
     let mut fragments = vec![
         json!({"kind":"plugin","facility":facility,"id":owner,"version":"1.0.0","description":"Byte-only fixture","config":"Settings"}),
         json!({"kind":"contracts","facility":facility,"owner":owner,"provides":[],"requires":[],"lifecycle":lifecycle}),
         json!({"kind":"publications","facility":facility,"owner":owner,"streams":[]}),
     ];
     if facility == "sidecar" {
-        fragments
-            .push(json!({"kind":"observers","facility":facility,"owner":owner,"observers":[]}));
+        fragments.push(json!({"kind":"observers","facility":facility,"owner":owner,"observers":[]}));
         fragments.push(json!({"kind":"restart","facility":facility,"owner":owner,"policy":{"credit":1,"sustained_health_ms":1000,"backoff_base_ms":1,"backoff_cap_ms":2}}));
     }
     let mut bytes = Vec::new();
@@ -124,23 +112,12 @@ fn guest() -> Vec<u8> {
 }
 
 fn asset() -> Bundle {
-    Bundle::build(
-        identity(),
-        &[Source {
-            path: "files/data",
-            bytes: b"abc",
-            executable: None,
-        }],
-        Limits::default(),
-    )
-    .unwrap()
+    Bundle::build(identity(), &[Source { path: "files/data", bytes: b"abc", executable: None }], Limits::default()).unwrap()
 }
 
 fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8> {
     let mut builder = tar::Builder::new(Vec::new());
-    for (name, bytes, kind) in std::iter::once(("manifest.json", manifest, tar::EntryType::Regular))
-        .chain(entries.iter().copied())
-    {
+    for (name, bytes, kind) in std::iter::once(("manifest.json", manifest, tar::EntryType::Regular)).chain(entries.iter().copied()) {
         let mut header = tar::Header::new_ustar();
         header.as_mut_bytes()[..name.len()].copy_from_slice(name.as_bytes());
         header.set_entry_type(kind);
@@ -161,121 +138,46 @@ fn archive(manifest: &[u8], entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8
 fn independent_files_roundtrip() {
     let staging = tempfile::tempdir().unwrap();
     let marker = staging.path().join("executed");
-    let mut native = format!(
-        "#!/bin/sh\nprintf executed > '{}'\nexit 73\n",
-        marker.display()
-    )
-    .into_bytes();
+    let mut native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
     native.extend(fragments("sidecar", "native.fixture"));
     let guest = guest();
     let sources = [
-        Source {
-            path: "files/icon.svg",
-            bytes: b"<svg/>",
-            executable: None,
-        },
-        Source {
-            path: "bin/probe",
-            bytes: &native,
-            executable: Some(executable(Facility::Sidecar)),
-        },
-        Source {
-            path: "guests/tool.wasm",
-            bytes: &guest,
-            executable: Some(executable(Facility::Guest)),
-        },
+        Source { path: "files/icon.svg", bytes: b"<svg/>", executable: None },
+        Source { path: "bin/probe", bytes: &native, executable: Some(executable(Facility::Sidecar)) },
+        Source { path: "guests/tool.wasm", bytes: &guest, executable: Some(executable(Facility::Guest)) },
     ];
     let bundle = Bundle::build(identity(), &sources, Limits::default()).unwrap();
     let reversed = [
-        Source {
-            path: sources[2].path,
-            bytes: sources[2].bytes,
-            executable: sources[2].executable.clone(),
-        },
-        Source {
-            path: sources[1].path,
-            bytes: sources[1].bytes,
-            executable: sources[1].executable.clone(),
-        },
-        Source {
-            path: sources[0].path,
-            bytes: sources[0].bytes,
-            executable: None,
-        },
+        Source { path: sources[2].path, bytes: sources[2].bytes, executable: sources[2].executable.clone() },
+        Source { path: sources[1].path, bytes: sources[1].bytes, executable: sources[1].executable.clone() },
+        Source { path: sources[0].path, bytes: sources[0].bytes, executable: None },
     ];
-    assert_eq!(
-        bundle.bytes(),
-        Bundle::build(identity(), &reversed, Limits::default())
-            .unwrap()
-            .bytes()
-    );
+    assert_eq!(bundle.bytes(), Bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
-    assert_eq!(
-        inspected.declaration("bin/probe"),
-        Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap())
-    );
-    assert_eq!(
-        inspected.declaration("guests/tool.wasm"),
-        Some(&Declaration::inspect(&guest, Inspected::Guest).unwrap())
-    );
+    assert_eq!(inspected.declaration("bin/probe"), Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap()));
+    assert_eq!(inspected.declaration("guests/tool.wasm"), Some(&Declaration::inspect(&guest, Inspected::Guest).unwrap()));
     let manifest = serde_json::to_value(inspected.manifest()).unwrap();
-    assert!(
-        manifest["files"][0]["executable"]
-            .get("declaration")
-            .is_none()
-    );
+    assert!(manifest["files"][0]["executable"].get("declaration").is_none());
     for source in &sources {
         assert_eq!(inspected.file(source.path), Some(source.bytes));
-        let file = inspected
-            .manifest()
-            .files
-            .iter()
-            .find(|file| file.path == source.path)
-            .unwrap();
+        let file = inspected.manifest().files.iter().find(|file| file.path == source.path).unwrap();
         assert_eq!(file.executable, source.executable);
     }
     let extracted = inspected.extract(staging.path()).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            std::fs::metadata(extracted.path())
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o700
-        );
-        for (path, mode) in [
-            ("bin/probe", 0o755),
-            ("guests/tool.wasm", 0o644),
-            ("files/icon.svg", 0o644),
-        ] {
-            assert_eq!(
-                std::fs::metadata(extracted.path().join(path))
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                mode
-            );
+        assert_eq!(std::fs::metadata(extracted.path()).unwrap().permissions().mode() & 0o777, 0o700);
+        for (path, mode) in [("bin/probe", 0o755), ("guests/tool.wasm", 0o644), ("files/icon.svg", 0o644)] {
+            assert_eq!(std::fs::metadata(extracted.path().join(path)).unwrap().permissions().mode() & 0o777, mode);
         }
     }
     for source in &sources {
-        assert_eq!(
-            std::fs::read(extracted.path().join(source.path)).unwrap(),
-            source.bytes
-        );
+        assert_eq!(std::fs::read(extracted.path().join(source.path)).unwrap(), source.bytes);
     }
-    assert_eq!(
-        std::fs::read(extracted.path().join("manifest.json")).unwrap(),
-        serde_json::to_vec(inspected.manifest()).unwrap()
-    );
-    assert!(
-        !marker.exists(),
-        "neither inspection nor extraction executes native code"
-    );
+    assert_eq!(std::fs::read(extracted.path().join("manifest.json")).unwrap(), serde_json::to_vec(inspected.manifest()).unwrap());
+    assert!(!marker.exists(), "neither inspection nor extraction executes native code");
     let path = extracted.path().to_owned();
     drop(extracted);
     assert!(!path.exists());
@@ -287,26 +189,11 @@ fn executable_owned_registrations() {
     let native = fragments("sidecar", "probe");
     let mut export = executable(Facility::Sidecar);
     let build = |export: Executable| {
-        Bundle::build(
-            identity(),
-            &[Source {
-                path: "bin/probe",
-                bytes: &native,
-                executable: Some(export),
-            }],
-            Limits::default(),
-        )
+        Bundle::build(identity(), &[Source { path: "bin/probe", bytes: &native, executable: Some(export) }], Limits::default())
     };
     export.registrations.reverse();
     let valid = build(export.clone()).unwrap();
-    assert_eq!(
-        valid.manifest().files[0]
-            .executable
-            .as_ref()
-            .unwrap()
-            .registrations,
-        executable(Facility::Sidecar).registrations
-    );
+    assert_eq!(valid.manifest().files[0].executable.as_ref().unwrap().registrations, executable(Facility::Sidecar).registrations);
     for change in 0..4 {
         let mut invalid = executable(Facility::Sidecar);
         match change {
@@ -319,16 +206,8 @@ fn executable_owned_registrations() {
     }
     assert!(build(executable(Facility::Guest)).is_err());
     let sources = [
-        Source {
-            path: "bin/one",
-            bytes: &native,
-            executable: Some(export.clone()),
-        },
-        Source {
-            path: "bin/two",
-            bytes: &native,
-            executable: Some(export.clone()),
-        },
+        Source { path: "bin/one", bytes: &native, executable: Some(export.clone()) },
+        Source { path: "bin/two", bytes: &native, executable: Some(export.clone()) },
     ];
     assert!(Bundle::build(identity(), &sources, Limits::default()).is_err());
     let mut other_target = export.clone();
@@ -337,16 +216,8 @@ fn executable_owned_registrations() {
         Bundle::build(
             identity(),
             &[
-                Source {
-                    path: "bin/one",
-                    bytes: &native,
-                    executable: Some(export)
-                },
-                Source {
-                    path: "bin/two",
-                    bytes: &native,
-                    executable: Some(other_target)
-                },
+                Source { path: "bin/one", bytes: &native, executable: Some(export) },
+                Source { path: "bin/two", bytes: &native, executable: Some(other_target) },
             ],
             Limits::default()
         )
@@ -355,11 +226,7 @@ fn executable_owned_registrations() {
     assert!(
         Bundle::build(
             identity(),
-            &[Source {
-                path: "bin/missing",
-                bytes: b"no declaration",
-                executable: Some(executable(Facility::Sidecar))
-            }],
+            &[Source { path: "bin/missing", bytes: b"no declaration", executable: Some(executable(Facility::Sidecar)) }],
             Limits::default()
         )
         .is_err()
@@ -378,10 +245,7 @@ fn tampered_archives_refused() {
         vec![("files/data", b"bad".as_slice(), tar::EntryType::Regular)],
         vec![("files/data", b"long".as_slice(), tar::EntryType::Regular)],
         vec![ordinary[0], ordinary[0]],
-        vec![
-            ordinary[0],
-            ("extra", b"".as_slice(), tar::EntryType::Regular),
-        ],
+        vec![ordinary[0], ("extra", b"".as_slice(), tar::EntryType::Regular)],
     ] {
         assert!(Bundle::inspect(&archive(&manifest, &entries), Limits::default()).is_err());
     }
@@ -395,13 +259,7 @@ fn tampered_archives_refused() {
         tar::EntryType::GNUSparse,
         tar::EntryType::Fifo,
     ] {
-        assert!(
-            Bundle::inspect(
-                &archive(&manifest, &[("files/data", b"abc", kind)]),
-                Limits::default()
-            )
-            .is_err()
-        );
+        assert!(Bundle::inspect(&archive(&manifest, &[("files/data", b"abc", kind)]), Limits::default()).is_err());
     }
     for mutate in 0..5 {
         let mut bytes = bundle.bytes().to_vec();
@@ -425,26 +283,10 @@ fn tampered_archives_refused() {
             "path" => value["files"][0]["path"] = json!("missing"),
             _ => value["unknown"] = json!(true),
         }
-        assert!(
-            Bundle::inspect(
-                &archive(&serde_json::to_vec(&value).unwrap(), &ordinary),
-                Limits::default()
-            )
-            .is_err()
-        );
+        assert!(Bundle::inspect(&archive(&serde_json::to_vec(&value).unwrap(), &ordinary), Limits::default()).is_err());
     }
-    let duplicated = String::from_utf8(manifest).unwrap().replacen(
-        "\"schema\":1",
-        "\"schema\":1,\"schema\":1",
-        1,
-    );
-    assert!(
-        Bundle::inspect(
-            &archive(duplicated.as_bytes(), &ordinary),
-            Limits::default()
-        )
-        .is_err()
-    );
+    let duplicated = String::from_utf8(manifest).unwrap().replacen("\"schema\":1", "\"schema\":1,\"schema\":1", 1);
+    assert!(Bundle::inspect(&archive(duplicated.as_bytes(), &ordinary), Limits::default()).is_err());
     let mut impossible_size = bundle.bytes().to_vec();
     let mut header = tar::Header::from_byte_slice(&impossible_size[..512]).clone();
     header.set_size(u64::MAX);
@@ -474,37 +316,12 @@ fn paths_stay_portable() {
         "MANIFEST.JSON/a",
         "unicode-é",
     ] {
-        let sources = [Source {
-            path,
-            bytes: b"abc",
-            executable: None,
-        }];
-        assert!(
-            Bundle::build(identity(), &sources, Limits::default()).is_err(),
-            "{path}"
-        );
-        assert!(
-            Bundle::inspect(
-                &archive(&manifest, &[(path, b"abc", tar::EntryType::Regular)]),
-                Limits::default()
-            )
-            .is_err(),
-            "{path}"
-        );
+        let sources = [Source { path, bytes: b"abc", executable: None }];
+        assert!(Bundle::build(identity(), &sources, Limits::default()).is_err(), "{path}");
+        assert!(Bundle::inspect(&archive(&manifest, &[(path, b"abc", tar::EntryType::Regular)]), Limits::default()).is_err(), "{path}");
     }
     for paths in [["a", "a"], ["A", "a"], ["A", "a/b"], ["a/b", "a"]] {
-        assert!(
-            Bundle::build(
-                identity(),
-                &paths.map(|path| Source {
-                    path,
-                    bytes: b"abc",
-                    executable: None
-                }),
-                Limits::default()
-            )
-            .is_err()
-        );
+        assert!(Bundle::build(identity(), &paths.map(|path| Source { path, bytes: b"abc", executable: None }), Limits::default()).is_err());
     }
 }
 
@@ -512,54 +329,21 @@ fn paths_stay_portable() {
 fn inspection_bounds_inputs() {
     let bundle = asset();
     for limits in [
-        Limits {
-            archive_bytes: bundle.bytes().len() - 1,
-            ..Limits::default()
-        },
-        Limits {
-            manifest_bytes: 1,
-            ..Limits::default()
-        },
-        Limits {
-            file_bytes: 2,
-            ..Limits::default()
-        },
-        Limits {
-            total_file_bytes: 2,
-            ..Limits::default()
-        },
-        Limits {
-            files: 0,
-            ..Limits::default()
-        },
+        Limits { archive_bytes: bundle.bytes().len() - 1, ..Limits::default() },
+        Limits { manifest_bytes: 1, ..Limits::default() },
+        Limits { file_bytes: 2, ..Limits::default() },
+        Limits { total_file_bytes: 2, ..Limits::default() },
+        Limits { files: 0, ..Limits::default() },
     ] {
         assert!(Bundle::inspect(bundle.bytes(), limits).is_err());
-        assert!(
-            Bundle::build(
-                identity(),
-                &[Source {
-                    path: "files/data",
-                    bytes: b"abc",
-                    executable: None
-                }],
-                limits
-            )
-            .is_err()
-        );
+        assert!(Bundle::build(identity(), &[Source { path: "files/data", bytes: b"abc", executable: None }], limits).is_err());
     }
     let native = fragments("sidecar", "probe");
     assert!(
         Bundle::build(
             identity(),
-            &[Source {
-                path: "bin/probe",
-                bytes: &native,
-                executable: Some(executable(Facility::Sidecar))
-            }],
-            Limits {
-                registrations: 1,
-                ..Limits::default()
-            }
+            &[Source { path: "bin/probe", bytes: &native, executable: Some(executable(Facility::Sidecar)) }],
+            Limits { registrations: 1, ..Limits::default() }
         )
         .is_err()
     );
@@ -575,64 +359,24 @@ fn metadata_budgets_precede() {
     // A typed decode would fail on size. The collection budget must win first.
     manifest["files"][0]["size"] = json!("not an integer");
     let bytes = archive(&serde_json::to_vec(&manifest).unwrap(), &[]);
-    let error = Bundle::inspect(
-        &bytes,
-        Limits {
-            files: 0,
-            ..Limits::default()
-        },
-    )
-    .err()
-    .unwrap();
+    let error = Bundle::inspect(&bytes, Limits { files: 0, ..Limits::default() }).err().unwrap();
     assert!(error.to_string().contains("file count limit"), "{error}");
 
     manifest["files"][0]["executable"] = json!({"registrations":["not a registration"]});
     let bytes = archive(&serde_json::to_vec(&manifest).unwrap(), &[]);
-    let error = Bundle::inspect(
-        &bytes,
-        Limits {
-            registrations: 0,
-            ..Limits::default()
-        },
-    )
-    .err()
-    .unwrap();
-    assert!(
-        error.to_string().contains("registration count limit"),
-        "{error}"
-    );
+    let error = Bundle::inspect(&bytes, Limits { registrations: 0, ..Limits::default() }).err().unwrap();
+    assert!(error.to_string().contains("registration count limit"), "{error}");
 
     let manifest_bytes = serde_json::to_vec(bundle.manifest()).unwrap().len();
-    let exact = Limits {
-        manifest_bytes,
-        archive_bytes: bundle.bytes().len(),
-        file_bytes: 3,
-        total_file_bytes: 3,
-        files: 1,
-        registrations: 0,
-    };
-    assert!(
-        Bundle::build(
-            identity(),
-            &[Source {
-                path: "files/data",
-                bytes: b"abc",
-                executable: None
-            }],
-            exact
-        )
-        .is_ok()
-    );
+    let exact =
+        Limits { manifest_bytes, archive_bytes: bundle.bytes().len(), file_bytes: 3, total_file_bytes: 3, files: 1, registrations: 0 };
+    assert!(Bundle::build(identity(), &[Source { path: "files/data", bytes: b"abc", executable: None }], exact).is_ok());
     assert!(Bundle::inspect(bundle.bytes(), exact).is_ok());
 
     let native = fragments("sidecar", "probe");
     let one = Bundle::build(
         identity(),
-        &[Source {
-            path: "bin/one",
-            bytes: &native,
-            executable: Some(executable(Facility::Sidecar)),
-        }],
+        &[Source { path: "bin/one", bytes: &native, executable: Some(executable(Facility::Sidecar)) }],
         Limits::default(),
     )
     .unwrap();
@@ -642,21 +386,10 @@ fn metadata_budgets_precede() {
     let error = Bundle::build(
         identity(),
         &[
-            Source {
-                path: "bin/one",
-                bytes: &native,
-                executable: Some(executable(Facility::Sidecar)),
-            },
-            Source {
-                path: "bin/two",
-                bytes: &native,
-                executable: Some(other),
-            },
+            Source { path: "bin/one", bytes: &native, executable: Some(executable(Facility::Sidecar)) },
+            Source { path: "bin/two", bytes: &native, executable: Some(other) },
         ],
-        Limits {
-            manifest_bytes: limit,
-            ..Limits::default()
-        },
+        Limits { manifest_bytes: limit, ..Limits::default() },
     )
     .err()
     .unwrap();

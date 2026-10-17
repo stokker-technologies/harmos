@@ -72,12 +72,8 @@ pub trait Encode<W>: Send + 'static {
 /* === Implementations === */
 impl EncodeSettings {
     pub(super) fn validate(&self) -> Result<(), Status> {
-        if self.message_bytes.get() > u32::MAX as usize
-            || self.buffer_bytes.get() > self.message_bytes.get()
-        {
-            return Err(Status::invalid_argument(
-                "gRPC encoding limits exceed supported capacity",
-            ));
+        if self.message_bytes.get() > u32::MAX as usize || self.buffer_bytes.get() > self.message_bytes.get() {
+            return Err(Status::invalid_argument("gRPC encoding limits exceed supported capacity"));
         }
         Ok(())
     }
@@ -112,9 +108,7 @@ where
     fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
         match self {
             Self::Item(value) => delimited(1, bytes, |bytes| <W as Wire<I>>::encode(value, bytes)),
-            Self::Completion(value) => {
-                delimited(2, bytes, |bytes| <W as Wire<R>>::encode(value, bytes))
-            }
+            Self::Completion(value) => delimited(2, bytes, |bytes| <W as Wire<R>>::encode(value, bytes)),
         }
     }
 }
@@ -123,33 +117,21 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
     pub fn server(self) -> tonic::server::Grpc<Self> {
         let decode = self.decoder.message_limit();
         let encode = self.encode.message_bytes.get();
-        tonic::server::Grpc::new(self)
-            .max_decoding_message_size(decode)
-            .max_encoding_message_size(encode)
+        tonic::server::Grpc::new(self).max_decoding_message_size(decode).max_encoding_message_size(encode)
     }
 
     pub fn new(decode: DecodeSettings, encode: EncodeSettings) -> Result<Self, Status> {
         encode.validate()?;
-        Ok(Self {
-            decoder: Decoder::new(decode)?,
-            encode,
-            response: PhantomData,
-        })
+        Ok(Self { decoder: Decoder::new(decode)?, encode, response: PhantomData })
     }
 }
-impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Codec
-    for Codec<W, D, E>
-{
+impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Codec for Codec<W, D, E> {
     type Encode = E;
     type Decode = StreamItem<D>;
     type Encoder = Encoder<W, E>;
     type Decoder = Decoder<W, D>;
     fn encoder(&mut self) -> Self::Encoder {
-        Encoder {
-            settings: self.encode,
-            scratch: Vec::new(),
-            response: PhantomData,
-        }
+        Encoder { settings: self.encode, scratch: Vec::new(), response: PhantomData }
     }
 
     fn decoder(&mut self) -> Self::Decoder {
@@ -159,13 +141,9 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Cod
 impl<W, E: Encode<W>> Encoder<W, E> {
     fn message(&mut self, value: &E) -> Result<&[u8], Status> {
         self.scratch.clear();
-        value
-            .write(&mut self.scratch)
-            .map_err(|error| Status::internal(error.to_string()))?;
+        value.write(&mut self.scratch).map_err(|error| Status::internal(error.to_string()))?;
         if self.scratch.len() > self.settings.message_bytes.get() {
-            return Err(Status::resource_exhausted(
-                "gRPC encoded message exceeds wire ceiling",
-            ));
+            return Err(Status::resource_exhausted("gRPC encoded message exceeds wire ceiling"));
         }
         Ok(&self.scratch)
     }

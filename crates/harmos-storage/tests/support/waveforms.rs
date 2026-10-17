@@ -16,8 +16,8 @@ use std::num::NonZeroU32;
 use std::time::{Duration, UNIX_EPOCH};
 
 // Third Party Imports
-use harmos_storage::*;
 use harmos_domain::{DefinitionId, Identified, Identifier, Message};
+use harmos_storage::*;
 
 // Local Imports
 
@@ -76,24 +76,9 @@ pub fn definition() -> harmos_domain::schema::graph::Schema {
     harmos_domain::schema::graph::Schema {
         root: 0,
         definitions: vec![vec![
-            Field {
-                name: "phase".into(),
-                tag: 1,
-                kind: Kind::U32,
-                cardinality: Cardinality::Required,
-            },
-            Field {
-                name: "ordinal".into(),
-                tag: 2,
-                kind: Kind::U64,
-                cardinality: Cardinality::Required,
-            },
-            Field {
-                name: "value".into(),
-                tag: 3,
-                kind: Kind::F64,
-                cardinality: Cardinality::Required,
-            },
+            Field { name: "phase".into(), tag: 1, kind: Kind::U32, cardinality: Cardinality::Required },
+            Field { name: "ordinal".into(), tag: 2, kind: Kind::U64, cardinality: Cardinality::Required },
+            Field { name: "value".into(), tag: 3, kind: Kind::F64, cardinality: Cardinality::Required },
         ]],
     }
 }
@@ -103,13 +88,8 @@ pub fn samples(periods: usize) -> Vec<Sample> {
     (0..periods * SAMPLES_PER_PERIOD)
         .flat_map(|ordinal| {
             (0..3).map(move |phase| {
-                let angle =
-                    TAU * ordinal as f64 / SAMPLES_PER_PERIOD as f64 - TAU * phase as f64 / 3.0;
-                Sample {
-                    phase,
-                    ordinal: ordinal as u64,
-                    value: AMPLITUDE * angle.sin(),
-                }
+                let angle = TAU * ordinal as f64 / SAMPLES_PER_PERIOD as f64 - TAU * phase as f64 / 3.0;
+                Sample { phase, ordinal: ordinal as u64, value: AMPLITUDE * angle.sin() }
             })
         })
         .collect()
@@ -135,9 +115,7 @@ pub fn inputs(samples: &[Sample]) -> Vec<StreamInput> {
 }
 
 pub fn binary(length: usize) -> Vec<u8> {
-    (0..length)
-        .map(|index| ((index * 37 + 11) % 251) as u8)
-        .collect()
+    (0..length).map(|index| ((index * 37 + 11) % 251) as u8).collect()
 }
 /* === Private Functions === */
 /* === Tests === */

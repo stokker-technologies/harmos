@@ -67,9 +67,7 @@ pub(super) fn path(path: &str) -> Result<(), Error> {
             || component == "."
             || component == ".."
             || component.ends_with('.')
-            || !component
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+            || !component.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
             || matches!(
                 stem,
                 "CON"
@@ -99,30 +97,16 @@ pub(super) fn path(path: &str) -> Result<(), Error> {
             return Err(invalid("nonportable file path"));
         }
     }
-    if path
-        .split('/')
-        .next()
-        .is_some_and(|component| component.eq_ignore_ascii_case("manifest.json"))
-    {
+    if path.split('/').next().is_some_and(|component| component.eq_ignore_ascii_case("manifest.json")) {
         return Err(invalid("manifest.json is reserved"));
     }
     Ok(())
 }
 
-pub(super) fn encode(
-    manifest: &Manifest,
-    contents: &BTreeMap<String, &[u8]>,
-    limits: Limits,
-) -> Result<Vec<u8>, Error> {
-    let mut json = Bounded {
-        bytes: Vec::new(),
-        limit: limits.manifest_bytes,
-    };
+pub(super) fn encode(manifest: &Manifest, contents: &BTreeMap<String, &[u8]>, limits: Limits) -> Result<Vec<u8>, Error> {
+    let mut json = Bounded { bytes: Vec::new(), limit: limits.manifest_bytes };
     serde_json::to_writer(&mut json, manifest)?;
-    let output = Bounded {
-        bytes: Vec::new(),
-        limit: limits.archive_bytes,
-    };
+    let output = Bounded { bytes: Vec::new(), limit: limits.archive_bytes };
     let mut builder = tar::Builder::new(output);
     append(&mut builder, "manifest.json", &json.bytes, false)?;
     for file in &manifest.files {
@@ -130,9 +114,7 @@ pub(super) fn encode(
             &mut builder,
             &file.path,
             contents[&file.path],
-            file.executable
-                .as_ref()
-                .is_some_and(|value| value.facility == Facility::Sidecar),
+            file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar),
         )?;
     }
     Ok(builder.into_inner()?.bytes)
@@ -144,9 +126,7 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
     }
     let mut archive = tar::Archive::new(bytes);
     let mut entries = archive.entries()?.raw(true);
-    let entry = entries
-        .next()
-        .ok_or_else(|| invalid("missing manifest"))??;
+    let entry = entries.next().ok_or_else(|| invalid("missing manifest"))??;
     if entry.path_bytes().as_ref() != b"manifest.json" {
         return Err(invalid("manifest must be first"));
     }
@@ -165,9 +145,7 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
         let name = std::str::from_utf8(&path_bytes).map_err(|_| invalid("non-UTF8 file path"))?;
         path(name)?;
         let range = entry_range(&entry, bytes.len(), limits.file_bytes)?;
-        total = total
-            .checked_add(range.len())
-            .ok_or(Error::Limit("total file bytes"))?;
+        total = total.checked_add(range.len()).ok_or(Error::Limit("total file bytes"))?;
         if total > limits.total_file_bytes {
             return Err(Error::Limit("total file bytes"));
         }
@@ -179,17 +157,12 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
         return Err(invalid("archive file set differs from manifest"));
     }
     for file in &manifest.files {
-        let range = contents
-            .get(&file.path)
-            .ok_or_else(|| invalid("missing declared file"))?;
+        let range = contents.get(&file.path).ok_or_else(|| invalid("missing declared file"))?;
         if range.len() as u64 != file.size || digest(&bytes[range.clone()]) != file.sha256 {
             return Err(invalid("file size or digest mismatch"));
         }
     }
-    let data = contents
-        .iter()
-        .map(|(path, range)| (path.clone(), &bytes[range.clone()]))
-        .collect();
+    let data = contents.iter().map(|(path, range)| (path.clone(), &bytes[range.clone()])).collect();
     // Exact regeneration rejects alternate headers, unknown/duplicate JSON
     // keys, extensions, nonzero padding, truncation and trailing archives. The
     // tar reader alone accepts some of these and stops at the first zero block.
@@ -203,11 +176,7 @@ pub(super) fn permissions(file: &std::fs::File, executable: bool) -> io::Result<
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(std::fs::Permissions::from_mode(if executable {
-            0o755
-        } else {
-            0o644
-        }))?;
+        file.set_permissions(std::fs::Permissions::from_mode(if executable { 0o755 } else { 0o644 }))?;
     }
     #[cfg(not(unix))]
     let _ = (file, executable);
@@ -226,12 +195,7 @@ pub(super) fn staging(parent: &std::path::Path) -> io::Result<tempfile::TempDir>
 }
 
 /* === Private Functions === */
-fn append(
-    builder: &mut tar::Builder<Bounded>,
-    path: &str,
-    bytes: &[u8],
-    executable: bool,
-) -> Result<(), Error> {
+fn append(builder: &mut tar::Builder<Bounded>, path: &str, bytes: &[u8], executable: bool) -> Result<(), Error> {
     let mut header = tar::Header::new_ustar();
     header.set_path(path)?;
     header.set_entry_type(tar::EntryType::Regular);
@@ -245,25 +209,16 @@ fn append(
     Ok(())
 }
 
-fn entry_range(
-    entry: &tar::Entry<'_, &[u8]>,
-    archive_len: usize,
-    limit: usize,
-) -> Result<Range<usize>, Error> {
-    if entry.header().as_ustar().is_none() || entry.header().entry_type() != tar::EntryType::Regular
-    {
+fn entry_range(entry: &tar::Entry<'_, &[u8]>, archive_len: usize, limit: usize) -> Result<Range<usize>, Error> {
+    if entry.header().as_ustar().is_none() || entry.header().entry_type() != tar::EntryType::Regular {
         return Err(invalid("only regular USTAR files are allowed"));
     }
     let size = usize::try_from(entry.size()).map_err(|_| Error::Limit("file bytes"))?;
     if size > limit {
         return Err(Error::Limit("entry bytes"));
     }
-    let start =
-        usize::try_from(entry.raw_file_position()).map_err(|_| Error::Limit("archive bytes"))?;
-    let end = start
-        .checked_add(size)
-        .filter(|end| *end <= archive_len)
-        .ok_or_else(|| invalid("truncated file"))?;
+    let start = usize::try_from(entry.raw_file_position()).map_err(|_| Error::Limit("archive bytes"))?;
+    let end = start.checked_add(size).filter(|end| *end <= archive_len).ok_or_else(|| invalid("truncated file"))?;
     Ok(start..end)
 }
 

@@ -21,12 +21,10 @@ use tokio::sync::watch;
 // Local Imports
 use crate::state::dispatch::{Decode, Dispatch, Restored};
 use crate::state::{Feed, ReplayPayload};
-use crate::storage::consumer::{
-    Attached, JournalConsumer, Recording, Series, Serving, StreamConsumer,
-};
+use crate::storage::consumer::{Attached, JournalConsumer, Recording, Series, Serving, StreamConsumer};
 use crate::{
-    Application, DefinitionId, Error, runtime::Incompatible, state::DecodeError, state::Entry,
-    state::Envelope, state::Kind, state::Position, state::Recorded, state::Transaction,
+    Application, DefinitionId, Error, runtime::Incompatible, state::DecodeError, state::Entry, state::Envelope, state::Kind,
+    state::Position, state::Recorded, state::Transaction,
 };
 
 /* === Constants === */
@@ -91,11 +89,7 @@ pub enum Horizon {
 pub trait Source<A: Application>: JournalConsumer<A> {
     fn load(&mut self) -> impl Future<Output = Result<Recovery<A>, Incompatible>> + Send;
 
-    fn read(
-        &mut self,
-        _after: Position,
-        _through: Position,
-    ) -> impl Future<Output = Result<Recovery<A>, Error>> + Send {
+    fn read(&mut self, _after: Position, _through: Position) -> impl Future<Output = Result<Recovery<A>, Error>> + Send {
         async { Err(Error::BeyondTail) }
     }
 
@@ -105,15 +99,9 @@ pub trait Source<A: Application>: JournalConsumer<A> {
 }
 
 pub(crate) trait Recovering<A: Application>: Attached<A> {
-    fn load(
-        &mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Incompatible>> + Send + '_>>;
+    fn load(&mut self) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Incompatible>> + Send + '_>>;
 
-    fn read(
-        &mut self,
-        after: Position,
-        through: Position,
-    ) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Error>> + Send + '_>>;
+    fn read(&mut self, after: Position, through: Position) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Error>> + Send + '_>>;
 
     fn prune(&mut self, beneath: Position) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
@@ -121,27 +109,16 @@ pub(crate) trait Recovering<A: Application>: Attached<A> {
 /* === Implementations === */
 impl<A: Application> Default for Recovery<A> {
     fn default() -> Self {
-        Self {
-            commits: Vec::new(),
-            frontier: Position::ORIGIN,
-            entries: Vec::new(),
-            encoded: Vec::new(),
-        }
+        Self { commits: Vec::new(), frontier: Position::ORIGIN, entries: Vec::new(), encoded: Vec::new() }
     }
 }
 
 impl<A: Application, S: Source<A>> Recovering<A> for S {
-    fn load(
-        &mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Incompatible>> + Send + '_>> {
+    fn load(&mut self) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Incompatible>> + Send + '_>> {
         Box::pin(Source::load(self))
     }
 
-    fn read(
-        &mut self,
-        after: Position,
-        through: Position,
-    ) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Error>> + Send + '_>> {
+    fn read(&mut self, after: Position, through: Position) -> Pin<Box<dyn Future<Output = Result<Recovery<A>, Error>> + Send + '_>> {
         Box::pin(Source::read(self, after, through))
     }
 
@@ -163,9 +140,7 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
     }
 
     fn restore(
-        envelope: Envelope<Self>,
-        catalog: Option<&Dispatch<A, Self>>,
-        state: &mut A::State,
+        envelope: Envelope<Self>, catalog: Option<&Dispatch<A, Self>>, state: &mut A::State,
     ) -> Result<Option<Recorded<A>>, DecodeError> {
         let system = match &envelope.payload.value {
             Recorded::System(fact) => Some(fact.clone()),
@@ -204,10 +179,7 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
 
 impl<A: Application> Attachments<A> {
     pub(crate) fn has_recovery_owner(&self) -> bool {
-        self.capture.is_some()
-            || self.recovery.is_some()
-            || self.snapshot.is_some()
-            || self.retention.is_some()
+        self.capture.is_some() || self.recovery.is_some() || self.snapshot.is_some() || self.retention.is_some()
     }
 
     pub(crate) fn new() -> Self {
@@ -224,9 +196,7 @@ impl<A: Application> Attachments<A> {
     }
 
     pub(crate) fn require_capture(
-        &mut self,
-        limits: crate::state::CaptureLimits,
-        consumer: impl crate::state::JournalCapture<A>,
+        &mut self, limits: crate::state::CaptureLimits, consumer: impl crate::state::JournalCapture<A>,
     ) -> Result<(), crate::state::CaptureError> {
         if limits.pending_bytes == 0
             || limits.max_group_bytes == 0
@@ -235,12 +205,10 @@ impl<A: Application> Attachments<A> {
         {
             return Err(crate::state::CaptureError::InvalidLimits);
         }
-        self.capture = Some(crate::state::capture::Declaration::Callback(
-            crate::state::capture::CallbackDeclaration {
-                limits,
-                consumer: Box::new(consumer),
-            },
-        ));
+        self.capture = Some(crate::state::capture::Declaration::Callback(crate::state::capture::CallbackDeclaration {
+            limits,
+            consumer: Box::new(consumer),
+        }));
 
         Ok(())
     }
@@ -281,19 +249,14 @@ impl<A: Application> Attachments<A> {
 
     pub(crate) fn tail_window(&self) -> Result<usize, Incompatible> {
         if self.retention == Some(Horizon::BeneathSnapshot) && self.snapshot.is_none() {
-            return Err(Incompatible::unreadable(
-                "retention beneath a snapshot requires a snapshot declaration",
-            ));
+            return Err(Incompatible::unreadable("retention beneath a snapshot requires a snapshot declaration"));
         }
 
         Ok(self.tail)
     }
 
     pub(crate) fn supervised(&mut self) -> Consumers<A> {
-        let snapshot_frontier = self
-            .snapshot
-            .as_ref()
-            .map_or(Position::ORIGIN, |snapshot| snapshot.resume());
+        let snapshot_frontier = self.snapshot.as_ref().map_or(Position::ORIGIN, |snapshot| snapshot.resume());
 
         Consumers {
             attached: std::mem::take(&mut self.attached),
@@ -337,23 +300,14 @@ impl<A: Application> Consumers<A> {
         Ok(recovery)
     }
 
-    pub(crate) async fn read(
-        &mut self,
-        after: Position,
-        through: Position,
-    ) -> Result<Recovery<A>, Error> {
+    pub(crate) async fn read(&mut self, after: Position, through: Position) -> Result<Recovery<A>, Error> {
         match &mut self.recovery {
             Some(source) => source.read(after, through).await,
             None => Err(Error::BeyondTail),
         }
     }
 
-    pub(crate) fn redelivering(
-        &mut self,
-        recovered: Vec<Arc<Entry<Recorded<A>>>>,
-        stored: Vec<(Position, Vec<u8>)>,
-        frontier: Position,
-    ) {
+    pub(crate) fn redelivering(&mut self, recovered: Vec<Arc<Entry<Recorded<A>>>>, stored: Vec<(Position, Vec<u8>)>, frontier: Position) {
         self.recovered = recovered;
         self.stored = stored;
         self.frontier = frontier;
@@ -363,15 +317,7 @@ impl<A: Application> Consumers<A> {
         let mut settled = applied;
 
         if let Some(source) = &mut self.recovery {
-            let durable = fold(
-                source.as_mut(),
-                &self.recovered,
-                &self.stored,
-                self.frontier,
-                feed,
-                applied,
-            )
-            .await;
+            let durable = fold(source.as_mut(), &self.recovered, &self.stored, self.frontier, feed, applied).await;
 
             if let Some(stored) = &self.durable {
                 stored.send_replace(durable);
@@ -380,28 +326,10 @@ impl<A: Application> Consumers<A> {
             settled = settled.min(durable);
         }
         for consumer in &mut self.attached {
-            settled = settled.min(
-                fold(
-                    consumer.as_mut(),
-                    &self.recovered,
-                    &self.stored,
-                    self.frontier,
-                    feed,
-                    applied,
-                )
-                .await,
-            );
+            settled = settled.min(fold(consumer.as_mut(), &self.recovered, &self.stored, self.frontier, feed, applied).await);
         }
         if let Some(snapshot) = &mut self.snapshot {
-            let durable = fold(
-                snapshot.as_mut(),
-                &self.recovered,
-                &self.stored,
-                self.frontier,
-                feed,
-                applied,
-            )
-            .await;
+            let durable = fold(snapshot.as_mut(), &self.recovered, &self.stored, self.frontier, feed, applied).await;
             self.snapshot_frontier = durable;
             settled = settled.min(durable);
         }
@@ -440,19 +368,11 @@ impl<A: Application> Consumers<A> {
         self.streams
             .iter_mut()
             .map(|recording| recording.as_mut() as &mut dyn Recording<A>)
-            .chain(
-                self.series
-                    .iter_mut()
-                    .map(|series| series.as_mut() as &mut dyn Recording<A>),
-            )
+            .chain(self.series.iter_mut().map(|series| series.as_mut() as &mut dyn Recording<A>))
     }
 
     pub(crate) async fn row_reader(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: std::ops::Bound<Position>,
-        end: std::ops::Bound<Position>,
+        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
         limits: crate::streams::ReadLimits,
     ) -> Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError> {
         match &mut self.series {
@@ -462,15 +382,8 @@ impl<A: Application> Consumers<A> {
     }
 
     pub(crate) async fn served(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: std::ops::Bound<Position>,
-        end: std::ops::Bound<Position>,
-    ) -> Result<
-        Vec<crate::state::At<Arc<dyn std::any::Any + Send + Sync>>>,
-        crate::streams::BeneathWindow,
-    > {
+        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
+    ) -> Result<Vec<crate::state::At<Arc<dyn std::any::Any + Send + Sync>>>, crate::streams::BeneathWindow> {
         match &mut self.series {
             Some(series) => series.rows(stream, track, start, end).await,
             None => Err(crate::streams::BeneathWindow::Unserved),
@@ -478,11 +391,7 @@ impl<A: Application> Consumers<A> {
     }
 
     pub(crate) async fn surveyed(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: std::ops::Bound<u64>,
-        end: std::ops::Bound<u64>,
+        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
         budget: usize,
     ) -> Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow> {
         match &mut self.series {
@@ -492,11 +401,7 @@ impl<A: Application> Consumers<A> {
     }
 
     pub(crate) async fn aggregated(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: std::ops::Bound<u64>,
-        end: std::ops::Bound<u64>,
+        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
         kind: crate::Aggregate,
     ) -> Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow> {
         match &mut self.series {
@@ -505,11 +410,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
-    pub(crate) async fn sealed(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-    ) -> Position {
+    pub(crate) async fn sealed(&mut self, stream: crate::streams::Definition, track: &[String]) -> Position {
         match &mut self.series {
             Some(series) => series.seal(stream, track).await,
             None => Position::ORIGIN,
@@ -566,11 +467,7 @@ impl<A: Application> Consumers<A> {
 
 /* === Public Functions === */
 pub(crate) fn declare<A: Application>(
-    catalog: &mut Dispatch<A, Payload<A>>,
-    kind: Kind,
-    id: DefinitionId,
-    version: u32,
-    decode: Decode<A>,
+    catalog: &mut Dispatch<A, Payload<A>>, kind: Kind, id: DefinitionId, version: u32, decode: Decode<A>,
 ) {
     match kind {
         Kind::Transaction => catalog.set_transaction(id, version, apply, decode),
@@ -580,13 +477,7 @@ pub(crate) fn declare<A: Application>(
 
 /* === Private Functions === */
 fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
-    let Payload {
-        prepared,
-        id,
-        version,
-        value,
-        apply,
-    } = payload;
+    let Payload { prepared, id, version, value, apply } = payload;
 
     match (value, apply) {
         (Recorded::Transaction(_), Some(historical)) => {
@@ -619,12 +510,8 @@ fn mismatched(id: DefinitionId, version: u32) -> DecodeError {
 }
 
 async fn fold<A: Application>(
-    consumer: &mut dyn Attached<A>,
-    recovered: &[Arc<Entry<Recorded<A>>>],
-    stored: &[(Position, Vec<u8>)],
-    frontier: Position,
-    feed: &Feed<A>,
-    applied: Position,
+    consumer: &mut dyn Attached<A>, recovered: &[Arc<Entry<Recorded<A>>>], stored: &[(Position, Vec<u8>)], frontier: Position,
+    feed: &Feed<A>, applied: Position,
 ) -> Position {
     let resume = consumer.resume();
     let Ok(live) = feed.since(resume.max(frontier)).await else {
@@ -636,11 +523,7 @@ async fn fold<A: Application>(
     if owed < stored.len() {
         consumer.redelivered(&stored[owed..]);
     }
-    let mut entries: Vec<Arc<Entry<Recorded<A>>>> = recovered
-        .iter()
-        .filter(|entry| entry.position > resume)
-        .map(Arc::clone)
-        .collect();
+    let mut entries: Vec<Arc<Entry<Recorded<A>>>> = recovered.iter().filter(|entry| entry.position > resume).map(Arc::clone).collect();
     entries.extend(live);
 
     consumer.drain(entries, applied).await

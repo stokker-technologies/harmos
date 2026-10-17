@@ -46,12 +46,7 @@ struct Inner {
 /* === Implementations === */
 impl Context {
     pub(crate) fn seeded(seed: u64) -> Self {
-        Self {
-            inner: Arc::new(Inner {
-                state: Mutex::new(seed),
-                draws: Mutex::new(Vec::new()),
-            }),
-        }
+        Self { inner: Arc::new(Inner { state: Mutex::new(seed), draws: Mutex::new(Vec::new()) }) }
     }
 
     pub(crate) async fn scope<F: Future>(&self, future: F) -> F::Output {
@@ -63,19 +58,11 @@ impl Context {
     }
 
     pub(crate) fn trace(&self) -> Vec<u64> {
-        self.inner
-            .draws
-            .lock()
-            .expect("simulation entropy trace lock is healthy")
-            .clone()
+        self.inner.draws.lock().expect("simulation entropy trace lock is healthy").clone()
     }
 
     fn draw(&self) -> u64 {
-        let mut state = self
-            .inner
-            .state
-            .lock()
-            .expect("simulation entropy state lock is healthy");
+        let mut state = self.inner.state.lock().expect("simulation entropy state lock is healthy");
         *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut mixed = *state;
         mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -83,20 +70,14 @@ impl Context {
         mixed ^= mixed >> 31;
         drop(state);
 
-        self.inner
-            .draws
-            .lock()
-            .expect("simulation entropy trace lock is healthy")
-            .push(mixed);
+        self.inner.draws.lock().expect("simulation entropy trace lock is healthy").push(mixed);
         mixed
     }
 }
 
 /* === Public Functions === */
 pub fn entropy() -> u64 {
-    CURRENT
-        .try_with(Context::draw)
-        .expect("simulation entropy is only available inside simulated work")
+    CURRENT.try_with(Context::draw).expect("simulation entropy is only available inside simulated work")
 }
 
 /* === Private Functions === */

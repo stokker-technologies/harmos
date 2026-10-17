@@ -21,8 +21,8 @@ use super::{Definition, Registry};
 use crate::state::dispatch::Dispatch;
 use crate::storage::SchemaKey;
 use crate::{
-    Application, Error, Result, state::Position, state::Prepared, state::PrincipalId,
-    state::Receipt, state::Recorded, state::StateManager, state::SystemFact,
+    Application, Error, Result, state::Position, state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::StateManager,
+    state::SystemFact,
 };
 
 /* === Constants === */
@@ -48,41 +48,21 @@ impl<A: Application> RecordManager<A> {
     pub fn new(state: StateManager<A>) -> Self {
         let (catalog, preparing) = state.record_resources();
         let schemas = state.record_schemas();
-        Self {
-            state,
-            catalog,
-            preparing,
-            schemas,
-        }
+        Self { state, catalog, preparing, schemas }
     }
 
-    pub async fn register(
-        &self,
-        owner: &str,
-        schema: &SchemaKey,
-        graph: &crate::schema::graph::Schema,
-    ) -> Result<Arc<Definition>> {
-        let _preparation = Arc::clone(&self.preparing)
-            .acquire_owned()
-            .await
-            .expect("record preparation admission remains owned by the original state");
+    pub async fn register(&self, owner: &str, schema: &SchemaKey, graph: &crate::schema::graph::Schema) -> Result<Arc<Definition>> {
+        let _preparation =
+            Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
         let pending = self.schemas.reserve(owner, schema, graph)?;
         let id = crate::DefinitionId::new(schema.id.as_str());
-        if !matches!(
-            self.catalog.has_record(&id, schema.version.get()),
-            Ok(false)
-        ) {
-            return Err(Error::AlreadyRegistered {
-                domain: "native record schema",
-                name: schema.id.as_str().to_owned(),
-            });
+        if !matches!(self.catalog.has_record(&id, schema.version.get()), Ok(false)) {
+            return Err(Error::AlreadyRegistered { domain: "native record schema", name: schema.id.as_str().to_owned() });
         }
         if !pending.is_committed()
             && let Some(storage) = &self.schemas.storage
         {
-            storage
-                .write_schema(pending.definition.schema(), pending.definition.graph())
-                .await?;
+            storage.write_schema(pending.definition.schema(), pending.definition.graph()).await?;
         }
         Ok(pending.commit())
     }
@@ -97,34 +77,21 @@ impl<A: Application> RecordManager<A> {
 
     pub async fn publish<R: Into<A::Record>>(&self, record: R) -> Result<Receipt> {
         let record = record.into();
-        let preparation = Arc::clone(&self.preparing)
-            .acquire_owned()
-            .await
-            .expect("record preparation admission remains owned by the original state");
+        let preparation =
+            Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
         let prepared = Prepared::typed_record(&record).map_err(Error::Preparation)?;
-        let declared = self
-            .catalog
-            .has_record(&prepared.id, prepared.version)
-            .map_err(|source| Error::RecordDeclaration { source })?;
+        let declared = self.catalog.has_record(&prepared.id, prepared.version).map_err(|source| Error::RecordDeclaration { source })?;
         if !declared {
-            return Err(Error::RecordDeclaration {
-                source: crate::state::DecodeError::UnknownDefinition { id: prepared.id },
-            });
+            return Err(Error::RecordDeclaration { source: crate::state::DecodeError::UnknownDefinition { id: prepared.id } });
         }
-        self.state
-            .append_prepared(Recorded::Record(record), prepared, preparation)
-            .await
+        self.state.append_prepared(Recorded::Record(record), prepared, preparation).await
     }
 
     pub async fn publish_system(&self, fact: SystemFact) -> Result<Receipt> {
-        let preparation = Arc::clone(&self.preparing)
-            .acquire_owned()
-            .await
-            .expect("record preparation admission remains owned by the original state");
+        let preparation =
+            Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
         let prepared = Prepared::system(&fact).map_err(Error::Preparation)?;
-        self.state
-            .append_prepared(Recorded::System(fact), prepared, preparation)
-            .await
+        self.state.append_prepared(Recorded::System(fact), prepared, preparation).await
     }
 
     pub fn as_principal(&self, principal: PrincipalId) -> Self {

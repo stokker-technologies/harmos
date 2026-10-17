@@ -54,30 +54,19 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<StoredRow>;
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut FollowStream,
-        output: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut FollowStream, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         crate::storage::query::Source::Stream(request.selection.clone()).validate()?;
-        let mut follower = self
-            .storage
-            .follow::<StoredRow>(request.after.as_ref(), request.selection.clone())
-            .await?;
+        let mut follower = self.storage.follow::<StoredRow>(request.after.as_ref(), request.selection.clone()).await?;
         loop {
             let page = follower.next().await?;
             for entry in page.entries() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+                output.send_with(entry.memory_size(), || Ok(entry.clone())).await?;
             }
         }
     }

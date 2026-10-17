@@ -46,9 +46,7 @@ impl Analyzing {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(
-        &mut self,
-        _context: &harmos_guest::Context,
-        request: &mut AnalyzeSchematic,
+        &mut self, _context: &harmos_guest::Context, request: &mut AnalyzeSchematic,
         output: &mut harmos_guest::operations::StreamOutput<Finding>,
     ) -> Result<Analysis, Error> {
         let findings = [

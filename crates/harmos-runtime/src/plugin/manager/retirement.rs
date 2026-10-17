@@ -99,16 +99,8 @@ impl Resource for Driver {
             loop {
                 for id in self.schedule.take_ready() {
                     let owner = &self.owners[&id];
-                    let previous = self
-                        .previous
-                        .as_ref()
-                        .filter(|previous| {
-                            previous
-                                .selected
-                                .iter()
-                                .any(|(selected, _)| selected == &id)
-                        })
-                        .cloned();
+                    let previous =
+                        self.previous.as_ref().filter(|previous| previous.selected.iter().any(|(selected, _)| selected == &id)).cloned();
                     if previous.is_none() {
                         owner.state.send_replace(PluginState::Stopping);
                         self.router.quiesce(&id);
@@ -150,10 +142,7 @@ impl Resource for Driver {
                     self.router.revoke(&id);
                     self.owners[&id].state.send_replace(state);
                 }
-                self.outcomes
-                    .lock()
-                    .expect("retirement outcomes are healthy")
-                    .insert(id.clone(), result);
+                self.outcomes.lock().expect("retirement outcomes are healthy").insert(id.clone(), result);
                 if !inherited {
                     self.publish(&id, state, event);
                 }
@@ -180,12 +169,7 @@ impl Driver {
 
 impl PluginCleanup {
     pub(super) fn new() -> Self {
-        Self {
-            shared: Arc::new(ClosingState {
-                status: watch::channel(PluginCleanupStatus::Waiting).0,
-                retry: Notify::new(),
-            }),
-        }
+        Self { shared: Arc::new(ClosingState { status: watch::channel(PluginCleanupStatus::Waiting).0, retry: Notify::new() }) }
     }
 
     pub fn status(&self) -> PluginCleanupStatus {
@@ -198,17 +182,11 @@ impl PluginCleanup {
             match status.borrow_and_update().clone() {
                 PluginCleanupStatus::Settled => return Ok(()),
                 PluginCleanupStatus::Failed(source) => {
-                    return Err(Error::TaskFailed {
-                        domain: "plugin manager cleanup",
-                        source,
-                    });
+                    return Err(Error::TaskFailed { domain: "plugin manager cleanup", source });
                 }
                 PluginCleanupStatus::Waiting | PluginCleanupStatus::Running => {}
             }
-            status
-                .changed()
-                .await
-                .expect("cleanup receipt owns its status");
+            status.changed().await.expect("cleanup receipt owns its status");
         }
     }
 
@@ -228,15 +206,11 @@ impl PluginCleanup {
     }
 
     pub(super) fn settled(&self) {
-        self.shared
-            .status
-            .send_replace(PluginCleanupStatus::Settled);
+        self.shared.status.send_replace(PluginCleanupStatus::Settled);
     }
 
     pub(super) fn start(&self, closing: Closing) {
-        self.shared
-            .status
-            .send_replace(PluginCleanupStatus::Running);
+        self.shared.status.send_replace(PluginCleanupStatus::Running);
         let shared = self.shared.clone();
         let owner = Cleanup::new(closing);
         crate::supervision::executor::task(async move {
@@ -248,9 +222,7 @@ impl PluginCleanup {
                         return;
                     }
                     Err(error) => {
-                        shared
-                            .status
-                            .send_replace(PluginCleanupStatus::Failed(error));
+                        shared.status.send_replace(PluginCleanupStatus::Failed(error));
                         shared.retry.notified().await;
                     }
                 }
@@ -264,9 +236,7 @@ impl Resource for Closing {
         Box::pin(async move {
             let outcomes = Arc::new(Mutex::new(BTreeMap::new()));
             let mut driver = Driver {
-                schedule: self
-                    .topology
-                    .retirement(self.owners.keys().cloned().collect()),
+                schedule: self.topology.retirement(self.owners.keys().cloned().collect()),
                 owners: self.owners.clone(),
                 previous: self.previous.take(),
                 router: self.router.clone(),
@@ -275,8 +245,7 @@ impl Resource for Closing {
                 outcomes: outcomes.clone(),
             };
             driver.finalize().await?;
-            let outcomes =
-                std::mem::take(&mut *outcomes.lock().expect("retirement outcomes are healthy"));
+            let outcomes = std::mem::take(&mut *outcomes.lock().expect("retirement outcomes are healthy"));
             let mut failure = None;
             for (id, result) in outcomes {
                 match result {

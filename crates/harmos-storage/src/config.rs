@@ -95,10 +95,7 @@ impl StorageSettings {
         if self.request.max_active_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.request.max_pending_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
         {
-            return Err(crate::Error::InvalidInput {
-                field: "storage query admission",
-                reason: "query counts exceed semaphore capacity",
-            });
+            return Err(crate::Error::InvalidInput { field: "storage query admission", reason: "query counts exceed semaphore capacity" });
         }
         if self.response.batch_bytes.get() > self.budget.read_memory_bytes.get() / 2 {
             return Err(crate::Error::InvalidInput {
@@ -111,9 +108,7 @@ impl StorageSettings {
 
     // Largest Atomic Batch: The Private Ceiling Within The Pending Write Budget.
     pub fn max_batch_bytes(&self) -> NonZeroUsize {
-        self.request
-            .max_pending_write_bytes
-            .min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
+        self.request.max_pending_write_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
     }
 
     pub(super) fn target_batch_bytes(&self) -> usize {
@@ -122,19 +117,12 @@ impl StorageSettings {
 
     // Receipt Ledger Bound: A Fixed Share Of The Shared Read Budget.
     pub(super) fn mutation_bytes(&self) -> NonZeroUsize {
-        NonZeroUsize::new(self.budget.read_memory_bytes.get() / MUTATION_BUDGET_SHARE)
-            .unwrap_or(NonZeroUsize::MIN)
+        NonZeroUsize::new(self.budget.read_memory_bytes.get() / MUTATION_BUDGET_SHARE).unwrap_or(NonZeroUsize::MIN)
     }
 
     // Scan Page Bytes, Small Enough That Several Active Queries Share The Budget.
     pub(super) fn scan_bytes(&self) -> NonZeroUsize {
-        let shared = self.budget.read_memory_bytes.get()
-            / self
-                .request
-                .max_active_queries
-                .get()
-                .saturating_mul(4)
-                .max(1);
+        let shared = self.budget.read_memory_bytes.get() / self.request.max_active_queries.get().saturating_mul(4).max(1);
         NonZeroUsize::new(SCAN_BYTES.min(shared).max(1)).unwrap()
     }
 }

@@ -21,17 +21,12 @@ mod policy;
 /* === Re-Exports === */
 pub use crate::observers;
 pub use catalog::{Declarations, Entry};
-pub use context::{
-    CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
-};
+pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
-pub use policy::{
-    Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
-    RetryPolicy,
-};
+pub use policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy};
 
 /* === Imports === */
 // Standard Library Imports
@@ -168,9 +163,7 @@ impl<'de> Deserialize<'de> for Definition {
 impl Definition {
     pub fn validate(&self) -> crate::Result<()> {
         if crate::reserved(self.id.as_str()) {
-            return Err(crate::Error::ReservedOperation {
-                id: self.id.as_str().to_owned(),
-            });
+            return Err(crate::Error::ReservedOperation { id: self.id.as_str().to_owned() });
         }
         self.policy.validate()?;
         Ok(())

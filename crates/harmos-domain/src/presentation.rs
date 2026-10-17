@@ -43,8 +43,7 @@ pub trait RowMetadata {
     const ROW_METADATA_JSON: &'static str = "[]";
 
     fn row_metadata() -> Vec<StreamField> {
-        serde_json::from_str(Self::ROW_METADATA_JSON)
-            .expect("macro-generated row metadata is valid")
+        serde_json::from_str(Self::ROW_METADATA_JSON).expect("macro-generated row metadata is valid")
     }
 }
 

@@ -49,11 +49,7 @@ pub fn lttb(x: &[f64], y: &[f64], count: usize) -> Vec<usize> {
     for index in 0..count - 2 {
         let start = 1 + (index as f64 * bucket).floor() as usize;
         let end = (1 + ((index + 1) as f64 * bucket).floor() as usize).min(length - 1);
-        let ahead = if index < count - 3 {
-            (1 + ((index + 2) as f64 * bucket).floor() as usize).min(length)
-        } else {
-            length
-        };
+        let ahead = if index < count - 3 { (1 + ((index + 2) as f64 * bucket).floor() as usize).min(length) } else { length };
 
         let (mean_x, mean_y) = mean_of(x, y, end..ahead).unwrap_or((x[length - 1], y[length - 1]));
 
@@ -103,16 +99,10 @@ pub fn lttb_log(x: &[f64], y: &[f64], count: usize) -> Vec<usize> {
     let mut previous = 0;
 
     for bucket in 0..buckets {
-        let start = x[..length]
-            .partition_point(|at| *at < edge(bucket))
-            .min(length - 1);
-        let end = x[..length]
-            .partition_point(|at| *at < edge(bucket + 1))
-            .clamp(start + 1, length);
+        let start = x[..length].partition_point(|at| *at < edge(bucket)).min(length - 1);
+        let end = x[..length].partition_point(|at| *at < edge(bucket + 1)).clamp(start + 1, length);
         let ahead = if bucket < buckets - 1 {
-            x[..length]
-                .partition_point(|at| *at < edge(bucket + 2).min(last))
-                .clamp(end, length)
+            x[..length].partition_point(|at| *at < edge(bucket + 2).min(last)).clamp(end, length)
         } else {
             length
         };
@@ -123,16 +113,7 @@ pub fn lttb_log(x: &[f64], y: &[f64], count: usize) -> Vec<usize> {
 
         let picked = (start..end)
             .max_by(|left, right| {
-                let of = |bin: usize| {
-                    area(
-                        previous_x,
-                        y[previous],
-                        positive(x[bin]).ln(),
-                        y[bin],
-                        mean_x,
-                        mean_y,
-                    )
-                };
+                let of = |bin: usize| area(previous_x, y[previous], positive(x[bin]).ln(), y[bin], mean_x, mean_y);
                 of(*left).total_cmp(&of(*right))
             })
             .unwrap_or(start);
@@ -196,12 +177,7 @@ pub fn above_floor(values: &[f64], db_below_peak: f64) -> Vec<usize> {
     }
 
     let floor = peak * 10.0_f64.powf(-db_below_peak / 20.0);
-    values
-        .iter()
-        .enumerate()
-        .filter(|(_, value)| **value >= floor)
-        .map(|(index, _)| index)
-        .collect()
+    values.iter().enumerate().filter(|(_, value)| **value >= floor).map(|(index, _)| index).collect()
 }
 
 /* === Private Functions === */

@@ -24,9 +24,7 @@ use harmos_domain::catalog::Node;
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_sdk::operations::{ServingError, WireDeclaration, lifecycle};
 use harmos_sdk::plugin::{Declared, Plugin};
-use harmos_sidecar::operations::{
-    Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
-};
+use harmos_sidecar::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{StreamSpec, Supervisor};
 
 /* === Constants === */
@@ -46,13 +44,7 @@ static IDENTITY: [u8; contracts::identity_len(
     TransportPlugin::VERSION,
     TransportPlugin::DESCRIPTION,
     "()",
-)] = contracts::encode_identity(
-    "sidecar",
-    TransportPlugin::ID,
-    TransportPlugin::VERSION,
-    TransportPlugin::DESCRIPTION,
-    "()",
-);
+)] = contracts::encode_identity("sidecar", TransportPlugin::ID, TransportPlugin::VERSION, TransportPlugin::DESCRIPTION, "()");
 
 #[used]
 static CONTRACTS: [u8; contracts::encoded_tree_len(
@@ -61,20 +53,11 @@ static CONTRACTS: [u8; contracts::encoded_tree_len(
     TransportPlugin::PROVIDES,
     TransportPlugin::REQUIRES,
     &SDK,
-)] = contracts::encode_tree(
-    "sidecar",
-    TransportPlugin::ID,
-    TransportPlugin::PROVIDES,
-    TransportPlugin::REQUIRES,
-    &SDK,
-);
+)] = contracts::encode_tree("sidecar", TransportPlugin::ID, TransportPlugin::PROVIDES, TransportPlugin::REQUIRES, &SDK);
 
 #[used]
-static PUBLICATIONS: [u8; publications::encoded_len(
-    "sidecar",
-    TransportPlugin::ID,
-    TransportPlugin::STREAMS,
-)] = publications::encode("sidecar", TransportPlugin::ID, TransportPlugin::STREAMS);
+static PUBLICATIONS: [u8; publications::encoded_len("sidecar", TransportPlugin::ID, TransportPlugin::STREAMS)] =
+    publications::encode("sidecar", TransportPlugin::ID, TransportPlugin::STREAMS);
 
 #[used]
 static LISTENERS: [u8; listeners::encoded_len("sidecar", TransportPlugin::ID, &[])] =
@@ -207,22 +190,13 @@ impl Operation for Echoing {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Handler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<Handler>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Echo,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Echo, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_sidecar::operations::Response<Echo>, Self::Error> {
-        let result: ::core::result::Result<Echo, Self::Error> =
-            async move { Ok(request.clone()) }.await;
+        let result: ::core::result::Result<Echo, Self::Error> = async move { Ok(request.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -237,29 +211,17 @@ impl Operation for Starting {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<Handler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(resources: Arc<Handler>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Start,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Start, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.validate()?;
-            let mut tasks = self
-                .resources
-                .tasks
-                .lock()
-                .map_err(harmos_sidecar::Refusal::of)?;
+            let mut tasks = self.resources.tasks.lock().map_err(harmos_sidecar::Refusal::of)?;
             if *self.resources.closing.borrow() || tasks.len() >= MAX_CASES {
-                return Err(harmos_sidecar::Refusal::of(
-                    "transport fixture pump admission is closed or full",
-                ));
+                return Err(harmos_sidecar::Refusal::of("transport fixture pump admission is closed or full"));
             }
             let host = self
                 .resources
@@ -268,9 +230,7 @@ impl Operation for Starting {
                 .map_err(harmos_sidecar::Refusal::of)?
                 .as_ref()
                 .cloned()
-                .ok_or_else(|| {
-                    harmos_sidecar::Refusal::of("fixture generation calling context is unavailable")
-                })?;
+                .ok_or_else(|| harmos_sidecar::Refusal::of("fixture generation calling context is unavailable"))?;
             let request = request.clone();
             let closing = self.resources.closing.subscribe();
             tasks.push_back(tokio::spawn(publish(host, request, closing)));
@@ -294,11 +254,7 @@ impl Plugin for TransportPlugin {
 
     fn prepare(_: ()) -> Result<Self, Self::Error> {
         Ok(Self {
-            resources: Arc::new(Handler {
-                tasks: Mutex::new(VecDeque::new()),
-                closing: watch::channel(false).0,
-                host: Mutex::new(None),
-            }),
+            resources: Arc::new(Handler { tasks: Mutex::new(VecDeque::new()), closing: watch::channel(false).0, host: Mutex::new(None) }),
             retiring: None,
         })
     }
@@ -306,11 +262,7 @@ impl Plugin for TransportPlugin {
         Arc::clone(&self.resources)
     }
     async fn initialize(&mut self, host: &Supervisor) -> Result<(), Self::Error> {
-        *self
-            .resources
-            .host
-            .lock()
-            .map_err(harmos_sidecar::Refusal::of)? = Some(host.clone());
+        *self.resources.host.lock().map_err(harmos_sidecar::Refusal::of)? = Some(host.clone());
         Ok(())
     }
     fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
@@ -323,17 +275,10 @@ impl Plugin for TransportPlugin {
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.closing.send_replace(true);
         if self.retiring.is_none() {
-            let tasks = &mut *self
-                .resources
-                .tasks
-                .lock()
-                .map_err(harmos_sidecar::Refusal::of)?;
+            let tasks = &mut *self.resources.tasks.lock().map_err(harmos_sidecar::Refusal::of)?;
             self.retiring = Some(std::mem::take(tasks));
         }
-        let tasks = self
-            .retiring
-            .as_mut()
-            .expect("original fixture pumps are retained");
+        let tasks = self.retiring.as_mut().expect("original fixture pumps are retained");
         while let Some(task) = tasks.front_mut() {
             let result = task.await;
             tasks.pop_front();
@@ -347,15 +292,10 @@ impl Declared for TransportPlugin {
     const ID: &'static str = "throughput-fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Measures the native stdio transport.";
-    const PROVIDES: &'static [Node<WireDeclaration>] = &[
-        Node::Leaf(WireDeclaration::of::<Echo>()),
-        Node::Leaf(WireDeclaration::of::<Start>()),
-    ];
+    const PROVIDES: &'static [Node<WireDeclaration>] =
+        &[Node::Leaf(WireDeclaration::of::<Echo>()), Node::Leaf(WireDeclaration::of::<Start>())];
     const REQUIRES: &'static [Node<harmos_domain::plugin::Requirement>] = &[];
-    const STREAMS: &'static [publications::Entry] = &[
-        publications::Entry::of::<Sample>(),
-        publications::Entry::of::<Done>(),
-    ];
+    const STREAMS: &'static [publications::Entry] = &[publications::Entry::of::<Sample>(), publications::Entry::of::<Done>()];
     fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
         harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
@@ -367,15 +307,9 @@ impl Declared for TransportPlugin {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn publish(
-    host: Supervisor,
-    start: Start,
-    mut closing: watch::Receiver<bool>,
-) -> Result<(), harmos_sidecar::Refusal> {
+async fn publish(host: Supervisor, start: Start, mut closing: watch::Receiver<bool>) -> Result<(), harmos_sidecar::Refusal> {
     start.validate()?;
-    let sample = Sample {
-        payload: vec![b'x'; start.payload_bytes as usize],
-    };
+    let sample = Sample { payload: vec![b'x'; start.payload_bytes as usize] };
     let began = Instant::now();
     let mut accepted = 0_u64;
     let mut attempted = 0_u64;
@@ -401,10 +335,7 @@ async fn publish(
             _ = pace(&start, accepted, began) => {}
         }
     }
-    let done = Done {
-        accepted,
-        attempted,
-    };
+    let done = Done { accepted, attempted };
     tokio::select! {
         _ = closing.changed() => return Ok(()),
         result = publisher.publish_on::<Done>(&done) => result.map_err(harmos_sidecar::Refusal::from)?,

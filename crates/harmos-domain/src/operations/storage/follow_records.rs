@@ -78,44 +78,24 @@ crate::declare!(FollowRecords {
 impl MemorySize for FollowRecords {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.after
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.after)),
-            )
-            .saturating_add(
-                self.selection
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.selection)),
-            )
+            .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))
+            .saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
 }
 
 impl MemorySize for FollowBoundaries {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.saved
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
-            .saturating_add(
-                self.accepted
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
+            .saturating_add(self.saved.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.accepted.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
     }
 }
 
 impl MemorySize for Followed {
     fn memory_size(&self) -> usize {
         let heap = match self {
-            Self::Boundaries(value) => value
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<FollowBoundaries>()),
-            Self::Record(value) => value
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<StoredRecord>()),
+            Self::Boundaries(value) => value.memory_size().saturating_sub(std::mem::size_of::<FollowBoundaries>()),
+            Self::Record(value) => value.memory_size().saturating_sub(std::mem::size_of::<StoredRecord>()),
         };
         std::mem::size_of::<Self>().saturating_add(heap)
     }
@@ -128,17 +108,13 @@ impl Described for Followed {
             name: Cow::Borrowed("boundaries"),
             tag: 1,
             cardinality: Cardinality::Variant,
-            kind: Kind::Message {
-                definition: FollowBoundaries::DEFINITION,
-            },
+            kind: Kind::Message { definition: FollowBoundaries::DEFINITION },
         },
         Field {
             name: Cow::Borrowed("record"),
             tag: 2,
             cardinality: Cardinality::Variant,
-            kind: Kind::Message {
-                definition: StoredRecord::DEFINITION,
-            },
+            kind: Kind::Message { definition: StoredRecord::DEFINITION },
         },
     ];
 
@@ -168,27 +144,21 @@ impl crate::__private::PostcardValue for Followed {
         })
     }
 
-    fn memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<usize, MessageError> {
+    fn memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, MessageError> {
         input.nested(|input| {
             let heap = match input.value::<u32>()? {
                 0 => <FollowBoundaries as crate::__private::PostcardValue>::memory(input)?
                     .saturating_sub(std::mem::size_of::<FollowBoundaries>()),
-                1 => <StoredRecord as crate::__private::PostcardValue>::memory(input)?
-                    .saturating_sub(std::mem::size_of::<StoredRecord>()),
+                1 => <StoredRecord as crate::__private::PostcardValue>::memory(input)?.saturating_sub(std::mem::size_of::<StoredRecord>()),
                 _ => return Err(MessageError::borrowed("unknown follow output variant")),
             };
             crate::__private::decoding_add(std::mem::size_of::<Self>(), heap)
         })
     }
 
-    fn read(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<Self, MessageError> {
+    fn read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<Self, MessageError> {
         input.nested(|input| match input.value::<u32>()? {
-            0 => <FollowBoundaries as crate::__private::PostcardValue>::read(input)
-                .map(Self::Boundaries),
+            0 => <FollowBoundaries as crate::__private::PostcardValue>::read(input).map(Self::Boundaries),
             1 => <StoredRecord as crate::__private::PostcardValue>::read(input).map(Self::Record),
             _ => Err(MessageError::borrowed("unknown follow output variant")),
         })
@@ -197,8 +167,7 @@ impl crate::__private::PostcardValue for Followed {
 
 impl Followed {
     pub fn wrapping_memory(record: usize) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(record.saturating_sub(std::mem::size_of::<StoredRecord>()))
+        std::mem::size_of::<Self>().saturating_add(record.saturating_sub(std::mem::size_of::<StoredRecord>()))
     }
 }
 

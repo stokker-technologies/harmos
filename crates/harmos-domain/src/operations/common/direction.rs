@@ -97,10 +97,7 @@ impl crate::__private::PostcardValue for NoStream {
 /* === Public Functions === */
 // The Item Types An Operation Streams, Input Then Output.
 pub fn item_types<O: super::OperationDeclaration>() -> (Option<TypeId>, Option<TypeId>) {
-    (
-        <O::Input as Direction>::item_type(),
-        <O::Output as Direction>::item_type(),
-    )
+    (<O::Input as Direction>::item_type(), <O::Output as Direction>::item_type())
 }
 
 /* === Private Functions === */

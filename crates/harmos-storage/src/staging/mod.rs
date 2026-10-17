@@ -86,15 +86,9 @@ pub(super) struct FileState {
 /* === Enums === */
 enum Command {
     Create,
-    Resume {
-        expected: u64,
-        next: u64,
-    },
+    Resume { expected: u64, next: u64 },
     Write(Arc<[u8]>),
-    Finish {
-        target: Option<Target>,
-        sha256: [u8; 32],
-    },
+    Finish { target: Option<Target>, sha256: [u8; 32] },
     Abort,
 }
 
@@ -106,45 +100,13 @@ enum Await {
 }
 
 pub(super) enum FileAction {
-    Create {
-        id: u64,
-        metadata: Arc<FileMetadata>,
-        staging: StagedFile,
-        resumable: bool,
-    },
-    Resume {
-        id: u64,
-        staging: StagedFile,
-        expected: u64,
-        next: u64,
-    },
-    Write {
-        id: u64,
-        staging: StagedFile,
-        offset: u64,
-        bytes: Arc<[u8]>,
-    },
-    Finish {
-        id: u64,
-        staging: StagedFile,
-        metadata: Arc<FileMetadata>,
-        target: Target,
-        length: u64,
-        sha256: [u8; 32],
-    },
-    Abandon {
-        id: u64,
-        staging: StagedFile,
-        extra: Option<StagedFile>,
-    },
-    Abort {
-        id: u64,
-        staging: StagedFile,
-        extra: Option<StagedFile>,
-    },
-    Refuse {
-        id: u64,
-    },
+    Create { id: u64, metadata: Arc<FileMetadata>, staging: StagedFile, resumable: bool },
+    Resume { id: u64, staging: StagedFile, expected: u64, next: u64 },
+    Write { id: u64, staging: StagedFile, offset: u64, bytes: Arc<[u8]> },
+    Finish { id: u64, staging: StagedFile, metadata: Arc<FileMetadata>, target: Target, length: u64, sha256: [u8; 32] },
+    Abandon { id: u64, staging: StagedFile, extra: Option<StagedFile> },
+    Abort { id: u64, staging: StagedFile, extra: Option<StagedFile> },
+    Refuse { id: u64 },
 }
 
 pub(super) enum FileCompleted {
@@ -168,16 +130,11 @@ fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<(usize,
 }
 
 fn closed() -> Error {
-    Error::Closing {
-        domain: "storage file",
-    }
+    Error::Closing { domain: "storage file" }
 }
 
 fn size_error() -> Error {
-    Error::InvalidInput {
-        field: "file admission",
-        reason: "size or position overflow",
-    }
+    Error::InvalidInput { field: "file admission", reason: "size or position overflow" }
 }
 
 fn admission(state: &State) -> Result<()> {
@@ -188,9 +145,7 @@ fn admission(state: &State) -> Result<()> {
         return Err(Error::NotReady { domain: "storage" });
     }
     if let Some(source) = &state.status.failure {
-        return Err(Error::Persistence {
-            source: source.clone(),
-        });
+        return Err(Error::Persistence { source: source.clone() });
     }
     Ok(())
 }

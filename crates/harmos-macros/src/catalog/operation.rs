@@ -42,16 +42,9 @@ use crate::path::HarmosPath;
 /* === Public Functions === */
 // The request type declares its operation: the attribute parses the metadata
 // and expands to the SDK's `declare!`, the one writer of the declaration impl.
-pub(crate) fn structure(
-    attribute: TokenStream,
-    item: ItemStruct,
-    sdk: &HarmosPath,
-) -> Result<TokenStream, Error> {
+pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() {
-        return Err(Error::new_spanned(
-            &item.generics,
-            "an operation request type cannot be generic",
-        ));
+        return Err(Error::new_spanned(&item.generics, "an operation request type cannot be generic"));
     }
     let attribute: Attribute = syn::parse_quote!(#[operation(#attribute)]);
     let mut seen = BTreeSet::new();
@@ -77,9 +70,7 @@ pub(crate) fn structure(
         }
         match name.as_str() {
             "request" => {
-                return Err(meta.error(
-                    "the operation is its request type: put the attribute on the request struct",
-                ));
+                return Err(meta.error("the operation is its request type: put the attribute on the request struct"));
             }
             "response" => response = Some(meta.value()?.parse()?),
             "input" => input = Some(meta.value()?.parse()?),
@@ -97,12 +88,8 @@ pub(crate) fn structure(
         }
         Ok(())
     })?;
-    let missing = |field| {
-        Error::new_spanned(
-            &attribute,
-            format!("operation requires `{field}` (response, version and policy are required)"),
-        )
-    };
+    let missing =
+        |field| Error::new_spanned(&attribute, format!("operation requires `{field}` (response, version and policy are required)"));
     let response = response.ok_or_else(|| missing("response"))?;
     let version = version.ok_or_else(|| missing("version"))?;
     let policy = policy.ok_or_else(|| missing("policy"))?;
@@ -130,16 +117,10 @@ pub(crate) fn structure(
 }
 
 /* === Private Functions === */
-fn grpc_binding(
-    meta: syn::meta::ParseNestedMeta<'_>,
-) -> Result<(syn::LitStr, syn::LitStr, syn::LitStr), Error> {
+fn grpc_binding(meta: syn::meta::ParseNestedMeta<'_>) -> Result<(syn::LitStr, syn::LitStr, syn::LitStr), Error> {
     let mut values = std::collections::BTreeMap::new();
     meta.parse_nested_meta(|field| {
-        let name = field
-            .path
-            .get_ident()
-            .map(ToString::to_string)
-            .ok_or_else(|| field.error("expected package, service or method"))?;
+        let name = field.path.get_ident().map(ToString::to_string).ok_or_else(|| field.error("expected package, service or method"))?;
         if !matches!(name.as_str(), "package" | "service" | "method") {
             return Err(field.error("expected package, service or method"));
         }
@@ -149,39 +130,22 @@ fn grpc_binding(
         }
         Ok(())
     })?;
-    let mut take = |name| {
-        values
-            .remove(name)
-            .ok_or_else(|| meta.error("grpc requires package, service and method"))
-    };
+    let mut take = |name| values.remove(name).ok_or_else(|| meta.error("grpc requires package, service and method"));
     let package = take("package")?;
     let service = take("service")?;
     let method = take("method")?;
-    for (name, value) in [
-        ("package", &package),
-        ("service", &service),
-        ("method", &method),
-    ] {
+    for (name, value) in [("package", &package), ("service", &service), ("method", &method)] {
         let text = value.value();
         let valid = |value: &str| {
             let mut bytes = value.bytes();
-            bytes
-                .next()
-                .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+            bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
                 && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
         };
         if text.len() > 255
             || (name == "package" && text.starts_with("grpc."))
-            || !(if name == "package" {
-                text.split('.').all(valid)
-            } else {
-                valid(&text)
-            })
+            || !(if name == "package" { text.split('.').all(valid) } else { valid(&text) })
         {
-            return Err(Error::new_spanned(
-                value,
-                "invalid or reserved gRPC binding name",
-            ));
+            return Err(Error::new_spanned(value, "invalid or reserved gRPC binding name"));
         }
     }
     Ok((package, service, method))

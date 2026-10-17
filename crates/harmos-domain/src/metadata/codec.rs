@@ -23,41 +23,22 @@ use crate::message::{PostcardReader as Reader, PostcardValue, decoding_add};
 use crate::schema::declaration::{Definition, Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::value::codec::{
-    ENTRY_DEFINITION, TIMESTAMP_DEFINITION, VALUE_DEPTH, entries_memory, entries_size,
-    read_entries, read_timestamp, timestamp_size, write_entries, write_timestamp,
+    ENTRY_DEFINITION, TIMESTAMP_DEFINITION, VALUE_DEPTH, entries_memory, entries_size, read_entries, read_timestamp, timestamp_size,
+    write_entries, write_timestamp,
 };
 
 /* === Constants === */
-const IDENTIFIER_FIELDS: &[Field] = &[Field {
-    name: Cow::Borrowed("value"),
-    tag: 1,
-    kind: Kind::String,
-    cardinality: Cardinality::Required,
-}];
+const IDENTIFIER_FIELDS: &[Field] =
+    &[Field { name: Cow::Borrowed("value"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required }];
 
 const METADATA_FIELDS: &[Field] = &[
     field("identifier", 1, Kind::String, Cardinality::Required),
     field("label", 2, Kind::String, Cardinality::Required),
     field("description", 3, Kind::String, Cardinality::Optional),
     field("tags", 4, Kind::String, Cardinality::Repeated),
-    field(
-        "attributes",
-        5,
-        message(ENTRY_DEFINITION),
-        Cardinality::Repeated,
-    ),
-    field(
-        "created_at",
-        6,
-        message(TIMESTAMP_DEFINITION),
-        Cardinality::Optional,
-    ),
-    field(
-        "updated_at",
-        7,
-        message(TIMESTAMP_DEFINITION),
-        Cardinality::Optional,
-    ),
+    field("attributes", 5, message(ENTRY_DEFINITION), Cardinality::Repeated),
+    field("created_at", 6, message(TIMESTAMP_DEFINITION), Cardinality::Optional),
+    field("updated_at", 7, message(TIMESTAMP_DEFINITION), Cardinality::Optional),
 ];
 
 /* === Macros === */
@@ -115,8 +96,7 @@ impl PostcardValue for Metadata {
             for allocation in [
                 Identifier::memory(input)?.saturating_sub(std::mem::size_of::<Identifier>()),
                 String::memory(input)?.saturating_sub(std::mem::size_of::<String>()),
-                Option::<String>::memory(input)?
-                    .saturating_sub(std::mem::size_of::<Option<String>>()),
+                Option::<String>::memory(input)?.saturating_sub(std::mem::size_of::<Option<String>>()),
                 Vec::<String>::memory(input)?.saturating_sub(std::mem::size_of::<Vec<String>>()),
                 entries_memory(input, VALUE_DEPTH)?,
             ] {
@@ -151,12 +131,7 @@ impl PostcardValue for Metadata {
 
 /* === Private Functions === */
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
-    Field {
-        name: Cow::Borrowed(name),
-        tag,
-        kind,
-        cardinality,
-    }
+    Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }
 
 const fn message(definition: Definition) -> Kind {
@@ -175,11 +150,7 @@ fn instant_size(value: Option<time::OffsetDateTime>) -> usize {
 }
 
 fn read_instant(input: &mut Reader<'_>) -> Result<Option<time::OffsetDateTime>, MessageError> {
-    if bool::read(input)? {
-        read_timestamp(input).map(Some)
-    } else {
-        Ok(None)
-    }
+    if bool::read(input)? { read_timestamp(input).map(Some) } else { Ok(None) }
 }
 
 /* === Tests === */

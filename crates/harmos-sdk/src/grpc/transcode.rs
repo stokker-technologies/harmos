@@ -49,11 +49,7 @@ use harmos_domain::schema::declaration::{Definition, Field, Kind};
 
 /* === Public Functions === */
 /// Append the protobuf form of one Postcard-encoded `definition` value.
-pub fn encode(
-    definition: &Definition,
-    postcard: &[u8],
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+pub fn encode(definition: &Definition, postcard: &[u8], bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let mut input = Reader::new(postcard);
     message(definition, &mut input, bytes)?;
     input.finish()
@@ -68,28 +64,19 @@ pub fn decode(definition: &Definition, input: DecodeInput<'_>) -> Result<Vec<u8>
 
 /* === Private Functions === */
 fn oneof(fields: &[Field]) -> bool {
-    !fields.is_empty()
-        && fields
-            .iter()
-            .all(|field| field.cardinality == Cardinality::Variant)
+    !fields.is_empty() && fields.iter().all(|field| field.cardinality == Cardinality::Variant)
 }
 
 fn payload(field: &Field) -> Result<&Definition, MessageError> {
     match &field.kind {
         Kind::Message { definition } => Ok(definition),
-        _ => Err(MessageError::borrowed(
-            "a oneof variant carries a message payload",
-        )),
+        _ => Err(MessageError::borrowed("a oneof variant carries a message payload")),
     }
 }
 
 /* --- Postcard To Protobuf --- */
 
-fn message(
-    definition: &Definition,
-    input: &mut Reader<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn message(definition: &Definition, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
     if oneof(fields) {
         let index: u32 = input.value()?;
@@ -106,11 +93,7 @@ fn message(
 }
 
 // Postcard Holds Fields In Declaration Order; Protobuf Writes Them By Tag.
-fn members(
-    definition: &Definition,
-    input: &mut Reader<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn members(definition: &Definition, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
     let mut chunks = Vec::with_capacity(fields.len());
     for field in fields {
@@ -129,9 +112,7 @@ fn members(
 
 fn member(field: &Field, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     match (field.cardinality, &field.kind) {
-        (Cardinality::Required, Kind::Message { definition }) => {
-            nested(field.tag, definition, input, bytes)
-        }
+        (Cardinality::Required, Kind::Message { definition }) => nested(field.tag, definition, input, bytes),
         (Cardinality::Required, kind) => scalar(field.tag, kind, input, bytes, true),
         (Cardinality::Optional, kind) => {
             if !input.value::<bool>()? {
@@ -166,31 +147,18 @@ fn member(field: &Field, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<
             }
             Ok(())
         }
-        (Cardinality::Variant, _) => {
-            Err(MessageError::borrowed("a variant field belongs to a oneof"))
-        }
+        (Cardinality::Variant, _) => Err(MessageError::borrowed("a variant field belongs to a oneof")),
     }
 }
 
-fn nested(
-    tag: u32,
-    definition: &Definition,
-    input: &mut Reader<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn nested(tag: u32, definition: &Definition, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let mut body = Vec::new();
     message(definition, input, &mut body)?;
     delimited(tag, &body, bytes);
     Ok(())
 }
 
-fn scalar(
-    tag: u32,
-    kind: &Kind,
-    input: &mut Reader<'_>,
-    bytes: &mut Vec<u8>,
-    omit_default: bool,
-) -> Result<(), MessageError> {
+fn scalar(tag: u32, kind: &Kind, input: &mut Reader<'_>, bytes: &mut Vec<u8>, omit_default: bool) -> Result<(), MessageError> {
     match kind {
         Kind::String => {
             let text: &str = input.value()?;
@@ -277,44 +245,22 @@ fn delimited(tag: u32, value: &[u8], bytes: &mut Vec<u8>) {
 
 /* --- Protobuf To Postcard --- */
 
-fn decode_message(
-    definition: &Definition,
-    input: DecodeInput<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn decode_message(definition: &Definition, input: DecodeInput<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
     if !oneof(fields) {
         return decode_members(definition, input, bytes);
     }
     let tags = fields.iter().map(|field| field.tag).collect::<Vec<_>>();
     let (index, selected) = match input.variant(&tags)? {
-        Some((tag, selected)) => (
-            tags.iter()
-                .position(|known| *known == tag)
-                .expect("selected declared variant"),
-            selected,
-        ),
-        None => (
-            definition
-                .default_variant
-                .ok_or_else(|| MessageError::borrowed("missing oneof variant"))?,
-            input.child(&[])?,
-        ),
+        Some((tag, selected)) => (tags.iter().position(|known| *known == tag).expect("selected declared variant"), selected),
+        None => (definition.default_variant.ok_or_else(|| MessageError::borrowed("missing oneof variant"))?, input.child(&[])?),
     };
-    let field = fields
-        .get(index)
-        .ok_or_else(|| MessageError::borrowed("default variant lies outside the oneof"))?;
-    u32::try_from(index)
-        .map_err(|_| MessageError::borrowed("oneof variant index overflows"))?
-        .write(bytes);
+    let field = fields.get(index).ok_or_else(|| MessageError::borrowed("default variant lies outside the oneof"))?;
+    u32::try_from(index).map_err(|_| MessageError::borrowed("oneof variant index overflows"))?.write(bytes);
     decode_members(payload(field)?, selected, bytes)
 }
 
-fn decode_members(
-    definition: &Definition,
-    input: DecodeInput<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn decode_members(definition: &Definition, input: DecodeInput<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
     // Check Every Occurrence Of A Known Field Before Any Is Selected
     input.fields(&mut |occurrence| {
@@ -338,16 +284,10 @@ fn check(field: &Field, occurrence: DecodeField<'_>) -> Result<(), MessageError>
     }
 }
 
-fn decode_member(
-    field: &Field,
-    input: DecodeInput<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn decode_member(field: &Field, input: DecodeInput<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let tag = field.tag;
     match (field.cardinality, &field.kind) {
-        (Cardinality::Required, Kind::Message { definition }) => {
-            decode_message(definition, input.field(tag)?, bytes)
-        }
+        (Cardinality::Required, Kind::Message { definition }) => decode_message(definition, input.field(tag)?, bytes),
         (Cardinality::Optional, Kind::Message { definition }) => {
             let present = last(input, tag)?.is_some();
             present.write(bytes);
@@ -372,9 +312,7 @@ fn decode_member(
         (Cardinality::Optional, kind) => {
             let occurrence = last(input, tag)?;
             occurrence.is_some().write(bytes);
-            occurrence.map_or(Ok(()), |occurrence| {
-                decode_scalar_value(kind, occurrence, bytes)
-            })
+            occurrence.map_or(Ok(()), |occurrence| decode_scalar_value(kind, occurrence, bytes))
         }
         (Cardinality::Repeated, kind @ (Kind::String | Kind::Bytes)) => {
             count(input, tag)?.write(bytes);
@@ -405,9 +343,7 @@ fn decode_member(
                 Ok(())
             })
         }
-        (Cardinality::Variant, _) => {
-            Err(MessageError::borrowed("a variant field belongs to a oneof"))
-        }
+        (Cardinality::Variant, _) => Err(MessageError::borrowed("a variant field belongs to a oneof")),
     }
 }
 
@@ -441,11 +377,7 @@ fn decode_scalar(kind: &Kind) -> DecodeScalar {
     }
 }
 
-fn decode_scalar_value(
-    kind: &Kind,
-    occurrence: DecodeField<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn decode_scalar_value(kind: &Kind, occurrence: DecodeField<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     match kind {
         Kind::String => {
             let text = occurrence.text()?;
@@ -463,11 +395,7 @@ fn decode_scalar_value(
     }
 }
 
-fn write_number(
-    kind: &Kind,
-    value: DecodeValue<'_>,
-    bytes: &mut Vec<u8>,
-) -> Result<(), MessageError> {
+fn write_number(kind: &Kind, value: DecodeValue<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     match (kind, value) {
         (Kind::Bool, DecodeValue::Varint(value)) => (value != 0).write(bytes),
         (Kind::U32, DecodeValue::Varint(value)) => (value as u32).write(bytes),

@@ -11,20 +11,12 @@
 pub mod optional {
     use super::*;
 
-    pub fn serialize<S: Serializer>(
-        value: &Option<Timestamp>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(value: &Option<Timestamp>, serializer: S) -> Result<S::Ok, S::Error> {
         value.map(Wire::from).serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<Timestamp>, D::Error> {
-        Option::<Wire>::deserialize(deserializer)?
-            .map(Wire::timestamp)
-            .transpose()
-            .map_err(serde::de::Error::custom)
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
+        Option::<Wire>::deserialize(deserializer)?.map(Wire::timestamp).transpose().map_err(serde::de::Error::custom)
     }
 }
 
@@ -65,11 +57,7 @@ impl From<Timestamp> for Wire {
             Err(error) => (error.duration(), true),
         };
 
-        Self {
-            secs_since_epoch: duration.as_secs(),
-            nanos_since_epoch: duration.subsec_nanos(),
-            before_epoch,
-        }
+        Self { secs_since_epoch: duration.as_secs(), nanos_since_epoch: duration.subsec_nanos(), before_epoch }
     }
 }
 

@@ -58,130 +58,40 @@ macro_rules! shape {
 
 macro_rules! level {
     ($level:ident, $entry:ident, $array:ident, $object:ident, $inner:ident) => {
-        shape!(
-            $array,
-            &[field(
-                "items",
-                1,
-                message($inner::DEFINITION),
-                Cardinality::Repeated
-            )]
-        );
+        shape!($array, &[field("items", 1, message($inner::DEFINITION), Cardinality::Repeated)]);
         shape!(
             $entry,
-            &[
-                field("key", 1, Kind::String, Cardinality::Required),
-                field(
-                    "value",
-                    2,
-                    message($inner::DEFINITION),
-                    Cardinality::Required
-                ),
-            ]
+            &[field("key", 1, Kind::String, Cardinality::Required), field("value", 2, message($inner::DEFINITION), Cardinality::Required),]
         );
-        shape!(
-            $object,
-            &[field(
-                "entries",
-                1,
-                message($entry::DEFINITION),
-                Cardinality::Repeated
-            )]
-        );
+        shape!($object, &[field("entries", 1, message($entry::DEFINITION), Cardinality::Repeated)]);
         shape!(
             $level,
             &[
                 field("null", 1, message(<()>::DEFINITION), Cardinality::Variant),
                 field("bool", 2, message(<bool>::DEFINITION), Cardinality::Variant),
-                field(
-                    "integer",
-                    3,
-                    message(<i64>::DEFINITION),
-                    Cardinality::Variant
-                ),
-                field(
-                    "unsigned",
-                    4,
-                    message(<u64>::DEFINITION),
-                    Cardinality::Variant
-                ),
-                field(
-                    "number",
-                    5,
-                    message(<f64>::DEFINITION),
-                    Cardinality::Variant
-                ),
+                field("integer", 3, message(<i64>::DEFINITION), Cardinality::Variant),
+                field("unsigned", 4, message(<u64>::DEFINITION), Cardinality::Variant),
+                field("number", 5, message(<f64>::DEFINITION), Cardinality::Variant),
                 field("text", 6, message(String::DEFINITION), Cardinality::Variant),
-                field(
-                    "datetime",
-                    7,
-                    message(Timestamp::DEFINITION),
-                    Cardinality::Variant
-                ),
-                field(
-                    "array",
-                    8,
-                    message($array::DEFINITION),
-                    Cardinality::Variant
-                ),
-                field(
-                    "object",
-                    9,
-                    message($object::DEFINITION),
-                    Cardinality::Variant
-                ),
+                field("datetime", 7, message(Timestamp::DEFINITION), Cardinality::Variant),
+                field("array", 8, message($array::DEFINITION), Cardinality::Variant),
+                field("object", 9, message($object::DEFINITION), Cardinality::Variant),
             ]
         );
     };
 }
 
-shape!(
-    Timestamp,
-    &[
-        field("seconds", 1, Kind::I64, Cardinality::Required),
-        field("nanos", 2, Kind::U32, Cardinality::Required),
-    ]
-);
+shape!(Timestamp, &[field("seconds", 1, Kind::I64, Cardinality::Required), field("nanos", 2, Kind::U32, Cardinality::Required),]);
 shape!(
     Value0,
     &[
         field("null", 1, message(<()>::DEFINITION), Cardinality::Variant),
-        field(
-            "bool",
-            2,
-            message(<bool as Described>::DEFINITION),
-            Cardinality::Variant,
-        ),
-        field(
-            "integer",
-            3,
-            message(<i64 as Described>::DEFINITION),
-            Cardinality::Variant,
-        ),
-        field(
-            "unsigned",
-            4,
-            message(<u64 as Described>::DEFINITION),
-            Cardinality::Variant,
-        ),
-        field(
-            "number",
-            5,
-            message(<f64 as Described>::DEFINITION),
-            Cardinality::Variant,
-        ),
-        field(
-            "text",
-            6,
-            message(<String as Described>::DEFINITION),
-            Cardinality::Variant,
-        ),
-        field(
-            "datetime",
-            7,
-            message(Timestamp::DEFINITION),
-            Cardinality::Variant,
-        ),
+        field("bool", 2, message(<bool as Described>::DEFINITION), Cardinality::Variant,),
+        field("integer", 3, message(<i64 as Described>::DEFINITION), Cardinality::Variant,),
+        field("unsigned", 4, message(<u64 as Described>::DEFINITION), Cardinality::Variant,),
+        field("number", 5, message(<f64 as Described>::DEFINITION), Cardinality::Variant,),
+        field("text", 6, message(<String as Described>::DEFINITION), Cardinality::Variant,),
+        field("datetime", 7, message(Timestamp::DEFINITION), Cardinality::Variant,),
     ]
 );
 level!(Value1, Entry1, Array1, Object1, Value0);
@@ -257,9 +167,7 @@ impl PostcardValue for Value {
             Self::Number(value) => value.size(),
             Self::Text(value) => value.size(),
             Self::Datetime(value) => timestamp_size(*value),
-            Self::Array(values) => values.iter().fold(values.len().size(), |size, value| {
-                size.saturating_add(value.size())
-            }),
+            Self::Array(values) => values.iter().fold(values.len().size(), |size, value| size.saturating_add(value.size())),
             Self::Object(entries) => entries_size(entries),
         };
         variant(self).size().saturating_add(payload)
@@ -278,12 +186,7 @@ impl PostcardValue for Value {
 
 /* === Private Functions === */
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
-    Field {
-        name: Cow::Borrowed(name),
-        tag,
-        kind,
-        cardinality,
-    }
+    Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }
 
 const fn message(definition: Definition) -> Kind {
@@ -349,11 +252,7 @@ pub(crate) fn write_entries(entries: &BTreeMap<String, Value>, bytes: &mut Vec<u
 }
 
 pub(crate) fn entries_size(entries: &BTreeMap<String, Value>) -> usize {
-    entries
-        .iter()
-        .fold(entries.len().size(), |size, (key, value)| {
-            size.saturating_add(key.size()).saturating_add(value.size())
-        })
+    entries.iter().fold(entries.len().size(), |size, (key, value)| size.saturating_add(key.size()).saturating_add(value.size()))
 }
 
 pub(crate) fn entries_memory(input: &mut Reader<'_>, depth: usize) -> Result<usize, MessageError> {
@@ -370,10 +269,7 @@ pub(crate) fn entries_memory(input: &mut Reader<'_>, depth: usize) -> Result<usi
     })
 }
 
-pub(crate) fn read_entries(
-    input: &mut Reader<'_>,
-    depth: usize,
-) -> Result<BTreeMap<String, Value>, MessageError> {
+pub(crate) fn read_entries(input: &mut Reader<'_>, depth: usize) -> Result<BTreeMap<String, Value>, MessageError> {
     input.nested(|input| {
         let count: usize = input.value()?;
         input.claim(count)?;

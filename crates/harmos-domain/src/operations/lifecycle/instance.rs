@@ -73,25 +73,19 @@ crate::declare!(Watch {
 /* === Implementations === */
 impl Status {
     pub fn of(instance: Id) -> Self {
-        Self {
-            instance: instance.value(),
-        }
+        Self { instance: instance.value() }
     }
 }
 
 impl Watch {
     pub fn of(instance: Id) -> Self {
-        Self {
-            instance: instance.value(),
-        }
+        Self { instance: instance.value() }
     }
 }
 
 impl Cancel {
     pub fn of(instance: Id) -> Self {
-        Self {
-            instance: instance.value(),
-        }
+        Self { instance: instance.value() }
     }
 }
 
@@ -99,11 +93,7 @@ impl From<instance::Status> for InstanceState {
     fn from(status: instance::Status) -> Self {
         Self {
             phase: status.phase.as_str().to_owned(),
-            outcome: status
-                .outcome
-                .map(Outcome::as_str)
-                .unwrap_or_default()
-                .to_owned(),
+            outcome: status.outcome.map(Outcome::as_str).unwrap_or_default().to_owned(),
             cancellation_requested: status.cancellation_requested,
             attempt: status.attempt,
         }
@@ -119,12 +109,7 @@ impl TryFrom<&InstanceState> for instance::Status {
             "" => None,
             outcome => Some(outcome.parse::<Outcome>()?),
         };
-        Ok(Self {
-            phase,
-            outcome,
-            cancellation_requested: state.cancellation_requested,
-            attempt: state.attempt,
-        })
+        Ok(Self { phase, outcome, cancellation_requested: state.cancellation_requested, attempt: state.attempt })
     }
 }
 

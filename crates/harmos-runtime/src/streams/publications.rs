@@ -107,49 +107,31 @@ pub enum StreamPublicationError {
 
 /* === Implementations === */
 impl<A: Application> StreamManager<A> {
-    pub async fn admit(
-        &self,
-        owner: &str,
-        declaration: StreamDeclaration,
-    ) -> Result<PublicationLease, StreamAdmissionError> {
+    pub async fn admit(&self, owner: &str, declaration: StreamDeclaration) -> Result<PublicationLease, StreamAdmissionError> {
         Ok(self.admit_all(owner, [declaration]).await?.remove(0))
     }
 
     pub fn validate_publications(
-        &self,
-        owner: &str,
-        declarations: impl IntoIterator<Item = StreamDeclaration>,
+        &self, owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
     ) -> Result<(), StreamAdmissionError> {
         let definitions = publication_definitions(owner, declarations)?;
         if self.closed.load(Ordering::Acquire) {
             return Err(StreamAdmissionError::Closed);
         }
-        let _visibility = self
-            .windows
-            .visibility
-            .read()
-            .expect("stream visibility poisoned");
-        let windows = self
-            .windows
-            .windows
-            .read()
-            .expect("stream registry poisoned");
+        let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
+        let windows = self.windows.windows.read().expect("stream registry poisoned");
         validate_existing(&windows, &definitions, false)
     }
 
     pub async fn admit_all(
-        &self,
-        owner: &str,
-        declarations: impl IntoIterator<Item = StreamDeclaration>,
+        &self, owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
     ) -> Result<Vec<PublicationLease>, StreamAdmissionError> {
         let definitions = publication_definitions(owner, declarations)?;
         let validations = definitions
             .iter()
             .map(|definition| {
                 crate::schema::Validator::from_schema(
-                    definition
-                        .schema()
-                        .expect("plugin definitions own a row schema"),
+                    definition.schema().expect("plugin definitions own a row schema"),
                     &harmos_domain::config::SchemaSettings::default(),
                 )
                 .map_err(crate::schema::Error::from)
@@ -157,16 +139,8 @@ impl<A: Application> StreamManager<A> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         {
-            let _visibility = self
-                .windows
-                .visibility
-                .read()
-                .expect("stream visibility poisoned");
-            let windows = self
-                .windows
-                .windows
-                .read()
-                .expect("stream registry poisoned");
+            let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
+            let windows = self.windows.windows.read().expect("stream registry poisoned");
             validate_existing(&windows, &definitions, true)?;
         }
         if self.closed.load(Ordering::Acquire) {
@@ -177,27 +151,15 @@ impl<A: Application> StreamManager<A> {
             floors.push(self.tier.seal(definition.clone(), Vec::new()).await);
         }
 
-        let _visibility = self
-            .windows
-            .visibility
-            .read()
-            .expect("stream visibility poisoned");
-        let mut windows = self
-            .windows
-            .windows
-            .write()
-            .expect("stream registry poisoned");
+        let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
+        let mut windows = self.windows.windows.write().expect("stream registry poisoned");
         if self.closed.load(Ordering::Acquire) {
             return Err(StreamAdmissionError::Closed);
         }
         validate_existing(&windows, &definitions, true)?;
         let mut leases = Vec::with_capacity(definitions.len());
-        for ((definition, floor), validation) in
-            definitions.into_iter().zip(floors).zip(validations)
-        {
-            let revisions = windows
-                .entry(Arc::<str>::from(definition.id()))
-                .or_default();
+        for ((definition, floor), validation) in definitions.into_iter().zip(floors).zip(validations) {
+            let revisions = windows.entry(Arc::<str>::from(definition.id())).or_default();
             // A presentation-only edit keeps the wire revision and retained rows.
             // Existing readers keep their immutable descriptor; new discovery sees
             // the replacement's authored metadata.
@@ -213,11 +175,7 @@ impl<A: Application> StreamManager<A> {
                         window: Arc::clone(&previous.window),
                         definition: definition.clone(),
                         publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(
-                            feature = "plugin",
-                            feature = "plugin-guest",
-                            feature = "plugin-sidecar"
-                        ))]
+                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                         staged: None,
                     }),
                 );
@@ -238,11 +196,7 @@ impl<A: Application> StreamManager<A> {
                         ),
                         definition,
                         publisher: Mutex::new(Weak::new()),
-                        #[cfg(any(
-                            feature = "plugin",
-                            feature = "plugin-guest",
-                            feature = "plugin-sidecar"
-                        ))]
+                        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                         staged: None,
                     });
                     if floor > Position::ORIGIN && floor <= *self.applied.borrow() {
@@ -283,12 +237,7 @@ impl<A: Application> StreamManager<A> {
     }
 
     pub fn definitions(&self) -> Vec<Definition> {
-        let mut definitions: Vec<_> = self
-            .windows
-            .declared()
-            .into_iter()
-            .map(|wired| wired.definition.clone())
-            .collect();
+        let mut definitions: Vec<_> = self.windows.declared().into_iter().map(|wired| wired.definition.clone()).collect();
         definitions.sort_by(|a, b| (a.id(), a.version()).cmp(&(b.id(), b.version())));
         definitions
     }
@@ -300,129 +249,65 @@ impl PublicationLease {
     }
 
     pub fn publish(&self, payload: Vec<u8>, missed: u64) -> Result<(), StreamPublicationError> {
-        self.publish_row(
-            PublicationRow {
-                payload,
-                published_unix_micros: None,
-                context: None,
-            },
-            missed,
-        )
+        self.publish_row(PublicationRow { payload, published_unix_micros: None, context: None }, missed)
     }
 
-    pub fn publish_row(
-        &self,
-        row: PublicationRow,
-        missed: u64,
-    ) -> Result<(), StreamPublicationError> {
+    pub fn publish_row(&self, row: PublicationRow, missed: u64) -> Result<(), StreamPublicationError> {
         self.admit(row, None, missed).map(|_| ())
     }
 
     pub fn admit_row(
-        &self,
-        row: PublicationRow,
-        wire_sequence: u64,
-        missed: u64,
+        &self, row: PublicationRow, wire_sequence: u64, missed: u64,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
         self.admit(row, Some(wire_sequence), missed)
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn stage_row(
-        &self,
-        row: PublicationRow,
-        wire_sequence: u64,
-        missed: u64,
+        &self, row: PublicationRow, wire_sequence: u64, missed: u64,
     ) -> Result<super::StagedPublication, StreamPublicationError> {
-        self.stage_sequence(vec![row], Some(wire_sequence), missed, None)
-            .single()
+        self.stage_sequence(vec![row], Some(wire_sequence), missed, None).single()
     }
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
     // `missed` applies before the first row only.
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    pub fn stage_rows(
-        &self,
-        rows: Vec<PublicationRow>,
-        first_wire_sequence: u64,
-        missed: u64,
-    ) -> super::StagedRows {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub fn stage_rows(&self, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64) -> super::StagedRows {
         self.stage_sequence(rows, Some(first_wire_sequence), missed, None)
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    pub fn stage_derived_row(
-        &self,
-        row: PublicationRow,
-        missed: u64,
-    ) -> Result<super::StagedPublication, StreamPublicationError> {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub fn stage_derived_row(&self, row: PublicationRow, missed: u64) -> Result<super::StagedPublication, StreamPublicationError> {
         self.stage_sequence(vec![row], None, missed, None).single()
     }
 
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn stage_rows_in(
-        &self,
-        context: &crate::operations::Context<'_>,
-        rows: Vec<PublicationRow>,
-        first_wire_sequence: u64,
-        missed: u64,
+        &self, context: &crate::operations::Context<'_>, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64,
     ) -> super::StagedRows {
         self.stage_sequence(rows, Some(first_wire_sequence), missed, Some(context))
     }
 
     // One visibility fence and one scope phase cover the whole batch, so no
     // reader or commit observes it half staged.
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     fn stage_sequence(
-        &self,
-        rows: Vec<PublicationRow>,
-        wire_sequence: Option<u64>,
-        missed: u64,
-        context: Option<&crate::operations::Context<'_>>,
+        &self, rows: Vec<PublicationRow>, wire_sequence: Option<u64>, missed: u64, context: Option<&crate::operations::Context<'_>>,
     ) -> super::StagedRows {
         let Some(staged) = self.stream.wired.staged.as_ref() else {
             return super::StagedRows::refused(Vec::new(), StreamPublicationError::NotReady);
         };
-        let _visibility = self
-            .stream
-            .wired
-            .window
-            .visibility
-            .write()
-            .expect("stream visibility poisoned");
+        let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let mut evicted = Vec::new();
         let prepared = staged.scope.prepare_publication_in(context, |ready| {
-            let activation = staged
-                .activation
-                .upgrade()
-                .ok_or(StreamPublicationError::Revoked)?;
+            let activation = staged.activation.upgrade().ok_or(StreamPublicationError::Revoked)?;
             let mut receipts = Vec::with_capacity(rows.len());
             let mut stamped = None;
             // Staged Rows Join The Window At Commit; They Must Evict No Unread Row.
             let mut room = if ready {
                 usize::MAX
             } else {
-                self.stream
-                    .wired
-                    .window
-                    .room(self.stream.ingest.taken())
-                    .saturating_sub(activation.pending(&self.stream.wired))
+                self.stream.wired.window.room(self.stream.ingest.taken()).saturating_sub(activation.pending(&self.stream.wired))
             };
             for (offset, row) in (0_u64..).zip(rows) {
                 if room == 0 {
@@ -450,10 +335,7 @@ impl PublicationLease {
                 evicted.extend(dropped);
                 receipts.push(if ready {
                     let (_, committed) = watch::channel(true);
-                    super::StagedPublication {
-                        publication,
-                        committed,
-                    }
+                    super::StagedPublication { publication, committed }
                 } else {
                     activation.push(&self.stream.wired, *self.applied.borrow(), publication)
                 });
@@ -476,25 +358,10 @@ impl PublicationLease {
         }
     }
 
-    fn admit(
-        &self,
-        row: PublicationRow,
-        sequence: Option<u64>,
-        missed: u64,
-    ) -> Result<super::ManagedPublication, StreamPublicationError> {
-        let _visibility = self
-            .stream
-            .wired
-            .window
-            .visibility
-            .write()
-            .expect("stream visibility poisoned");
+    fn admit(&self, row: PublicationRow, sequence: Option<u64>, missed: u64) -> Result<super::ManagedPublication, StreamPublicationError> {
+        let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             if let Some(staged) = &self.stream.wired.staged {
                 staged.scope.prepare_publication(|ready| {
                     if !ready {
@@ -505,11 +372,7 @@ impl PublicationLease {
             } else {
                 self.admit_locked(row, sequence, missed, true)
             }
-            #[cfg(not(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            )))]
+            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
             {
                 self.admit_locked(row, sequence, missed, true)
             }
@@ -524,13 +387,8 @@ impl PublicationLease {
 
     // Visibility and original scope phase precede writer and row-state locks.
     fn admit_locked(
-        &self,
-        row: PublicationRow,
-        sequence: Option<u64>,
-        missed: u64,
-        live: bool,
-    ) -> Result<(super::ManagedPublication, Option<super::window::Row>), StreamPublicationError>
-    {
+        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, live: bool,
+    ) -> Result<(super::ManagedPublication, Option<super::window::Row>), StreamPublicationError> {
         let active = self.active.lock().expect("stream lease poisoned");
         if !*active || self.stream.closed.load(Ordering::Acquire) {
             return Err(StreamPublicationError::Revoked);
@@ -547,41 +405,18 @@ impl PublicationLease {
         if sequence.is_some_and(|sequence| sequence != next) {
             return Err(StreamPublicationError::Sequence);
         }
-        self.stream
-            .wired
-            .validation
-            .as_ref()
-            .expect("compiled plugin schema")
-            .validate(&row.payload)?;
+        self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
         let generation = {
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             {
-                self.stream
-                    .wired
-                    .staged
-                    .as_ref()
-                    .map(|staged| staged.scope.generation().get())
+                self.stream.wired.staged.as_ref().map(|staged| staged.scope.generation().get())
             }
-            #[cfg(not(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            )))]
+            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
             {
                 None
             }
         };
-        if live
-            && !self.stream.wired.window.can_advance(
-                missed
-                    .checked_add(1)
-                    .ok_or(StreamPublicationError::Sequence)?,
-            )
-        {
+        if live && !self.stream.wired.window.can_advance(missed.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
             return Err(StreamPublicationError::Sequence);
         }
         let taken = self.stream.ingest.taken();
@@ -597,11 +432,7 @@ impl PublicationLease {
             live.then_some((self.stream.wired.window.as_ref(), taken)),
         )?;
         let evicted = if live {
-            self.stream.wired.window.append_locked(
-                *self.applied.borrow(),
-                Arc::new(publication.clone()),
-                missed,
-            )?
+            self.stream.wired.window.append_locked(*self.applied.borrow(), Arc::new(publication.clone()), missed)?
         } else {
             None
         };
@@ -610,11 +441,7 @@ impl PublicationLease {
     }
 
     pub fn revoke(&self) {
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if let Some(staged) = &self.stream.wired.staged {
             staged.scope.unbind_streams();
         }
@@ -627,23 +454,14 @@ impl PublicationLease {
     pub async fn ingested(&self) -> Result<(), StreamPublicationError> {
         let mut taken = self.stream.ingest.watch();
         loop {
-            if !*self.active.lock().expect("stream lease poisoned")
-                || self.stream.closed.load(Ordering::Acquire)
-            {
+            if !*self.active.lock().expect("stream lease poisoned") || self.stream.closed.load(Ordering::Acquire) {
                 return Err(StreamPublicationError::Revoked);
             }
             let published = self.stream.wired.window.latest_locked();
-            if taken
-                .borrow_and_update()
-                .values()
-                .all(|cursor| *cursor >= published)
-            {
+            if taken.borrow_and_update().values().all(|cursor| *cursor >= published) {
                 return Ok(());
             }
-            taken
-                .changed()
-                .await
-                .map_err(|_| StreamPublicationError::Revoked)?;
+            taken.changed().await.map_err(|_| StreamPublicationError::Revoked)?;
         }
     }
 }
@@ -673,18 +491,13 @@ impl PluginStream {
         }
     }
 
-    pub fn watch(
-        &self,
-    ) -> impl futures_core::Stream<Item = Item<PublicationRow>> + Send + Unpin + use<> {
+    pub fn watch(&self) -> impl futures_core::Stream<Item = Item<PublicationRow>> + Send + Unpin + use<> {
         let window = Arc::clone(&self.wired.window);
         let holding = Holding::engage(Arc::clone(&window));
         window::following(window, Arc::clone(&self.closed), holding)
     }
 
-    pub fn watch_managed(
-        &self,
-    ) -> impl futures_core::Stream<Item = Item<super::ManagedPublication>> + Send + Unpin + use<>
-    {
+    pub fn watch_managed(&self) -> impl futures_core::Stream<Item = Item<super::ManagedPublication>> + Send + Unpin + use<> {
         let window = Arc::clone(&self.wired.window);
         let holding = Holding::engage(Arc::clone(&window));
         window::following(window, Arc::clone(&self.closed), holding)
@@ -697,19 +510,11 @@ impl PluginStream {
 
 impl Wired {
     fn is_staged(&self) -> bool {
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         {
             self.staged.is_some()
         }
-        #[cfg(not(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        )))]
+        #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
         {
             false
         }
@@ -718,8 +523,7 @@ impl Wired {
 
 /* === Public Functions === */
 pub(super) fn publication_definitions(
-    owner: &str,
-    declarations: impl IntoIterator<Item = StreamDeclaration>,
+    owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
 ) -> Result<Vec<Definition>, StreamAdmissionError> {
     if !artifact_subset(owner) {
         return Err(StreamAdmissionError::Owner(owner.into()));
@@ -735,38 +539,24 @@ pub(super) fn publication_definitions(
             if !ids.insert(declaration.id.clone()) {
                 return Err(publications::Error::DuplicateStream { id: declaration.id }.into());
             }
-            let definition = Definition::declared::<PublicationRow>(
-                declaration.id,
-                declaration.schema,
-                declaration.window,
-            );
-            let definition = definition
-                .presentation(declaration.metadata, declaration.row_metadata)
-                .publication(owner, declaration.row);
+            let definition = Definition::declared::<PublicationRow>(declaration.id, declaration.schema, declaration.window);
+            let definition = definition.presentation(declaration.metadata, declaration.row_metadata).publication(owner, declaration.row);
             Ok(definition)
         })
         .collect()
 }
 
 pub(super) fn validate_existing(
-    windows: &Windows,
-    definitions: &[Definition],
-    require_unoccupied: bool,
+    windows: &Windows, definitions: &[Definition], require_unoccupied: bool,
 ) -> Result<(), StreamAdmissionError> {
     for definition in definitions {
         let Some(revisions) = windows.get(definition.id()) else {
             continue;
         };
-        if revisions
-            .values()
-            .any(|wired| wired.definition.owner().is_none())
-        {
+        if revisions.values().any(|wired| wired.definition.owner().is_none()) {
             return Err(StreamAdmissionError::Native(definition.id().into()));
         }
-        if revisions
-            .values()
-            .any(|wired| wired.definition.owner() != definition.owner())
-        {
+        if revisions.values().any(|wired| wired.definition.owner() != definition.owner()) {
             return Err(StreamAdmissionError::Changed(definition.id().into()));
         }
         let Some(wired) = revisions.get(&definition.version()) else {
@@ -778,17 +568,8 @@ pub(super) fn validate_existing(
         {
             return Err(StreamAdmissionError::Changed(definition.id().into()));
         }
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
-        if require_unoccupied
-            && wired
-                .staged
-                .as_ref()
-                .is_some_and(|staged| !staged.scope.has_committed())
-        {
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {
             return Err(StreamAdmissionError::Occupied(definition.id().into()));
         }
         if require_unoccupied

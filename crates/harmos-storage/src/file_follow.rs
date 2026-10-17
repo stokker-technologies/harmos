@@ -47,34 +47,17 @@ impl<C> StorageManager<C> {
     pub async fn follow_file(&self, file: &StagedFile, offset: u64) -> Result<FileFollower> {
         self.inner.primary.history().check(&file.history)?;
         let held = Held::default();
-        let metadata = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &held,
-            file.memory_size()
-                .saturating_add(std::mem::size_of::<FileFollower>()),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?;
+        let metadata =
+            Reservation::wait(&self.inner, Pool::Read, &held, file.memory_size().saturating_add(std::mem::size_of::<FileFollower>()), None)
+                .await
+                .map_err(Refusal::into_error)?;
         let changed = self.inner.changed.subscribe();
         let progress = self.file_progress(file).await?;
         if offset > progress.length {
             tracing::error!(file = %file.id, offset, available = progress.length, reason = "offset exceeds retained bytes", "file following rejected");
-            return Err(Error::InvalidInput {
-                field: "file offset",
-                reason: "offset exceeds retained bytes",
-            });
+            return Err(Error::InvalidInput { field: "file offset", reason: "offset exceeds retained bytes" });
         }
-        Ok(FileFollower {
-            manager: self.erased(),
-            file: file.clone(),
-            offset,
-            progress,
-            changed,
-            held,
-            _metadata: metadata,
-        })
+        Ok(FileFollower { manager: self.erased(), file: file.clone(), offset, progress, changed, held, _metadata: metadata })
     }
 
     pub async fn file_progress(&self, file: &StagedFile) -> Result<FileProgress> {
@@ -83,21 +66,13 @@ impl<C> StorageManager<C> {
         {
             let state = self.inner.state.lock().unwrap();
             if state.status.closing || !state.ready {
-                return Err(Error::Closing {
-                    domain: "storage file reader",
-                });
+                return Err(Error::Closing { domain: "storage file reader" });
             }
-            if let Some(progress) = state
-                .files
-                .values()
-                .find_map(|active| active.production(file))
-            {
+            if let Some(progress) = state.files.values().find_map(|active| active.production(file)) {
                 return progress;
             }
         }
-        self.inner
-            .bounded(self.inner.primary.file_progress(file))
-            .await
+        self.inner.bounded(self.inner.primary.file_progress(file)).await
     }
 }
 
@@ -116,10 +91,7 @@ impl FileFollower {
             self.changed.borrow_and_update();
             let progress = self.manager.file_progress(&self.file).await?;
             if self.offset > progress.length {
-                return Err(Error::InvalidInput {
-                    field: "file offset",
-                    reason: "retained bytes moved behind reader offset",
-                });
+                return Err(Error::InvalidInput { field: "file offset", reason: "retained bytes moved behind reader offset" });
             }
             self.progress = progress;
             if self.offset < progress.length {
@@ -129,24 +101,13 @@ impl FileFollower {
                     .min(usize::try_from(progress.length - self.offset).unwrap_or(usize::MAX));
                 let maximum = NonZeroUsize::new(size).expect("nonempty file prefix");
                 let _transfer =
-                    Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None)
-                        .await
-                        .map_err(Refusal::into_error)?;
+                    Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None).await.map_err(Refusal::into_error)?;
                 let _lifecycle = self.manager.inner.lifecycle.read().await;
                 if self.manager.inner.state.lock().unwrap().status.closing {
-                    return Err(Error::Closing {
-                        domain: "storage file reader",
-                    });
+                    return Err(Error::Closing { domain: "storage file reader" });
                 }
-                let bytes = self
-                    .manager
-                    .inner
-                    .bounded(self.manager.inner.primary.read_production(
-                        &self.file,
-                        self.offset,
-                        maximum,
-                    ))
-                    .await?;
+                let bytes =
+                    self.manager.inner.bounded(self.manager.inner.primary.read_production(&self.file, self.offset, maximum)).await?;
                 if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
                     return Err(Error::InvalidInput {
                         field: "file batch",
@@ -160,9 +121,7 @@ impl FileFollower {
             if progress.phase != FilePhase::Producing {
                 return Ok(None);
             }
-            self.changed.changed().await.map_err(|_| Error::Closing {
-                domain: "storage file reader",
-            })?;
+            self.changed.changed().await.map_err(|_| Error::Closing { domain: "storage file reader" })?;
         }
     }
 }

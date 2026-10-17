@@ -48,20 +48,13 @@ impl<C> StorageManager<C> {
         if !state.ready || state.status.closed {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let (snapshot, bytes) = state.capture_file_snapshot(
-            through,
-            self.inner.settings.budget.read_memory_bytes.get(),
-            0,
-        )?;
+        let (snapshot, bytes) = state.capture_file_snapshot(through, self.inner.settings.budget.read_memory_bytes.get(), 0)?;
         if bytes == 0 {
             return Ok(None);
         }
         state.read_bytes += bytes;
         state.collect();
-        Ok(Some(FileSave {
-            snapshot,
-            _reservation: Reservation::charged(&self.inner, Pool::Read, bytes),
-        }))
+        Ok(Some(FileSave { snapshot, _reservation: Reservation::charged(&self.inner, Pool::Read, bytes) }))
     }
 
     // The Caller Holds Lifecycle Ownership Across Backend Access.
@@ -79,31 +72,20 @@ impl<C> StorageManager<C> {
         // Reserve Before Asking The Backend To Allocate Its Complete Bounded Set.
         let capacity = self.inner.settings.budget.read_memory_bytes.get();
         let bytes = capacity / 2;
-        let limits = ReadLimits {
-            rows: crate::storage::config::MAX_FILES,
-            bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
-        };
+        let limits = ReadLimits { rows: crate::storage::config::MAX_FILES, bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)? };
         let reservation = {
             let mut state = self.inner.state.lock().unwrap();
             state.collect();
             if state.status.read_bytes > capacity - bytes {
-                return Err(Error::ResourceExhausted {
-                    resource: "file recovery memory",
-                });
+                return Err(Error::ResourceExhausted { resource: "file recovery memory" });
             }
             state.read_bytes += bytes;
             state.collect();
             Reservation::charged(&self.inner, Pool::Read, bytes)
         };
-        let checkpoints = self
-            .inner
-            .bounded(self.inner.primary.recover_productions(limits))
-            .await?;
+        let checkpoints = self.inner.bounded(self.inner.primary.recover_productions(limits)).await?;
         if checkpoints.len() > limits.rows.get() || checkpoints.memory_size() > bytes {
-            return Err(Error::InvalidInput {
-                field: "file recovery",
-                reason: "backend exceeded recovery bounds",
-            });
+            return Err(Error::InvalidInput { field: "file recovery", reason: "backend exceeded recovery bounds" });
         }
         let write_bytes = checkpoints.iter().try_fold(0usize, |total, checkpoint| {
             let (_, bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
@@ -113,12 +95,9 @@ impl<C> StorageManager<C> {
             let mut state = self.inner.state.lock().unwrap();
             state.collect();
             if write_bytes >= self.inner.settings.request.max_pending_write_bytes.get()
-                || state.status.pending_bytes
-                    > self.inner.settings.request.max_pending_write_bytes.get() - write_bytes
+                || state.status.pending_bytes > self.inner.settings.request.max_pending_write_bytes.get() - write_bytes
             {
-                return Err(Error::ResourceExhausted {
-                    resource: "recovered file production",
-                });
+                return Err(Error::ResourceExhausted { resource: "recovered file production" });
             }
             state.scratch_bytes += write_bytes;
             state.collect();
@@ -128,32 +107,19 @@ impl<C> StorageManager<C> {
         let mut names = std::collections::BTreeSet::new();
         let mut total = 0usize;
         for checkpoint in checkpoints {
-            self.inner
-                .primary
-                .history()
-                .check(&checkpoint.session.history)?;
+            self.inner.primary.history().check(&checkpoint.session.history)?;
             let hash = checkpoint.restore_hash()?;
             if !names.insert(checkpoint.session.id.clone()) {
-                return Err(Error::InvalidInput {
-                    field: "file recovery",
-                    reason: "duplicate file identity",
-                });
+                return Err(Error::InvalidInput { field: "file recovery", reason: "duplicate file identity" });
             }
-            let (reference_bytes, base_bytes) =
-                file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
+            let (reference_bytes, base_bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
             total = total.checked_add(base_bytes).ok_or_else(size_error)?;
             if reference_bytes > self.inner.settings.max_batch_bytes().get()
                 || total >= self.inner.settings.request.max_pending_write_bytes.get()
             {
-                return Err(Error::ResourceExhausted {
-                    resource: "recovered file production",
-                });
+                return Err(Error::ResourceExhausted { resource: "recovered file production" });
             }
-            let id = NEXT_FILE
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| size_error())?;
+            let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
             let progress = Arc::new(Mutex::new(Progress {
                 generation: checkpoint.session.generation,
                 ready: true,
@@ -162,10 +128,7 @@ impl<C> StorageManager<C> {
             }));
             let file = FileState {
                 metadata: Arc::new(checkpoint.metadata),
-                staging: StagedFile {
-                    history: checkpoint.session.history,
-                    id: checkpoint.session.id,
-                },
+                staging: StagedFile { history: checkpoint.session.history, id: checkpoint.session.id },
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
                     crate::storage::config::FILE_SESSION_TIMEOUT,
@@ -189,10 +152,7 @@ impl<C> StorageManager<C> {
         {
             let mut state = self.inner.state.lock().unwrap();
             if !state.files.is_empty() {
-                return Err(Error::AlreadyRegistered {
-                    domain: "file recovery",
-                    name: "active productions".into(),
-                });
+                return Err(Error::AlreadyRegistered { domain: "file recovery", name: "active productions".into() });
             }
             state.scratch_bytes -= write_reservation.disown();
             state.files = restored;
@@ -215,22 +175,12 @@ impl<C> StorageManager<C> {
 
 impl State {
     pub(crate) fn capture_file_snapshot(
-        &mut self,
-        through: Option<&StorageCursor>,
-        capacity: usize,
-        extra: usize,
+        &mut self, through: Option<&StorageCursor>, capacity: usize, extra: usize,
     ) -> Result<(FileSnapshot, usize)> {
-        let selected =
-            |file: &&FileState| file.session.is_some() && file.progress.lock().unwrap().ready;
+        let selected = |file: &&FileState| file.session.is_some() && file.progress.lock().unwrap().ready;
         let count = self.files.values().filter(selected).count();
         if count == 0 && self.receipts.snapshot_bytes() == 0 && extra == 0 {
-            return Ok((
-                FileSnapshot {
-                    checkpoints: Vec::new(),
-                    receipts: Vec::new(),
-                },
-                extra,
-            ));
+            return Ok((FileSnapshot { checkpoints: Vec::new(), receipts: Vec::new() }, extra));
         }
         let bytes = self.files.values().filter(selected).try_fold(
             std::mem::size_of::<FileSave>()
@@ -238,18 +188,12 @@ impl State {
                 .ok_or_else(size_error)?
                 .checked_add(self.receipts.snapshot_bytes())
                 .ok_or_else(size_error)?,
-            |bytes, file| {
-                bytes
-                    .checked_add(file.base_bytes.checked_mul(2).ok_or_else(size_error)?)
-                    .ok_or_else(size_error)
-            },
+            |bytes, file| bytes.checked_add(file.base_bytes.checked_mul(2).ok_or_else(size_error)?).ok_or_else(size_error),
         )?;
 
         self.collect();
         if bytes > capacity || self.status.read_bytes > capacity - bytes {
-            return Err(Error::ResourceExhausted {
-                resource: "file checkpoint memory",
-            });
+            return Err(Error::ResourceExhausted { resource: "file checkpoint memory" });
         }
 
         let mut checkpoints = Vec::with_capacity(count);
@@ -257,24 +201,14 @@ impl State {
             let session = file.session.as_ref().expect("selected session");
             checkpoints.push(FileCheckpoint::new(
                 (*file.metadata).clone(),
-                FileSession {
-                    history: file.staging.history.clone(),
-                    id: file.staging.id.clone(),
-                    generation: session.generation,
-                },
+                FileSession { history: file.staging.history.clone(), id: file.staging.id.clone(), generation: session.generation },
                 file.length,
                 &file.hash,
             ));
         }
         let receipts = self.receipts.snapshot(through);
         self.collect();
-        Ok((
-            FileSnapshot {
-                checkpoints,
-                receipts,
-            },
-            bytes,
-        ))
+        Ok((FileSnapshot { checkpoints, receipts }, bytes))
     }
 }
 
@@ -289,9 +223,7 @@ impl FileSnapshot {
                 })?;
         }
         if !self.receipts.is_empty() {
-            inner
-                .bounded(inner.primary.save_mutations(&self.receipts))
-                .await?;
+            inner.bounded(inner.primary.save_mutations(&self.receipts)).await?;
         }
         Ok(())
     }

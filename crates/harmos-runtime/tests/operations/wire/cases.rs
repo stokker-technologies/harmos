@@ -330,31 +330,22 @@ impl Operation for ShortCoding {
     type Resources = Owner;
     type Error = Failed;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        request: &mut ShortCodec,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, request: &mut ShortCodec, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Payload>, Failed> {
         let result: ::core::result::Result<Payload, Self::Error> = async move {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            Ok(Payload(Text {
-                value: std::mem::take(&mut request.0.value),
-            }))
+            Ok(Payload(Text { value: std::mem::take(&mut request.0.value) }))
         }
         .await;
         result.map(::core::convert::Into::into)
     }
 }
-
 
 pub(super) struct Echoing {
     resources: Arc<Owner>,

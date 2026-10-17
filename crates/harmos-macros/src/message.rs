@@ -20,10 +20,7 @@ use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser,
-    punctuated::Punctuated, spanned::Spanned,
-};
+use syn::{Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 // Local Imports
 use crate::path::{self, HarmosPath};
 
@@ -54,12 +51,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             crate::artifact::set_once(&mut skip_debug, true, meta.span(), "skip_debug")?;
             continue;
         }
-        let value = path::declared(&meta).ok_or_else(|| {
-            Error::new(
-                meta.span(),
-                "message accepts only harmos_path and skip_debug",
-            )
-        })??;
+        let value = path::declared(&meta).ok_or_else(|| Error::new(meta.span(), "message accepts only harmos_path and skip_debug"))??;
         crate::artifact::set_once(&mut explicit, value, meta.span(), path::KEY)?;
     }
     let skip_debug = skip_debug.unwrap_or(false);
@@ -68,16 +60,10 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         return enumeration::expand(item, HarmosPath::resolve(explicit), skip_debug);
     }
     let syn::Item::Struct(mut item) = parsed else {
-        return Err(Error::new(
-            parsed.span(),
-            "message requires a struct or enum",
-        ));
+        return Err(Error::new(parsed.span(), "message requires a struct or enum"));
     };
     if !matches!(item.fields, Fields::Named(_)) || !item.generics.params.is_empty() {
-        return Err(Error::new(
-            item.span(),
-            "a message requires a non-generic struct with named fields (use {} for an empty message)",
-        ));
+        return Err(Error::new(item.span(), "a message requires a non-generic struct with named fields (use {} for an empty message)"));
     }
     let harmos = HarmosPath::resolve(explicit);
     let row_metadata = crate::presentation::fields(&mut item.fields)?;
@@ -94,9 +80,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         if let Some(previous) = tags.insert(number, name.to_owned()) {
             return Err(Error::new(
                 field.span(),
-                format!(
-                    "message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"
-                ),
+                format!("message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"),
             ));
         }
         let (_, kind, cardinality) = encoding(&field.ty, &harmos)?;
@@ -150,19 +134,11 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
     };
     matches!(item.fields, Fields::Named(_))
         && item.generics.params.is_empty()
-        && item
-            .fields
-            .iter()
-            .all(|field| common(&field.ty) && encoding(&field.ty, harmos).is_ok())
+        && item.fields.iter().all(|field| common(&field.ty) && encoding(&field.ty, harmos).is_ok())
 }
 
 /* === Private Functions === */
-fn described(
-    name: &syn::Ident,
-    fields: TokenStream,
-    extra: TokenStream,
-    harmos: &HarmosPath,
-) -> TokenStream {
+fn described(name: &syn::Ident, fields: TokenStream, extra: TokenStream, harmos: &HarmosPath) -> TokenStream {
     quote! {
         impl #harmos::schema::Described for #name {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
@@ -176,9 +152,7 @@ fn described(
 }
 
 fn tag(name: &str) -> u32 {
-    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| {
-        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
-    });
+    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| (hash ^ u32::from(byte)).wrapping_mul(16_777_619));
     let tag = 1 + hash % (536_870_911 - 1_000);
     if tag >= 19_000 { tag + 1_000 } else { tag }
 }
@@ -192,11 +166,7 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
     // Box Changes Ownership Only: The Field Keeps The Plain Nested Message Wire Shape
     if matches!(name.as_str(), "Box" | "Rc" | "Arc") {
         let inner = boxed(ty).ok_or_else(|| unsupported_box(ty))?;
-        return Ok((
-            true,
-            message_kind(inner, harmos),
-            quote!(#harmos::schema::Cardinality::Required),
-        ));
+        return Ok((true, message_kind(inner, harmos), quote!(#harmos::schema::Cardinality::Required)));
     }
     if name == "Option" || name == "Vec" {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
@@ -213,11 +183,7 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
             _ => None,
         };
         if name == "Vec" && inner_name.as_deref() == Some("u8") {
-            return Ok((
-                false,
-                quote!(#harmos::schema::graph::Kind::Bytes),
-                quote!(#harmos::schema::Cardinality::Required),
-            ));
+            return Ok((false, quote!(#harmos::schema::graph::Kind::Bytes), quote!(#harmos::schema::Cardinality::Required)));
         }
         if matches!(inner_name.as_deref(), Some("Box" | "Rc" | "Arc")) {
             return Err(unsupported_box(ty));
@@ -226,45 +192,20 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
             return Err(unsupported(ty));
         }
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
-        let kind = scalar
-            .map(|kind| quote!(#harmos::schema::graph::Kind::#kind))
-            .unwrap_or_else(|| message_kind(inner, harmos));
-        let cardinality = if name == "Option" {
-            quote!(#harmos::schema::Cardinality::Optional)
-        } else {
-            quote!(#harmos::schema::Cardinality::Repeated)
-        };
+        let kind = scalar.map(|kind| quote!(#harmos::schema::graph::Kind::#kind)).unwrap_or_else(|| message_kind(inner, harmos));
+        let cardinality =
+            if name == "Option" { quote!(#harmos::schema::Cardinality::Optional) } else { quote!(#harmos::schema::Cardinality::Repeated) };
         return Ok((false, kind, cardinality));
     }
     if let Some(kind) = scalar(&name) {
-        return Ok((
-            false,
-            quote!(#harmos::schema::graph::Kind::#kind),
-            quote!(#harmos::schema::Cardinality::Required),
-        ));
+        return Ok((false, quote!(#harmos::schema::graph::Kind::#kind), quote!(#harmos::schema::Cardinality::Required)));
     }
     if !matches!(segment.arguments, PathArguments::None)
-        || matches!(
-            name.as_str(),
-            "u8" | "i8"
-                | "u16"
-                | "i16"
-                | "usize"
-                | "isize"
-                | "u128"
-                | "i128"
-                | "char"
-                | "HashMap"
-                | "BTreeMap"
-        )
+        || matches!(name.as_str(), "u8" | "i8" | "u16" | "i16" | "usize" | "isize" | "u128" | "i128" | "char" | "HashMap" | "BTreeMap")
     {
         return Err(unsupported(ty));
     }
-    Ok((
-        true,
-        message_kind(ty, harmos),
-        quote!(#harmos::schema::Cardinality::Required),
-    ))
+    Ok((true, message_kind(ty, harmos), quote!(#harmos::schema::Cardinality::Required)))
 }
 
 // Return The Nested Message Owned By A Direct `Box<T>` Field
@@ -279,8 +220,7 @@ fn boxed(ty: &Type) -> Option<&Type> {
     let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
         return None;
     };
-    let (1, Some(GenericArgument::Type(inner))) = (arguments.args.len(), arguments.args.first())
-    else {
+    let (1, Some(GenericArgument::Type(inner))) = (arguments.args.len(), arguments.args.first()) else {
         return None;
     };
     let Type::Path(inner_path) = inner else {
@@ -307,10 +247,8 @@ fn boxed(ty: &Type) -> Option<&Type> {
             | "Option"
             | "Vec"
     );
-    let nested = inner_path.qself.is_none()
-        && matches!(inner_segment.arguments, PathArguments::None)
-        && scalar(&inner_name).is_none()
-        && !reserved;
+    let nested =
+        inner_path.qself.is_none() && matches!(inner_segment.arguments, PathArguments::None) && scalar(&inner_name).is_none() && !reserved;
     nested.then_some(inner)
 }
 
@@ -363,8 +301,7 @@ fn common(ty: &Type) -> bool {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return false;
         };
-        return arguments.args.len() == 1
-            && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if common(inner));
+        return arguments.args.len() == 1 && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if common(inner));
     }
     false
 }

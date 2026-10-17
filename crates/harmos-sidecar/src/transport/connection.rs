@@ -23,9 +23,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 // Local Imports
 use super::credit::{MINIMUM, WINDOW};
-use super::{
-    Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read, read_data, write,
-};
+use super::{Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read, read_data, write};
 use crate::Frame;
 
 /* === Constants === */
@@ -37,10 +35,7 @@ const INCOMING_DATA: usize = WINDOW / MINIMUM + 1;
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Io = (
-    Box<dyn AsyncRead + Send + Unpin>,
-    Box<dyn AsyncWrite + Send + Unpin>,
-);
+pub type Io = (Box<dyn AsyncRead + Send + Unpin>, Box<dyn AsyncWrite + Send + Unpin>);
 type Outcome = Result<(), Arc<io::Error>>;
 type IoReader = Box<dyn AsyncRead + Send + Unpin>;
 type IoWriter = Box<dyn AsyncWrite + Send + Unpin>;
@@ -129,11 +124,7 @@ impl Connection {
             owner.outcome()
         });
         Self {
-            sender: Sender {
-                data: data_tx,
-                control: control_tx,
-                state: state.clone(),
-            },
+            sender: Sender { data: data_tx, control: control_tx, state: state.clone() },
             receiver: Receiver {
                 delivered: 0,
                 cancellations: BTreeMap::new(),
@@ -141,11 +132,7 @@ impl Connection {
                 control: incoming_control_rx,
                 state: state.clone(),
             },
-            driver: Driver {
-                work,
-                result: None,
-                state,
-            },
+            driver: Driver { work, result: None, state },
         }
     }
 }
@@ -172,11 +159,7 @@ impl Sender {
     }
 
     pub async fn drain(&self) -> io::Result<()> {
-        let through = *self
-            .state
-            .queued
-            .lock()
-            .expect("transport queue order lock");
+        let through = *self.state.queued.lock().expect("transport queue order lock");
         let mut written = self.state.written.subscribe();
         loop {
             if *written.borrow_and_update() >= through {
@@ -209,29 +192,18 @@ impl Receiver {
                 let Frame::Cancel { id } = received.frame else {
                     unreachable!("only cancellation has a data watermark");
                 };
-                if !self.cancellations.contains_key(&id)
-                    && self.cancellations.len() >= EARLY_CANCELLATIONS
-                {
-                    self.state.stop(Some(super::invalid(
-                        "early cancellation capacity exhausted",
-                    )));
+                if !self.cancellations.contains_key(&id) && self.cancellations.len() >= EARLY_CANCELLATIONS {
+                    self.state.stop(Some(super::invalid("early cancellation capacity exhausted")));
                     return Err(self.state.error());
                 }
-                self.cancellations
-                    .entry(id)
-                    .and_modify(|through| *through = (*through).max(preceding))
-                    .or_insert(preceding);
+                self.cancellations.entry(id).and_modify(|through| *through = (*through).max(preceding)).or_insert(preceding);
             }
         } else {
-            self.delivered = self
-                .delivered
-                .checked_add(1)
-                .ok_or_else(|| super::invalid("received data counter overflow"))?;
+            self.delivered = self.delivered.checked_add(1).ok_or_else(|| super::invalid("received data counter overflow"))?;
             if let Frame::Call { id, .. } = &received.frame {
                 received.cancelled = self.cancellations.remove(id).is_some();
             }
-            self.cancellations
-                .retain(|_, preceding| *preceding > self.delivered);
+            self.cancellations.retain(|_, preceding| *preceding > self.delivered);
         }
         Ok(Some(received))
     }
@@ -248,11 +220,7 @@ impl Driver {
         if self.result.is_none() {
             self.result = Some(self.work.as_mut().await);
         }
-        self.result
-            .as_ref()
-            .expect("driver completed")
-            .clone()
-            .map_err(io::Error::other)
+        self.result.as_ref().expect("driver completed").clone().map_err(io::Error::other)
     }
 }
 
@@ -283,10 +251,7 @@ impl State {
     }
 
     fn error(&self) -> io::Error {
-        self.outcome()
-            .err()
-            .map(io::Error::other)
-            .unwrap_or_else(|| broken("sidecar connection closed"))
+        self.outcome().err().map(io::Error::other).unwrap_or_else(|| broken("sidecar connection closed"))
     }
 }
 
@@ -301,42 +266,23 @@ async fn stopped(mut receiver: watch::Receiver<bool>) {
     }
 }
 
-async fn receive_data(
-    mut reader: IoReader,
-    incoming: mpsc::Sender<Received>,
-    credit: Arc<ReceiveCredit>,
-) -> io::Result<()> {
+async fn receive_data(mut reader: IoReader, incoming: mpsc::Sender<Received>, credit: Arc<ReceiveCredit>) -> io::Result<()> {
     loop {
-        let Some((Packet::Frame(frame), consumption)) = read_data(&mut reader, &credit).await?
-        else {
+        let Some((Packet::Frame(frame), consumption)) = read_data(&mut reader, &credit).await? else {
             return Err(broken("sidecar data channel ended"));
         };
         incoming
-            .try_send(Received {
-                frame,
-                cancelled: false,
-                preceding: None,
-                consumption: Some(consumption),
-            })
+            .try_send(Received { frame, cancelled: false, preceding: None, consumption: Some(consumption) })
             .map_err(|_| broken("bounded sidecar data receiver unavailable"))?;
     }
 }
 
-async fn receive_control(
-    mut reader: IoReader,
-    incoming: mpsc::Sender<Received>,
-    credit: Arc<Credit>,
-) -> io::Result<()> {
+async fn receive_control(mut reader: IoReader, incoming: mpsc::Sender<Received>, credit: Arc<Credit>) -> io::Result<()> {
     loop {
         match read(&mut reader, Role::Control).await? {
             Some(Packet::Credit(consumed)) => credit.returned(consumed)?,
             Some(Packet::Cancellation { id, preceding }) => incoming
-                .try_send(Received {
-                    frame: Frame::Cancel { id },
-                    consumption: None,
-                    cancelled: false,
-                    preceding: Some(preceding),
-                })
+                .try_send(Received { frame: Frame::Cancel { id }, consumption: None, cancelled: false, preceding: Some(preceding) })
                 .map_err(|_| broken("bounded sidecar control receiver unavailable"))?,
             Some(Packet::Frame(_)) => {
                 return Err(super::invalid("cancellation requires a data watermark"));
@@ -346,34 +292,20 @@ async fn receive_control(
     }
 }
 
-async fn send_data(
-    mut writer: IoWriter,
-    mut outgoing: mpsc::Receiver<Outgoing>,
-    written: watch::Sender<u64>,
-) -> io::Result<()> {
+async fn send_data(mut writer: IoWriter, mut outgoing: mpsc::Receiver<Outgoing>, written: watch::Sender<u64>) -> io::Result<()> {
     let mut bytes = Vec::new();
-    while let Some(Outgoing {
-        packet,
-        reservation,
-    }) = outgoing.recv().await
-    {
+    while let Some(Outgoing { packet, reservation }) = outgoing.recv().await {
         reservation.issued()?;
         packet.encode_into(&mut bytes)?;
         writer.write_all(&bytes).await?;
         writer.flush().await?;
-        let next = (*written.borrow())
-            .checked_add(1)
-            .ok_or_else(|| super::invalid("written data counter overflow"))?;
+        let next = (*written.borrow()).checked_add(1).ok_or_else(|| super::invalid("written data counter overflow"))?;
         written.send_replace(next);
     }
     Err(broken("sidecar data sender closed"))
 }
 
-async fn send_control(
-    mut writer: IoWriter,
-    mut outgoing: mpsc::Receiver<Packet>,
-    mut released: watch::Receiver<u64>,
-) -> io::Result<()> {
+async fn send_control(mut writer: IoWriter, mut outgoing: mpsc::Receiver<Packet>, mut released: watch::Receiver<u64>) -> io::Result<()> {
     let initial = *released.borrow_and_update();
     if initial != 0 {
         write(&mut writer, &Packet::Credit(initial)).await?;

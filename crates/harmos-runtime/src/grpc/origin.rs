@@ -44,8 +44,7 @@ const MAX_AGE: Duration = Duration::from_secs(600);
 /* === Macros === */
 
 /* === Type Aliases === */
-type Accepted<E> =
-    fn(std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E>;
+type Accepted<E> = fn(std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E>;
 
 /* === Structs === */
 // An exact browser origin such as `tauri://localhost`: scheme and authority,
@@ -73,24 +72,15 @@ pub(super) struct Gate<S> {
 /* === Implementations === */
 impl Origin {
     pub fn parse(origin: &str) -> Result<Self> {
-        let invalid = |reason| Error::InvalidInput {
-            field: "gRPC allowed origin",
-            reason,
-        };
-        let (scheme, authority) = origin
-            .split_once("://")
-            .ok_or_else(|| invalid("an origin is a scheme and an authority"))?;
+        let invalid = |reason| Error::InvalidInput { field: "gRPC allowed origin", reason };
+        let (scheme, authority) = origin.split_once("://").ok_or_else(|| invalid("an origin is a scheme and an authority"))?;
         let scheme_valid = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-            && scheme
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
-        let authority_valid = !authority.contains(['/', '?', '#', '@', '*'])
-            && authority.parse::<Authority>().is_ok();
+            && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+        let authority_valid = !authority.contains(['/', '?', '#', '@', '*']) && authority.parse::<Authority>().is_ok();
         if !scheme_valid || !authority_valid {
             return Err(invalid("an origin has no path, credentials or wildcard"));
         }
-        let value = HeaderValue::from_str(origin)
-            .map_err(|_| invalid("an origin is a visible ASCII string"))?;
+        let value = HeaderValue::from_str(origin).map_err(|_| invalid("an origin is a visible ASCII string"))?;
         Ok(Self(value))
     }
 
@@ -109,9 +99,7 @@ impl std::str::FromStr for Origin {
 
 impl CrossOrigin {
     pub(super) fn new(allowed: &[Origin]) -> Option<Self> {
-        (!allowed.is_empty()).then(|| Self {
-            origins: allowed.iter().map(|origin| origin.0.clone()).collect(),
-        })
+        (!allowed.is_empty()).then(|| Self { origins: allowed.iter().map(|origin| origin.0.clone()).collect() })
     }
 }
 
@@ -135,10 +123,7 @@ impl<S> Layer<S> for CrossOrigin {
                 HeaderName::from_static("grpc-status-details-bin"),
             ])
             .max_age(MAX_AGE);
-        Gate {
-            origins: self.origins.clone(),
-            inner: cors.layer(inner),
-        }
+        Gate { origins: self.origins.clone(), inner: cors.layer(inner) }
     }
 }
 
@@ -148,30 +133,21 @@ where
 {
     type Response = Response<Body>;
     type Error = S::Error;
-    type Future = Either<
-        Ready<std::result::Result<Response<Body>, S::Error>>,
-        Either<Map<S::Future, Accepted<S::Error>>, S::Future>,
-    >;
+    type Future = Either<Ready<std::result::Result<Response<Body>, S::Error>>, Either<Map<S::Future, Accepted<S::Error>>, S::Future>>;
 
     fn poll_ready(&mut self, context: &mut Context<'_>) -> Poll<std::result::Result<(), S::Error>> {
         self.inner.poll_ready(context)
     }
 
     fn call(&mut self, request: Request<B>) -> Self::Future {
-        let refused = request
-            .headers()
-            .get(header::ORIGIN)
-            .is_some_and(|origin| !self.origins.contains(origin));
+        let refused = request.headers().get(header::ORIGIN).is_some_and(|origin| !self.origins.contains(origin));
         if refused {
             let mut response = Response::new(Body::empty());
             *response.status_mut() = StatusCode::FORBIDDEN;
             return Either::Left(future::ready(Ok(response)));
         }
         // The CORS layer answers preflights with 200; browsers accept either.
-        let preflight = request.method() == Method::OPTIONS
-            && request
-                .headers()
-                .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+        let preflight = request.method() == Method::OPTIONS && request.headers().contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
         let future = self.inner.call(request);
         if preflight {
             Either::Right(Either::Left(future.map(no_content as Accepted<S::Error>)))
@@ -184,9 +160,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn no_content<E>(
-    result: std::result::Result<Response<Body>, E>,
-) -> std::result::Result<Response<Body>, E> {
+fn no_content<E>(result: std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E> {
     result.map(|mut response| {
         *response.status_mut() = StatusCode::NO_CONTENT;
         response

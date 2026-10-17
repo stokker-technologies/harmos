@@ -26,9 +26,7 @@ use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::watch;
 // Local Imports
 use crate::supervision::executor;
-use crate::{
-    Application, DefinitionId, state::At, state::Entry, state::Recorded, state::StateManager,
-};
+use crate::{Application, DefinitionId, state::At, state::Entry, state::Recorded, state::StateManager};
 use draft::{Open, Staged};
 use vault::Keeping;
 
@@ -69,18 +67,11 @@ pub enum EvidenceError {
     #[error("this draft is written by a process outside the runtime")]
     Foreign,
     #[error("`{scope}`/`{key}` already names evidence of kind `{kind}`")]
-    Conflict {
-        kind: DefinitionId,
-        scope: String,
-        key: String,
-    },
+    Conflict { kind: DefinitionId, scope: String, key: String },
     #[error("no evidence is open or finalized under this key")]
     Unknown,
     #[error("`{named}` does not declare the details of `{kind}` evidence")]
-    Mismatched {
-        kind: DefinitionId,
-        named: DefinitionId,
-    },
+    Mismatched { kind: DefinitionId, named: DefinitionId },
     #[error("the details of `{kind}` do not match its declaration: {cause}")]
     Malformed { kind: DefinitionId, cause: String },
     #[error("this evidence is already being finalized")]
@@ -111,22 +102,14 @@ impl EvidenceError {
 }
 
 impl Declaration {
-    pub(crate) fn new(
-        vault: impl Vault,
-        kinds: impl IntoIterator<Item = (DefinitionId, u32)>,
-    ) -> Self {
-        Self {
-            vault: Arc::new(vault),
-            kinds: kinds.into_iter().collect(),
-        }
+    pub(crate) fn new(vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
+        Self { vault: Arc::new(vault), kinds: kinds.into_iter().collect() }
     }
 }
 
 impl<A: Application> Evidence<A> {
     pub(crate) fn wired(
-        state: StateManager<A>,
-        declaration: Option<Declaration>,
-        recovered: &[Arc<Entry<Recorded<A>>>],
+        state: StateManager<A>, declaration: Option<Declaration>, recovered: &[Arc<Entry<Recorded<A>>>],
     ) -> Result<Self, String> {
         let Some(Declaration { vault, kinds }) = declaration else {
             return Ok(Self { inner: None });
@@ -145,57 +128,32 @@ impl<A: Application> Evidence<A> {
             let Some(record) = EvidenceRecord::folded(fact, entry.position) else {
                 continue;
             };
-            kept.entry(record.scope.clone())
-                .or_default()
-                .insert((record.kind.clone(), record.key.clone()), record);
+            kept.entry(record.scope.clone()).or_default().insert((record.kind.clone(), record.key.clone()), record);
         }
 
         Ok(Self {
-            inner: Some(Arc::new(Inner {
-                state,
-                vault,
-                kinds: frozen,
-                drafts: Mutex::new(BTreeMap::new()),
-                kept: Mutex::new(kept),
-            })),
+            inner: Some(Arc::new(Inner { state, vault, kinds: frozen, drafts: Mutex::new(BTreeMap::new()), kept: Mutex::new(kept) })),
         })
     }
 
     pub async fn open<K: EvidenceKind>(
-        &self,
-        scope: impl Into<String>,
-        key: impl Into<String>,
-        details: K::Details,
+        &self, scope: impl Into<String>, key: impl Into<String>, details: K::Details,
     ) -> Result<Draft, EvidenceError> {
-        self.opening::<K>(scope.into(), key.into(), details, false)
-            .await
+        self.opening::<K>(scope.into(), key.into(), details, false).await
     }
 
     pub async fn external<K: EvidenceKind>(
-        &self,
-        scope: impl Into<String>,
-        key: impl Into<String>,
-        details: K::Details,
+        &self, scope: impl Into<String>, key: impl Into<String>, details: K::Details,
     ) -> Result<Draft, EvidenceError> {
-        self.opening::<K>(scope.into(), key.into(), details, true)
-            .await
+        self.opening::<K>(scope.into(), key.into(), details, true).await
     }
 
-    pub async fn read<K: EvidenceKind>(
-        &self,
-        scope: &str,
-        key: &str,
-        offset: u64,
-        limit: usize,
-    ) -> Result<Excerpt, EvidenceError> {
+    pub async fn read<K: EvidenceKind>(&self, scope: &str, key: &str, offset: u64, limit: usize) -> Result<Excerpt, EvidenceError> {
         let inner = self.inner()?;
         let kind = inner.declared::<K>()?;
         let ceiling = inner.vault.ceiling();
         if limit == 0 || limit > ceiling {
-            return Err(EvidenceError::Bound {
-                requested: limit,
-                ceiling,
-            });
+            return Err(EvidenceError::Bound { requested: limit, ceiling });
         }
 
         let staged = inner.draft(&kind, scope, key);
@@ -214,12 +172,7 @@ impl<A: Application> Evidence<A> {
             }
         };
 
-        Ok(Excerpt {
-            requested: offset,
-            offset: offset.min(length),
-            bytes,
-            length,
-        })
+        Ok(Excerpt { requested: offset, offset: offset.min(length), bytes, length })
     }
 
     pub fn list(&self, scope: &str) -> Vec<EvidenceRecord> {
@@ -308,54 +261,27 @@ impl<A: Application> Evidence<A> {
     }
 
     async fn opening<K: EvidenceKind>(
-        &self,
-        scope: String,
-        key: String,
-        details: K::Details,
-        foreign: bool,
+        &self, scope: String, key: String, details: K::Details, foreign: bool,
     ) -> Result<Draft, EvidenceError> {
         let inner = self.inner()?;
         let kind = inner.declared::<K>()?;
         let version = inner.kinds[&kind];
-        let described = serde_json::to_vec(&details).map_err(|error| EvidenceError::Malformed {
-            kind: kind.clone(),
-            cause: error.to_string(),
-        })?;
+        let described =
+            serde_json::to_vec(&details).map_err(|error| EvidenceError::Malformed { kind: kind.clone(), cause: error.to_string() })?;
         if inner.draft(&kind, &scope, &key).is_some() || inner.is_kept(&kind, &scope, &key) {
             return Err(EvidenceError::Conflict { kind, scope, key });
         }
         let name = encode(&kind, &scope, &key);
         let length = inner.vault.open(&name).await?;
         let external = match foreign {
-            true => Some(
-                inner
-                    .vault
-                    .external(&name)
-                    .await?
-                    .ok_or(EvidenceError::Unsupported)?,
-            ),
+            true => Some(inner.vault.external(&name).await?.ok_or(EvidenceError::Unsupported)?),
             false => None,
         };
         let open = Arc::new(Open::new(
-            Staged {
-                kind: kind.clone(),
-                version,
-                scope: scope.clone(),
-                key: key.clone(),
-                name,
-                described,
-                external,
-                length,
-            },
+            Staged { kind: kind.clone(), version, scope: scope.clone(), key: key.clone(), name, described, external, length },
             Arc::clone(&inner.vault),
         ));
-        inner
-            .drafts
-            .lock()
-            .expect("the evidence index is healthy")
-            .entry(scope)
-            .or_default()
-            .insert((kind, key), Arc::clone(&open));
+        inner.drafts.lock().expect("the evidence index is healthy").entry(scope).or_default().insert((kind, key), Arc::clone(&open));
 
         Ok(Draft { open })
     }
@@ -367,9 +293,7 @@ impl<A: Application> Evidence<A> {
 
 impl<A: Application> Clone for Evidence<A> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
+        Self { inner: self.inner.clone() }
     }
 }
 
@@ -383,12 +307,7 @@ impl<A: Application> Inner<A> {
     }
 
     fn draft(&self, kind: &DefinitionId, scope: &str, key: &str) -> Option<Arc<Open>> {
-        self.drafts
-            .lock()
-            .expect("the evidence index is healthy")
-            .get(scope)?
-            .get(&(kind.clone(), key.to_owned()))
-            .map(Arc::clone)
+        self.drafts.lock().expect("the evidence index is healthy").get(scope)?.get(&(kind.clone(), key.to_owned())).map(Arc::clone)
     }
 
     fn is_kept(&self, kind: &DefinitionId, scope: &str, key: &str) -> bool {
@@ -399,20 +318,12 @@ impl<A: Application> Inner<A> {
             .is_some_and(|held| held.contains_key(&(kind.clone(), key.to_owned())))
     }
 
-    fn scope<T: Clone>(
-        &self,
-        index: &Mutex<Held<T>>,
-        scope: &str,
-    ) -> Vec<((DefinitionId, String), T)> {
+    fn scope<T: Clone>(&self, index: &Mutex<Held<T>>, scope: &str) -> Vec<((DefinitionId, String), T)> {
         index
             .lock()
             .expect("the evidence index is healthy")
             .get(scope)
-            .map(|held| {
-                held.iter()
-                    .map(|(at, value)| (at.clone(), value.clone()))
-                    .collect()
-            })
+            .map(|held| held.iter().map(|(at, value)| (at.clone(), value.clone())).collect())
             .unwrap_or_default()
     }
 
@@ -438,29 +349,17 @@ impl<A: Application> Inner<A> {
         let (digest, length) = self.vault.verify(&open.name).await?;
         let written = open.length();
         if open.external.is_none() && written != length {
-            return Err(EvidenceError::Corrupt {
-                written,
-                found: length,
-            });
+            return Err(EvidenceError::Corrupt { written, found: length });
         }
 
-        let mut record = EvidenceRecord::new(
-            open.kind.clone(),
-            open.version,
-            open.scope.clone(),
-            open.key.clone(),
-            length,
-            open.described.clone(),
-        );
+        let mut record =
+            EvidenceRecord::new(open.kind.clone(), open.version, open.scope.clone(), open.key.clone(), length, open.described.clone());
         let receipt = crate::records::RecordManager::new(self.state.clone())
             .publish_system(record.recorded(digest))
             .await
             .map_err(|_| EvidenceError::Unavailable)?;
         self.state.wait_until_stored(receipt.position).await;
-        record.finalized = Some(At {
-            value: digest,
-            position: receipt.position,
-        });
+        record.finalized = Some(At { value: digest, position: receipt.position });
 
         // Visible before removed: the fact is already history, so the
         // evidence enters the finalized index before its draft leaves the

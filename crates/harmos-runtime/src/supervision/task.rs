@@ -58,10 +58,7 @@ impl<T: Send + Sync + 'static> Task<T> {
         F: Future<Output = T> + Send + 'static,
     {
         let task = executor::task(work(stopping.clone()));
-        Self {
-            stopping,
-            join: Mutex::new(Join::Running(task)),
-        }
+        Self { stopping, join: Mutex::new(Join::Running(task)) }
     }
 
     pub(crate) fn stop(&self) {
@@ -72,10 +69,7 @@ impl<T: Send + Sync + 'static> Task<T> {
         self.settle_retry(|| None::<std::future::Ready<T>>).await
     }
 
-    pub(crate) async fn settle_retry<F>(
-        &self,
-        retry: impl FnOnce() -> Option<F>,
-    ) -> Result<Arc<T>, Arc<JoinError>>
+    pub(crate) async fn settle_retry<F>(&self, retry: impl FnOnce() -> Option<F>) -> Result<Arc<T>, Arc<JoinError>>
     where
         F: Future<Output = T> + Send + 'static,
     {
@@ -89,9 +83,7 @@ impl<T: Send + Sync + 'static> Task<T> {
             let result = task.await.map(Arc::new).map_err(Arc::new);
             *join = Join::Settled(result);
         }
-        let Join::Settled(result) = &*join else {
-            unreachable!("task was joined")
-        };
+        let Join::Settled(result) = &*join else { unreachable!("task was joined") };
         result.clone()
     }
 }
@@ -107,11 +99,7 @@ pub(crate) async fn settle_all<E, F>(tasks: impl IntoIterator<Item = F>) -> Resu
 where
     F: Future<Output = Result<(), E>>,
 {
-    let mut pending: FuturesUnordered<_> = tasks
-        .into_iter()
-        .enumerate()
-        .map(|(index, task)| async move { (index, task.await) })
-        .collect();
+    let mut pending: FuturesUnordered<_> = tasks.into_iter().enumerate().map(|(index, task)| async move { (index, task.await) }).collect();
     let mut failure = None;
     while let Some((index, result)) = pending.next().await {
         if let Err(error) = result

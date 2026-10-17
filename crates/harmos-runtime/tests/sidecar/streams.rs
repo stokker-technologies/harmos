@@ -206,7 +206,11 @@ async fn grpc_stream_lifecycle() {
         .client_streaming(
             tonic::Request::new(opening(Upload { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Upload"),
-            Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<InputEnvelope<Upload, u32>>>::new(operations.decode, operations.encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<InputEnvelope<Upload, u32>>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -217,7 +221,11 @@ async fn grpc_stream_lifecycle() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Download { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Download>>::new(operations.decode, operations.encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Download>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
         )
         .await
         .unwrap()
@@ -232,10 +240,11 @@ async fn grpc_stream_lifecycle() {
         .streaming(
             tonic::Request::new(opening(Exchange { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<InputEnvelope<Exchange, u32>>>::new(
-                operations.decode,
-                operations.encode,
-            )
+            Codec::<
+                harmos_runtime::grpc::Transcoded,
+                OutputEnvelope<u32, u32>,
+                harmos_runtime::operations::Response<InputEnvelope<Exchange, u32>>,
+            >::new(operations.decode, operations.encode)
             .unwrap(),
         )
         .await
@@ -289,7 +298,11 @@ async fn grpc_shape_refusal() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new("not a number".to_owned())),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<String>>::new(operations.decode, operations.encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<String>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
         )
         .await;
     let status = match refused {

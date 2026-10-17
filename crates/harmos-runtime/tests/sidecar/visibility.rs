@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Bind Private And Shared Native Handlers To Their Original Resources.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 

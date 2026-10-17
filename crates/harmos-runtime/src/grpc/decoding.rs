@@ -53,9 +53,7 @@ impl DecodeSettings {
             || self.retained_bytes.get() > u32::MAX as usize
             || self.retained_bytes.get() > Semaphore::MAX_PERMITS
         {
-            return Err(Status::invalid_argument(
-                "gRPC decode limit exceeds supported capacity",
-            ));
+            return Err(Status::invalid_argument("gRPC decode limit exceeds supported capacity"));
         }
         Ok(())
     }
@@ -67,22 +65,12 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
     }
 
     pub(super) fn fork(&self) -> Self {
-        Self {
-            settings: self.settings,
-            budget: self.budget.clone(),
-            failure: None,
-            message: PhantomData,
-        }
+        Self { settings: self.settings, budget: self.budget.clone(), failure: None, message: PhantomData }
     }
 
     pub fn new(settings: DecodeSettings) -> Result<Self, Status> {
         settings.validate()?;
-        Ok(Self {
-            settings,
-            budget: Arc::new(Semaphore::new(settings.retained_bytes.get())),
-            failure: None,
-            message: PhantomData,
-        })
+        Ok(Self { settings, budget: Arc::new(Semaphore::new(settings.retained_bytes.get())), failure: None, message: PhantomData })
     }
 
     pub fn request<B>(self, body: B) -> tonic::Streaming<StreamItem<T>>
@@ -107,26 +95,21 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
 
     fn decode_message(&self, encoded: &[u8]) -> Result<StreamItem<T>, Status> {
         if encoded.len() > self.settings.message_bytes.get() {
-            return Err(Status::resource_exhausted(
-                "gRPC message exceeds wire ceiling",
-            ));
+            return Err(Status::resource_exhausted("gRPC message exceeds wire ceiling"));
         }
         let bytes = W::decoding_memory(DecodeInput::new(encoded))
             .map_err(|error| Status::invalid_argument(error.to_string()))?
             .max(std::mem::size_of::<T>())
             .max(1);
         if bytes > self.settings.retained_bytes.get() {
-            return Err(Status::resource_exhausted(
-                "gRPC decoded message exceeds byte ceiling",
-            ));
+            return Err(Status::resource_exhausted("gRPC decoded message exceeds byte ceiling"));
         }
         let claim = self
             .budget
             .clone()
             .try_acquire_many_owned(bytes as u32)
             .map_err(|_| Status::resource_exhausted("gRPC decoded items retain byte capacity"))?;
-        let value = W::decode(DecodeInput::new(encoded))
-            .map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let value = W::decode(DecodeInput::new(encoded)).map_err(|error| Status::invalid_argument(error.to_string()))?;
         StreamItem::charged(value, claim).map_err(|error| Status::internal(error.to_string()))
     }
 }

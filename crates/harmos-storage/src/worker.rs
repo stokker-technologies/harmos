@@ -67,9 +67,7 @@ impl Worker {
         // StorageManager owns physical backend teardown before this worker's
         // lease retires. An early stop cannot claim that teardown completed.
         if !self.0.inner.state.lock().unwrap().status.closed {
-            return Err(Error::NotReady {
-                domain: "storage cleanup",
-            });
+            return Err(Error::NotReady { domain: "storage cleanup" });
         }
         Ok(())
     }
@@ -115,11 +113,7 @@ impl Worker {
                     state.request_flush();
                 }
                 // Already registered snapshots acquire their pins before maintenance.
-                let prune_through = if state.snapshot_opening() {
-                    0
-                } else {
-                    state.status.saved.sequence
-                };
+                let prune_through = if state.snapshot_opening() { 0 } else { state.status.saved.sequence };
                 let mut prune = (inner.has_objects
                     && state.ready
                     && !state.status.closing
@@ -132,29 +126,20 @@ impl Worker {
                     None
                 } else if let Some(deletion) = state.deletion_action() {
                     Some(Action::Delete(deletion))
-                } else if let Some(target) = state
-                    .recovery_request
-                    .filter(|target| target.index <= state.recovery_written.index)
-                {
+                } else if let Some(target) = state.recovery_request.filter(|target| target.index <= state.recovery_written.index) {
                     Some(Action::Recovery(target))
                 } else if let Some(boundary) = state.write_boundary() {
                     // A primary barrier does not require recovery I/O. Keep
                     // both domains in the same queue, but prefer its data while
                     // preserving the earliest explicitly requested boundary.
-                    let mut pending = state
-                        .queue
-                        .iter()
-                        .filter(|entry| entry.index <= boundary && state.needs_write(entry));
+                    let mut pending = state.queue.iter().filter(|entry| entry.index <= boundary && state.needs_write(entry));
                     let first = pending.next();
-                    let selected = if state.data_request.is_some()
-                        && first.is_some_and(|entry| entry.operation.domain() == Domain::Recovery)
-                    {
-                        pending
-                            .find(|entry| entry.operation.domain() == Domain::Data)
-                            .or(first)
-                    } else {
-                        first
-                    };
+                    let selected =
+                        if state.data_request.is_some() && first.is_some_and(|entry| entry.operation.domain() == Domain::Recovery) {
+                            pending.find(|entry| entry.operation.domain() == Domain::Data).or(first)
+                        } else {
+                            first
+                        };
                     // Journal Order Is Independent Of Unrelated Measurements.
                     // Only The Earliest Unwritten State Entry May Bypass Data,
                     // And Its Declared Evidence Dependency Must Already Be Durable.
@@ -162,21 +147,13 @@ impl Worker {
                         .recovery_request
                         .and_then(|target| {
                             state.queue.iter().find(|entry| {
-                                entry.index <= target.index
-                                    && entry.operation.domain() == Domain::Recovery
-                                    && state.needs_write(entry)
+                                entry.index <= target.index && entry.operation.domain() == Domain::Recovery && state.needs_write(entry)
                             })
                         })
                         .filter(|entry| {
-                            entry.operation.required_data().is_some_and(|required| {
-                                state.status.saved.covers(required).unwrap_or(false)
-                            })
+                            entry.operation.required_data().is_some_and(|required| state.status.saved.covers(required).unwrap_or(false))
                         });
-                    let selected = if prefer_state {
-                        ready_state.or(selected)
-                    } else {
-                        selected
-                    };
+                    let selected = if prefer_state { ready_state.or(selected) } else { selected };
                     selected.cloned().map(Action::Write)
                 } else {
                     None
@@ -186,20 +163,10 @@ impl Worker {
                 // and views so neither producer churn nor reads can starve a peer.
                 let selected = if prefer_control || data.is_none() {
                     let healthy = state.status.failure.is_none();
-                    let file = if prefer_files && healthy {
-                        state.file_action().map(Action::File)
-                    } else {
-                        None
-                    };
+                    let file = if prefer_files && healthy { state.file_action().map(Action::File) } else { None };
                     let control = file
                         .or_else(|| state.snapshot_action(healthy).map(Action::Snapshot))
-                        .or_else(|| {
-                            if healthy {
-                                state.file_action().map(Action::File)
-                            } else {
-                                None
-                            }
-                        });
+                        .or_else(|| if healthy { state.file_action().map(Action::File) } else { None });
                     if let Some(action) = &control {
                         prefer_files = !matches!(action, Action::File(_));
                     }
@@ -235,9 +202,7 @@ impl Worker {
                         state.status.failure = None;
                         match (action, completed) {
                             (Action::Delete(work), Completed::Deleted) => {
-                                state
-                                    .receipts
-                                    .complete(&work.receipt.mutation, work.receipt.value.clone());
+                                state.receipts.complete(&work.receipt.mutation, work.receipt.value.clone());
                                 state.deletions.remove(&work.receipt.mutation);
                             }
                             (Action::Prune(through), Completed::Pruned(done)) => {
@@ -245,20 +210,13 @@ impl Worker {
                                     state.objects_pruned = through.sequence;
                                 }
                             }
-                            (Action::File(action), Completed::File(result)) => state
-                                .file_completed(
-                                    action,
-                                    result,
-                                    super::config::FILE_SESSION_TIMEOUT,
-                                ),
-                            (
-                                Action::Snapshot(SnapshotAction::Release(..)),
-                                Completed::Released(id),
-                            ) => state.snapshot_removed(id),
+                            (Action::File(action), Completed::File(result)) => {
+                                state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT)
+                            }
+                            (Action::Snapshot(SnapshotAction::Release(..)), Completed::Released(id)) => state.snapshot_removed(id),
                             (Action::Write(_), Completed::Write(progress)) => {
                                 if let Some(target) = progress.data {
-                                    let saved =
-                                        progress.saved.expect("data write returns durability");
+                                    let saved = progress.saved.expect("data write returns durability");
                                     let through = if saved.sequence == target.sequence {
                                         target.index
                                     } else {
@@ -266,8 +224,7 @@ impl Worker {
                                             .queue
                                             .iter()
                                             .filter(|entry| {
-                                                entry.operation.domain() == Domain::Data
-                                                    && entry.operation.sequence() <= saved.sequence
+                                                entry.operation.domain() == Domain::Data && entry.operation.sequence() <= saved.sequence
                                             })
                                             .map(|entry| entry.index)
                                             .max()
@@ -276,17 +233,13 @@ impl Worker {
                                     state.status.saved = saved;
                                     state.data_flushed = through;
                                     state.retire_data();
-                                    if state
-                                        .data_request
-                                        .is_some_and(|request| request.index <= through)
-                                    {
+                                    if state.data_request.is_some_and(|request| request.index <= through) {
                                         state.data_request = None;
                                     }
                                 }
                                 if let Some(target) = progress.recovery {
                                     state.recovery_written.index = target.index;
-                                    state.recovery_written.sequence =
-                                        state.recovery_written.sequence.max(target.sequence);
+                                    state.recovery_written.sequence = state.recovery_written.sequence.max(target.sequence);
                                 }
                             }
                             (Action::Recovery(target), Completed::Recovery(saved)) => {
@@ -323,23 +276,12 @@ impl Worker {
                             {
                                 0
                             }
-                            Action::File(file)
-                                if file.caller_retries(&inner.state.lock().unwrap()) =>
-                            {
-                                0
-                            }
+                            Action::File(file) if file.caller_retries(&inner.state.lock().unwrap()) => 0,
                             _ => super::config::MAX_RETRIES,
                         };
                         retry_at = if transient(&error) && failures <= retries {
-                            let multiplier = 1u32
-                                .checked_shl((failures - 1).min(31) as u32)
-                                .unwrap_or(u32::MAX);
-                            Some(
-                                inner.execution.now()
-                                    + super::config::RETRY_BASE
-                                        .saturating_mul(multiplier)
-                                        .min(super::config::RETRY_CAP),
-                            )
+                            let multiplier = 1u32.checked_shl((failures - 1).min(31) as u32).unwrap_or(u32::MAX);
+                            Some(inner.execution.now() + super::config::RETRY_BASE.saturating_mul(multiplier).min(super::config::RETRY_CAP))
                         } else {
                             None
                         };
@@ -349,12 +291,8 @@ impl Worker {
                             state.file_failed(action, source.clone(), retry_at.is_some());
                         }
                         match &action {
-                            Action::Delete(work) => {
-                                state.deletion_failed(&work.receipt.mutation, source.clone())
-                            }
-                            Action::Write(pending)
-                                if pending.operation.domain() == Domain::Data =>
-                            {
+                            Action::Delete(work) => state.deletion_failed(&work.receipt.mutation, source.clone()),
+                            Action::Write(pending) if pending.operation.domain() == Domain::Data => {
                                 state.deletion_data_failed(pending.index, source.clone())
                             }
                             _ => {}
@@ -365,24 +303,11 @@ impl Worker {
                 inner.notify();
             } else {
                 let deadline = retry_at.map_or(next_flush, |retry| retry.min(next_flush));
-                let deadline = inner
-                    .state
-                    .lock()
-                    .unwrap()
-                    .file_deadline()
-                    .map_or(deadline, |file| file.min(deadline));
-                let mut sleep = Box::pin(
-                    inner
-                        .execution
-                        .sleep(deadline.saturating_duration_since(inner.execution.now())),
-                );
+                let deadline = inner.state.lock().unwrap().file_deadline().map_or(deadline, |file| file.min(deadline));
+                let mut sleep = Box::pin(inner.execution.sleep(deadline.saturating_duration_since(inner.execution.now())));
                 let mut wake = Box::pin(changed.changed());
                 let wait = std::future::poll_fn(|cx| {
-                    if wake.as_mut().poll(cx).is_ready() || sleep.as_mut().poll(cx).is_ready() {
-                        Poll::Ready(())
-                    } else {
-                        Poll::Pending
-                    }
+                    if wake.as_mut().poll(cx).is_ready() || sleep.as_mut().poll(cx).is_ready() { Poll::Ready(()) } else { Poll::Pending }
                 });
                 wait.await;
             }
@@ -396,9 +321,7 @@ impl Drop for Running {
         state.status.running = false;
         state.pruning_objects = false;
         if !state.status.closed {
-            state.status.failure = Some(Arc::new(Error::NotReady {
-                domain: "storage worker",
-            }));
+            state.status.failure = Some(Arc::new(Error::NotReady { domain: "storage worker" }));
         }
         self.0.notify();
     }
@@ -407,33 +330,22 @@ impl Drop for Running {
 impl Operation {
     pub(super) fn encoded_batch_bytes(&self) -> Result<usize> {
         let sum = |parts: &[StoragePart<'_>]| -> Result<usize> {
-            parts
-                .iter()
-                .flat_map(|part| part.entries())
-                .try_fold(0usize, |bytes, entry| {
-                    bytes
-                        .checked_add(entry.encoded_bytes()?)
-                        .ok_or(Error::InvalidInput {
-                            field: "storage admission",
-                            reason: "encoded batch size overflow",
-                        })
-                })
+            parts.iter().flat_map(|part| part.entries()).try_fold(0usize, |bytes, entry| {
+                bytes
+                    .checked_add(entry.encoded_bytes()?)
+                    .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded batch size overflow" })
+            })
         };
         match self {
             Self::Schema(value) => sum(&[StoragePart::Schemas(std::slice::from_ref(value))]),
-            Self::ObjectGroup {
-                schemas, objects, ..
-            } => {
+            Self::ObjectGroup { schemas, objects, .. } => {
                 let mut bytes = 0usize;
                 for (schema, object) in schemas.iter().zip(objects) {
-                    let next = sum(&[
-                        StoragePart::Schemas(std::slice::from_ref(schema)),
-                        StoragePart::Objects(std::slice::from_ref(object)),
-                    ])?;
-                    bytes = bytes.checked_add(next).ok_or(Error::InvalidInput {
-                        field: "storage admission",
-                        reason: "encoded batch size overflow",
-                    })?;
+                    let next =
+                        sum(&[StoragePart::Schemas(std::slice::from_ref(schema)), StoragePart::Objects(std::slice::from_ref(object))])?;
+                    bytes = bytes
+                        .checked_add(next)
+                        .ok_or(Error::InvalidInput { field: "storage admission", reason: "encoded batch size overflow" })?;
                 }
                 Ok(bytes)
             }
@@ -456,10 +368,7 @@ impl Operation {
 
     pub(super) fn required_data(&self) -> Option<&super::StorageCursor> {
         match self {
-            Self::Recovery(entries) => entries
-                .iter()
-                .max_by_key(|entry| entry.required_data.sequence)
-                .map(|entry| &entry.required_data),
+            Self::Recovery(entries) => entries.iter().max_by_key(|entry| entry.required_data.sequence).map(|entry| &entry.required_data),
             Self::Snapshot(snapshot) => Some(&snapshot.required_data),
             _ => None,
         }
@@ -491,25 +400,16 @@ impl Operation {
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
-        Action::Prune(through) => inner
-            .bounded(
-                inner
-                    .primary
-                    .prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES),
-            )
-            .await
-            .map(Completed::Pruned),
-        Action::File(action) => super::staging::perform(inner, action)
-            .await
-            .map(Completed::File),
+        Action::Prune(through) => {
+            inner.bounded(inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES)).await.map(Completed::Pruned)
+        }
+        Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
         Action::Snapshot(SnapshotAction::Open(id, at)) => {
             let opened = inner.bounded(inner.primary.open_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
-            inner
-                .bounded(inner.primary.release_snapshot(snapshot))
-                .await?;
+            inner.bounded(inner.primary.release_snapshot(snapshot)).await?;
             Ok(Completed::Released(*id))
         }
         Action::Write(entry) => {
@@ -520,13 +420,9 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             progress.include(entry);
             let part = match &entry.operation {
                 Operation::File(file) => Some(StoragePart::Files(std::slice::from_ref(file))),
-                Operation::Schema(schema) => {
-                    Some(StoragePart::Schemas(std::slice::from_ref(schema)))
-                }
+                Operation::Schema(schema) => Some(StoragePart::Schemas(std::slice::from_ref(schema))),
                 Operation::Records(records) => Some(StoragePart::Records(records)),
-                Operation::ObjectGroup {
-                    schemas, objects, ..
-                } => {
+                Operation::ObjectGroup { schemas, objects, .. } => {
                     let mut parts = Vec::with_capacity(schemas.len() * 2);
                     for (schema, object) in schemas.iter().zip(objects) {
                         parts.push(StoragePart::Schemas(std::slice::from_ref(schema)));
@@ -550,22 +446,13 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                     None
                 }
                 Operation::Snapshot(snapshot) => {
-                    if !inner
-                        .state
-                        .lock()
-                        .unwrap()
-                        .status
-                        .saved
-                        .covers(&snapshot.required_data)?
-                    {
+                    if !inner.state.lock().unwrap().status.saved.covers(&snapshot.required_data)? {
                         return Err(Error::InvalidInput {
                             field: "state snapshot dependency",
                             reason: "snapshot cannot precede required primary persistence",
                         });
                     }
-                    inner
-                        .bounded(inner.recovery.write_snapshot(snapshot))
-                        .await?;
+                    inner.bounded(inner.recovery.write_snapshot(snapshot)).await?;
                     None
                 }
             };
@@ -575,10 +462,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             Ok(Completed::Write(progress))
         }
         Action::Recovery(target) => {
-            let through = RecoveryPosition {
-                history: inner.recovery.history().clone(),
-                sequence: target.sequence,
-            };
+            let through = RecoveryPosition { history: inner.recovery.history().clone(), sequence: target.sequence };
             let saved = inner.bounded(inner.recovery.flush(&through)).await?;
             let written = inner.state.lock().unwrap().recovery_written.sequence;
             if !saved.covers(&through)? || saved.sequence > written {
@@ -594,10 +478,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
 
 fn transient(error: &Error) -> bool {
     match error {
-        Error::Backend {
-            kind: BackendFailure::Transient,
-            ..
-        } => true,
+        Error::Backend { kind: BackendFailure::Transient, .. } => true,
         Error::Persistence { source } => transient(source),
         _ => false,
     }

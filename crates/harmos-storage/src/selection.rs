@@ -26,13 +26,8 @@ use serde::Serialize;
 // Local Imports
 use super::backend::{BackendSnapshot, ScanPage, StorageBackend};
 use super::manager::Operation;
-use super::query::{
-    FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection,
-};
-use super::{
-    FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSchema, StoredRecord,
-    StoredRow,
-};
+use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
+use super::{FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSchema, StoredRecord, StoredRow};
 use crate::Identifier;
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
@@ -62,10 +57,7 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     }
     fn pending(queued: Queued<'_>) -> &[Self];
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a Self::Selection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>>;
 }
 
@@ -93,14 +85,8 @@ impl Entry for ObjectEntry {
     // Latest selection is resolved by the backend; matching checks identity only.
     fn matches(&self, selection: &ObjectSelection) -> bool {
         self.version.check_position(&self.position).is_ok()
-            && selection
-                .schema
-                .as_ref()
-                .is_none_or(|key| key == &self.value.schema)
-            && selection
-                .key
-                .as_ref()
-                .is_none_or(|key| key == &self.value.item)
+            && selection.schema.as_ref().is_none_or(|key| key == &self.value.schema)
+            && selection.key.as_ref().is_none_or(|key| key == &self.value.item)
     }
 
     fn pending(queued: Queued<'_>) -> &[Self] {
@@ -111,10 +97,7 @@ impl Entry for ObjectEntry {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a ObjectSelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_objects(snapshot, selection, page)
     }
@@ -131,11 +114,7 @@ impl Entry for StoredRecord {
         self.schema == selection.schema
             && optional(&selection.scope, self.scope.as_ref())
             && optional(&selection.item, Some(&self.item))
-            && within(
-                selection.source_start,
-                selection.source_end,
-                self.source_time,
-            )
+            && within(selection.source_start, selection.source_end, self.source_time)
     }
 
     fn pending(queued: Queued<'_>) -> &[Self] {
@@ -146,10 +125,7 @@ impl Entry for StoredRecord {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a RecordSelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_records(snapshot, selection, page)
     }
@@ -169,11 +145,7 @@ impl Entry for StoredRow {
             && optional(&selection.scope, record.scope.as_ref())
             && optional(&selection.item, Some(&record.item))
             && optional(&selection.stream, Some(&self.stream))
-            && within(
-                selection.source_start,
-                selection.source_end,
-                record.source_time,
-            )
+            && within(selection.source_start, selection.source_end, record.source_time)
     }
 
     fn start(selection: &StreamSelection) -> u64 {
@@ -188,10 +160,7 @@ impl Entry for StoredRow {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a StreamSelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_stream(snapshot, selection, page)
     }
@@ -217,10 +186,7 @@ impl Entry for StorageSchema {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a SchemaSelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_schemas(snapshot, selection, page)
     }
@@ -234,8 +200,7 @@ impl Entry for FileReference {
     }
 
     fn matches(&self, selection: &FileSelection) -> bool {
-        optional(&selection.scope, self.metadata.scope.as_ref())
-            && optional(&selection.item, Some(&self.metadata.id))
+        optional(&selection.scope, self.metadata.scope.as_ref()) && optional(&selection.item, Some(&self.metadata.id))
     }
 
     fn pending(queued: Queued<'_>) -> &[Self] {
@@ -246,10 +211,7 @@ impl Entry for FileReference {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a FileSelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_files(snapshot, selection, page)
     }
@@ -272,10 +234,7 @@ impl Entry for StoredIdentity {
     }
 
     fn scan<'a>(
-        backend: &'a dyn StorageBackend,
-        snapshot: &'a BackendSnapshot,
-        selection: &'a IdentitySelection,
-        page: ScanPage,
+        backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_identities(snapshot, selection, page)
     }
@@ -285,9 +244,7 @@ impl Entry for StoredIdentity {
 
 /* === Private Functions === */
 fn optional(expected: &Option<Identifier>, actual: Option<&Identifier>) -> bool {
-    expected
-        .as_ref()
-        .is_none_or(|expected| Some(expected) == actual)
+    expected.as_ref().is_none_or(|expected| Some(expected) == actual)
 }
 
 // Half-Open Source Windows Select Only Records Carrying A Source Time.

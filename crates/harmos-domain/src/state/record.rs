@@ -72,11 +72,7 @@ pub trait CatalogCodec {
 }
 
 pub trait RecordCatalog: CatalogCodec + Sized {
-    fn restore(
-        id: &DefinitionId,
-        version: u32,
-        payload: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error>;
+    fn restore(id: &DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error>;
 }
 
 /* === Implementations === */
@@ -97,11 +93,7 @@ impl<T: Identified + Serialize> CatalogCodec for T {
 }
 
 impl<T: Record + DeserializeOwned> RecordCatalog for T {
-    fn restore(
-        id: &DefinitionId,
-        version: u32,
-        payload: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error> {
+    fn restore(id: &DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
         if (id, version) != (&T::definition().0, T::definition().1) {
             return Ok(None);
         }
@@ -110,11 +102,7 @@ impl<T: Record + DeserializeOwned> RecordCatalog for T {
 }
 
 impl RecordCatalog for () {
-    fn restore(
-        _: &DefinitionId,
-        _: u32,
-        _: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error> {
+    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
         Ok(None)
     }
 }
@@ -131,12 +119,7 @@ impl Prepared {
         }
         impl std::io::Write for Bounded {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                if self
-                    .bytes
-                    .len()
-                    .checked_add(bytes.len())
-                    .is_none_or(|n| n > Records::MAX_BYTES)
-                {
+                if self.bytes.len().checked_add(bytes.len()).is_none_or(|n| n > Records::MAX_BYTES) {
                     self.overflow = true;
                     return Err(std::io::Error::other("commit payload limit"));
                 }
@@ -147,22 +130,14 @@ impl Prepared {
                 Ok(())
             }
         }
-        let mut writer = Bounded {
-            bytes: Vec::new(),
-            overflow: false,
-        };
+        let mut writer = Bounded { bytes: Vec::new(), overflow: false };
         let result = value.encode(&mut serde_json::Serializer::new(&mut writer));
         if writer.overflow {
             return Err(PreparationError::Limit);
         }
         result.map_err(|_| PreparationError::Encoding)?;
-        let payload =
-            serde_json::from_slice(&writer.bytes).map_err(|_| PreparationError::Encoding)?;
-        let prepared = Self {
-            id,
-            version,
-            payload,
-        };
+        let payload = serde_json::from_slice(&writer.bytes).map_err(|_| PreparationError::Encoding)?;
+        let prepared = Self { id, version, payload };
         if prepared.bytes()? > Records::MAX_BYTES {
             return Err(PreparationError::Limit);
         }
@@ -171,10 +146,7 @@ impl Prepared {
 
     pub fn typed_record(value: &impl CatalogCodec) -> Result<Self, PreparationError> {
         let prepared = Self::encode(value)?;
-        if ["harmos:work/", "harmos:guest/", "harmos:sidecar/"]
-            .iter()
-            .any(|prefix| prepared.id.as_str().starts_with(prefix))
-        {
+        if ["harmos:work/", "harmos:guest/", "harmos:sidecar/"].iter().any(|prefix| prepared.id.as_str().starts_with(prefix)) {
             return Err(PreparationError::Identity);
         }
         Ok(prepared)
@@ -182,16 +154,9 @@ impl Prepared {
 
     pub fn system(fact: &SystemFact) -> Result<Self, PreparationError> {
         let owner = match &fact.source {
-            FactSource::Work(owner) | FactSource::Guest(owner) | FactSource::Sidecar(owner) => {
-                owner
-            }
+            FactSource::Work(owner) | FactSource::Guest(owner) | FactSource::Sidecar(owner) => owner,
         };
-        if owner
-            .len()
-            .checked_add(fact.name.len())
-            .and_then(|n| n.checked_add(16))
-            .is_none_or(|n| n > Records::MAX_BYTES)
-        {
+        if owner.len().checked_add(fact.name.len()).and_then(|n| n.checked_add(16)).is_none_or(|n| n > Records::MAX_BYTES) {
             return Err(PreparationError::Limit);
         }
         if !fact.validate_admission() {
@@ -201,11 +166,7 @@ impl Prepared {
             return Err(PreparationError::Limit);
         }
         let (id, version) = fact.identify();
-        let prepared = Self {
-            id,
-            version,
-            payload: serde_json::json!(fact.payload),
-        };
+        let prepared = Self { id, version, payload: serde_json::json!(fact.payload) };
         if prepared.bytes()? > Records::MAX_BYTES {
             return Err(PreparationError::Limit);
         }
@@ -216,16 +177,9 @@ impl Prepared {
         if self.id.as_str().len() > Records::MAX_BYTES {
             return Err(PreparationError::Limit);
         }
-        let payload = serde_json::to_vec(&self.payload)
-            .map_err(|_| PreparationError::Encoding)?
-            .len();
-        let identity = serde_json::to_vec(&self.id)
-            .map_err(|_| PreparationError::Encoding)?
-            .len();
-        payload
-            .checked_add(identity)
-            .and_then(|n| n.checked_add(4))
-            .ok_or(PreparationError::Limit)
+        let payload = serde_json::to_vec(&self.payload).map_err(|_| PreparationError::Encoding)?.len();
+        let identity = serde_json::to_vec(&self.id).map_err(|_| PreparationError::Encoding)?.len();
+        payload.checked_add(identity).and_then(|n| n.checked_add(4)).ok_or(PreparationError::Limit)
     }
 }
 
@@ -272,17 +226,12 @@ impl Records {
     }
 
     fn reserve(&mut self, bytes: usize) -> Result<(), PreparationError> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes)
-            .filter(|n| *n <= Self::MAX_BYTES)
-            .ok_or(PreparationError::Limit)?;
+        self.bytes = self.bytes.checked_add(bytes).filter(|n| *n <= Self::MAX_BYTES).ok_or(PreparationError::Limit)?;
         Ok(())
     }
 
     pub fn collect<S, T: super::Transaction<S> + CatalogCodec>(
-        transaction: &T,
-        state: &S,
+        transaction: &T, state: &S,
     ) -> Result<(Prepared, PreparedMembers), PreparationError> {
         let prepared = Prepared::encode(transaction)?;
         let mut out = Self::default();

@@ -26,9 +26,7 @@ use serde::Serialize;
 use super::host::{Catalog, CatalogKind, CatalogPage};
 use super::{Context, Lane, Operation, OperationManager};
 use crate::storage::query::SchemaSelection;
-use crate::storage::{
-    IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity,
-};
+use crate::storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -55,38 +53,25 @@ impl<C: 'static> Operation for Listing<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(
-        storage: Arc<Self::Resources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<Self::Resources>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Catalog,
-        _: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Catalog, _: &mut Self::Endpoints,
     ) -> Result<super::Response<CatalogPage>> {
         let page = match request.kind {
             CatalogKind::Operations => context.operations.discover(&context.source, request)?,
             CatalogKind::Schemas => {
                 let schema = request.schema.clone();
-                stored::<C, StorageSchema>(
-                    self.storage()?,
-                    &SchemaSelection { schema: None },
-                    request,
-                    |entry| schema.as_ref().is_none_or(|schema| schema == &entry.key.id),
-                )
+                stored::<C, StorageSchema>(self.storage()?, &SchemaSelection { schema: None }, request, |entry| {
+                    schema.as_ref().is_none_or(|schema| schema == &entry.key.id)
+                })
                 .await?
             }
             CatalogKind::Streams | CatalogKind::Objects => {
                 let selection = IdentitySelection {
-                    kind: if request.kind == CatalogKind::Streams {
-                        IdentityKind::Streams
-                    } else {
-                        IdentityKind::Objects
-                    },
+                    kind: if request.kind == CatalogKind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
                     schema: request.schema.clone(),
                 };
                 stored::<C, StoredIdentity>(self.storage()?, &selection, request, |_| true).await?
@@ -98,9 +83,7 @@ impl<C: 'static> Operation for Listing<C> {
 
 impl<C> Listing<C> {
     fn storage(&self) -> Result<&StorageManager<C>> {
-        self.storage.as_deref().ok_or(Error::NotReady {
-            domain: "catalog storage",
-        })
+        self.storage.as_deref().ok_or(Error::NotReady { domain: "catalog storage" })
     }
 }
 
@@ -108,10 +91,7 @@ impl<C> Listing<C> {
 /// Serve `host.catalog` from this manager; without storage only live
 /// operation contracts are listed and stored kinds refuse as not ready.
 pub fn register<C: 'static>(
-    operations: &OperationManager,
-    owner: impl Into<String>,
-    lane: impl Lane,
-    storage: Option<Arc<StorageManager<C>>>,
+    operations: &OperationManager, owner: impl Into<String>, lane: impl Lane, storage: Option<Arc<StorageManager<C>>>,
 ) -> Result<()> {
     operations.register_wire_operation::<Listing<C>>(owner.into(), lane, Arc::new(storage))
 }
@@ -121,10 +101,7 @@ pub fn register<C: 'static>(
 // By Storage Position, So A Nonempty Page Always Continues And An Empty Page
 // Ends The Catalog.
 async fn stored<C, T>(
-    storage: &StorageManager<C>,
-    selection: &T::Selection,
-    request: &Catalog,
-    keep: impl Fn(&T) -> bool,
+    storage: &StorageManager<C>, selection: &T::Selection, request: &Catalog, keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogPage>
 where
     T: crate::storage::follow::Entry,
@@ -135,10 +112,7 @@ where
         .as_deref()
         .map(str::parse::<u64>)
         .transpose()
-        .map_err(|_| Error::InvalidInput {
-            field: "catalog cursor",
-            reason: "cursor must be a storage position",
-        })?
+        .map_err(|_| Error::InvalidInput { field: "catalog cursor", reason: "cursor must be a storage position" })?
         .unwrap_or(0);
     let limits = ReadLimits {
         rows: NonZeroUsize::new(rows).expect("validated catalog rows"),
@@ -158,9 +132,7 @@ where
             if write(&mut entries, entry).is_err() || entries.len() + 1 > bytes {
                 entries.truncate(start);
                 if next.is_none() {
-                    return Err(Error::ResourceExhausted {
-                        resource: "catalog entry bytes",
-                    });
+                    return Err(Error::ResourceExhausted { resource: "catalog entry bytes" });
                 }
                 break;
             }
@@ -172,10 +144,7 @@ where
     Ok(CatalogPage { entries, next })
 }
 
-fn write(
-    bytes: &mut Vec<u8>,
-    entry: &impl Serialize,
-) -> std::result::Result<(), serde_json::Error> {
+fn write(bytes: &mut Vec<u8>, entry: &impl Serialize) -> std::result::Result<(), serde_json::Error> {
     serde_json::to_writer(bytes, entry)
 }
 

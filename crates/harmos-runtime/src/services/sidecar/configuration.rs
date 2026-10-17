@@ -13,11 +13,7 @@ use super::*;
 /* === Implementations === */
 impl DemandSource {
     pub fn hold(&self, key: &str) -> Result<DemandLease, SidecarError> {
-        let count = self
-            .keys
-            .get(key)
-            .ok_or_else(|| SidecarError::Malformed(format!("undeclared demand key `{key}`")))?
-            .clone();
+        let count = self.keys.get(key).ok_or_else(|| SidecarError::Malformed(format!("undeclared demand key `{key}`")))?.clone();
         count.send_modify(|count| *count += 1);
 
         Ok(DemandLease { count })
@@ -32,19 +28,13 @@ impl Drop for DemandLease {
 
 impl<A: Application> Clone for Inbound<A> {
     fn clone(&self) -> Self {
-        Self {
-            streams: self.streams.clone(),
-            demands: self.demands.clone(),
-        }
+        Self { streams: self.streams.clone(), demands: self.demands.clone() }
     }
 }
 
 impl<A: Application> Default for Inbound<A> {
     fn default() -> Self {
-        Self {
-            streams: BTreeMap::new(),
-            demands: BTreeMap::new(),
-        }
+        Self { streams: BTreeMap::new(), demands: BTreeMap::new() }
     }
 }
 
@@ -72,17 +62,11 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
         let mut admitted = BTreeMap::new();
         for key in keys {
             assert!(
-                key.split_once(':')
-                    .is_some_and(|(namespace, name)| !namespace.is_empty() && !name.is_empty()),
+                key.split_once(':').is_some_and(|(namespace, name)| !namespace.is_empty() && !name.is_empty()),
                 "demand keys must be namespaced"
             );
-            assert!(
-                !publications.iter().any(|entry| entry.id == key),
-                "demand keys must differ from publication identities"
-            );
-            admitted
-                .entry(key)
-                .or_insert_with(|| tokio::sync::watch::channel(0).0);
+            assert!(!publications.iter().any(|entry| entry.id == key), "demand keys must differ from publication identities");
+            admitted.entry(key).or_insert_with(|| tokio::sync::watch::channel(0).0);
         }
 
         self.demand_keys = Arc::new(admitted);
@@ -90,9 +74,7 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
     }
 
     pub fn demands(&self) -> DemandSource {
-        DemandSource {
-            keys: Arc::clone(&self.demand_keys),
-        }
+        DemandSource { keys: Arc::clone(&self.demand_keys) }
     }
 
     pub fn routed(mut self, router: &crate::plugin::Router) -> Self {
@@ -121,11 +103,7 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
         Source::Row: Stream<A> + Message + Default,
     {
         let ingress = Arc::make_mut(&mut self.ingress);
-        ingress
-            .demands
-            .insert(Source::ID, |streams: &StreamManager<A>| {
-                streams.demand::<Source::Row>()
-            });
+        ingress.demands.insert(Source::ID, |streams: &StreamManager<A>| streams.demand::<Source::Row>());
         let streams = &mut ingress.streams;
         let previous = streams.insert(
             Source::ID,
@@ -138,23 +116,15 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
                         Source::VERSION
                     ));
                 }
-                let row = Source::Row::decode(publication.payload()).map_err(|error| {
-                    format!(
-                        "sidecar stream `{}` sent malformed protobuf: {error}",
-                        Source::ID
-                    )
-                })?;
+                let row = Source::Row::decode(publication.payload())
+                    .map_err(|error| format!("sidecar stream `{}` sent malformed protobuf: {error}", Source::ID))?;
                 context.streams().miss::<Source::Row>(publication.missed());
                 context.streams().publish(row);
 
                 Ok(())
             }),
         );
-        assert!(
-            previous.is_none(),
-            "sidecar stream `{}` was registered twice",
-            Source::ID
-        );
+        assert!(previous.is_none(), "sidecar stream `{}` was registered twice", Source::ID);
 
         self
     }
@@ -175,18 +145,13 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
             if *staged.borrow_and_update() {
                 return self.calls.current().map(crate::operations::Native::new);
             }
-            staged
-                .changed()
-                .await
-                .map_err(|_| SidecarError::Unavailable)?;
+            staged.changed().await.map_err(|_| SidecarError::Unavailable)?;
         }
     }
 
     pub fn operations(&self) -> Result<crate::operations::Native, SidecarError> {
         let endpoint = self.calls.current()?;
-        if !*endpoint.initialized().borrow()
-            || !endpoint.scope().is_some_and(|scope| scope.is_ready())
-        {
+        if !*endpoint.initialized().borrow() || !endpoint.scope().is_some_and(|scope| scope.is_ready()) {
             return Err(SidecarError::Unavailable);
         }
         Ok(crate::operations::Native::new(endpoint))

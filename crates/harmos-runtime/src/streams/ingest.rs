@@ -48,10 +48,7 @@ pub(crate) struct Intake {
 /* === Implementations === */
 impl Ingest {
     pub(crate) fn new() -> Self {
-        Self {
-            taken: watch::channel(BTreeMap::new()).0,
-            next: AtomicU64::new(0),
-        }
+        Self { taken: watch::channel(BTreeMap::new()).0, next: AtomicU64::new(0) }
     }
 
     pub(crate) fn engage(self: &Arc<Self>, resume: u64) -> Intake {
@@ -59,20 +56,12 @@ impl Ingest {
         self.taken.send_modify(|taken| {
             taken.insert(id, resume);
         });
-        Intake {
-            ingest: Arc::clone(self),
-            id,
-        }
+        Intake { ingest: Arc::clone(self), id }
     }
 
     // Every row at or below this cursor is in every live feed's hands.
     pub(crate) fn taken(&self) -> u64 {
-        self.taken
-            .borrow()
-            .values()
-            .min()
-            .copied()
-            .unwrap_or(u64::MAX)
+        self.taken.borrow().values().min().copied().unwrap_or(u64::MAX)
     }
 
     pub(crate) fn watch(&self) -> watch::Receiver<BTreeMap<u64, u64>> {

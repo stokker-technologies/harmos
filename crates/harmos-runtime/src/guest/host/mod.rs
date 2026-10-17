@@ -142,9 +142,7 @@ pub enum Error {
 /* === Implementations === */
 impl Epochs {
     fn start(engine: &WasmEngine) -> Arc<Self> {
-        let epochs = Arc::new(Self {
-            engine: engine.clone(),
-        });
+        let epochs = Arc::new(Self { engine: engine.clone() });
         let ticking = Arc::downgrade(&epochs);
         std::thread::spawn(move || {
             while let Some(clock) = ticking.upgrade() {
@@ -158,9 +156,7 @@ impl Epochs {
     }
 
     fn ticks(&self, bound: Duration) -> u64 {
-        u64::try_from(bound.as_nanos().div_ceil(TICK.as_nanos()))
-            .unwrap_or(UNBOUNDED)
-            .clamp(1, UNBOUNDED)
+        u64::try_from(bound.as_nanos().div_ceil(TICK.as_nanos())).unwrap_or(UNBOUNDED).clamp(1, UNBOUNDED)
     }
 }
 
@@ -169,21 +165,12 @@ impl<A: Application> Host<A> {
         Self::with_settings(runtime, PluginGuestSettings::default())
     }
 
-    pub fn with_settings(
-        runtime: &Runtime<A>,
-        settings: PluginGuestSettings,
-    ) -> Result<Self, Error> {
-        Self::from_parts(
-            runtime.streams.clone(),
-            runtime.operations.clone(),
-            settings,
-        )
+    pub fn with_settings(runtime: &Runtime<A>, settings: PluginGuestSettings) -> Result<Self, Error> {
+        Self::from_parts(runtime.streams.clone(), runtime.operations.clone(), settings)
     }
 
     pub(crate) fn from_parts(
-        streams: StreamManager<A>,
-        operations: crate::operations::OperationManager,
-        settings: PluginGuestSettings,
+        streams: StreamManager<A>, operations: crate::operations::OperationManager, settings: PluginGuestSettings,
     ) -> Result<Self, Error> {
         let mut config = Config::new();
         // Fuel bounds computation and the epoch bounds time, and neither
@@ -197,9 +184,7 @@ impl<A: Application> Host<A> {
             .concurrency_support(true)
             .consume_fuel(true)
             .epoch_interruption(true);
-        let engine = WasmEngine::new(&config).map_err(|source| Error::Engine {
-            message: source.to_string(),
-        })?;
+        let engine = WasmEngine::new(&config).map_err(|source| Error::Engine { message: source.to_string() })?;
         let epochs = Epochs::start(&engine);
         Ok(Self {
             engine,
@@ -214,15 +199,11 @@ impl<A: Application> Host<A> {
 
     pub fn load(&self, bytes: &[u8]) -> Result<Loaded<A>, Error> {
         if bytes.len() > self.max_component {
-            return Err(Error::Oversized {
-                limit: self.max_component,
-            });
+            return Err(Error::Oversized { limit: self.max_component });
         }
         let declaration = Declaration::inspect(bytes, Facility::Guest)?;
-        let component = Component::new(&self.engine, bytes).map_err(|source| Error::Component {
-            id: declaration.id.clone(),
-            message: source.to_string(),
-        })?;
+        let component = Component::new(&self.engine, bytes)
+            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
         let mut linker: Linker<Bridge<A>> = Linker::new(&self.engine);
         linker
             .instance("harmos:guest/operation-context@0.2.0")
@@ -235,69 +216,34 @@ impl<A: Application> Host<A> {
                             Err(error) => Err(Bridge::<A>::refusal("-32602", error.to_string())),
                             Ok(child) => {
                                 let scope = accessor.with(|mut access| {
-                                    access
-                                        .get()
-                                        .children
-                                        .lock()
-                                        .expect("guest child context lock")
-                                        .get(child.context())
-                                        .cloned()
+                                    access.get().children.lock().expect("guest child context lock").get(child.context()).cloned()
                                 });
                                 match (scope, child) {
                                     (None, crate::operations::WireChild::Control(_)) => {
-                                        Err(Bridge::<A>::refusal(
-                                            "-32601",
-                                            "submitted children require an attempt context",
-                                        ))
+                                        Err(Bridge::<A>::refusal("-32601", "submitted children require an attempt context"))
                                     }
-                                    (None, crate::operations::WireChild::Call(call))
-                                        if call.submit =>
-                                    {
-                                        Err(Bridge::<A>::refusal(
-                                            "-32601",
-                                            "submitted children require an attempt context",
-                                        ))
+                                    (None, crate::operations::WireChild::Call(call)) if call.submit => {
+                                        Err(Bridge::<A>::refusal("-32601", "submitted children require an attempt context"))
                                     }
                                     (None, crate::operations::WireChild::Call(call)) => {
-                                        let endpoint = accessor.with(|mut access| {
-                                            access
-                                                .get()
-                                                .session
-                                                .as_ref()
-                                                .and_then(std::sync::Weak::upgrade)
-                                        });
+                                        let endpoint =
+                                            accessor.with(|mut access| access.get().session.as_ref().and_then(std::sync::Weak::upgrade));
                                         match endpoint {
-                                            Some(endpoint) => endpoint
-                                                .background(call, submitted)
-                                                .await
-                                                .map_err(|error| {
-                                                    let refusal = match error {
-                                                        Error::OperationCaller(error) => {
-                                                            crate::operations::children::refused(
-                                                                error,
-                                                            )
-                                                        }
-                                                        error => harmos_domain::Refusal::new(
-                                                            -32_606, error,
-                                                        ),
-                                                    };
-                                                    Bridge::<A>::forwarded(&refusal)
-                                                }),
-                                            None => Err(Bridge::<A>::refusal(
-                                                "-32601",
-                                                "guest calling context is unavailable",
-                                            )),
+                                            Some(endpoint) => endpoint.background(call, submitted).await.map_err(|error| {
+                                                let refusal = match error {
+                                                    Error::OperationCaller(error) => crate::operations::children::refused(error),
+                                                    error => harmos_domain::Refusal::new(-32_606, error),
+                                                };
+                                                Bridge::<A>::forwarded(&refusal)
+                                            }),
+                                            None => Err(Bridge::<A>::refusal("-32601", "guest calling context is unavailable")),
                                         }
                                     }
                                     (Some(scope), child) => {
                                         let (_cancel, cancelled) = tokio::sync::oneshot::channel();
                                         let answer = match child {
-                                            crate::operations::WireChild::Call(call) => {
-                                                scope.call(call, submitted, cancelled).await
-                                            }
-                                            crate::operations::WireChild::Control(control) => {
-                                                scope.control(control, cancelled).await
-                                            }
+                                            crate::operations::WireChild::Call(call) => scope.call(call, submitted, cancelled).await,
+                                            crate::operations::WireChild::Control(control) => scope.control(control, cancelled).await,
                                         };
                                         answer.map_err(|error| Bridge::<A>::forwarded(&error))
                                     }
@@ -308,20 +254,12 @@ impl<A: Application> Host<A> {
                     })
                 })
             })
-            .map_err(|source| Error::Component {
-                id: declaration.id.clone(),
-                message: source.to_string(),
-            })?;
+            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
         let component = linker
             .instantiate_pre(&component)
-            .map_err(|source| Error::Component {
-                id: declaration.id.clone(),
-                message: source.to_string(),
-            })?;
-        let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {
-            id: declaration.id.clone(),
-            message: source.to_string(),
-        })?;
+            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
+        let sdk = sdk::PluginIndices::new(&component)
+            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
         Ok(Loaded {
             sha256: Sha256::digest(bytes).into(),
             declaration,
@@ -339,10 +277,8 @@ impl<A: Application> Host<A> {
 impl<A: Application> Loaded<A> {
     pub(crate) fn duplicate(&self) -> Result<Self, Error> {
         let component = self.component.clone();
-        let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {
-            id: self.declaration.id.clone(),
-            message: source.to_string(),
-        })?;
+        let sdk = sdk::PluginIndices::new(&component)
+            .map_err(|source| Error::Component { id: self.declaration.id.clone(), message: source.to_string() })?;
         Ok(Self {
             sha256: self.sha256,
             declaration: self.declaration.clone(),
@@ -368,22 +304,11 @@ impl<A: Application> Loaded<A> {
         self.register_with_limits(None).await
     }
 
-    pub(super) async fn register_with_limits(
-        self,
-        limits: Option<StoreLimits>,
-    ) -> Result<Registered<A>, Error> {
+    pub(super) async fn register_with_limits(self, limits: Option<StoreLimits>) -> Result<Registered<A>, Error> {
         // Catalog serialization can legitimately do more work than one
         // interactive route call; its wall-clock bound remains separate.
-        let fuel = if limits.is_some() {
-            100_000_000
-        } else {
-            self.fuel
-        };
-        let deadline = if limits.is_some() {
-            self.epochs.ticks(Duration::from_secs(10))
-        } else {
-            UNBOUNDED
-        };
+        let fuel = if limits.is_some() { 100_000_000 } else { self.fuel };
+        let deadline = if limits.is_some() { self.epochs.ticks(Duration::from_secs(10)) } else { UNBOUNDED };
         let bridge = Bridge {
             declaration: self.declaration,
             streams: self.streams,
@@ -399,50 +324,22 @@ impl<A: Application> Loaded<A> {
         };
         let mut store = Store::new(self.component.engine(), bridge);
         store.limiter(|bridge| &mut bridge.limits);
-        store.set_fuel(fuel).map_err(|source| Error::Guest {
-            message: format!("{source:#}"),
-        })?;
+        store.set_fuel(fuel).map_err(|source| Error::Guest { message: format!("{source:#}") })?;
         store.set_epoch_deadline(deadline);
-        let instance = self
-            .component
-            .instantiate_async(&mut store)
-            .await
-            .map_err(|source| Error::Guest {
-                message: format!("{source:#}"),
-            })?;
-        let sdk = self
-            .sdk
-            .load(&mut store, &instance)
-            .map_err(|source| Error::Guest {
-                message: format!("{source:#}"),
-            })?;
+        let instance =
+            self.component.instantiate_async(&mut store).await.map_err(|source| Error::Guest { message: format!("{source:#}") })?;
+        let sdk = self.sdk.load(&mut store, &instance).map_err(|source| Error::Guest { message: format!("{source:#}") })?;
         // Collect Inert Metadata On The Original Store Before P Exists
-        let collected = store
-            .run_concurrent(async |accessor| sdk.call_register(accessor).await)
-            .await
-            .and_then(|result| result);
+        let collected = store.run_concurrent(async |accessor| sdk.call_register(accessor).await).await.and_then(|result| result);
         let registrations = match collected {
             Ok(Ok(registrations)) => Ok(registrations
                 .into_iter()
-                .map(|entry| Registration {
-                    namespace: entry.namespace,
-                    schema: entry.schema,
-                    payload: entry.payload,
-                })
+                .map(|entry| Registration { namespace: entry.namespace, schema: entry.schema, payload: entry.payload })
                 .collect()),
             Ok(Err(message)) => Err(Error::Refused { message }),
-            Err(source) => Err(Error::Guest {
-                message: format!("{source:#}"),
-            }),
+            Err(source) => Err(Error::Guest { message: format!("{source:#}") }),
         }?;
-        Ok(Registered {
-            store,
-            sdk,
-            registrations,
-            routing: None,
-            epochs: self.epochs,
-            fuel: self.fuel,
-        })
+        Ok(Registered { store, sdk, registrations, routing: None, epochs: self.epochs, fuel: self.fuel })
     }
 }
 
@@ -461,20 +358,13 @@ impl<A: Application> Registered<A> {
     }
 
     pub async fn serve_sdk(mut self) -> Result<Serving<A>, Error> {
-        let scope = self
-            .store
-            .data()
-            .scope
-            .as_ref()
-            .ok_or_else(|| Error::Unavailable {
-                method: "serve_sdk".to_owned(),
-                discarded: "guest has no original managed scope".to_owned(),
-            })?;
+        let scope = self.store.data().scope.as_ref().ok_or_else(|| Error::Unavailable {
+            method: "serve_sdk".to_owned(),
+            discarded: "guest has no original managed scope".to_owned(),
+        })?;
         let manifest = &self.store.data().declaration.contracts;
         if scope.lifecycle() != Some(&manifest.lifecycle) {
-            return Err(Error::Guest {
-                message: "guest SDK pair differs from the original frozen generation".to_owned(),
-            });
+            return Err(Error::Guest { message: "guest SDK pair differs from the original frozen generation".to_owned() });
         }
         scope.validate_operations(self.store.data().declaration.operations.iter())?;
         scope.validate_wire_contracts(manifest.provides.iter())?;
@@ -488,14 +378,7 @@ impl<A: Application> Registered<A> {
             .into());
         }
         self.store.data_mut().activate().await?;
-        Active {
-            store: self.store,
-            sdk: self.sdk,
-            routing: self.routing,
-            _epochs: self.epochs,
-            fuel: self.fuel,
-        }
-        .serve()
+        Active { store: self.store, sdk: self.sdk, routing: self.routing, _epochs: self.epochs, fuel: self.fuel }.serve()
     }
 }
 
@@ -508,38 +391,23 @@ impl<A: Application> Bridge<A> {
             method: "activate".to_owned(),
             discarded: "guest has no original managed scope".to_owned(),
         })?;
-        let registration = self
-            .streams
-            .stage_plugin(scope, self.declaration.streams.clone())
-            .await?;
+        let registration = self.streams.stage_plugin(scope, self.declaration.streams.clone()).await?;
         let leases = registration.leases().to_vec();
         self.registration = Some(registration);
-        self.publications = self
-            .declaration
-            .streams
-            .iter()
-            .zip(leases)
-            .map(|(declaration, lease)| (declaration.id.clone(), lease))
-            .collect();
+        self.publications =
+            self.declaration.streams.iter().zip(leases).map(|(declaration, lease)| (declaration.id.clone(), lease)).collect();
         self.active = true;
         Ok(())
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
-        let failure =
-            harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
-        sdk::capabilities::Refusal {
-            code: code.to_owned(),
-            failure: failure.encode(),
-        }
+        let failure = harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
+        sdk::capabilities::Refusal { code: code.to_owned(), failure: failure.encode() }
     }
 
     // A host refusal crosses into the guest with its failure unchanged.
     fn forwarded(refusal: &OperationRefusal) -> sdk::capabilities::Refusal {
-        sdk::capabilities::Refusal {
-            code: refusal.code().to_string(),
-            failure: refusal.failure().encode(),
-        }
+        sdk::capabilities::Refusal { code: refusal.code().to_string(), failure: refusal.failure().encode() }
     }
 }
 

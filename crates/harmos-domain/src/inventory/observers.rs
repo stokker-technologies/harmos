@@ -112,11 +112,7 @@ impl Entry {
             description: self.description.to_owned(),
             interval: self.interval,
             activation: self.activation,
-            streams: self
-                .streams
-                .iter()
-                .map(|entry| entry.id.to_owned())
-                .collect(),
+            streams: self.streams.iter().map(|entry| entry.id.to_owned()).collect(),
             demand_keys: self.demand_keys.iter().map(DemandKey::name).collect(),
         }
     }
@@ -124,10 +120,7 @@ impl Entry {
 
 impl DemandKey {
     pub const fn new(namespace: &'static str, id: &'static str) -> Self {
-        assert!(
-            !namespace.is_empty() && !id.is_empty(),
-            "demand keys require a namespace and identity"
-        );
+        assert!(!namespace.is_empty() && !id.is_empty(), "demand keys require a namespace and identity");
         Self { namespace, id }
     }
 
@@ -156,33 +149,15 @@ impl<const N: usize> Encoder<N> {
 }
 
 /* === Public Functions === */
-pub fn select(
-    manifests: Vec<Manifest>,
-    facility: &str,
-    owner: &str,
-    grants: &[StreamDeclaration],
-) -> Result<Vec<Declaration>, Error> {
+pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Vec<Declaration>, Error> {
     Ok(select_manifest(manifests, facility, owner, grants)?.observers)
 }
 
-pub fn select_manifest(
-    manifests: Vec<Manifest>,
-    facility: &str,
-    owner: &str,
-    grants: &[StreamDeclaration],
-) -> Result<Manifest, Error> {
-    let mut matching = manifests
-        .into_iter()
-        .filter(|manifest| manifest.facility == facility && manifest.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing {
-        facility: facility.into(),
-        owner: owner.into(),
-    })?;
+pub fn select_manifest(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Manifest, Error> {
+    let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
+    let manifest = matching.next().ok_or_else(|| Error::Missing { facility: facility.into(), owner: owner.into() })?;
     if matching.next().is_some() {
-        return Err(Error::Duplicate {
-            facility: facility.into(),
-            owner: owner.into(),
-        });
+        return Err(Error::Duplicate { facility: facility.into(), owner: owner.into() });
     }
 
     validate(&manifest.observers, grants)?;
@@ -192,17 +167,9 @@ pub fn select_manifest(
 pub fn validate(observers: &[Declaration], grants: &[StreamDeclaration]) -> Result<(), Error> {
     let mut ids = BTreeSet::new();
     for observer in observers {
-        let invalid = |reason| Error::Invalid {
-            id: observer.id.clone(),
-            reason,
-        };
-        if observer.id.trim().is_empty()
-            || observer.id.chars().any(char::is_control)
-            || !ids.insert(&observer.id)
-        {
-            return Err(invalid(
-                "identities must be nonempty, unique, and contain no control characters",
-            ));
+        let invalid = |reason| Error::Invalid { id: observer.id.clone(), reason };
+        if observer.id.trim().is_empty() || observer.id.chars().any(char::is_control) || !ids.insert(&observer.id) {
+            return Err(invalid("identities must be nonempty, unique, and contain no control characters"));
         }
         if observer.interval.is_zero() {
             return Err(invalid("interval must be positive"));
@@ -210,22 +177,16 @@ pub fn validate(observers: &[Declaration], grants: &[StreamDeclaration]) -> Resu
         let mut keys = BTreeSet::new();
         for stream in &observer.streams {
             if !keys.insert(stream) || !grants.iter().any(|grant| grant.id == *stream) {
-                return Err(invalid(
-                    "outputs must be unique members of the artifact publication grant",
-                ));
+                return Err(invalid("outputs must be unique members of the artifact publication grant"));
             }
         }
         for key in &observer.demand_keys {
             if key.trim().is_empty() || key.chars().any(char::is_control) || !keys.insert(key) {
-                return Err(invalid(
-                    "demand keys must be nonempty, unique, and distinct from outputs",
-                ));
+                return Err(invalid("demand keys must be nonempty, unique, and distinct from outputs"));
             }
         }
         if observer.activation == Activation::Demand && keys.is_empty() {
-            return Err(invalid(
-                "demand activation requires an output or demand key",
-            ));
+            return Err(invalid("demand activation requires an output or demand key"));
         }
     }
     Ok(())
@@ -246,21 +207,14 @@ pub const fn encoded_tree_len(facility: &str, owner: &str, entries: &[Node<Entry
     length
 }
 
-pub const fn encode_tree<const N: usize>(
-    facility: &str,
-    owner: &str,
-    entries: &[Node<Entry>],
-) -> [u8; N] {
+pub const fn encode_tree<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> [u8; N] {
     assert!(N == encoded_tree_len(facility, owner, entries));
     encoded_tree::<N>(facility, owner, entries).bytes
 }
 
 /* === Private Functions === */
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry]) -> Encoder<N> {
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
@@ -313,15 +267,8 @@ const fn entry<const N: usize>(out: &mut Encoder<N>, entry: Entry) {
     out.raw(b"]}");
 }
 
-const fn encoded_tree<const N: usize>(
-    facility: &str,
-    owner: &str,
-    entries: &[Node<Entry>],
-) -> Encoder<N> {
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+const fn encoded_tree<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
@@ -334,12 +281,7 @@ const fn encoded_tree<const N: usize>(
     out
 }
 
-const fn tree<const N: usize>(
-    out: &mut Encoder<N>,
-    entries: &[Node<Entry>],
-    first: &mut bool,
-    depth: usize,
-) {
+const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], first: &mut bool, depth: usize) {
     assert!(depth <= 32);
     let mut index = 0;
     while index < entries.len() {

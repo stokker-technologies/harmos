@@ -7,40 +7,39 @@
  * ***
  */
 
-
 // Compose Runtime Integration Story Domains
 
 /* === Modules === */
-#[cfg(feature = "plugin")]
-#[path = "../plugin/main.rs"]
-mod plugin;
-#[path = "../state/main.rs"]
-mod state;
-#[path = "../streams/main.rs"]
-mod streams;
-#[path = "../storage/main.rs"]
-mod storage;
-#[path = "../observers/main.rs"]
-mod observers;
-#[path = "../services/main.rs"]
-mod services;
-#[path = "../operations/main.rs"]
-mod operations;
-#[path = "../evidence/main.rs"]
-mod evidence;
 #[path = "../application/main.rs"]
 mod application;
-#[path = "../runtime/main.rs"]
-mod runtime;
-#[cfg(feature = "plugin-sidecar")]
-#[path = "../sidecar/main.rs"]
-mod sidecar;
+#[path = "../evidence/main.rs"]
+mod evidence;
 #[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[path = "../guest/main.rs"]
 mod guest;
+#[path = "../observers/main.rs"]
+mod observers;
+#[path = "../operations/main.rs"]
+mod operations;
+#[cfg(feature = "plugin")]
+#[path = "../plugin/main.rs"]
+mod plugin;
+#[path = "../runtime/main.rs"]
+mod runtime;
+#[path = "../services/main.rs"]
+mod services;
+#[cfg(feature = "plugin-sidecar")]
+#[path = "../sidecar/main.rs"]
+mod sidecar;
 #[cfg(feature = "simulation")]
 #[path = "../simulation/main.rs"]
 mod simulation;
+#[path = "../state/main.rs"]
+mod state;
+#[path = "../storage/main.rs"]
+mod storage;
+#[path = "../streams/main.rs"]
+mod streams;
 
 /* === Re-Exports === */
 
@@ -51,7 +50,6 @@ mod simulation;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 

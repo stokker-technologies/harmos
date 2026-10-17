@@ -110,9 +110,7 @@ impl WireDeclaration {
     pub fn contract(&self) -> Result<Contract, ContractError> {
         let operation = self.operation.definition()?;
         if self.version == 0 {
-            return Err(ContractError::Version {
-                id: operation.id.to_string(),
-            });
+            return Err(ContractError::Version { id: operation.id.to_string() });
         }
         let mut roots = vec![("request", self.request), ("response", self.response)];
         if let Some(input) = self.input {
@@ -121,49 +119,31 @@ impl WireDeclaration {
         if let Some(output) = self.output {
             roots.push(("output", output));
         }
-        let schema =
-            Schema::from_declarations(&roots, &SchemaSettings::default()).map_err(|source| {
-                ContractError::Schema {
-                    id: operation.id.to_string(),
-                    direction: "contract",
-                    source: source.into(),
-                }
-            })?;
-        Contract::new(operation, self.version, Codec::Postcard, schema)?
-            .with_grpc(self.grpc.clone())
+        let schema = Schema::from_declarations(&roots, &SchemaSettings::default()).map_err(|source| ContractError::Schema {
+            id: operation.id.to_string(),
+            direction: "contract",
+            source: source.into(),
+        })?;
+        Contract::new(operation, self.version, Codec::Postcard, schema)?.with_grpc(self.grpc.clone())
     }
 }
 
 impl Contract {
-    pub fn new(
-        operation: Definition,
-        version: u32,
-        codec: Codec,
-        schema: Schema,
-    ) -> Result<Self, ContractError> {
+    pub fn new(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
         operation.validate()?;
         Self::canonical(operation, version, codec, schema)
     }
 
-    fn canonical(
-        operation: Definition,
-        version: u32,
-        codec: Codec,
-        schema: Schema,
-    ) -> Result<Self, ContractError> {
+    fn canonical(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
         if version == 0 {
-            return Err(ContractError::Version {
-                id: operation.id.to_string(),
-            });
+            return Err(ContractError::Version { id: operation.id.to_string() });
         }
         let invalid = |source: schema::graph::Error| ContractError::Schema {
             id: operation.id.to_string(),
             direction: "contract",
             source: source.into(),
         };
-        schema
-            .prepare(&SchemaSettings::default())
-            .map_err(invalid)?;
+        schema.prepare(&SchemaSettings::default()).map_err(invalid)?;
         let directions = schema.root().map_err(invalid)?;
         let fields = directions.fields();
         let valid = (2..=4).contains(&fields.len())
@@ -174,25 +154,15 @@ impl Contract {
                     && field.cardinality == schema::Cardinality::Required
                     && matches!(field.kind, Kind::Message { .. })
             })
-            && fields
-                .get(2)
-                .is_none_or(|field| field.name == "input" || field.name == "output")
-            && fields
-                .get(3)
-                .is_none_or(|field| fields[2].name == "input" && field.name == "output");
+            && fields.get(2).is_none_or(|field| field.name == "input" || field.name == "output")
+            && fields.get(3).is_none_or(|field| fields[2].name == "input" && field.name == "output");
         if !valid {
             return Err(invalid(schema::graph::Error::Field {
                 field: "contract directions".into(),
                 reason: "expected request, response, and optional input/output roots",
             }));
         }
-        Ok(Self {
-            operation,
-            version,
-            codec,
-            schema,
-            grpc: None,
-        })
+        Ok(Self { operation, version, codec, schema, grpc: None })
     }
 
     pub fn grpc(&self) -> Option<&super::Grpc> {
@@ -208,10 +178,7 @@ impl Contract {
     }
 
     // Only The Closed SDK Action Can Construct Reserved Metadata
-    pub(crate) fn lifecycle(
-        action: crate::operations::lifecycle::Action,
-        policy: super::OperationPolicy,
-    ) -> Result<Self, ContractError> {
+    pub(crate) fn lifecycle(action: crate::operations::lifecycle::Action, policy: super::OperationPolicy) -> Result<Self, ContractError> {
         use crate::operations::lifecycle::{Action, Initialize, Shutdown};
         match action {
             Action::Initialize => Self::reserved::<Initialize>(policy),
@@ -221,9 +188,7 @@ impl Contract {
 
     // The Contract Of A Built-In Operation Under The Reserved `harmos.` Namespace,
     // Which Ordinary Declarations Cannot Claim.
-    pub(crate) fn reserved<O: OperationDeclaration>(
-        policy: super::OperationPolicy,
-    ) -> Result<Self, ContractError> {
+    pub(crate) fn reserved<O: OperationDeclaration>(policy: super::OperationPolicy) -> Result<Self, ContractError> {
         policy.validate().map_err(crate::Error::from)?;
         let operation = Definition {
             id: crate::Identifier::new(O::ID).map_err(crate::Error::from)?,
@@ -233,17 +198,10 @@ impl Contract {
             replay: O::REPLAY,
         };
         let schema = Schema::from_declarations(
-            &[
-                ("request", O::DEFINITION),
-                ("response", <O::Response as Described>::DEFINITION),
-            ],
+            &[("request", O::DEFINITION), ("response", <O::Response as Described>::DEFINITION)],
             &SchemaSettings::default(),
         )
-        .map_err(|source| ContractError::Schema {
-            id: operation.id.to_string(),
-            direction: "contract",
-            source: source.into(),
-        })?;
+        .map_err(|source| ContractError::Schema { id: operation.id.to_string(), direction: "contract", source: source.into() })?;
         Self::canonical(operation, O::VERSION, Codec::Postcard, schema)
     }
 
@@ -283,37 +241,24 @@ impl Contract {
         self.operation.id == requirement.operation.id
             && self.version == requirement.version
             && self.codec == requirement.codec
-            && ["request", "response", "input", "output"]
-                .into_iter()
-                .all(
-                    |name| match (self.direction(name), requirement.direction(name)) {
-                        (None, None) => true,
-                        (Some(left), Some(right)) => self
-                            .schema
-                            .equivalent(
-                                left.index(),
-                                &requirement.schema,
-                                right.index(),
-                                &SchemaSettings::default(),
-                            )
-                            .unwrap_or(false),
-                        _ => false,
-                    },
-                )
+            && ["request", "response", "input", "output"].into_iter().all(|name| {
+                match (self.direction(name), requirement.direction(name)) {
+                    (None, None) => true,
+                    (Some(left), Some(right)) => self
+                        .schema
+                        .equivalent(left.index(), &requirement.schema, right.index(), &SchemaSettings::default())
+                        .unwrap_or(false),
+                    _ => false,
+                }
+            })
     }
 
     fn direction(&self, name: &str) -> Option<View<'_>> {
-        let field = self.schema.definitions[self.schema.root]
-            .iter()
-            .find(|field| field.name == name)?;
+        let field = self.schema.definitions[self.schema.root].iter().find(|field| field.name == name)?;
         let Kind::Message { definition } = field.kind else {
             unreachable!("validated contract direction");
         };
-        Some(
-            self.schema
-                .view(definition)
-                .expect("validated direction reference"),
-        )
+        Some(self.schema.view(definition).expect("validated direction reference"))
     }
 }
 
@@ -321,13 +266,7 @@ impl TryFrom<DecodedContract> for Contract {
     type Error = ContractError;
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
-        Self::new(
-            decoded.operation,
-            decoded.version,
-            decoded.codec,
-            decoded.schema,
-        )?
-        .with_grpc(decoded.grpc)
+        Self::new(decoded.operation, decoded.version, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc)
     }
 }
 
@@ -353,20 +292,14 @@ impl Contracts {
         Ok(contracts)
     }
 
-    pub fn from_tree(
-        entries: &[crate::catalog::Node<WireDeclaration>],
-    ) -> Result<Vec<Contract>, ContractError> {
+    pub fn from_tree(entries: &[crate::catalog::Node<WireDeclaration>]) -> Result<Vec<Contract>, ContractError> {
         let mut ids = BTreeSet::new();
         let mut contracts = Vec::new();
-        crate::catalog::try_for_each(entries, |declaration| {
-            append(declaration, &mut ids, &mut contracts)
-        })?;
+        crate::catalog::try_for_each(entries, |declaration| append(declaration, &mut ids, &mut contracts))?;
         Ok(contracts)
     }
 
-    pub fn from_projection<P: Projection<WireDeclaration>>(
-        entries: &P,
-    ) -> Result<Vec<Contract>, ContractError> {
+    pub fn from_projection<P: Projection<WireDeclaration>>(entries: &P) -> Result<Vec<Contract>, ContractError> {
         let mut ids = BTreeSet::new();
         let mut contracts = Vec::with_capacity(P::LEN);
         entries.try_for_each(|declaration| append(declaration, &mut ids, &mut contracts))?;
@@ -378,24 +311,15 @@ impl Contracts {
 
 /* === Private Functions === */
 const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
-    if D::STREAMED {
-        Some(<D::Item as Described>::DEFINITION)
-    } else {
-        None
-    }
+    if D::STREAMED { Some(<D::Item as Described>::DEFINITION) } else { None }
 }
 
 fn append(
-    declaration: &WireDeclaration,
-    ids: &mut BTreeSet<crate::Identifier>,
-    contracts: &mut Vec<Contract>,
+    declaration: &WireDeclaration, ids: &mut BTreeSet<crate::Identifier>, contracts: &mut Vec<Contract>,
 ) -> Result<(), ContractError> {
     let contract = declaration.contract()?;
     if !ids.insert(contract.operation.id.clone()) {
-        return Err(crate::Error::DuplicateOperation {
-            id: contract.operation.id.to_string(),
-        }
-        .into());
+        return Err(crate::Error::DuplicateOperation { id: contract.operation.id.to_string() }.into());
     }
     contracts.push(contract);
     Ok(())

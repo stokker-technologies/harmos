@@ -49,22 +49,13 @@ pub(super) trait Finalizer: Send {
 /* === Implementations === */
 impl crate::supervision::cleanup::Resource for Retained {
     fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
-        Box::pin(async move {
-            self.owner
-                .finalize()
-                .await
-                .map_err(|cause| self.owner.failure(Arc::new(cause)))
-        })
+        Box::pin(async move { self.owner.finalize().await.map_err(|cause| self.owner.failure(Arc::new(cause))) })
     }
 }
 
 /* === Public Functions === */
 pub(super) fn failed(operation: &str, outcome: Option<Arc<Error>>, source: Arc<Error>) -> Error {
-    Error::OperationFinalization {
-        operation: operation.to_owned(),
-        outcome,
-        source,
-    }
+    Error::OperationFinalization { operation: operation.to_owned(), outcome, source }
 }
 
 /* === Private Functions === */

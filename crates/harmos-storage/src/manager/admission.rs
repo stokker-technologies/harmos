@@ -13,47 +13,23 @@ use super::*;
 /* === Implementations === */
 impl<C> StorageManager<C> {
     pub(crate) async fn admit(
-        &self,
-        domain: Domain,
-        bytes: usize,
-        count: usize,
-        build: impl FnOnce(u64) -> Result<Operation>,
+        &self, domain: Domain, bytes: usize, count: usize, build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<u64> {
-        self.admit_mutation(domain, bytes, count, None, false, build)
-            .await
+        self.admit_mutation(domain, bytes, count, None, false, build).await
     }
 
     pub(crate) async fn admit_mutation(
-        &self,
-        domain: Domain,
-        bytes: usize,
-        count: usize,
-        mutation: Option<Mutation<'_>>,
-        measurement: bool,
+        &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
         build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<u64> {
         if mutation.is_some() && !self.inner.primary.supports_mutation_receipts() {
-            return Err(Error::InvalidInput {
-                field: "storage mutation",
-                reason: "backend does not support mutation receipts",
-            });
+            return Err(Error::InvalidInput { field: "storage mutation", reason: "backend does not support mutation receipts" });
         }
         // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
-        let _class = if measurement {
-            self.inner.measurement_admission.lock().await
-        } else {
-            self.inner.control_admission.lock().await
-        };
-        let counter = if measurement {
-            &self.inner.measurement_waiting
-        } else {
-            &self.inner.control_waiting
-        };
+        let _class = if measurement { self.inner.measurement_admission.lock().await } else { self.inner.control_admission.lock().await };
+        let counter = if measurement { &self.inner.measurement_waiting } else { &self.inner.control_waiting };
         counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let _waiting = WriteWaiter {
-            inner: self.inner.clone(),
-            measurement,
-        };
+        let _waiting = WriteWaiter { inner: self.inner.clone(), measurement };
         let bytes = bytes.max(1);
         let byte_capacity = self.inner.settings.request.max_pending_write_bytes.get();
         let batch_capacity = self.inner.settings.request.max_pending_write_batches.get();
@@ -87,13 +63,8 @@ impl<C> StorageManager<C> {
                 state.collect();
 
                 // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
-                let opposite = if measurement {
-                    &self.inner.control_waiting
-                } else {
-                    &self.inner.measurement_waiting
-                };
-                let turn = state.prefer_measurement == measurement
-                    || opposite.load(std::sync::atomic::Ordering::SeqCst) == 0;
+                let opposite = if measurement { &self.inner.control_waiting } else { &self.inner.measurement_waiting };
+                let turn = state.prefer_measurement == measurement || opposite.load(std::sync::atomic::Ordering::SeqCst) == 0;
                 if !(turn
                     && state.reserved_batches == 0
                     && state.finishing.is_none()
@@ -107,10 +78,7 @@ impl<C> StorageManager<C> {
                     Domain::Data => state.status.accepted.sequence,
                     Domain::Recovery => state.status.recovery_accepted.sequence,
                 };
-                let (Some(last), Some(index)) = (
-                    sequence.checked_add(count as u64),
-                    state.next.checked_add(1),
-                ) else {
+                let (Some(last), Some(index)) = (sequence.checked_add(count as u64), state.next.checked_add(1)) else {
                     return Attempt::Refuse(Refusal::Failed(Error::InvalidInput {
                         field: "storage admission",
                         reason: "position overflow",
@@ -129,55 +97,33 @@ impl<C> StorageManager<C> {
         };
         // The original exclusive reservation owns capacity and capture order.
         // Producer code runs without the state mutex; unwind releases the permit.
-        let mut admission = Admission {
-            inner: self.inner.clone(),
-            active: true,
-        };
+        let mut admission = Admission { inner: self.inner.clone(), active: true };
         let operation = build(if count == 0 { sequence } else { sequence + 1 })?;
         operation.check_entry_bytes(self.inner.settings.max_batch_bytes())?;
         if let Operation::Snapshot(snapshot) = &operation
             && snapshot.through.sequence > sequence
         {
-            return Err(Error::InvalidInput {
-                field: "recovery snapshot",
-                reason: "snapshot is ahead of admitted transitions",
-            });
+            return Err(Error::InvalidInput { field: "recovery snapshot", reason: "snapshot is ahead of admitted transitions" });
         }
         let bytes = match &operation {
-            Operation::ObjectGroup {
-                bytes: retained, ..
-            } => *retained,
+            Operation::ObjectGroup { bytes: retained, .. } => *retained,
             _ => bytes,
         };
-        let pending = Arc::new(Pending {
-            journal: None,
-            index,
-            bytes,
-            operation,
-        });
+        let pending = Arc::new(Pending { journal: None, index, bytes, operation });
         {
             let mut state = self.inner.state.lock().unwrap();
             if state.status.closing {
                 return Err(Error::Closing { domain: "storage" });
             }
             if let Some(source) = &state.status.failure {
-                return Err(Error::Persistence {
-                    source: source.clone(),
-                });
+                return Err(Error::Persistence { source: source.clone() });
             }
             if let Some(mutation) = mutation {
                 let outcome = MutationValue::Cursor(self.position(last));
-                state.receipts.insert(
-                    mutation.id,
-                    mutation.fingerprint,
-                    crate::MemorySize::memory_size(&outcome),
-                )?;
+                state.receipts.insert(mutation.id, mutation.fingerprint, crate::MemorySize::memory_size(&outcome))?;
                 state.receipts.complete(mutation.id, outcome);
             }
-            let target = Target {
-                index,
-                sequence: last,
-            };
+            let target = Target { index, sequence: last };
             match domain {
                 Domain::Data => {
                     state.status.accepted.sequence = last;
@@ -200,11 +146,7 @@ impl<C> StorageManager<C> {
         Ok(last)
     }
 
-    pub(super) async fn flush_domain(
-        &self,
-        domain: Domain,
-        through: Option<&StorageCursor>,
-    ) -> Result<()> {
+    pub(super) async fn flush_domain(&self, domain: Domain, through: Option<&StorageCursor>) -> Result<()> {
         let mut changed = self.inner.changed.subscribe();
         let target = {
             let mut state = self.inner.state.lock().unwrap();
@@ -239,14 +181,10 @@ impl<C> StorageManager<C> {
                     return Ok(());
                 }
                 if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
+                    return Err(Error::Persistence { source: source.clone() });
                 }
                 if !state.status.running {
-                    return Err(Error::NotReady {
-                        domain: "storage worker",
-                    });
+                    return Err(Error::NotReady { domain: "storage worker" });
                 }
                 let request = match domain {
                     Domain::Data => &mut state.data_request,
@@ -260,10 +198,7 @@ impl<C> StorageManager<C> {
             if notify {
                 self.inner.notify();
             }
-            changed
-                .changed()
-                .await
-                .map_err(|_| Error::NotReady { domain: "storage" })?;
+            changed.changed().await.map_err(|_| Error::NotReady { domain: "storage" })?;
         }
     }
 }

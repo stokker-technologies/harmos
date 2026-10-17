@@ -97,11 +97,7 @@ impl ArrowSchema {
     pub fn try_new(schema: Arc<Schema>) -> Result<Self> {
         validate_schema(&schema)?;
         let ipc = Arc::new(ipc::encode(&schema, None)?);
-        Ok(Self {
-            schema,
-            ipc,
-            retention: None,
-        })
+        Ok(Self { schema, ipc, retention: None })
     }
 
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Self {
@@ -120,11 +116,7 @@ impl ArrowSchema {
     pub fn from_ipc(bytes: &[u8]) -> Result<Self> {
         ipc::preflight(bytes, false)?;
         let (schema, _) = ipc::decode(bytes, false)?;
-        Ok(Self {
-            schema,
-            ipc: Arc::new(bytes.to_vec()),
-            retention: None,
-        })
+        Ok(Self { schema, ipc: Arc::new(bytes.to_vec()), retention: None })
     }
 }
 
@@ -134,22 +126,14 @@ impl ArrowBatch {
         validate_schema(batch.schema().as_ref())?;
         let encoded = ipc::encode(batch.schema().as_ref(), Some(&batch))?;
         let resident = retention::resident_bytes(&batch)?;
-        Ok(Self {
-            batch,
-            ipc: Arc::new(encoded),
-            resident,
-            retention: None,
-        })
+        Ok(Self { batch, ipc: Arc::new(encoded), resident, retention: None })
     }
 
     /// Attach a reservation covering the native buffers, schema, and cached encoding.
     /// Every returned zero-copy array retains that reservation in its buffer owner.
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Result<Self> {
-        let owner = Arc::new(retention::Owner {
-            _reservation: reservation.clone(),
-            _encoded: Arc::clone(&self.ipc),
-            _schema: self.batch.schema(),
-        });
+        let owner =
+            Arc::new(retention::Owner { _reservation: reservation.clone(), _encoded: Arc::clone(&self.ipc), _schema: self.batch.schema() });
         self.batch = retention::attach(&self.batch, owner)?;
         self.retention = Some(Retained(reservation));
         Ok(self)
@@ -175,12 +159,7 @@ impl ArrowBatch {
         let (_, batch) = ipc::decode(bytes, true)?;
         let batch = batch.ok_or_else(|| invalid("missing Arrow record batch"))?;
         let resident = retention::resident_bytes(&batch)?;
-        Ok(Self {
-            batch,
-            ipc: Arc::new(bytes.to_vec()),
-            resident,
-            retention: None,
-        })
+        Ok(Self { batch, ipc: Arc::new(bytes.to_vec()), resident, retention: None })
     }
 
     pub fn validate_schema(&self, schema: &Schema) -> Result<()> {
@@ -193,9 +172,7 @@ impl ArrowBatch {
 
 impl MemorySize for ArrowSchema {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(schema_memory(&self.schema))
-            .saturating_add(self.ipc.capacity())
+        std::mem::size_of::<Self>().saturating_add(schema_memory(&self.schema)).saturating_add(self.ipc.capacity())
     }
 }
 
@@ -213,9 +190,7 @@ impl From<ArrowBatch> for harmos_domain::model::storage::ArrowIpc {
 
 impl MemorySize for ArrowBatch {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.resident)
-            .saturating_add(self.ipc.capacity())
+        std::mem::size_of::<Self>().saturating_add(self.resident).saturating_add(self.ipc.capacity())
     }
 }
 
@@ -224,13 +199,7 @@ impl MemorySize for ArrowBatch {
 pub fn validate_schema(schema: &Schema) -> Result<()> {
     let mut fields = 0;
     for field in schema.fields() {
-        if schema
-            .fields()
-            .iter()
-            .filter(|other| other.name() == field.name())
-            .count()
-            != 1
-        {
+        if schema.fields().iter().filter(|other| other.name() == field.name()).count() != 1 {
             return Err(invalid("duplicate Arrow field name"));
         }
         validate_field(field, 0, &mut fields)?;
@@ -245,9 +214,7 @@ pub fn decoding_memory(bytes: &[u8], batch: bool) -> Result<usize> {
 
 /* === Private Functions === */
 fn validate_field(field: &Field, depth: usize, count: &mut usize) -> Result<()> {
-    *count = count
-        .checked_add(1)
-        .ok_or_else(|| invalid("Arrow field count overflow"))?;
+    *count = count.checked_add(1).ok_or_else(|| invalid("Arrow field count overflow"))?;
     if depth > MAX_DEPTH || *count > MAX_FIELDS {
         return Err(invalid("Arrow schema exceeds structural bounds"));
     }
@@ -270,12 +237,7 @@ fn validate_field(field: &Field, depth: usize, count: &mut usize) -> Result<()> 
         DataType::List(child) => validate_field(child, depth + 1, count),
         DataType::Struct(children) => {
             for child in children {
-                if children
-                    .iter()
-                    .filter(|other| other.name() == child.name())
-                    .count()
-                    != 1
-                {
+                if children.iter().filter(|other| other.name() == child.name()).count() != 1 {
                     return Err(invalid("duplicate Arrow child field name"));
                 }
                 validate_field(child, depth + 1, count)?;
@@ -288,22 +250,12 @@ fn validate_field(field: &Field, depth: usize, count: &mut usize) -> Result<()> 
 
 pub(crate) fn schema_memory(schema: &Schema) -> usize {
     std::mem::size_of::<Schema>()
-        .saturating_add(
-            schema
-                .fields()
-                .iter()
-                .map(|field| field.size())
-                .fold(0usize, usize::saturating_add),
-        )
+        .saturating_add(schema.fields().iter().map(|field| field.size()).fold(0usize, usize::saturating_add))
         .saturating_add(
             schema
                 .metadata()
                 .iter()
-                .map(|(key, value)| {
-                    key.capacity()
-                        .saturating_add(value.capacity())
-                        .saturating_add(64)
-                })
+                .map(|(key, value)| key.capacity().saturating_add(value.capacity()).saturating_add(64))
                 .fold(0usize, usize::saturating_add),
         )
 }
@@ -316,23 +268,13 @@ pub(crate) fn new_resident_bytes(batch: &RecordBatch, input: &[&RecordBatch]) ->
     retention::new_resident_bytes(batch, input)
 }
 
-pub(crate) fn retain_native(
-    batch: RecordBatch,
-    reservation: RetainedMemory,
-) -> Result<RecordBatch> {
-    let owner = Arc::new(retention::Owner {
-        _reservation: reservation,
-        _encoded: Arc::new(Vec::new()),
-        _schema: batch.schema(),
-    });
+pub(crate) fn retain_native(batch: RecordBatch, reservation: RetainedMemory) -> Result<RecordBatch> {
+    let owner = Arc::new(retention::Owner { _reservation: reservation, _encoded: Arc::new(Vec::new()), _schema: batch.schema() });
     retention::attach(&batch, owner)
 }
 
 pub(crate) fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "storage Arrow",
-        reason,
-    }
+    Error::InvalidInput { field: "storage Arrow", reason }
 }
 
 /* === Tests === */

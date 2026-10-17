@@ -45,10 +45,7 @@ pub struct Histogram {
 impl MemorySize for Histogram {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
+            + self.field.memory_size().saturating_sub(std::mem::size_of_val(&self.field))
             + self.edges.capacity().saturating_mul(8)
     }
 }

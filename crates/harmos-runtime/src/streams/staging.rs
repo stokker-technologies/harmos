@@ -69,21 +69,13 @@ struct Pending {
 /* === Implementations === */
 impl std::fmt::Debug for Activation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Activation")
-            .field("state", &self.state)
-            .field("leases", &self.leases().len())
-            .finish()
+        formatter.debug_struct("Activation").field("state", &self.state).field("leases", &self.leases().len()).finish()
     }
 }
 
 impl std::fmt::Debug for State {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("State")
-            .field("rows", &self.rows.len())
-            .field("committed", &self.committed)
-            .finish()
+        formatter.debug_struct("State").field("rows", &self.rows.len()).field("committed", &self.committed).finish()
     }
 }
 
@@ -93,27 +85,18 @@ impl StagedPublication {
             if *self.committed.borrow_and_update() {
                 return Ok(self.publication);
             }
-            self.committed
-                .changed()
-                .await
-                .map_err(|_| StreamPublicationError::Revoked)?;
+            self.committed.changed().await.map_err(|_| StreamPublicationError::Revoked)?;
         }
     }
 }
 
 impl StagedRows {
     pub(super) fn staged(staged: Vec<StagedPublication>) -> Self {
-        Self {
-            staged,
-            refused: None,
-        }
+        Self { staged, refused: None }
     }
 
     pub(super) fn refused(staged: Vec<StagedPublication>, refused: StreamPublicationError) -> Self {
-        Self {
-            staged,
-            refused: Some(refused),
-        }
+        Self { staged, refused: Some(refused) }
     }
 
     pub(super) fn single(mut self) -> Result<StagedPublication, StreamPublicationError> {
@@ -126,18 +109,11 @@ impl StagedRows {
 
 impl Activation {
     pub(crate) fn new(table: &Arc<Table>) -> Self {
-        Self {
-            table: Arc::downgrade(table),
-            state: Mutex::new(State::default()),
-            leases: OnceLock::new(),
-        }
+        Self { table: Arc::downgrade(table), state: Mutex::new(State::default()), leases: OnceLock::new() }
     }
 
     pub(super) fn retain_leases(&self, leases: Vec<Arc<super::PublicationLease>>) {
-        assert!(
-            self.leases.set(leases).is_ok(),
-            "one original stream lease inventory"
-        );
+        assert!(self.leases.set(leases).is_ok(), "one original stream lease inventory");
     }
 
     pub(crate) fn leases(&self) -> &[Arc<super::PublicationLease>] {
@@ -148,27 +124,15 @@ impl Activation {
         self.table.upgrade().map(|table| table.visibility.clone())
     }
 
-    pub(super) fn push(
-        &self,
-        wired: &Arc<Wired>,
-        position: Position,
-        publication: ManagedPublication,
-    ) -> StagedPublication {
+    pub(super) fn push(&self, wired: &Arc<Wired>, position: Position, publication: ManagedPublication) -> StagedPublication {
         let (reply, committed) = watch::channel(false);
-        self.state
-            .lock()
-            .expect("publication staging poisoned")
-            .rows
-            .push(Pending {
-                wired: Arc::downgrade(wired),
-                position,
-                publication: publication.clone(),
-                reply,
-            });
-        StagedPublication {
-            publication,
-            committed,
-        }
+        self.state.lock().expect("publication staging poisoned").rows.push(Pending {
+            wired: Arc::downgrade(wired),
+            position,
+            publication: publication.clone(),
+            reply,
+        });
+        StagedPublication { publication, committed }
     }
 
     pub(super) fn pending(&self, wired: &Arc<Wired>) -> usize {
@@ -203,10 +167,7 @@ impl Activation {
             {
                 return false;
             }
-            let Some(next) = added
-                .checked_add(pending.publication.missed())
-                .and_then(|next| next.checked_add(1))
-            else {
+            let Some(next) = added.checked_add(pending.publication.missed()).and_then(|next| next.checked_add(1)) else {
                 return false;
             };
             added = next;
@@ -221,11 +182,7 @@ impl Activation {
             let wired = pending.wired.upgrade().expect("retained staged inventory");
             let previous = wired
                 .window
-                .append_locked(
-                    pending.position,
-                    Arc::new(pending.publication.clone()),
-                    pending.publication.missed(),
-                )
+                .append_locked(pending.position, Arc::new(pending.publication.clone()), pending.publication.missed())
                 .expect("validated complete cursor span");
             evicted.extend(previous);
         }

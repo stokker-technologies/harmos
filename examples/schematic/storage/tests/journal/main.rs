@@ -24,9 +24,7 @@ use std::sync::{
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos::{
-    Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction,
-};
+use harmos::{Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction};
 use schematic_storage::{Jsonl, Wire};
 use support::scratch;
 
@@ -147,11 +145,7 @@ impl Serialize for Add {
 impl Transaction<State> for Add {
     type Error = &'static str;
     fn check(&self, _: &State) -> Result<(), Self::Error> {
-        if self.mode == 3 {
-            Err("check refused")
-        } else {
-            Ok(())
-        }
+        if self.mode == 3 { Err("check refused") } else { Ok(()) }
     }
     fn records(&self, state: &State, out: &mut Records) {
         if self.mode == 16 {
@@ -168,11 +162,7 @@ impl Transaction<State> for Add {
                 source: harmos::state::FactSource::Sidecar(owner.to_owned()),
                 name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
                 version: 37,
-                payload: if self.mode == 15 {
-                    vec![255; Records::MAX_BYTES]
-                } else {
-                    vec![0, 255, 17]
-                },
+                payload: if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
             });
         }
         if self.mode == 6 {
@@ -184,11 +174,7 @@ impl Transaction<State> for Add {
             }
         }
         if self.mode == 9 {
-            let _ = out.push(Obsolete {
-                before: state.balance,
-                amount: self.amount,
-                ordinal: 0,
-            });
+            let _ = out.push(Obsolete { before: state.balance, amount: self.amount, ordinal: 0 });
         }
         if self.mode == 4 {
             let _ = out.push(Broken);
@@ -197,11 +183,7 @@ impl Transaction<State> for Add {
             let _ = out.push(Foreign);
         }
         for ordinal in 0..self.count {
-            let _ = out.push(Observed {
-                before: state.balance,
-                amount: self.amount,
-                ordinal,
-            });
+            let _ = out.push(Observed { before: state.balance, amount: self.amount, ordinal });
         }
     }
     fn apply(&self, state: &mut State) {
@@ -240,32 +222,23 @@ impl Wire for Model {
         }
     }
     fn decode<'de, D: serde::Deserializer<'de> + Copy>(
-        kind: harmos::state::Kind,
-        id: &harmos::DefinitionId,
-        version: u32,
-        payload: D,
+        kind: harmos::state::Kind, id: &harmos::DefinitionId, version: u32, payload: D,
     ) -> Result<Option<harmos::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos::state::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|(value, apply)| {
-                    harmos::storage::Payload {
-                        prepared: None,
-                        id: id.clone(),
-                        version,
-                        value: Recorded::Transaction(Arc::new(value)),
-                        apply,
-                    }
-                })
-            }
-            harmos::state::Kind::Record => {
-                Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Record(value),
-                    apply: None,
-                })
-            }
+            harmos::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|(value, apply)| harmos::storage::Payload {
+                prepared: None,
+                id: id.clone(),
+                version,
+                value: Recorded::Transaction(Arc::new(value)),
+                apply,
+            }),
+            harmos::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
+                prepared: None,
+                id: id.clone(),
+                version,
+                value: Recorded::Record(value),
+                apply: None,
+            }),
         })
     }
 }
@@ -292,11 +265,7 @@ impl From<AddV1> for Add {
 
 impl From<ObservedV1> for Observed {
     fn from(old: ObservedV1) -> Self {
-        Self {
-            before: old.before,
-            amount: old.amount,
-            ordinal: old.ordinal,
-        }
+        Self { before: old.before, amount: old.amount, ordinal: old.ordinal }
     }
 }
 
@@ -304,12 +273,7 @@ impl From<ObservedV1> for Observed {
 
 /* === Private Functions === */
 fn add(amount: i64, count: usize, mode: u8) -> Add {
-    Add {
-        amount,
-        count,
-        mode,
-        encodings: Arc::default(),
-    }
+    Add { amount, count, mode, encodings: Arc::default() }
 }
 
 async fn boot(path: &std::path::Path, tail: usize) -> Runtime<Model> {
@@ -328,54 +292,30 @@ fn contract_scenario() {
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::Source;
-                    let directory = scratch("atomic-truncation");
-                    let path = directory.join("journal.jsonl");
-                    let runtime = boot(&path, 16).await;
-                    runtime.state.commit(add(3, 2, 0)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    let bytes = std::fs::read(&path).unwrap();
-                    let header = bytes.iter().position(|byte| *byte == b'\n').unwrap() + 1;
-                    for cut in header..=bytes.len() {
-                        let truncated = directory.join("truncated.jsonl");
-                        std::fs::write(&truncated, &bytes[..cut]).unwrap();
-                        let mut source = Jsonl::<Model>::open(&truncated)
-                            .unwrap_or_else(|e| panic!("cut {cut}: {e}"));
-                        let recovered = source.load().await.unwrap();
-                        let complete = cut == bytes.len();
-                        assert_eq!(
-                            recovered.frontier,
-                            if complete {
-                                Position(3)
-                            } else {
-                                Position::ORIGIN
-                            },
-                            "cut {cut}"
-                        );
-                        assert_eq!(
-                            recovered.entries.len(),
-                            if complete { 3 } else { 0 },
-                            "cut {cut}"
-                        );
-                        assert_eq!(
-                            std::fs::read(&truncated).unwrap(),
-                            bytes[..cut],
-                            "reading must not repair the file"
-                        );
-                    }
-                    let mut corrupt = bytes.clone();
-                    corrupt[header + 10] = b'!';
-                    std::fs::write(&path, corrupt).unwrap();
-                    assert!(
-                        Jsonl::<Model>::open(&path).is_err(),
-                        "terminated corruption is loud"
-                    );
-                });
+            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
+                use harmos::storage::Source;
+                let directory = scratch("atomic-truncation");
+                let path = directory.join("journal.jsonl");
+                let runtime = boot(&path, 16).await;
+                runtime.state.commit(add(3, 2, 0)).await.unwrap();
+                runtime.stop().await.unwrap();
+                let bytes = std::fs::read(&path).unwrap();
+                let header = bytes.iter().position(|byte| *byte == b'\n').unwrap() + 1;
+                for cut in header..=bytes.len() {
+                    let truncated = directory.join("truncated.jsonl");
+                    std::fs::write(&truncated, &bytes[..cut]).unwrap();
+                    let mut source = Jsonl::<Model>::open(&truncated).unwrap_or_else(|e| panic!("cut {cut}: {e}"));
+                    let recovered = source.load().await.unwrap();
+                    let complete = cut == bytes.len();
+                    assert_eq!(recovered.frontier, if complete { Position(3) } else { Position::ORIGIN }, "cut {cut}");
+                    assert_eq!(recovered.entries.len(), if complete { 3 } else { 0 }, "cut {cut}");
+                    assert_eq!(std::fs::read(&truncated).unwrap(), bytes[..cut], "reading must not repair the file");
+                }
+                let mut corrupt = bytes.clone();
+                corrupt[header + 10] = b'!';
+                std::fs::write(&path, corrupt).unwrap();
+                assert!(Jsonl::<Model>::open(&path).is_err(), "terminated corruption is loud");
+            });
         }
     }
     {
@@ -421,42 +361,27 @@ fn contract_scenario() {
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("atomic-repair-append");
-                    let path = directory.join("journal.jsonl");
-                    let runtime = boot(&path, 1).await;
-                    runtime.state.commit(add(4, 1, 0)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    let bytes = std::fs::read(&path).unwrap();
-                    let mut partial = bytes.clone();
-                    partial.extend_from_slice(
-                        b"{\"group\":1,\"first\":3,\"frontier\":4,\"entries\":[{",
-                    );
-                    std::fs::write(&path, &partial).unwrap();
-                    let runtime = boot(&path, 1).await;
-                    assert_eq!(runtime.state.applied(), Position(2));
-                    let receipt = runtime.state.commit(add(2, 1, 0)).await.unwrap();
-                    assert_eq!(receipt.frontier, Position(4));
-                    runtime.state.wait_until_stored(receipt.frontier).await;
-                    runtime.stop().await.unwrap();
-                    assert!(std::fs::read(&path).unwrap().starts_with(&bytes));
-                    let runtime = boot(&path, 1).await;
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (6, 2)
-                    );
-                    runtime.stop().await.unwrap();
-                });
+            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
+                let directory = scratch("atomic-repair-append");
+                let path = directory.join("journal.jsonl");
+                let runtime = boot(&path, 1).await;
+                runtime.state.commit(add(4, 1, 0)).await.unwrap();
+                runtime.stop().await.unwrap();
+                let bytes = std::fs::read(&path).unwrap();
+                let mut partial = bytes.clone();
+                partial.extend_from_slice(b"{\"group\":1,\"first\":3,\"frontier\":4,\"entries\":[{");
+                std::fs::write(&path, &partial).unwrap();
+                let runtime = boot(&path, 1).await;
+                assert_eq!(runtime.state.applied(), Position(2));
+                let receipt = runtime.state.commit(add(2, 1, 0)).await.unwrap();
+                assert_eq!(receipt.frontier, Position(4));
+                runtime.state.wait_until_stored(receipt.frontier).await;
+                runtime.stop().await.unwrap();
+                assert!(std::fs::read(&path).unwrap().starts_with(&bytes));
+                let runtime = boot(&path, 1).await;
+                assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (6, 2));
+                runtime.stop().await.unwrap();
+            });
         }
     }
 }

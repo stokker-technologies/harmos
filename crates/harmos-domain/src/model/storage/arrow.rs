@@ -57,9 +57,7 @@ impl ArrowIpc {
 
 impl From<Arc<Vec<u8>>> for ArrowIpc {
     fn from(ipc: Arc<Vec<u8>>) -> Self {
-        Self {
-            ipc: Arc::unwrap_or_clone(ipc),
-        }
+        Self { ipc: Arc::unwrap_or_clone(ipc) }
     }
 }
 

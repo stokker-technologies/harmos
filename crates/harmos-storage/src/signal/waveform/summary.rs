@@ -46,14 +46,7 @@ pub struct Summary {
 /* === Implementations === */
 impl Default for Summary {
     fn default() -> Self {
-        Self {
-            count: 0,
-            sum: 0.0,
-            mean: 0.0,
-            lowest: f64::INFINITY,
-            highest: f64::NEG_INFINITY,
-            deviations: 0.0,
-        }
+        Self { count: 0, sum: 0.0, mean: 0.0, lowest: f64::INFINITY, highest: f64::NEG_INFINITY, deviations: 0.0 }
     }
 }
 
@@ -108,8 +101,7 @@ impl Summary {
 
         let count = self.count + other.count;
         let total = count as f64;
-        let mean =
-            self.mean * (self.count as f64 / total) + other.mean * (other.count as f64 / total);
+        let mean = self.mean * (self.count as f64 / total) + other.mean * (other.count as f64 / total);
         let apart = other.mean - self.mean;
         let weight = (self.count as f64 * other.count as f64) / total;
 

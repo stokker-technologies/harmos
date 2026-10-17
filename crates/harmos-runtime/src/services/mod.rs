@@ -30,9 +30,7 @@ pub(crate) use sidecar::Endpoint as NativeEndpoint;
 pub(crate) use sidecar::RuntimeDriver;
 
 #[cfg(feature = "plugin-sidecar")]
-pub use sidecar::{
-    DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised,
-};
+pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised};
 
 /* === Imports === */
 // Standard Library Imports
@@ -45,13 +43,11 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::operations::{
-    Backoff, CallContext, ContextError, ContextValue, Jitter, OperationDeclaration,
-    OperationInstance, OperationManager, OperationPolicy, Response, RestartPolicy, RetryPolicy,
+    Backoff, CallContext, ContextError, ContextValue, Jitter, OperationDeclaration, OperationInstance, OperationManager, OperationPolicy,
+    Response, RestartPolicy, RetryPolicy,
 };
 use crate::supervision::executor;
-use crate::{
-    Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager,
-};
+use crate::{Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager};
 
 /* === Constants === */
 // Three restarts after environmental faults, refilled after a quarter second of
@@ -84,8 +80,7 @@ pub struct ServiceDefinition {
 
 // The runtime managers a service context lends as typed values.
 pub(crate) struct Handles<A: Application> {
-    pub(crate) storage:
-        Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
@@ -128,16 +123,11 @@ pub enum ServiceExit {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServiceStatus {
     Starting,
-    Running {
-        credit: usize,
-    },
+    Running { credit: usize },
     Stopping,
     BackingOff,
     Stopped,
-    Inactive {
-        cause: ServiceExit,
-        history: Vec<String>,
-    },
+    Inactive { cause: ServiceExit, history: Vec<String> },
 }
 
 /* === Traits === */
@@ -146,10 +136,7 @@ pub enum ServiceStatus {
 pub trait Resident<A: Application>: Send + 'static {
     type Error: fmt::Debug + fmt::Display + Send + Sync + 'static;
 
-    fn run(
-        &mut self,
-        context: Service<A>,
-    ) -> impl Future<Output = std::result::Result<(), Fault<Self::Error>>> + Send;
+    fn run(&mut self, context: Service<A>) -> impl Future<Output = std::result::Result<(), Fault<Self::Error>>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = std::result::Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -161,19 +148,13 @@ pub trait Resident<A: Application>: Send + 'static {
 /* === Implementations === */
 impl ServiceDefinition {
     pub fn new(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            policy: POLICY,
-        }
+        Self { id: id.into(), policy: POLICY }
     }
 }
 
 impl<A: Application> Handles<A> {
     pub(crate) fn context(
-        &self,
-        operations: OperationManager,
-        stopping: watch::Receiver<bool>,
-        ready: watch::Sender<bool>,
+        &self, operations: OperationManager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>,
         #[cfg(feature = "plugin-sidecar")] provider: Arc<crate::supervision::instance::Instance>,
     ) -> Service<A> {
         Service {
@@ -258,9 +239,7 @@ impl<A: Application> Service<A> {
     }
 
     pub async fn rest(&mut self, duration: Duration) -> bool {
-        self.until_stopping(executor::sleep(duration))
-            .await
-            .is_none()
+        self.until_stopping(executor::sleep(duration)).await.is_none()
     }
 
     pub async fn until_stopping<T>(&mut self, future: impl Future<Output = T>) -> Option<T> {
@@ -295,30 +274,18 @@ impl<A: Application> harmos_sdk::operations::Host for Service<A> {
         Ok(child)
     }
 
-    fn submit<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
+    fn submit<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
         harmos_sdk::operations::Host::submit(&self.operations, request)
     }
 
-    fn call<O: OperationDeclaration>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
+    fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         harmos_sdk::operations::Host::call(&self.operations, request)
     }
 
     fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self,
-        request: O,
-        resources: Arc<R>,
+        &self, request: O, resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_sdk::operations::Host::submit_with_resources::<O, R>(
-            &self.operations,
-            request,
-            resources,
-        )
+        harmos_sdk::operations::Host::submit_with_resources::<O, R>(&self.operations, request, resources)
     }
 }
 
@@ -347,10 +314,7 @@ where
 {
     type Error = E;
 
-    fn run(
-        &mut self,
-        context: Service<A>,
-    ) -> impl Future<Output = std::result::Result<(), Fault<Self::Error>>> + Send {
+    fn run(&mut self, context: Service<A>) -> impl Future<Output = std::result::Result<(), Fault<Self::Error>>> + Send {
         self(context)
     }
 
@@ -366,23 +330,12 @@ where
 /* === Private Functions === */
 pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
     if definition.id.is_empty() {
-        return Err(Error::InvalidInput {
-            field: "service name",
-            reason: "must not be empty",
-        });
+        return Err(Error::InvalidInput { field: "service name", reason: "must not be empty" });
     }
     if definition.id == crate::evidence::SOURCE {
-        return Err(Error::InvalidInput {
-            field: "service name",
-            reason: "artifact is reserved for evidence facts",
-        });
+        return Err(Error::InvalidInput { field: "service name", reason: "artifact is reserved for evidence facts" });
     }
-    definition
-        .policy
-        .validate()
-        .map_err(|source| Error::OperationDeclaration {
-            source: source.into(),
-        })
+    definition.policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })
 }
 
 /* === Tests === */

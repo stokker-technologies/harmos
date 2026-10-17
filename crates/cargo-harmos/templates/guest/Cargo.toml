@@ -26,8 +26,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Git
-harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive"] }
-harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive", "kit"] }
+harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = [
+  "derive",
+] }
+harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = [
+  "derive",
+  "kit",
+] }
 
 
 # === Build Dependencies === #

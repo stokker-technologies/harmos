@@ -24,8 +24,8 @@ pub(crate) use tokio::sync::Notify;
 // Local Imports
 use super::support;
 pub(crate) use harmos_runtime::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
-    OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
+    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
@@ -191,16 +191,12 @@ impl OperationDeclaration for Compute {
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::OnTransient {
             max_retries: 3,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
+            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
         },
         restart: RestartPolicy::Never,
     };
     fn key(&self) -> Option<CacheKey> {
-        (self.keyed && self.valid)
-            .then(|| CacheKey::new(self.value.to_le_bytes().to_vec()).unwrap())
+        (self.keyed && self.valid).then(|| CacheKey::new(self.value.to_le_bytes().to_vec()).unwrap())
     }
 }
 
@@ -219,8 +215,7 @@ impl OperationDeclaration for Slow {
 }
 
 impl OperationDeclaration for Parent {
-    const VISIBILITY: harmos_runtime::operations::Visibility =
-        harmos_runtime::operations::Visibility::Shared;
+    const VISIBILITY: harmos_runtime::operations::Visibility = harmos_runtime::operations::Visibility::Shared;
     type Response = Response;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
@@ -243,12 +238,7 @@ impl Request {
 }
 
 impl Owner {
-    pub(crate) async fn compute(
-        &self,
-        request: &Request,
-        state: &mut State,
-        context: Context<'_>,
-    ) -> Result<Response, Failed> {
+    pub(crate) async fn compute(&self, request: &Request, state: &mut State, context: Context<'_>) -> Result<Response, Failed> {
         if !request.valid {
             return Err(Failed::Scripted(FailureKind::Invalid));
         }
@@ -266,10 +256,7 @@ impl Owner {
         if state.attempts <= request.failures {
             return Err(Failed::Scripted(request.failure));
         }
-        Ok(Response {
-            value: request.value + self.bias,
-            attempts: state.attempts,
-        })
+        Ok(Response { value: request.value + self.bias, attempts: state.attempts })
     }
     pub(crate) fn classify(error: &Failed) -> FailureKind {
         match error {
@@ -291,10 +278,7 @@ impl Operation for ComputeCall {
         Ok(Self { owner, state })
     }
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Request,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Request, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> =
             async move { self.owner.compute(request, &mut self.state, context).await }.await;
@@ -316,20 +300,14 @@ impl Operation for SlowCall {
         Ok(Self { owner })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Slow,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Slow, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let request = &request.0;
         let result: ::core::result::Result<Response, Self::Error> = async move {
             self.owner.runs.fetch_add(1, Ordering::SeqCst);
             // The Attempt Outlives Every Deadline; Only The Policy Ends It.
             std::future::pending::<()>().await;
-            Ok(Response {
-                value: request.value,
-                attempts: 1,
-            })
+            Ok(Response { value: request.value, attempts: 1 })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -342,24 +320,15 @@ impl Operation for ParentCall {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    async fn initialize<'ctx>(
-        owner: Arc<ParentOwner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(owner: Arc<ParentOwner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         Ok(Self { _owner: owner })
     }
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Parent,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Parent, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
             let response = context.call(request.0.take()).await?;
-            Ok(Response {
-                value: response.value,
-                attempts: response.attempts,
-            })
+            Ok(Response { value: response.value, attempts: response.attempts })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -382,33 +351,19 @@ pub(crate) async fn runtime() -> Runtime<Bank> {
         .unwrap()
 }
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
         .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(bytes),
-            ..Default::default()
-        })
+        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes: Some(bytes), ..Default::default() })
         .runtime()
         .await
         .unwrap()
 }
 
 pub(crate) fn request() -> Request {
-    Request {
-        value: 7,
-        failures: 0,
-        failure: FailureKind::Transient,
-        valid: true,
-        keyed: false,
-        gate: None,
-    }
+    Request { value: 7, failures: 0, failure: FailureKind::Transient, valid: true, keyed: false, gate: None }
 }
 
 /* === Tests === */

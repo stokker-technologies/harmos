@@ -62,21 +62,14 @@ impl Snapshot {
         }
         for connection in &self.connections {
             if !symbols.contains(&connection.from) || !symbols.contains(&connection.to) {
-                diagnostics.push(format!(
-                    "Connection {} To {} References A Missing Symbol",
-                    connection.from, connection.to
-                ));
+                diagnostics.push(format!("Connection {} To {} References A Missing Symbol", connection.from, connection.to));
             }
         }
         diagnostics
     }
 
     pub fn validate(&self) -> crate::Result<()> {
-        if self.diagnostics().is_empty() {
-            Ok(())
-        } else {
-            Err(crate::Error::InvalidSchematic)
-        }
+        if self.diagnostics().is_empty() { Ok(()) } else { Err(crate::Error::InvalidSchematic) }
     }
 }
 

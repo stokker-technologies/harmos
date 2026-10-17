@@ -108,11 +108,7 @@ pub(crate) struct Registration {
     scope: Option<ScopeId>,
     internal: bool,
     published: Arc<AtomicBool>,
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     plugin: Option<crate::plugin::PluginScope>,
 }
 
@@ -267,10 +263,7 @@ impl super::OperationDeclaration for Activation {
 impl Key {
     // The key of `definition`'s instance over the runtime's own resources.
     pub fn root(definition: impl Into<String>) -> Self {
-        Self {
-            definition: definition.into(),
-            scope: ROOT,
-        }
+        Self { definition: definition.into(), scope: ROOT }
     }
 }
 
@@ -325,11 +318,7 @@ impl Registration {
         if !self.published.load(Ordering::Acquire) {
             return false;
         }
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if self.plugin.as_ref().is_some_and(|scope| !scope.is_ready()) {
             return false;
         }
@@ -338,11 +327,7 @@ impl Registration {
 }
 
 impl Registry {
-    pub(crate) fn new(
-        index: &Arc<Instances>,
-        reserved: BTreeSet<String>,
-        identity: Arc<()>,
-    ) -> Self {
+    pub(crate) fn new(index: &Arc<Instances>, reserved: BTreeSet<String>, identity: Arc<()>) -> Self {
         let root_resources = Arc::new(());
         let resources: Resources = Arc::clone(&root_resources) as Resources;
         let root = Arc::new(Scope {
@@ -390,20 +375,12 @@ impl Registry {
     }
 
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
-        self.shared
-            .state
-            .lock()
-            .expect("resident registry is healthy")
+        self.shared.state.lock().expect("resident registry is healthy")
     }
 
     // Register one definition visible at once, optionally bound to one scope.
     pub(crate) fn register(
-        &self,
-        definition: Definition,
-        runner: Arc<dyn Runner>,
-        scope: Option<&Arc<Scope>>,
-        internal: bool,
-        reserved: bool,
+        &self, definition: Definition, runner: Arc<dyn Runner>, scope: Option<&Arc<Scope>>, internal: bool, reserved: bool,
     ) -> Result<()> {
         validate(&definition)?;
         let registration = Arc::new(Registration {
@@ -414,21 +391,14 @@ impl Registry {
             scope: scope.map(|scope| scope.id),
             internal,
             published: Arc::new(AtomicBool::new(true)),
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             plugin: None,
         });
         let mut state = self.state();
         state.admit()?;
         let id = registration.definition.id().to_owned();
         if state.definitions.contains_key(&id) || (!reserved && state.reserved.contains(&id)) {
-            return Err(Error::AlreadyRegistered {
-                domain: registration.definition.kind().domain(),
-                name: id,
-            });
+            return Err(Error::AlreadyRegistered { domain: registration.definition.kind().domain(), name: id });
         }
         state.reserved.remove(&id);
         state.definitions.insert(id, registration);
@@ -437,26 +407,13 @@ impl Registry {
 
     // Reserve definitions bound to one scope; they become visible on commit.
     pub(crate) fn stage(
-        &self,
-        scope: &Arc<Scope>,
-        entries: Vec<(Definition, Arc<dyn Runner>)>,
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
-        plugin: Option<crate::plugin::PluginScope>,
+        &self, scope: &Arc<Scope>, entries: Vec<(Definition, Arc<dyn Runner>)>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<Staged> {
         self.check_scope(scope)?;
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
-            return Err(Error::Closing {
-                domain: "plugin scope",
-            });
+            return Err(Error::Closing { domain: "plugin scope" });
         }
         let published = Arc::new(AtomicBool::new(false));
         let mut staged = Vec::new();
@@ -464,10 +421,7 @@ impl Registry {
         for (definition, runner) in entries {
             validate(&definition)?;
             if !ids.insert(definition.id().to_owned()) {
-                return Err(Error::AlreadyRegistered {
-                    domain: definition.kind().domain(),
-                    name: definition.id().to_owned(),
-                });
+                return Err(Error::AlreadyRegistered { domain: definition.kind().domain(), name: definition.id().to_owned() });
             }
             staged.push(Arc::new(Registration {
                 definition,
@@ -477,11 +431,7 @@ impl Registry {
                 scope: Some(scope.id),
                 internal: false,
                 published: Arc::clone(&published),
-                #[cfg(any(
-                    feature = "plugin",
-                    feature = "plugin-guest",
-                    feature = "plugin-sidecar"
-                ))]
+                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                 plugin: plugin.clone(),
             }));
         }
@@ -489,47 +439,23 @@ impl Registry {
         let mut state = self.state();
         state.admit()?;
         if scope.closed.load(Ordering::Acquire) {
-            return Err(Error::Closing {
-                domain: "resident scope",
-            });
+            return Err(Error::Closing { domain: "resident scope" });
         }
-        if let Some(entry) = staged
-            .iter()
-            .find(|entry| state.definitions.contains_key(entry.definition.id()))
-        {
-            return Err(Error::AlreadyRegistered {
-                domain: entry.definition.kind().domain(),
-                name: entry.definition.id().to_owned(),
-            });
+        if let Some(entry) = staged.iter().find(|entry| state.definitions.contains_key(entry.definition.id())) {
+            return Err(Error::AlreadyRegistered { domain: entry.definition.kind().domain(), name: entry.definition.id().to_owned() });
         }
         for entry in &staged {
-            state
-                .definitions
-                .insert(entry.definition.id().to_owned(), Arc::clone(entry));
+            state.definitions.insert(entry.definition.id().to_owned(), Arc::clone(entry));
         }
-        Ok(Staged {
-            owner: Arc::downgrade(&self.shared),
-            scope: Arc::clone(scope),
-            entries: staged,
-            published,
-        })
+        Ok(Staged { owner: Arc::downgrade(&self.shared), scope: Arc::clone(scope), entries: staged, published })
     }
 
     pub(crate) fn definition(&self, id: &str) -> Option<Definition> {
-        self.state()
-            .definitions
-            .get(id)
-            .filter(|item| item.is_published())
-            .map(|item| item.definition.clone())
+        self.state().definitions.get(id).filter(|item| item.is_published()).map(|item| item.definition.clone())
     }
 
     pub(crate) fn definitions(&self) -> Vec<Definition> {
-        self.state()
-            .definitions
-            .values()
-            .filter(|item| item.is_published())
-            .map(|item| item.definition.clone())
-            .collect()
+        self.state().definitions.values().filter(|item| item.is_published()).map(|item| item.definition.clone()).collect()
     }
 
     // The scope that shares these resources, opened on first use.
@@ -538,22 +464,13 @@ impl Registry {
         let address = address(&resources);
         let mut state = self.state();
         state.admit()?;
-        if let Some(scope) = state
-            .addresses
-            .get(&address)
-            .and_then(|id| state.scopes.get(id))
-        {
+        if let Some(scope) = state.addresses.get(&address).and_then(|id| state.scopes.get(id)) {
             return Ok(Arc::clone(scope));
         }
         let id = ScopeId(
             NEXT_SCOPE
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| Error::InvalidInput {
-                    field: "resident scope",
-                    reason: "identity space exhausted",
-                })?,
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+                .map_err(|_| Error::InvalidInput { field: "resident scope", reason: "identity space exhausted" })?,
         );
         let scope = Arc::new(Scope {
             owner: Arc::downgrade(&self.shared.identity),
@@ -569,29 +486,16 @@ impl Registry {
         Ok(scope)
     }
 
-    pub(crate) fn scope_of<R: Send + Sync + 'static>(
-        &self,
-        resources: &Arc<R>,
-    ) -> Option<Arc<Scope>> {
+    pub(crate) fn scope_of<R: Send + Sync + 'static>(&self, resources: &Arc<R>) -> Option<Arc<Scope>> {
         let address = Arc::as_ptr(resources) as *const () as usize;
         let state = self.state();
-        state
-            .addresses
-            .get(&address)
-            .and_then(|id| state.scopes.get(id))
-            .cloned()
+        state.addresses.get(&address).and_then(|id| state.scopes.get(id)).cloned()
     }
 
     // Lease the instance of `id` over `scope`, starting it when none runs.
     // A stopping instance is joined before its replacement starts.
     pub(super) async fn activate(
-        &self,
-        operations: &super::OperationManager,
-        id: &str,
-        scope: &Arc<Scope>,
-        resources: TypeId,
-        holder: Identity,
-        internal: bool,
+        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
     ) -> Result<Lease> {
         let mut joined = None;
         loop {
@@ -600,9 +504,7 @@ impl Registry {
                 Acquisition::Wait(instance, running) => {
                     let result = settle(vec![running.clone()]).await;
                     if !running.settlement.lifecycle().is_settled() {
-                        return Err(result.err().unwrap_or(Error::NotReady {
-                            domain: "resident cleanup",
-                        }));
+                        return Err(result.err().unwrap_or(Error::NotReady { domain: "resident cleanup" }));
                     }
                     joined = Some(instance);
                 }
@@ -612,68 +514,39 @@ impl Registry {
 
     #[allow(clippy::too_many_arguments)]
     fn acquire(
-        &self,
-        operations: &super::OperationManager,
-        id: &str,
-        scope: &Arc<Scope>,
-        resources: TypeId,
-        joined: Option<OperationInstanceId>,
-        internal: bool,
-        holder: &Identity,
+        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
+        internal: bool, holder: &Identity,
     ) -> Result<Acquisition> {
         self.check_scope(scope)?;
         let mut state = self.state();
         let Some(registration) = state.definitions.get(id).cloned() else {
             state.admit()?;
-            return Err(Error::NotRegistered {
-                domain: "resident",
-                name: id.to_owned(),
-            });
+            return Err(Error::NotRegistered { domain: "resident", name: id.to_owned() });
         };
         let kind = registration.definition.kind();
         if state.closed {
-            return Err(Error::Closing {
-                domain: kind.domain(),
-            });
+            return Err(Error::Closing { domain: kind.domain() });
         }
         if scope.closed.load(Ordering::Acquire) {
-            return Err(Error::Closing {
-                domain: kind.scope(),
-            });
+            return Err(Error::Closing { domain: kind.scope() });
         }
         if registration.internal && !internal {
-            return Err(Error::InvalidInput {
-                field: kind.definition(),
-                reason: "infrastructure demand belongs to its runtime owner",
-            });
+            return Err(Error::InvalidInput { field: kind.definition(), reason: "infrastructure demand belongs to its runtime owner" });
         }
         if !registration.is_published() {
-            return Err(Error::NotReady {
-                domain: kind.catalog(),
-            });
+            return Err(Error::NotReady { domain: kind.catalog() });
         }
         if registration.closing.load(Ordering::Acquire) {
-            return Err(Error::Closing {
-                domain: kind.definition(),
-            });
+            return Err(Error::Closing { domain: kind.definition() });
         }
-        if registration.scope.is_some_and(|owner| owner != scope.id)
-            || registration.runner.resources() != resources
-        {
-            return Err(Error::InvalidInput {
-                field: kind.scope(),
-                reason: "definition belongs to another resource scope or type",
-            });
+        if registration.scope.is_some_and(|owner| owner != scope.id) || registration.runner.resources() != resources {
+            return Err(Error::InvalidInput { field: kind.scope(), reason: "definition belongs to another resource scope or type" });
         }
-        let key = Key {
-            definition: id.to_owned(),
-            scope: scope.id,
-        };
+        let key = Key { definition: id.to_owned(), scope: scope.id };
         let demand = state.next()?;
         if let Some(entry) = state.instances.get_mut(&key) {
             let lifecycle = entry.running.settlement.lifecycle().status();
-            if !entry.stopping && lifecycle.outcome().is_none() && !lifecycle.phase().is_terminal()
-            {
+            if !entry.stopping && lifecycle.outcome().is_none() && !lifecycle.phase().is_terminal() {
                 entry.leases.insert(demand);
                 entry.snapshot.leases = entry.leases.len();
                 let instance = entry.snapshot.instance;
@@ -683,15 +556,10 @@ impl Registry {
                 return Ok(Acquisition::Lease(lease));
             }
             if joined != Some(entry.snapshot.instance) {
-                return Ok(Acquisition::Wait(
-                    entry.snapshot.instance,
-                    entry.running.clone(),
-                ));
+                return Ok(Acquisition::Wait(entry.snapshot.instance, entry.running.clone()));
             }
             if !registration.runner.reactivates() {
-                return Err(Error::NotReady {
-                    domain: "retired assembly service",
-                });
+                return Err(Error::NotReady { domain: "retired assembly service" });
             }
         }
 
@@ -699,19 +567,12 @@ impl Registry {
         let instance = super::handler::fresh_instance()?;
         let stopping = watch::channel(false).0;
         let index = self.shared.index.clone();
-        let lifecycle = Arc::new(Instance::queued(stopping.clone()).resident().on_settled(
-            move || {
-                if let Some(index) = index.upgrade() {
-                    index.forget_resident(instance);
-                }
-            },
-        ));
-        let report = Report {
-            owner: Arc::downgrade(&self.shared),
-            key: key.clone(),
-            id: instance,
-            kind,
-        };
+        let lifecycle = Arc::new(Instance::queued(stopping.clone()).resident().on_settled(move || {
+            if let Some(index) = index.upgrade() {
+                index.forget_resident(instance);
+            }
+        }));
+        let report = Report { owner: Arc::downgrade(&self.shared), key: key.clone(), id: instance, kind };
         let (task, settlement) = Arc::clone(&registration.runner).spawn(Start {
             resources: Arc::clone(&scope.resources),
             lifecycle: Arc::clone(&lifecycle),
@@ -719,19 +580,14 @@ impl Registry {
             report: report.clone(),
             operations: operations.clone(),
         });
-        let running = Running {
-            task: Arc::new(task),
-            settlement,
-            report,
-        };
+        let running = Running { task: Arc::new(task), settlement, report };
         let entry = Entry {
             snapshot: Snapshot {
                 instance,
                 kind: registration.definition.kind(),
                 leases: 1,
                 lifecycle: lifecycle.status(),
-                health: (registration.definition.kind() == Kind::Service)
-                    .then_some(ServiceStatus::Starting),
+                health: (registration.definition.kind() == Kind::Service).then_some(ServiceStatus::Starting),
                 failure: None,
             },
             internal: registration.internal,
@@ -757,26 +613,13 @@ impl Registry {
     // Start a definition that can run once, owned by the registry until the
     // runtime shuts down.
     pub(crate) fn start_once(
-        &self,
-        operations: &super::OperationManager,
-        definition: Definition,
-        runner: Arc<dyn Runner>,
-        internal: bool,
-        reserved: bool,
+        &self, operations: &super::OperationManager, definition: Definition, runner: Arc<dyn Runner>, internal: bool, reserved: bool,
     ) -> Result<Lease> {
         let id = definition.id().to_owned();
         let resources = runner.resources();
         self.register(definition, runner, Some(&self.root()), internal, reserved)?;
         let root = self.root();
-        match self.acquire(
-            operations,
-            &id,
-            &root,
-            resources,
-            None,
-            internal,
-            &Identity::Host,
-        )? {
+        match self.acquire(operations, &id, &root, resources, None, internal, &Identity::Host)? {
             Acquisition::Lease(lease) => Ok(lease),
             Acquisition::Wait(..) => {
                 unreachable!("a newly registered resident definition has no instance")
@@ -785,11 +628,7 @@ impl Registry {
     }
 
     pub(crate) fn hold(&self, lease: Lease) {
-        self.shared
-            .assembly
-            .lock()
-            .expect("resident assembly is healthy")
-            .push(lease);
+        self.shared.assembly.lock().expect("resident assembly is healthy").push(lease);
     }
 
     pub(crate) fn status(&self, key: &Key) -> Option<Snapshot> {
@@ -808,28 +647,13 @@ impl Registry {
     // the definitions bound to it. The first outcome is retained.
     pub(crate) async fn retire_scope(&self, scope: &Arc<Scope>) -> Result<Retirement> {
         self.check_scope(scope)?;
-        if let Some(outcome) = scope
-            .retirement
-            .lock()
-            .expect("resident scope is healthy")
-            .clone()
-        {
-            return Ok(Retirement {
-                outcome,
-                _scope: Arc::clone(scope),
-                _running: Vec::new(),
-                _definitions: Vec::new(),
-            });
+        if let Some(outcome) = scope.retirement.lock().expect("resident scope is healthy").clone() {
+            return Ok(Retirement { outcome, _scope: Arc::clone(scope), _running: Vec::new(), _definitions: Vec::new() });
         }
         let (running, definitions) = {
             let mut state = self.state();
             scope.closed.store(true, Ordering::Release);
-            let definitions: Vec<_> = state
-                .definitions
-                .values()
-                .filter(|entry| entry.scope == Some(scope.id))
-                .cloned()
-                .collect();
+            let definitions: Vec<_> = state.definitions.values().filter(|entry| entry.scope == Some(scope.id)).cloned().collect();
             for definition in &definitions {
                 definition.closing.store(true, Ordering::Release);
             }
@@ -840,106 +664,55 @@ impl Registry {
         let outcome = settle(running.clone()).await.map_err(Arc::new);
         let (original, detached) = {
             let mut state = self.state();
-            if state.instances.iter().any(|(key, entry)| {
-                key.scope == scope.id && !entry.running.settlement.lifecycle().is_settled()
-            }) {
+            if state.instances.iter().any(|(key, entry)| key.scope == scope.id && !entry.running.settlement.lifecycle().is_settled()) {
                 return Err(match &outcome {
-                    Err(source) => Error::TaskFailed {
-                        domain: "resident cleanup",
-                        source: source.clone(),
-                    },
-                    Ok(()) => Error::NotReady {
-                        domain: "resident cleanup",
-                    },
+                    Err(source) => Error::TaskFailed { domain: "resident cleanup", source: source.clone() },
+                    Ok(()) => Error::NotReady { domain: "resident cleanup" },
                 });
             }
             // Only observer retirement failures resurface at shutdown, as before.
             if let Err(source) = &outcome
-                && running
-                    .iter()
-                    .any(|running| running.report.kind == Kind::Observer)
+                && running.iter().any(|running| running.report.kind == Kind::Observer)
             {
-                state
-                    .retired_failure
-                    .get_or_insert_with(|| Arc::clone(source));
+                state.retired_failure.get_or_insert_with(|| Arc::clone(source));
             }
-            let original = state
-                .scopes
-                .remove(&scope.id)
-                .unwrap_or_else(|| Arc::clone(scope));
+            let original = state.scopes.remove(&scope.id).unwrap_or_else(|| Arc::clone(scope));
             state.addresses.remove(&original.address);
             state.instances.retain(|key, _| key.scope != scope.id);
             for definition in &definitions {
-                if state
-                    .definitions
-                    .get(definition.definition.id())
-                    .is_some_and(|current| Arc::ptr_eq(current, definition))
-                {
+                if state.definitions.get(definition.definition.id()).is_some_and(|current| Arc::ptr_eq(current, definition)) {
                     state.definitions.remove(definition.definition.id());
                 }
             }
             self.shared.publish(&state);
-            let detached =
-                std::mem::take(&mut *original.detached.lock().expect("resident scope is healthy"));
+            let detached = std::mem::take(&mut *original.detached.lock().expect("resident scope is healthy"));
             (original, detached)
         };
         drop(detached);
-        let outcome = scope
-            .retirement
-            .lock()
-            .expect("resident scope is healthy")
-            .get_or_insert(outcome)
-            .clone();
-        Ok(Retirement {
-            outcome,
-            _scope: original,
-            _running: running,
-            _definitions: definitions,
-        })
+        let outcome = scope.retirement.lock().expect("resident scope is healthy").get_or_insert(outcome).clone();
+        Ok(Retirement { outcome, _scope: original, _running: running, _definitions: definitions })
     }
 
     pub(crate) async fn unregister(&self, id: &str) -> Result<()> {
         let (registration, running) = {
             let mut state = self.state();
             let registration =
-                state
-                    .definitions
-                    .get(id)
-                    .cloned()
-                    .ok_or_else(|| Error::NotRegistered {
-                        domain: "resident",
-                        name: id.to_owned(),
-                    })?;
+                state.definitions.get(id).cloned().ok_or_else(|| Error::NotRegistered { domain: "resident", name: id.to_owned() })?;
             registration.closing.store(true, Ordering::Release);
             let running = state.stop(|key, _, _| key.definition == id);
             self.shared.publish(&state);
             (registration, running)
         };
         let result = settle(running.clone()).await;
-        if running
-            .iter()
-            .any(|running| !running.settlement.lifecycle().is_settled())
-        {
+        if running.iter().any(|running| !running.settlement.lifecycle().is_settled()) {
             return result;
         }
         let mut state = self.state();
         let mut retired = Vec::new();
-        if state
-            .definitions
-            .get(id)
-            .is_some_and(|current| Arc::ptr_eq(current, &registration))
-        {
+        if state.definitions.get(id).is_some_and(|current| Arc::ptr_eq(current, &registration)) {
             state.definitions.remove(id);
-            let keys: Vec<_> = state
-                .instances
-                .keys()
-                .filter(|key| key.definition == id)
-                .cloned()
-                .collect();
-            retired.extend(
-                keys.into_iter()
-                    .filter_map(|key| state.instances.remove(&key)),
-            );
+            let keys: Vec<_> = state.instances.keys().filter(|key| key.definition == id).cloned().collect();
+            retired.extend(keys.into_iter().filter_map(|key| state.instances.remove(&key)));
             self.shared.publish(&state);
         }
         drop(state);
@@ -948,10 +721,10 @@ impl Registry {
     }
 
     pub(crate) fn cleanup_pending(&self, selected: impl Fn(Kind, bool) -> bool) -> bool {
-        self.state().instances.values().any(|entry| {
-            selected(entry.snapshot.kind, entry.internal)
-                && !entry.running.settlement.lifecycle().is_settled()
-        })
+        self.state()
+            .instances
+            .values()
+            .any(|entry| selected(entry.snapshot.kind, entry.internal) && !entry.running.settlement.lifecycle().is_settled())
     }
 
     // Refuse new activations and stop observers and application services.
@@ -1002,25 +775,15 @@ impl Registry {
                 })
                 .map(|(id, _)| id.clone())
                 .collect();
-            let definitions: Vec<_> = ids
-                .into_iter()
-                .filter_map(|id| state.definitions.remove(&id))
-                .collect();
-            (
-                definitions,
-                state.release_scopes(),
-                state.retired_failure.clone(),
-            )
+            let definitions: Vec<_> = ids.into_iter().filter_map(|id| state.definitions.remove(&id)).collect();
+            (definitions, state.release_scopes(), state.retired_failure.clone())
         };
         // Context factories may retain runtime handles. Drop them outside
         // the registry lock after every active use has joined.
         drop((definitions, scopes));
         result?;
         match retired_failure {
-            Some(source) => Err(Error::TaskFailed {
-                domain: "retired observer",
-                source,
-            }),
+            Some(source) => Err(Error::TaskFailed { domain: "retired observer", source }),
             None => Ok(()),
         }
     }
@@ -1046,10 +809,7 @@ impl Registry {
         };
         let retained = running.clone();
         let result = settle(running).await;
-        if retained
-            .iter()
-            .any(|running| !running.settlement.lifecycle().is_settled())
-        {
+        if retained.iter().any(|running| !running.settlement.lifecycle().is_settled()) {
             return result;
         }
         let (definitions, scopes) = {
@@ -1058,24 +818,11 @@ impl Registry {
                 scope.closed.store(true, Ordering::Release);
             }
             state.addresses.clear();
-            (
-                std::mem::take(&mut state.definitions),
-                std::mem::take(&mut state.scopes),
-            )
+            (std::mem::take(&mut state.definitions), std::mem::take(&mut state.scopes))
         };
-        let assembly = std::mem::take(
-            &mut *self
-                .shared
-                .assembly
-                .lock()
-                .expect("resident assembly is healthy"),
-        );
-        let detached: Vec<_> = scopes
-            .values()
-            .flat_map(|scope| {
-                std::mem::take(&mut *scope.detached.lock().expect("resident scope is healthy"))
-            })
-            .collect();
+        let assembly = std::mem::take(&mut *self.shared.assembly.lock().expect("resident assembly is healthy"));
+        let detached: Vec<_> =
+            scopes.values().flat_map(|scope| std::mem::take(&mut *scope.detached.lock().expect("resident scope is healthy"))).collect();
         drop((definitions, scopes, assembly, detached));
         result
     }
@@ -1091,10 +838,7 @@ impl Registry {
 
     fn check_scope(&self, scope: &Scope) -> Result<()> {
         if !Weak::ptr_eq(&scope.owner, &Arc::downgrade(&self.shared.identity)) {
-            return Err(Error::InvalidInput {
-                field: "resident scope",
-                reason: "scope belongs to another manager",
-            });
+            return Err(Error::InvalidInput { field: "resident scope", reason: "scope belongs to another manager" });
         }
         Ok(())
     }
@@ -1121,11 +865,7 @@ impl Shared {
 
     fn release(&self, key: &Key, id: OperationInstanceId, demand: u64) -> bool {
         let mut state = self.state();
-        let Some(entry) = state
-            .instances
-            .get_mut(key)
-            .filter(|entry| entry.snapshot.instance == id)
-        else {
+        let Some(entry) = state.instances.get_mut(key).filter(|entry| entry.snapshot.instance == id) else {
             return true;
         };
         entry.leases.remove(&demand);
@@ -1140,11 +880,7 @@ impl Shared {
 
     fn stop_instance(&self, key: &Key, id: OperationInstanceId) -> bool {
         let mut state = self.state();
-        let Some(entry) = state
-            .instances
-            .get_mut(key)
-            .filter(|entry| entry.snapshot.instance == id)
-        else {
+        let Some(entry) = state.instances.get_mut(key).filter(|entry| entry.snapshot.instance == id) else {
             return false;
         };
         entry.leases.clear();
@@ -1157,18 +893,12 @@ impl Shared {
 
 impl State {
     fn admit(&self) -> Result<()> {
-        if self.closed {
-            Err(Error::Closing { domain: "resident" })
-        } else {
-            Ok(())
-        }
+        if self.closed { Err(Error::Closing { domain: "resident" }) } else { Ok(()) }
     }
 
     fn next(&mut self) -> Result<u64> {
-        self.next = self.next.checked_add(1).ok_or(Error::InvalidInput {
-            field: "resident identity",
-            reason: "identity space exhausted",
-        })?;
+        self.next =
+            self.next.checked_add(1).ok_or(Error::InvalidInput { field: "resident identity", reason: "identity space exhausted" })?;
         Ok(self.next)
     }
 
@@ -1200,10 +930,7 @@ impl State {
             })
             .copied()
             .collect();
-        let scopes: Vec<_> = ids
-            .into_iter()
-            .filter_map(|id| self.scopes.remove(&id))
-            .collect();
+        let scopes: Vec<_> = ids.into_iter().filter_map(|id| self.scopes.remove(&id)).collect();
         for scope in &scopes {
             self.addresses.remove(&scope.address);
         }
@@ -1215,13 +942,7 @@ impl Entry {
     fn stop(&mut self) {
         self.stopping = true;
         if let Some(health) = &mut self.snapshot.health
-            && self
-                .running
-                .settlement
-                .lifecycle()
-                .status()
-                .outcome()
-                .is_none()
+            && self.running.settlement.lifecycle().status().outcome().is_none()
         {
             *health = ServiceStatus::Stopping;
         }
@@ -1240,9 +961,7 @@ impl Running {
         }
         let settlement = Arc::clone(&self.settlement);
         let report = self.report.clone();
-        self.task
-            .settle_retry(move || settlement.retry(report))
-            .await
+        self.task.settle_retry(move || settlement.retry(report)).await
     }
 
     pub(crate) fn lifecycle(&self) -> &Arc<Instance> {
@@ -1264,12 +983,7 @@ impl Report {
             return;
         };
         let mut state = owner.state();
-        let changed = state
-            .instances
-            .get_mut(&self.key)
-            .filter(|entry| entry.snapshot.instance == self.id)
-            .map(update)
-            .unwrap_or(false);
+        let changed = state.instances.get_mut(&self.key).filter(|entry| entry.snapshot.instance == self.id).map(update).unwrap_or(false);
         if changed {
             owner.publish(&state);
         }
@@ -1300,12 +1014,7 @@ impl Report {
     // Publish a service's health; its lifecycle follows.
     pub(crate) fn health(&self, status: ServiceStatus) {
         self.with_entry(|entry| {
-            if entry.stopping
-                && !matches!(
-                    status,
-                    ServiceStatus::Stopped | ServiceStatus::Inactive { .. }
-                )
-            {
+            if entry.stopping && !matches!(status, ServiceStatus::Stopped | ServiceStatus::Inactive { .. }) {
                 return false;
             }
             let lifecycle = entry.running.lifecycle();
@@ -1330,10 +1039,7 @@ impl Report {
             entry.snapshot.failure = outcome.as_ref().err().cloned();
             if let Some(health) = &mut entry.snapshot.health {
                 if outcome.is_err() && !matches!(health, ServiceStatus::Inactive { .. }) {
-                    *health = ServiceStatus::Inactive {
-                        cause: crate::services::ServiceExit::Panicked,
-                        history: Vec::new(),
-                    };
+                    *health = ServiceStatus::Inactive { cause: crate::services::ServiceExit::Panicked, history: Vec::new() };
                 } else if outcome.is_ok() {
                     *health = ServiceStatus::Stopped;
                 }
@@ -1345,13 +1051,7 @@ impl Report {
 
 impl Lease {
     fn new(running: Running, demand: u64, generation: OperationGeneration) -> Self {
-        Self {
-            running,
-            demand,
-            generation,
-            released: false,
-            joins_release: false,
-        }
+        Self { running, demand, generation, released: false, joins_release: false }
     }
 
     pub(crate) fn id(&self) -> OperationInstanceId {
@@ -1380,10 +1080,7 @@ impl Lease {
     // Stop the instance for every lease holder.
     pub(crate) fn stop(&self) {
         let report = &self.running.report;
-        let stopped = report
-            .owner
-            .upgrade()
-            .is_some_and(|owner| owner.stop_instance(&report.key, report.id));
+        let stopped = report.owner.upgrade().is_some_and(|owner| owner.stop_instance(&report.key, report.id));
         if !stopped {
             self.running.stop();
         }
@@ -1397,11 +1094,7 @@ impl Lease {
         };
         let scope = owner.state().scopes.get(&report.key.scope).cloned();
         match scope {
-            Some(scope) => scope
-                .detached
-                .lock()
-                .expect("resident scope is healthy")
-                .push(self),
+            Some(scope) => scope.detached.lock().expect("resident scope is healthy").push(self),
             None => drop(self),
         }
     }
@@ -1419,16 +1112,8 @@ impl Lease {
             }
             if let Some(owner) = report.owner.upgrade() {
                 let mut state = owner.state();
-                let owns = state
-                    .instances
-                    .get(&report.key)
-                    .is_some_and(|entry| entry.snapshot.instance == report.id && entry.internal);
-                let retired = owns.then(|| {
-                    (
-                        state.instances.remove(&report.key),
-                        state.definitions.remove(&report.key.definition),
-                    )
-                });
+                let owns = state.instances.get(&report.key).is_some_and(|entry| entry.snapshot.instance == report.id && entry.internal);
+                let retired = owns.then(|| (state.instances.remove(&report.key), state.definitions.remove(&report.key.definition)));
                 owner.publish(&state);
                 drop(state);
                 drop(retired);
@@ -1472,38 +1157,21 @@ impl Drop for Lease {
 
 impl Staged {
     pub fn commit(self) -> Result<()> {
-        let owner = self
-            .owner
-            .upgrade()
-            .ok_or(Error::Closing { domain: "resident" })?;
+        let owner = self.owner.upgrade().ok_or(Error::Closing { domain: "resident" })?;
         let state = owner.state();
         state.admit()?;
         if self.scope.closed.load(Ordering::Acquire) {
-            return Err(Error::Closing {
-                domain: "resident scope",
-            });
+            return Err(Error::Closing { domain: "resident scope" });
         }
         for entry in &self.entries {
-            #[cfg(any(
-                feature = "plugin",
-                feature = "plugin-guest",
-                feature = "plugin-sidecar"
-            ))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             if entry.plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
-                return Err(Error::Closing {
-                    domain: "plugin scope",
-                });
+                return Err(Error::Closing { domain: "plugin scope" });
             }
             if entry.closing.load(Ordering::Acquire)
-                || !state
-                    .definitions
-                    .get(entry.definition.id())
-                    .is_some_and(|current| Arc::ptr_eq(current, entry))
+                || !state.definitions.get(entry.definition.id()).is_some_and(|current| Arc::ptr_eq(current, entry))
             {
-                return Err(Error::NotRegistered {
-                    domain: "resident reservation",
-                    name: entry.definition.id().to_owned(),
-                });
+                return Err(Error::NotRegistered { domain: "resident reservation", name: entry.definition.id().to_owned() });
             }
         }
         self.published.store(true, Ordering::Release);
@@ -1521,11 +1189,7 @@ impl Drop for Staged {
         };
         let mut state = owner.state();
         for entry in &self.entries {
-            if state
-                .definitions
-                .get(entry.definition.id())
-                .is_some_and(|current| Arc::ptr_eq(current, entry))
-            {
+            if state.definitions.get(entry.definition.id()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
                 state.definitions.remove(entry.definition.id());
             }
         }
@@ -1553,10 +1217,7 @@ pub(crate) async fn settle(running: Vec<Running>) -> Result<()> {
     let pending = running.into_iter().map(|running| async move {
         let domain = running.report.kind.domain();
         match running.settle().await {
-            Ok(outcome) => outcome
-                .as_ref()
-                .clone()
-                .map_err(|source| Error::TaskFailed { domain, source }),
+            Ok(outcome) => outcome.as_ref().clone().map_err(|source| Error::TaskFailed { domain, source }),
             Err(source) => Err(Error::TaskFailed {
                 domain: match running.report.kind {
                     Kind::Observer => "observer supervisor",

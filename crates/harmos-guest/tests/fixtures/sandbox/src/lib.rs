@@ -24,10 +24,7 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Counts, Decline, Echo, Echoed, Fail, ProviderEcho, Read, Spin, Stage, Value, Wait};
-use harmos_domain::operations::{
-    FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
-    streams,
-};
+use harmos_domain::operations::{FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle, streams};
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 
 /* === Constants === */
@@ -109,9 +106,7 @@ impl harmos_guest::Plugin for Sandbox {
     type Context = Context;
     type Resources = Owner;
 
-    fn register(
-        registrar: &mut harmos_guest::Registrar,
-    ) -> Result<(), harmos_guest::RegistrationError> {
+    fn register(registrar: &mut harmos_guest::Registrar) -> Result<(), harmos_guest::RegistrationError> {
         registrar.register("zeta.catalog", 2, &"second")?;
         registrar.register("alpha.catalog", 1, &"first")
     }
@@ -122,12 +117,7 @@ impl harmos_guest::Plugin for Sandbox {
             child_initialize: AtomicBool::new(config == "initialize-child"),
             ..Owner::default()
         };
-        Ok(Self {
-            config,
-            check_publication_revocation: false,
-            check_dependency_revocation: false,
-            owner: Arc::new(owner),
-        })
+        Ok(Self { config, check_publication_revocation: false, check_dependency_revocation: false, owner: Arc::new(owner) })
     }
 
     fn resources(&self) -> Arc<Owner> {
@@ -149,21 +139,13 @@ impl harmos_guest::Plugin for Sandbox {
     }
 
     async fn initialize(&mut self, context: &Context) -> Result<(), Self::Error> {
-        *self
-            .owner
-            .initialized_context
-            .lock()
-            .map_err(|error| std::io::Error::other(error.to_string()))? = Some(context.clone());
+        *self.owner.initialized_context.lock().map_err(|error| std::io::Error::other(error.to_string()))? = Some(context.clone());
 
         // Publication Modes
         if self.config == "publications" || self.config == "failed-publications" {
-            progress(context, "initialize")
-                .await
-                .map_err(std::io::Error::other)?;
+            progress(context, "initialize").await.map_err(std::io::Error::other)?;
             if self.config == "failed-publications" {
-                return Err(std::io::Error::other(
-                    "initialization refused after publication",
-                ));
+                return Err(std::io::Error::other("initialization refused after publication"));
             }
             self.check_publication_revocation = true;
         }
@@ -175,12 +157,7 @@ impl harmos_guest::Plugin for Sandbox {
 
         // Dependency Mode
         if self.config == "dependencies" {
-            context
-                .call(ProviderEcho {
-                    say: "initialize".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
+            context.call(ProviderEcho { say: "initialize".into() }).await.map_err(std::io::Error::other)?;
             self.check_dependency_revocation = true;
         }
         Ok(())
@@ -200,32 +177,20 @@ impl harmos_guest::Plugin for Sandbox {
         if self.check_publication_revocation {
             let result = progress(&context, "cleanup").await;
             if !matches!(result, Err(PublishError::Call(_))) {
-                return Err(std::io::Error::other(
-                    "retirement must refuse a new publication",
-                ));
+                return Err(std::io::Error::other("retirement must refuse a new publication"));
             }
         }
         if self.check_dependency_revocation {
-            let result = context
-                .call(ProviderEcho {
-                    say: "cleanup".into(),
-                })
-                .await;
+            let result = context.call(ProviderEcho { say: "cleanup".into() }).await;
             if result.is_ok() {
-                return Err(std::io::Error::other(
-                    "retirement must refuse a new dependency call",
-                ));
+                return Err(std::io::Error::other("retirement must refuse a new dependency call"));
             }
         }
         Ok(())
     }
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.owner
-            .initialized_context
-            .lock()
-            .map_err(|error| std::io::Error::other(error.to_string()))?
-            .take();
+        self.owner.initialized_context.lock().map_err(|error| std::io::Error::other(error.to_string()))?.take();
         Ok(())
     }
 }
@@ -236,48 +201,28 @@ impl Echoing {
         Self { owner }
     }
 
-    async fn run(
-        &mut self,
-        context: &Context,
-        request: &mut Echo,
-    ) -> Result<Echoed, OperationRefusal> {
+    async fn run(&mut self, context: &Context, request: &mut Echo) -> Result<Echoed, OperationRefusal> {
         // Calls Through The Saved Initialization Context
         if let Some(value) = request.say.strip_prefix("saved-publish:") {
             let saved = self.saved()?;
-            progress(&saved, value)
-                .await
-                .map_err(OperationRefusal::of)?;
-            return Ok(Echoed {
-                said: format!("published {value}"),
-            });
+            progress(&saved, value).await.map_err(OperationRefusal::of)?;
+            return Ok(Echoed { said: format!("published {value}") });
         }
         if let Some(value) = request.say.strip_prefix("saved-dependency:") {
             let saved = self.saved()?;
-            return saved
-                .call(ProviderEcho { say: value.into() })
-                .await
-                .map(harmos_guest::operations::Response::into_owned);
+            return saved.call(ProviderEcho { say: value.into() }).await.map(harmos_guest::operations::Response::into_owned);
         }
 
         // Calls Through The Current Context
         if let Some(say) = request.say.strip_prefix("dependency:") {
-            return context
-                .call(ProviderEcho {
-                    say: say.to_owned(),
-                })
-                .await
-                .map(harmos_guest::operations::Response::into_owned);
+            return context.call(ProviderEcho { say: say.to_owned() }).await.map(harmos_guest::operations::Response::into_owned);
         }
         if let Some(value) = request.say.strip_prefix("publish:") {
-            progress(context, value)
-                .await
-                .map_err(OperationRefusal::from)?;
+            progress(context, value).await.map_err(OperationRefusal::from)?;
         }
         if request.say == "publish-many" {
             for index in 0..8 {
-                progress(context, &index.to_string())
-                    .await
-                    .map_err(OperationRefusal::from)?;
+                progress(context, &index.to_string()).await.map_err(OperationRefusal::from)?;
             }
         }
 
@@ -285,9 +230,7 @@ impl Echoing {
         if request.say == "grow" {
             std::hint::black_box(vec![1u8; 128 * 1024 * 1024]);
         }
-        Ok(Echoed {
-            said: format!("heard {}", request.say),
-        })
+        Ok(Echoed { said: format!("heard {}", request.say) })
     }
 }
 
@@ -336,16 +279,12 @@ impl Waiting {
 
     // The Provider Answers Slowly; Nothing Here Burns Fuel While It Waits
     async fn run(&mut self, context: &Context, _: &mut Wait) -> Result<Echoed, OperationRefusal> {
-        let _ = context
-            .call(ProviderEcho { say: "slow".into() })
-            .await;
+        let _ = context.call(ProviderEcho { say: "slow".into() }).await;
         // Resuming Reaches The Epoch Check A Suspended Guest Could Not
         for step in 0..4096u32 {
             std::hint::black_box(step);
         }
-        Ok(Echoed {
-            said: "waited".to_owned(),
-        })
+        Ok(Echoed { said: "waited".to_owned() })
     }
 }
 
@@ -369,22 +308,11 @@ impl Reading {
         }
         let mut saved = None;
         if owner.child_initialize.swap(false, Ordering::SeqCst) {
-            let child = context
-                .call(Read {
-                    value: "leaf".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
+            let child = context.call(Read { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
             assert_eq!(child.value, "leaf:1");
             saved = Some(context.clone());
         }
-        Ok(Self {
-            owner,
-            value: String::new(),
-            attempts: 0,
-            cleanups: 0,
-            saved,
-        })
+        Ok(Self { owner, value: String::new(), attempts: 0, cleanups: 0, saved })
     }
 
     async fn run(&mut self, context: &Context, value: &mut Read) -> Result<Value, std::io::Error> {
@@ -393,19 +321,10 @@ impl Reading {
 
         // Retired Initialization Context
         if self.value == "initialize-child" {
-            let saved = self
-                .saved
-                .as_ref()
-                .expect("original initialization context");
-            let retired = saved
-                .call(Read {
-                    value: "leaf".into(),
-                })
-                .await;
+            let saved = self.saved.as_ref().expect("original initialization context");
+            let retired = saved.call(Read { value: "leaf".into() }).await;
             if retired.is_ok() {
-                return Err(std::io::Error::other(
-                    "initialization context remained active",
-                ));
+                return Err(std::io::Error::other("initialization context remained active"));
             }
         }
 
@@ -417,58 +336,34 @@ impl Reading {
         if self.value == "context-parent" {
             let parent = stage(context)?;
             assert_eq!(parent.id, "parent");
-            let caller = context
-                .with_value(Stage { id: "child".into() })
-                .map_err(std::io::Error::other)?;
-            let child = caller
-                .call(Read {
-                    value: "context-leaf".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
+            let caller = context.with_value(Stage { id: "child".into() }).map_err(std::io::Error::other)?;
+            let child = caller.call(Read { value: "context-leaf".into() }).await.map_err(std::io::Error::other)?;
             let original = stage(context)?;
-            return Ok(Value {
-                value: format!("{}:{}", original.id, child.value),
-            });
+            return Ok(Value { value: format!("{}:{}", original.id, child.value) });
         }
 
         // Children And Retried Attempts
         self.attempts += 1;
         if self.value == "leaf" {
-            return Ok(Value {
-                value: "leaf:1".into(),
-            });
+            return Ok(Value { value: "leaf:1".into() });
         }
         if self.value == "parent" {
             if let Some(saved) = &self.saved {
-                let stale = saved
-                    .call(Read {
-                        value: "leaf".into(),
-                    })
-                    .await;
+                let stale = saved.call(Read { value: "leaf".into() }).await;
                 if stale.is_ok() {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }
             }
-            let child = context
-                .call(Read {
-                    value: "leaf".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
+            let child = context.call(Read { value: "leaf".into() }).await.map_err(std::io::Error::other)?;
             if self.attempts > 1 {
-                return Ok(Value {
-                    value: format!("parent:2:stale:{}", child.value),
-                });
+                return Ok(Value { value: format!("parent:2:stale:{}", child.value) });
             }
             self.saved = Some(context.clone());
         }
         if self.attempts == 1 {
             return Err(std::io::Error::other("first transient attempt"));
         }
-        Ok(Value {
-            value: format!("{}:{}", self.value, self.attempts),
-        })
+        Ok(Value { value: format!("{}:{}", self.value, self.attempts) })
     }
 
     async fn stop(&mut self) -> Result<(), std::io::Error> {
@@ -514,10 +409,7 @@ impl Counting {
 
 /* === Private Functions === */
 async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
-    context
-        .publisher::<Sandbox>()
-        .publish_on::<Echoed>(&Echoed { said: value.into() })
-        .await
+    context.publisher::<Sandbox>().publish_on::<Echoed>(&Echoed { said: value.into() }).await
 }
 
 // Drives Every Child Control Once: Status And Join, Cancel, Release By Drop, Detach
@@ -526,50 +418,31 @@ async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     use harmos_guest::operations::instance::Phase;
     let request = |say: &str| ProviderEcho { say: say.into() };
 
-    let joined = context
-        .submit(request("joined"))
-        .await
-        .map_err(std::io::Error::other)?;
+    let joined = context.submit(request("joined")).await.map_err(std::io::Error::other)?;
     let status = joined.status().await.map_err(std::io::Error::other)?;
     if status.phase != Phase::Running {
-        return Err(std::io::Error::other(format!(
-            "a live child reported {:?}",
-            status.phase
-        )));
+        return Err(std::io::Error::other(format!("a live child reported {:?}", status.phase)));
     }
     let answer = joined.join().await.map_err(std::io::Error::other)?;
     if answer.said != "joined" {
         return Err(std::io::Error::other(format!("joined {}", answer.said)));
     }
 
-    let cancelled = context
-        .submit(request("cancelled"))
-        .await
-        .map_err(std::io::Error::other)?;
+    let cancelled = context.submit(request("cancelled")).await.map_err(std::io::Error::other)?;
     if Instance::cancel_and_join(cancelled).await.is_ok() {
         return Err(std::io::Error::other("a cancelled child must not answer"));
     }
 
-    let dropped = context
-        .submit(request("dropped"))
-        .await
-        .map_err(std::io::Error::other)?;
+    let dropped = context.submit(request("dropped")).await.map_err(std::io::Error::other)?;
     drop(dropped);
 
-    let detached = context
-        .submit(request("detached"))
-        .await
-        .map_err(std::io::Error::other)?;
+    let detached = context.submit(request("detached")).await.map_err(std::io::Error::other)?;
     Instance::detach(detached);
     Ok(())
 }
 
 fn stage(context: &Context) -> Result<Stage, std::io::Error> {
-    context
-        .context()
-        .value::<Stage>()
-        .map_err(std::io::Error::other)?
-        .ok_or_else(|| std::io::Error::other("the caller set no stage"))
+    context.context().value::<Stage>().map_err(std::io::Error::other)?.ok_or_else(|| std::io::Error::other("the caller set no stage"))
 }
 
 /* === Tests === */

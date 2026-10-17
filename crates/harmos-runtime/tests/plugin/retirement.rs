@@ -48,54 +48,22 @@ async fn cleanup_preserves_peers() {
     host.control.lock().unwrap().events.clear();
     host.control.lock().unwrap().fail_stop = Some("client".to_owned());
     let next = plan();
-    assert!(
-        matches!(session.reload_parts(next.clone(), inventories(&next), ["provider".to_owned()], &mut host).await.map_err(failure),
-        Err(PluginFailure::Cleanup(failures)) if failures.len() == 1 && failures[0].artifact == "client")
-    );
-    assert_eq!(
-        host.control.lock().unwrap().events,
-        ["fence:client,provider", "stop:client"]
-    );
+    assert!(matches!(session.reload_parts(next.clone(), inventories(&next), ["provider".to_owned()], &mut host).await.map_err(failure),
+        Err(PluginFailure::Cleanup(failures)) if failures.len() == 1 && failures[0].artifact == "client"));
+    assert_eq!(host.control.lock().unwrap().events, ["fence:client,provider", "stop:client"]);
     assert!(matches!(
-        host.operations()
-            .call_encoded("client.run", request_payload())
-            .await,
-        Err(Error::Closing {
-            domain: "operation plugin"
-        })
+        host.operations().call_encoded("client.run", request_payload()).await,
+        Err(Error::Closing { domain: "operation plugin" })
     ));
-    assert!(
-        host.operations()
-            .call_encoded("provider.run", request_payload())
-            .await
-            .is_ok()
-    );
-    assert!(
-        host.operations()
-            .call_encoded("other.run", request_payload())
-            .await
-            .is_ok()
-    );
+    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(host.operations().call_encoded("other.run", request_payload()).await.is_ok());
     let operations = host.operations().clone();
     let cleanup = session.cleanup();
     drop(session);
     assert!(cleanup.join().await.is_err());
     assert!(matches!(cleanup.status(), PluginCleanupStatus::Failed(_)));
-    assert!(
-        operations
-            .call_encoded("provider.run", request_payload())
-            .await
-            .is_ok()
-    );
-    assert!(matches!(
-        operations
-            .call_encoded("other.run", request_payload())
-            .await,
-        Err(Error::NotRegistered {
-            domain: "operation",
-            ..
-        })
-    ));
+    assert!(operations.call_encoded("provider.run", request_payload()).await.is_ok());
+    assert!(matches!(operations.call_encoded("other.run", request_payload()).await, Err(Error::NotRegistered { domain: "operation", .. })));
     host.control.lock().unwrap().fail_stop = None;
     cleanup.retry().await.unwrap();
     assert!(matches!(cleanup.status(), PluginCleanupStatus::Settled));
@@ -114,12 +82,7 @@ async fn cleanup_quiesces_owner() {
     let next = plan();
     let entered = host.entered.clone();
     {
-        let reload = session.reload_parts(
-            next.clone(),
-            inventories(&next),
-            ["provider".to_owned()],
-            &mut host,
-        );
+        let reload = session.reload_parts(next.clone(), inventories(&next), ["provider".to_owned()], &mut host);
         tokio::pin!(reload);
         tokio::select! {
             result = &mut reload => panic!("cleanup completed before release: {result:?}"),
@@ -137,43 +100,16 @@ async fn cleanup_quiesces_owner() {
     assert_eq!(retained.state, PluginState::Stopping);
     assert!(retained.generation.is_some());
     assert!(retained.active_definition.is_some());
-    assert_eq!(
-        host.control.lock().unwrap().stop_calls.get("client"),
-        Some(&1)
-    );
-    assert!(
-        !host
-            .control
-            .lock()
-            .unwrap()
-            .backend_drops
-            .contains_key("client")
-    );
+    assert_eq!(host.control.lock().unwrap().stop_calls.get("client"), Some(&1));
+    assert!(!host.control.lock().unwrap().backend_drops.contains_key("client"));
     assert!(matches!(
-        host.operations()
-            .call_encoded("client.run", request_payload())
-            .await,
-        Err(Error::Closing {
-            domain: "operation plugin"
-        })
+        host.operations().call_encoded("client.run", request_payload()).await,
+        Err(Error::Closing { domain: "operation plugin" })
     ));
-    assert!(
-        host.operations()
-            .call_encoded("provider.run", request_payload())
-            .await
-            .is_ok()
-    );
+    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
-    session
-        .reload_parts(
-            next.clone(),
-            inventories(&next),
-            ["provider".to_owned()],
-            &mut host,
-        )
-        .await
-        .unwrap();
+    session.reload_parts(next.clone(), inventories(&next), ["provider".to_owned()], &mut host).await.unwrap();
     assert_eq!(session.ready().count(), 3);
     {
         let control = host.control.lock().unwrap();
@@ -189,39 +125,21 @@ async fn failure_retains_causes() {
     let mut manager = session();
     let mut host = Host {
         fail_start: Some("client".into()),
-        control: Arc::new(Mutex::new(Control {
-            fail_stop: Some("client".into()),
-            ..Control::default()
-        })),
+        control: Arc::new(Mutex::new(Control { fail_stop: Some("client".into()), ..Control::default() })),
         ..Host::new().await
     };
     let error = manager.initialize(&mut host).await.unwrap_err();
-    let PluginFailure::Start {
-        artifact,
-        source,
-        cleanup,
-    } = failure(error)
-    else {
+    let PluginFailure::Start { artifact, source, cleanup } = failure(error) else {
         panic!("expected initialization failure with cleanup");
     };
     assert_eq!(artifact, "client");
-    assert!(matches!(
-        source,
-        Error::Backend {
-            operation: "initialize plugin",
-            kind: harmos_runtime::BackendFailure::Permanent,
-            ..
-        }
-    ));
+    assert!(matches!(source, Error::Backend { operation: "initialize plugin", kind: harmos_runtime::BackendFailure::Permanent, .. }));
     assert_eq!(cleanup.len(), 1);
     assert_eq!(cleanup[0].artifact, "client");
     let Error::TaskFailed { source, .. } = &cleanup[0].error else {
         panic!("expected retained cleanup failure");
     };
-    let Error::Backend {
-        operation, source, ..
-    } = source.downcast_ref::<Error>().unwrap()
-    else {
+    let Error::Backend { operation, source, .. } = source.downcast_ref::<Error>().unwrap() else {
         panic!("expected original physical cleanup source");
     };
     assert_eq!(*operation, "shutdown plugin");
@@ -230,18 +148,8 @@ async fn failure_retains_causes() {
     assert_eq!(retained.state, PluginState::Failed);
     assert!(retained.generation.is_some());
     assert!(retained.active_definition.is_some());
-    assert_eq!(
-        host.control.lock().unwrap().stop_calls.get("client"),
-        Some(&1)
-    );
-    assert!(
-        !host
-            .control
-            .lock()
-            .unwrap()
-            .backend_drops
-            .contains_key("client")
-    );
+    assert_eq!(host.control.lock().unwrap().stop_calls.get("client"), Some(&1));
+    assert!(!host.control.lock().unwrap().backend_drops.contains_key("client"));
     assert!(host.control.lock().unwrap().callers.contains_key("client"));
     host.control.lock().unwrap().fail_stop = None;
     manager.shutdown(&mut host).await.unwrap();
@@ -258,57 +166,26 @@ async fn cleanup_retains_dependencies() {
     host.control.lock().unwrap().events.clear();
     host.control.lock().unwrap().fail_stop = Some("client".into());
 
-    let PluginFailure::Cleanup(failures) = failure(manager.shutdown(&mut host).await.unwrap_err())
-    else {
+    let PluginFailure::Cleanup(failures) = failure(manager.shutdown(&mut host).await.unwrap_err()) else {
         panic!("expected retained cleanup failure");
     };
     assert_eq!(failures.len(), 1);
     assert_eq!(failures[0].artifact, "client");
     assert_eq!(manager.status("provider").unwrap().generation, provider);
     assert_eq!(manager.status("client").unwrap().generation, client);
-    assert!(
-        manager
-            .status("provider")
-            .is_some_and(|status| status.generation.is_some())
-    );
-    assert!(
-        !manager
-            .status("other")
-            .is_some_and(|status| status.generation.is_some())
-    );
-    assert!(
-        !host
-            .control
-            .lock()
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| event == "stop:provider")
-    );
+    assert!(manager.status("provider").is_some_and(|status| status.generation.is_some()));
+    assert!(!manager.status("other").is_some_and(|status| status.generation.is_some()));
+    assert!(!host.control.lock().unwrap().events.iter().any(|event| event == "stop:provider"));
     assert!(matches!(
         host.call(&caller, "provider.run", request_payload()).await,
-        Err(Error::OperationCaller {
-            source: DispatchError::Unavailable
-        })
+        Err(Error::OperationCaller { source: DispatchError::Unavailable })
     ));
-    assert!(
-        host.operations()
-            .call_encoded("provider.run", request_payload())
-            .await
-            .is_ok()
-    );
+    assert!(host.operations().call_encoded("provider.run", request_payload()).await.is_ok());
 
     host.control.lock().unwrap().fail_stop = None;
     manager.shutdown(&mut host).await.unwrap();
     assert!(manager.statuses().all(|status| status.generation.is_none()));
-    assert!(
-        host.control
-            .lock()
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| event == "stop:provider")
-    );
+    assert!(host.control.lock().unwrap().events.iter().any(|event| event == "stop:provider"));
 }
 
 #[tokio::test(start_paused = true)]
@@ -327,8 +204,7 @@ async fn cleanup_spares_peers() {
             let notified = changed.notified();
             let independent_settled = {
                 let control = observed.lock().unwrap();
-                control.backend_drops.get("other") == Some(&1)
-                    && control.stop_calls.get("client") == Some(&1)
+                control.backend_drops.get("other") == Some(&1) && control.stop_calls.get("client") == Some(&1)
             };
             if independent_settled {
                 break;
@@ -339,10 +215,7 @@ async fn cleanup_spares_peers() {
             }
         }
     }
-    assert_eq!(
-        manager.status("provider").unwrap().state,
-        PluginState::Ready
-    );
+    assert_eq!(manager.status("provider").unwrap().state, PluginState::Ready);
     {
         let control = observed.lock().unwrap();
         assert!(!control.stop_calls.contains_key("provider"));
@@ -353,9 +226,7 @@ async fn cleanup_spares_peers() {
     host.release.notify_waiters();
     assert!(matches!(
         manager.plan_reload(PluginDefinitions::new(manager.definitions().cloned(), []).unwrap()),
-        Err(Error::NotReady {
-            domain: "plugin retirement"
-        })
+        Err(Error::NotReady { domain: "plugin retirement" })
     ));
     (async {
         while let Some(event) = events.next().await {
@@ -367,7 +238,8 @@ async fn cleanup_spares_peers() {
             }
         }
         panic!("the retained driver owns its event publisher");
-    }).await;
+    })
+    .await;
     let status = manager.status("provider").unwrap();
     assert_eq!(status.state, PluginState::Registered);
     assert!(status.generation.is_none());
@@ -397,18 +269,8 @@ async fn drop_retains_retirement() {
         }
     }
     drop(manager);
-    host.operations()
-        .call_encoded("provider.run", request_payload())
-        .await
-        .unwrap();
-    assert!(
-        !host
-            .control
-            .lock()
-            .unwrap()
-            .backend_drops
-            .contains_key("provider")
-    );
+    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
+    assert!(!host.control.lock().unwrap().backend_drops.contains_key("provider"));
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
     (async {
@@ -421,11 +283,9 @@ async fn drop_retains_retirement() {
                 provider_stopped = true;
             }
         }
-        assert!(
-            provider_stopped,
-            "provider settlement precedes driver release"
-        );
-    }).await;
+        assert!(provider_stopped, "provider settlement precedes driver release");
+    })
+    .await;
     let control = host.control.lock().unwrap();
     for owner in ["client", "provider", "other"] {
         assert_eq!(control.stop_calls.get(owner), Some(&1));
@@ -467,10 +327,7 @@ async fn drop_retains_retry() {
         assert_eq!(control.backend_drops.get("provider"), None);
         assert_eq!(control.backend_drops.get("other"), Some(&1));
     }
-    host.operations()
-        .call_encoded("provider.run", request_payload())
-        .await
-        .unwrap();
+    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
     host.control.lock().unwrap().fail_stop = None;
     cleanup.retry().await.unwrap();
     let control = host.control.lock().unwrap();
@@ -502,18 +359,8 @@ async fn drop_keeps_providers() {
         }
     }
     drop(manager);
-    host.operations()
-        .call_encoded("provider.run", request_payload())
-        .await
-        .unwrap();
-    assert!(
-        !host
-            .control
-            .lock()
-            .unwrap()
-            .backend_drops
-            .contains_key("provider")
-    );
+    host.operations().call_encoded("provider.run", request_payload()).await.unwrap();
+    assert!(!host.control.lock().unwrap().backend_drops.contains_key("provider"));
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
     (async {
@@ -526,11 +373,9 @@ async fn drop_keeps_providers() {
                 provider_stopped = true;
             }
         }
-        assert!(
-            provider_stopped,
-            "provider settlement precedes driver release"
-        );
-    }).await;
+        assert!(provider_stopped, "provider settlement precedes driver release");
+    })
+    .await;
     let control = host.control.lock().unwrap();
     for owner in ["client", "provider", "other"] {
         assert_eq!(control.stop_calls.get(owner), Some(&1));
@@ -577,7 +422,8 @@ async fn retry_publishes_success() {
             }
         }
         panic!("retirement retains event publication");
-    }).await;
+    })
+    .await;
     let status = manager.status("client").unwrap();
     assert_eq!(status.state, PluginState::Registered);
     assert!(status.generation.is_none());
@@ -607,19 +453,14 @@ async fn panic_retains_backend() {
     let generation = manager.status("client").unwrap().generation;
     host.control.lock().unwrap().panic_stop = Some("client".into());
 
-    let PluginFailure::Cleanup(failures) = failure(manager.shutdown(&mut host).await.unwrap_err())
-    else {
+    let PluginFailure::Cleanup(failures) = failure(manager.shutdown(&mut host).await.unwrap_err()) else {
         panic!("expected retained cleanup panic");
     };
     assert_eq!(failures.len(), 1);
     assert_eq!(failures[0].artifact, "client");
     assert_eq!(manager.status("client").unwrap().generation, generation);
     assert_eq!(manager.status("client").unwrap().state, PluginState::Failed);
-    assert!(
-        manager
-            .status("provider")
-            .is_some_and(|status| status.generation.is_some())
-    );
+    assert!(manager.status("provider").is_some_and(|status| status.generation.is_some()));
     {
         let control = host.control.lock().unwrap();
         assert_eq!(control.stop_calls.get("client"), Some(&1));

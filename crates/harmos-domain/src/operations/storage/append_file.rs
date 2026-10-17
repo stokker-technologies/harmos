@@ -62,26 +62,10 @@ pub struct AppendFile {
 impl MemorySize for AppendFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.mutation
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.mutation)),
-            )
-            .saturating_add(
-                self.session
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.session)),
-            )
-            .saturating_add(
-                self.offset
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.offset)),
-            )
-            .saturating_add(
-                self.bytes
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.bytes)),
-            )
+            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
+            .saturating_add(self.session.memory_size().saturating_sub(std::mem::size_of_val(&self.session)))
+            .saturating_add(self.offset.memory_size().saturating_sub(std::mem::size_of_val(&self.offset)))
+            .saturating_add(self.bytes.memory_size().saturating_sub(std::mem::size_of_val(&self.bytes)))
     }
 }
 

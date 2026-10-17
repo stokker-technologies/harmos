@@ -51,15 +51,9 @@ pub(super) struct DeleteWork {
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn delete_file_once(
-        &self,
-        mutation: &MutationId,
-        file: &StagedFile,
-    ) -> Result<StagedFile> {
+    pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         self.inner.primary.history().check(&file.history)?;
-        if !self.inner.primary.supports_mutation_receipts()
-            || !self.inner.primary.supports_file_deletion()
-        {
+        if !self.inner.primary.supports_mutation_receipts() || !self.inner.primary.supports_file_deletion() {
             return Err(invalid("backend must support durable deletion"));
         }
         let fingerprint = fingerprint(file);
@@ -70,22 +64,15 @@ impl<C> StorageManager<C> {
             {
                 let mut state = self.inner.state.lock().unwrap();
                 if state.status.closing {
-                    return Err(Error::Closing {
-                        domain: "file deletion",
-                    });
+                    return Err(Error::Closing { domain: "file deletion" });
                 }
                 if !state.ready || !state.status.running {
-                    return Err(Error::NotReady {
-                        domain: "file deletion",
-                    });
+                    return Err(Error::NotReady { domain: "file deletion" });
                 }
                 match state.receipts.lookup(mutation, &fingerprint)? {
                     ReceiptState::Complete(value) => return value.deleted(),
                     ReceiptState::Pending => {
-                        let deletion = state
-                            .deletions
-                            .get(mutation)
-                            .ok_or_else(|| invalid("pending identity owns different work"))?;
+                        let deletion = state.deletions.get(mutation).ok_or_else(|| invalid("pending identity owns different work"))?;
                         if let Some(source) = deletion.failure.clone() {
                             if !retry {
                                 return Err(Error::Persistence { source });
@@ -93,32 +80,24 @@ impl<C> StorageManager<C> {
                             if let Some(other) = &state.status.failure
                                 && !Arc::ptr_eq(other, &source)
                             {
-                                return Err(Error::Persistence {
-                                    source: other.clone(),
-                                });
+                                return Err(Error::Persistence { source: other.clone() });
                             }
                             state.deletions.get_mut(mutation).unwrap().failure = None;
                             state.status.failure = None;
                             state.retry = state.retry.wrapping_add(1);
                             notify = true;
                         } else if let Some(source) = &state.status.failure {
-                            return Err(Error::Persistence {
-                                source: source.clone(),
-                            });
+                            return Err(Error::Persistence { source: source.clone() });
                         }
                         retry = false;
                     }
                     ReceiptState::Missing => {
                         if let Some(source) = &state.status.failure {
-                            return Err(Error::Persistence {
-                                source: source.clone(),
-                            });
+                            return Err(Error::Persistence { source: source.clone() });
                         }
                         if state.files.values().any(|active| active.identifies(file)) {
                             tracing::error!(file = %file.id, reason = "active producer", "file deletion rejected");
-                            return Err(invalid(
-                                "active production must finish or abandon before deletion",
-                            ));
+                            return Err(invalid("active production must finish or abandon before deletion"));
                         }
                         if state.deleting(&file.id) {
                             return Err(invalid("another deletion owns this file"));
@@ -139,22 +118,12 @@ impl<C> StorageManager<C> {
                             return Err(exhausted());
                         }
                         let outcome = MutationValue::Deleted(file.clone());
-                        state
-                            .receipts
-                            .insert(mutation, fingerprint, outcome.memory_size())?;
+                        state.receipts.insert(mutation, fingerprint, outcome.memory_size())?;
                         let receipt = state.receipts.prepared(mutation, outcome);
                         let target = state.data_accepted;
                         state.deletions.insert(
                             mutation.clone(),
-                            Deletion {
-                                work: Arc::new(DeleteWork {
-                                    target,
-                                    file: file.clone(),
-                                    receipt,
-                                }),
-                                bytes,
-                                failure: None,
-                            },
+                            Deletion { work: Arc::new(DeleteWork { target, file: file.clone(), receipt }), bytes, failure: None },
                         );
                         retry = false;
                         notify = true;
@@ -165,9 +134,7 @@ impl<C> StorageManager<C> {
             if notify {
                 self.inner.notify();
             }
-            changed.changed().await.map_err(|_| Error::Closing {
-                domain: "file deletion",
-            })?;
+            changed.changed().await.map_err(|_| Error::Closing { domain: "file deletion" })?;
         }
     }
 
@@ -192,42 +159,26 @@ impl<C> StorageManager<C> {
                     return Ok(());
                 }
                 if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
+                    return Err(Error::Persistence { source: source.clone() });
                 }
                 if !state.status.running {
-                    return Err(Error::NotReady {
-                        domain: "file deletion worker",
-                    });
+                    return Err(Error::NotReady { domain: "file deletion worker" });
                 }
             }
-            changed.changed().await.map_err(|_| Error::Closing {
-                domain: "file deletion",
-            })?;
+            changed.changed().await.map_err(|_| Error::Closing { domain: "file deletion" })?;
         }
     }
 }
 
 impl State {
     pub(super) fn deleting(&self, file: &Identifier) -> bool {
-        self.deletions
-            .values()
-            .any(|deletion| deletion.work.file.id == *file)
+        self.deletions.values().any(|deletion| deletion.work.file.id == *file)
     }
 
     pub(super) fn request_deletions(&mut self) {
-        for deletion in self
-            .deletions
-            .values()
-            .filter(|deletion| deletion.failure.is_none())
-        {
+        for deletion in self.deletions.values().filter(|deletion| deletion.failure.is_none()) {
             let target = deletion.work.target;
-            if target.index > self.data_flushed
-                && self
-                    .data_request
-                    .is_none_or(|current| target.index < current.index)
-            {
+            if target.index > self.data_flushed && self.data_request.is_none_or(|current| target.index < current.index) {
                 self.data_request = Some(target);
             }
         }
@@ -236,16 +187,12 @@ impl State {
     pub(super) fn deletion_action(&self) -> Option<Arc<DeleteWork>> {
         self.deletions
             .values()
-            .find(|deletion| {
-                deletion.failure.is_none() && deletion.work.target.index <= self.data_flushed
-            })
+            .find(|deletion| deletion.failure.is_none() && deletion.work.target.index <= self.data_flushed)
             .map(|deletion| deletion.work.clone())
     }
 
     pub(super) fn deleting_data(&self, index: u64) -> bool {
-        self.deletions
-            .values()
-            .any(|deletion| deletion.failure.is_none() && deletion.work.target.index >= index)
+        self.deletions.values().any(|deletion| deletion.failure.is_none() && deletion.work.target.index >= index)
     }
 
     pub(super) fn deletion_failed(&mut self, mutation: &MutationId, source: Arc<Error>) {
@@ -256,11 +203,7 @@ impl State {
     }
 
     pub(super) fn deletion_data_failed(&mut self, index: u64, source: Arc<Error>) {
-        for deletion in self
-            .deletions
-            .values_mut()
-            .filter(|deletion| deletion.work.target.index >= index)
-        {
+        for deletion in self.deletions.values_mut().filter(|deletion| deletion.work.target.index >= index) {
             deletion.failure = Some(source.clone());
         }
     }
@@ -269,13 +212,7 @@ impl State {
 impl DeleteWork {
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded(inner.primary.delete_file(&self.file)).await?;
-        inner
-            .bounded(
-                inner
-                    .primary
-                    .save_mutations(std::slice::from_ref(&self.receipt)),
-            )
-            .await?;
+        inner.bounded(inner.primary.save_mutations(std::slice::from_ref(&self.receipt))).await?;
         tracing::info!(file = %self.file.id, mutation = %self.receipt.mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }
@@ -287,26 +224,17 @@ impl DeleteWork {
 fn fingerprint(file: &StagedFile) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash.update(b"storage.delete_file:v1\0");
-    for bytes in [
-        file.history.store.as_str().as_bytes(),
-        file.history.epoch.as_str().as_bytes(),
-        file.id.as_str().as_bytes(),
-    ] {
+    for bytes in [file.history.store.as_str().as_bytes(), file.history.epoch.as_str().as_bytes(), file.id.as_str().as_bytes()] {
         hash.update((bytes.len() as u64).to_le_bytes());
         hash.update(bytes);
     }
     hash.finalize().into()
 }
 fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput {
-        field: "file deletion",
-        reason,
-    }
+    Error::InvalidInput { field: "file deletion", reason }
 }
 fn exhausted() -> Error {
-    Error::ResourceExhausted {
-        resource: "file deletion requests",
-    }
+    Error::ResourceExhausted { resource: "file deletion requests" }
 }
 
 /* === Tests === */

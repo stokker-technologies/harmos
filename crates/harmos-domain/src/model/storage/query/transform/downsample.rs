@@ -27,12 +27,7 @@ use crate::model::storage::codec::{Code, Index, Nested, Optional, coded, product
 
 /* === Macros === */
 product!(Downsample { max_rows: Index => 1, algorithm: Code<Algorithm> => 2, value: Optional<Nested<FieldPath>> => 3, axis: Optional<Nested<FieldPath>> => 4 });
-coded!(Algorithm {
-    Decimate,
-    Extrema,
-    Lttb,
-    LttbLog
-});
+coded!(Algorithm { Decimate, Extrema, Lttb, LttbLog });
 
 /* === Type Aliases === */
 
@@ -60,14 +55,8 @@ pub enum Algorithm {
 impl MemorySize for Downsample {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            + self
-                .value
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.value))
-            + self
-                .axis
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.axis))
+            + self.value.memory_size().saturating_sub(std::mem::size_of_val(&self.value))
+            + self.axis.memory_size().saturating_sub(std::mem::size_of_val(&self.axis))
     }
 }
 

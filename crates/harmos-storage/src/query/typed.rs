@@ -31,10 +31,7 @@ use crate::storage::manager::{ENTRY_OVERHEAD, Inner};
 use crate::storage::memory::MemoryBank;
 use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
-use crate::storage::{
-    ObjectCatalog, ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager,
-    StoredObject, StoredRecord,
-};
+use crate::storage::{ObjectCatalog, ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager, StoredObject, StoredRecord};
 use crate::{BackendFailure, Error, MemorySize, Message, Result};
 use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
@@ -98,29 +95,15 @@ impl<C: ObjectCatalog> StorageManager<C> {
     /// Read saved revisions of `T`, latest or complete, decoded from their
     /// stored bytes without Arrow payload expansion.
     /// A type whose schema was never written reads as no revisions.
-    pub async fn read_objects<T: StoredObject>(
-        &self,
-        read: ObjectRead<'_, T>,
-    ) -> Result<ObjectReader<T>>
+    pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
     where
         C: Contains<T>,
     {
         let schema = object_schema::<T>()?;
-        let key = read
-            .key
-            .map(|key| object_key(key, self.inner.settings.scan_bytes()))
-            .transpose()?;
-        let selection = ObjectSelection {
-            schema: Some(schema.clone()),
-            key,
-            versions: read.versions,
-        };
+        let key = read.key.map(|key| object_key(key, self.inner.settings.scan_bytes())).transpose()?;
+        let selection = ObjectSelection { schema: Some(schema.clone()), key, versions: read.versions };
         let pages = Pages::open(self, read.at, selection).await?;
-        Ok(ObjectReader {
-            pages,
-            schema,
-            _value: PhantomData,
-        })
+        Ok(ObjectReader { pages, schema, _value: PhantomData })
     }
 }
 
@@ -132,10 +115,7 @@ impl<C> StorageManager<C> {
         read.selection.schema.require_postcard()?;
         let mut pages = Pages::open(self, read.at, read.selection).await?;
         pages.after = read.after;
-        Ok(RecordReader {
-            pages,
-            _payload: PhantomData,
-        })
+        Ok(RecordReader { pages, _payload: PhantomData })
     }
 }
 
@@ -175,9 +155,8 @@ impl<T: Message> RecordReader<T> {
                 |record| decoding::<T>(&record.payload),
                 |record| {
                     Ok(StoredRecord {
-                        payload: T::decode(&record.payload).map_err(|error| {
-                            Error::backend("decode record", BackendFailure::Corrupt, error)
-                        })?,
+                        payload: T::decode(&record.payload)
+                            .map_err(|error| Error::backend("decode record", BackendFailure::Corrupt, error))?,
                         position: record.position,
                         schema: record.schema,
                         scope: record.scope,
@@ -204,18 +183,12 @@ impl<E: Entry> Pages<E>
 where
     E::Selection: MemorySize,
 {
-    async fn open<C>(
-        manager: &StorageManager<C>,
-        at: StorageCursor,
-        selection: E::Selection,
-    ) -> Result<Self> {
+    async fn open<C>(manager: &StorageManager<C>, at: StorageCursor, selection: E::Selection) -> Result<Self> {
         let inner = &manager.inner;
         let active = query_slot(inner).await?;
         let held = Held::default();
         let description = selection.memory_size().saturating_add(ENTRY_OVERHEAD);
-        let description = Reservation::wait(inner, Pool::Read, &held, description, None)
-            .await
-            .map_err(Refusal::into_error)?;
+        let description = Reservation::wait(inner, Pool::Read, &held, description, None).await.map_err(Refusal::into_error)?;
         let snapshot = manager.snapshot(&at).await?;
         Ok(Self {
             inner: Arc::clone(inner),
@@ -233,16 +206,10 @@ where
 }
 
 impl<E: Entry> Pages<E> {
-    async fn next<V>(
-        &mut self,
-        memory: impl Fn(&E) -> Result<usize>,
-        build: impl Fn(E) -> Result<V>,
-    ) -> Result<Option<Vec<V>>> {
+    async fn next<V>(&mut self, memory: impl Fn(&E) -> Result<usize>, build: impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
         if self.failed || self.inflight {
             self.fail();
-            return Err(Error::NotReady {
-                domain: "failed or interrupted typed storage read",
-            });
+            return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
         }
         self.inflight = true;
         let result = self.advance(&memory, &build).await;
@@ -253,11 +220,7 @@ impl<E: Entry> Pages<E> {
         result
     }
 
-    async fn advance<V>(
-        &mut self,
-        memory: &impl Fn(&E) -> Result<usize>,
-        build: &impl Fn(E) -> Result<V>,
-    ) -> Result<Option<Vec<V>>> {
+    async fn advance<V>(&mut self, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
         while self.snapshot.is_some() {
             let mut credit = 0usize;
             let page = loop {
@@ -290,32 +253,13 @@ impl<E: Entry> Pages<E> {
 
     // Scan And Decode One Page; State Advances Only After Every Claim Succeeded.
     async fn attempt<V>(
-        &mut self,
-        bank: &MemoryBank,
-        memory: &impl Fn(&E) -> Result<usize>,
-        build: &impl Fn(E) -> Result<V>,
+        &mut self, bank: &MemoryBank, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
     ) -> Result<Option<Vec<V>>> {
-        let bytes = self
-            .inner
-            .settings
-            .scan_bytes()
-            .min(self.inner.settings.response.batch_bytes);
-        let page = ScanPage {
-            after: self.after,
-            rows: self.rows,
-            bytes,
-        };
+        let bytes = self.inner.settings.scan_bytes().min(self.inner.settings.response.batch_bytes);
+        let page = ScanPage { after: self.after, rows: self.rows, bytes };
         let mut raw = bank.scope();
-        raw.claim(
-            self.rows
-                .get()
-                .saturating_mul(ENTRY_OVERHEAD)
-                .saturating_add(bytes.get()),
-        )?;
-        let snapshot = self
-            .snapshot
-            .as_ref()
-            .expect("running reader owns its snapshot");
+        raw.claim(self.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get()))?;
+        let snapshot = self.snapshot.as_ref().expect("running reader owns its snapshot");
         let (entries, size) = snapshot.scan::<E>(&self.selection, page).await?;
         // A Single Oversized Entry Is Charged At Its Actual Size.
         raw.claim(size.saturating_sub(bytes.get()))?;
@@ -346,8 +290,7 @@ impl<E: Entry> Pages<E> {
 
 /* === Private Functions === */
 fn decoding<T: Message>(payload: &[u8]) -> Result<usize> {
-    T::decoding_memory(payload)
-        .map_err(|error| Error::backend("preflight payload", BackendFailure::Corrupt, error))
+    T::decoding_memory(payload).map_err(|error| Error::backend("preflight payload", BackendFailure::Corrupt, error))
 }
 
 /* === Tests === */

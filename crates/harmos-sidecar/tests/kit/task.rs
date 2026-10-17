@@ -94,10 +94,7 @@ async fn abort_drops_observer() {
 
 #[tokio::test]
 async fn panic_preserves_sibling() {
-    let failed = spawn("panicked-observer".into(), async {
-        panic!("observer failed")
-    })
-    .unwrap();
+    let failed = spawn("panicked-observer".into(), async { panic!("observer failed") }).unwrap();
     let healthy = spawn("healthy-observer".into(), async {}).unwrap();
     assert!(failed.await.unwrap_err().is_panic());
     healthy.await.unwrap();

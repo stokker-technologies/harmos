@@ -13,11 +13,11 @@
 
 /* === Imports === */
 // Standard Library Imports
+use std::pin::pin;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use std::pin::pin;
 use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Semaphore, watch};
@@ -77,8 +77,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
     const INTERVAL: Duration = Duration::from_millis(INTERVAL_MS);
 
     async fn initialize(resources: &Arc<Resources>) -> Result<Self, Self::Error> {
-        let constructed: Result<Self, Self::Error> =
-            async move { Ok(Self(resources.clone(), false)) }.await;
+        let constructed: Result<Self, Self::Error> = async move { Ok(Self(resources.clone(), false)) }.await;
         let mut observer = constructed?;
         let started: Result<(), Self::Error> = async {
             let observer = &mut observer;
@@ -99,10 +98,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
         Ok(observer)
     }
 
-    async fn observe(
-        &mut self,
-        _: &ObserverContext<'_, Arc<Resources>, ()>,
-    ) -> Result<(), Self::Error> {
+    async fn observe(&mut self, _: &ObserverContext<'_, Arc<Resources>, ()>) -> Result<(), Self::Error> {
         self.0.ticks.fetch_add(1, Ordering::SeqCst);
         self.0.progress.send_replace(());
         assert_ne!(MODE, 1, "callback panic");
@@ -145,9 +141,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Drop for Watch<MODE, INTERVAL_MS> {
 
 /* === Private Functions === */
 fn activity<S: Observer<(), Resources = Arc<Resources>>>(resources: &Arc<Resources>) -> Activity {
-    Instance::<Arc<Resources>, ()>::of::<S>()
-        .activate(Arc::new(resources.clone()), ())
-        .unwrap()
+    Instance::<Arc<Resources>, ()>::of::<S>().activate(Arc::new(resources.clone()), ()).unwrap()
 }
 
 async fn count(resources: &Resources, value: fn(&Resources) -> &AtomicUsize, minimum: usize) {
@@ -282,26 +276,17 @@ async fn dropped_lease_cleans() {
     // them, so a dropped lease still stops and cleans up the observer.
     let runtime = super::runtime().await;
     let manager = &runtime.operations;
-    manager
-        .register_native_observer(Instance::<Arc<Resources>, ()>::of::<Watch<0>>(), |_| ())
-        .unwrap();
+    manager.register_native_observer(Instance::<Arc<Resources>, ()>::of::<Watch<0>>(), |_| ()).unwrap();
     let resources = Resources::new();
     resources.initialization.add_permits(1);
-    let lease = manager
-        .submit_with_resources_at("lifecycle", Arc::new(resources.clone()))
-        .await
-        .unwrap();
+    let lease = manager.submit_with_resources_at("lifecycle", Arc::new(resources.clone())).await.unwrap();
     let key = super::key(manager, &lease);
     phase(manager, &key, RUNNING).await;
     drop(lease);
     phase(manager, &key, STOPPING).await;
     // Dropping a lease retains cleanup until it completes.
     let mut states = manager.watch_residents();
-    let settling = pin!(states.wait_for(|states| {
-        states
-            .get(&key)
-            .is_some_and(|state| state.lifecycle.phase().is_terminal())
-    }));
+    let settling = pin!(states.wait_for(|states| { states.get(&key).is_some_and(|state| state.lifecycle.phase().is_terminal()) }));
     pending::outlasts(settling, Duration::from_secs(60)).await;
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
     resources.cleanup.add_permits(1);

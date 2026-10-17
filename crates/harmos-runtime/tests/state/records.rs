@@ -17,9 +17,7 @@
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos_runtime::{
-    Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded,
-};
+use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded};
 
 /* === Constants === */
 
@@ -70,39 +68,16 @@ async fn undeclared_record_refused() {
 
 #[tokio::test]
 async fn producers_share_order() {
-    let runtime = Runtime::<Model>::builder((), ())
-        .register(Records::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    let first = runtime
-        .records
-        .publish(Noted("first".into()))
-        .await
-        .unwrap();
-    let producer = runtime
-        .records
-        .as_principal(PrincipalId::new("editor"))
-        .caused_by(first.position)
-        .clone();
+    let runtime = Runtime::<Model>::builder((), ()).register(Records::catalog()).runtime().await.unwrap();
+    let first = runtime.records.publish(Noted("first".into())).await.unwrap();
+    let producer = runtime.records.as_principal(PrincipalId::new("editor")).caused_by(first.position).clone();
     let second = producer.publish(Noted("second".into())).await.unwrap();
     assert_eq!(first.position, Position(1));
     assert_eq!(second.position, Position(2));
-    let entries: Vec<_> = runtime
-        .state
-        .query::<Recorded<Model>>(Position::ORIGIN)
-        .await
-        .map(Result::unwrap)
-        .collect();
+    let entries: Vec<_> = runtime.state.query::<Recorded<Model>>(Position::ORIGIN).await.map(Result::unwrap).collect();
     assert_eq!(entries.len(), 2);
-    assert_eq!(
-        entries[1].metadata.principal,
-        Some(PrincipalId::new("editor"))
-    );
-    assert_eq!(
-        entries[1].metadata.causation,
-        Some(harmos_runtime::state::CausationId(first.position))
-    );
+    assert_eq!(entries[1].metadata.principal, Some(PrincipalId::new("editor")));
+    assert_eq!(entries[1].metadata.causation, Some(harmos_runtime::state::CausationId(first.position)));
     runtime.stop().await.unwrap();
 }
 
@@ -137,12 +112,8 @@ async fn discovery_shares_producer() {
         )
         .await
         .unwrap();
-    let producer =
-        harmos_runtime::records::RecordManager::new(runtime.state.as_principal(PrincipalId::new("editor")));
-    assert!(Arc::ptr_eq(
-        &definition,
-        &producer.definition(&schema).unwrap()
-    ));
+    let producer = harmos_runtime::records::RecordManager::new(runtime.state.as_principal(PrincipalId::new("editor")));
+    assert!(Arc::ptr_eq(&definition, &producer.definition(&schema).unwrap()));
     assert!(Arc::ptr_eq(
         &definition,
         &producer
@@ -158,16 +129,9 @@ async fn discovery_shares_producer() {
             .await
             .unwrap()
     ));
-    let message = Message {
-        value: "saved".into(),
-    };
-    definition
-        .validate(&harmos_runtime::Message::encode_to_vec(&message))
-        .unwrap();
-    assert!(matches!(
-        definition.validate(&[0xff]),
-        Err(Error::RecordPayload { .. })
-    ));
+    let message = Message { value: "saved".into() };
+    definition.validate(&harmos_runtime::Message::encode_to_vec(&message)).unwrap();
+    assert!(matches!(definition.validate(&[0xff]), Err(Error::RecordPayload { .. })));
     assert!(
         producer
             .register(
@@ -183,17 +147,7 @@ async fn discovery_shares_producer() {
             .is_err()
     );
     assert!(
-        producer
-            .register(
-                "plugin",
-                &schema,
-                &harmos_runtime::schema::graph::Schema {
-                    root: 0,
-                    definitions: vec![vec![]]
-                }
-            )
-            .await
-            .is_err()
+        producer.register("plugin", &schema, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.is_err()
     );
     assert_eq!(producer.definitions().len(), 1);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);

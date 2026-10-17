@@ -32,8 +32,7 @@ use super::server;
 /* === Macros === */
 
 /* === Type Aliases === */
-pub(crate) type Handler =
-    fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
+pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -49,16 +48,9 @@ pub(super) struct Router {
 
 /* === Implementations === */
 impl Router {
-    pub(super) fn new(
-        operations: crate::operations::OperationManager,
-        settings: server::Settings,
-    ) -> Result<Self, tonic::Status> {
+    pub(super) fn new(operations: crate::operations::OperationManager, settings: server::Settings) -> Result<Self, tonic::Status> {
         settings.validate()?;
-        Ok(Self {
-            operations,
-            settings,
-            calls: server::Calls::new(settings.calls)?,
-        })
+        Ok(Self { operations, settings, calls: server::Calls::new(settings.calls)? })
     }
 }
 
@@ -86,15 +78,9 @@ where
                 Err(error) => return server::status(error).into_http(),
             };
             let Some(handler) = binding.handler() else {
-                return tonic::Status::unimplemented("operation provider has no gRPC adapter")
-                    .into_http();
+                return tonic::Status::unimplemented("operation provider has no gRPC adapter").into_http();
             };
-            handler(
-                server::Authority::Binding(binding),
-                settings,
-                request.map(Body::new),
-            )
-            .await
+            handler(server::Authority::Binding(binding), settings, request.map(Body::new)).await
         }));
         Box::pin(async move { Ok(pending.await) })
     }
@@ -104,10 +90,7 @@ where
 // The gRPC handler of one declaration, selected by the directions it streams.
 pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
     use crate::operations::Direction;
-    match (
-        <O::Input as Direction>::STREAMED,
-        <O::Output as Direction>::STREAMED,
-    ) {
+    match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => server::unary::<O, super::Transcoded>,
         (true, false) => server::upload::<O, super::Transcoded>,
         (false, true) => server::download::<O, super::Transcoded>,

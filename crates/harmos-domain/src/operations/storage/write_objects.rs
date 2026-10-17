@@ -59,11 +59,7 @@ pub struct WriteObjects {
 /* === Implementations === */
 impl MemorySize for WriteObjects {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.scope
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.scope)),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
     }
 }
 

@@ -39,10 +39,7 @@ crate::declare!(WriteFile {
     visibility: Visibility::Shared,
     replay: ReplaySafety::Unknown,
     grpc: ("harmos.storage.v1", "Storage", "WriteFile"),
-    grant: |request: &WriteFile| Some(crate::plugin::Grant::of(
-        "storage.write_file",
-        request.metadata.id.as_str().to_owned(),
-    )),
+    grant: |request: &WriteFile| Some(crate::plugin::Grant::of("storage.write_file", request.metadata.id.as_str().to_owned(),)),
 });
 
 /* === Type Aliases === */
@@ -61,11 +58,7 @@ pub struct WriteFile {
 /* === Implementations === */
 impl MemorySize for WriteFile {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.metadata
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.metadata)),
-        )
+        std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))
     }
 }
 

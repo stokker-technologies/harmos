@@ -79,10 +79,7 @@ pub const fn artifact_subset(id: &str) -> bool {
     let mut index = 0;
     while index < bytes.len() {
         let byte = bytes[index];
-        if !(byte.is_ascii_lowercase()
-            || byte.is_ascii_digit()
-            || matches!(byte, b'-' | b'.' | b'_'))
-        {
+        if !(byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.' | b'_')) {
             return false;
         }
         index += 1;
@@ -129,12 +126,8 @@ pub const fn qualified(bytes: &'static [u8]) -> &'static str {
 pub fn stream_subset(name: &str) -> bool {
     name.split('.').all(|segment| {
         let mut characters = segment.chars();
-        characters
-            .next()
-            .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-            && characters.all(|character| {
-                character == '_' || character == '-' || character.is_ascii_alphanumeric()
-            })
+        characters.next().is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+            && characters.all(|character| character == '_' || character == '-' || character.is_ascii_alphanumeric())
     })
 }
 

@@ -35,12 +35,7 @@ use crate::{Application, state::At, state::Entry, state::Position, state::Record
 pub struct Cursor(pub u64);
 
 pub struct Batch<A: Application> {
-    pub(crate) rows: Vec<(
-        Cursor,
-        crate::streams::Definition,
-        Position,
-        Arc<dyn Any + Send + Sync>,
-    )>,
+    pub(crate) rows: Vec<(Cursor, crate::streams::Definition, Position, Arc<dyn Any + Send + Sync>)>,
     pub(crate) reaches: Cursor,
     pub(crate) incomplete: Vec<crate::streams::Definition>,
     pub(crate) application: PhantomData<fn() -> A>,
@@ -52,11 +47,7 @@ pub struct Batch<A: Application> {
 pub trait JournalConsumer<A: Application>: Send + 'static {
     fn resume(&self) -> Position;
 
-    fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        applied: Position,
-    ) -> impl Future<Output = Position> + Send;
+    fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, applied: Position) -> impl Future<Output = Position> + Send;
 
     fn flush(&mut self) -> impl Future<Output = ()> + Send {
         async {}
@@ -70,11 +61,7 @@ pub trait JournalConsumer<A: Application>: Send + 'static {
 pub(crate) trait Attached<A: Application>: Send {
     fn resume(&self) -> Position;
 
-    fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        applied: Position,
-    ) -> Pin<Box<dyn Future<Output = Position> + Send + '_>>;
+    fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, applied: Position) -> Pin<Box<dyn Future<Output = Position> + Send + '_>>;
 
     fn flush(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 
@@ -97,14 +84,9 @@ pub trait StreamConsumer<A: Application>: Send + 'static {
 
 pub trait Series<A: Application>: StreamConsumer<A> {
     fn reader(
-        &mut self,
-        _stream: crate::streams::Definition,
-        _track: &[String],
-        _start: Bound<Position>,
-        _end: Bound<Position>,
+        &mut self, _stream: crate::streams::Definition, _track: &[String], _start: Bound<Position>, _end: Bound<Position>,
         _limits: crate::streams::ReadLimits,
-    ) -> impl Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send
-    {
+    ) -> impl Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send {
         async { Err(crate::streams::ReadError::Unsupported) }
     }
 
@@ -113,39 +95,18 @@ pub trait Series<A: Application>: StreamConsumer<A> {
     // rather than beside them.
     #[allow(clippy::type_complexity)]
     fn rows(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: Bound<Position>,
-        end: Bound<Position>,
-    ) -> impl Future<
-        Output = Result<Vec<At<Arc<dyn Any + Send + Sync>>>, crate::streams::BeneathWindow>,
-    > + Send;
+        &mut self, stream: crate::streams::Definition, track: &[String], start: Bound<Position>, end: Bound<Position>,
+    ) -> impl Future<Output = Result<Vec<At<Arc<dyn Any + Send + Sync>>>, crate::streams::BeneathWindow>> + Send;
 
     fn buckets(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        budget: usize,
+        &mut self, stream: crate::streams::Definition, track: &[String], start: Bound<u64>, end: Bound<u64>, budget: usize,
     ) -> impl Future<Output = Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow>> + Send;
 
     fn aggregate(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        kind: crate::Aggregate,
-    ) -> impl Future<Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>>
-    + Send;
+        &mut self, stream: crate::streams::Definition, track: &[String], start: Bound<u64>, end: Bound<u64>, kind: crate::Aggregate,
+    ) -> impl Future<Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>> + Send;
 
-    fn seal(
-        &mut self,
-        stream: crate::streams::Definition,
-        track: &[String],
-    ) -> impl Future<Output = Position> + Send;
+    fn seal(&mut self, stream: crate::streams::Definition, track: &[String]) -> impl Future<Output = Position> + Send;
 }
 
 pub(crate) trait Recording<A: Application>: Send {
@@ -161,77 +122,28 @@ pub(crate) trait Recording<A: Application>: Send {
 pub(crate) trait Serving<A: Application>: Recording<A> {
     #[allow(clippy::type_complexity)]
     fn reader<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<Position>,
-        end: Bound<Position>,
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
         limits: crate::streams::ReadLimits,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>,
-                > + Send
-                + 'read,
-        >,
-    >;
+    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send + 'read>>;
 
     #[allow(clippy::type_complexity)]
     fn rows<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<Position>,
-        end: Bound<Position>,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Vec<At<Arc<dyn Any + Send + Sync>>>,
-                        crate::streams::BeneathWindow,
-                    >,
-                > + Send
-                + 'read,
-        >,
-    >;
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<At<Arc<dyn Any + Send + Sync>>>, crate::streams::BeneathWindow>> + Send + 'read>>;
 
     #[allow(clippy::type_complexity)]
     fn buckets<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        budget: usize,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow>>
-                + Send
-                + 'read,
-        >,
-    >;
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<u64>, end: Bound<u64>, budget: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow>> + Send + 'read>>;
 
     #[allow(clippy::type_complexity)]
     fn aggregate<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<u64>,
-        end: Bound<u64>,
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<u64>, end: Bound<u64>,
         kind: crate::Aggregate,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>,
-                > + Send
-                + 'read,
-        >,
-    >;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>> + Send + 'read>>;
 
     fn seal<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String],
     ) -> Pin<Box<dyn Future<Output = Position> + Send + 'read>>;
 }
 
@@ -241,11 +153,7 @@ impl<A: Application, C: JournalConsumer<A>> Attached<A> for C {
         JournalConsumer::resume(self)
     }
 
-    fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        applied: Position,
-    ) -> Pin<Box<dyn Future<Output = Position> + Send + '_>> {
+    fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, applied: Position) -> Pin<Box<dyn Future<Output = Position> + Send + '_>> {
         Box::pin(JournalConsumer::drain(self, entries, applied))
     }
 
@@ -271,127 +179,55 @@ impl<A: Application> Batch<A> {
         &self.incomplete
     }
 
-    pub fn publications(
-        &self,
-    ) -> impl Iterator<
-        Item = (
-            &crate::streams::Definition,
-            Cursor,
-            At<&crate::streams::PublicationRow>,
-        ),
-    > + '_ {
-        self.rows
-            .iter()
-            .filter_map(|(cursor, definition, position, row)| {
-                definition.owner()?;
-                let payload =
-                    crate::streams::row_value::<crate::streams::PublicationRow>(row.as_ref())?;
-                Some((
-                    definition,
-                    *cursor,
-                    At {
-                        value: payload,
-                        position: *position,
-                    },
-                ))
-            })
+    pub fn publications(&self) -> impl Iterator<Item = (&crate::streams::Definition, Cursor, At<&crate::streams::PublicationRow>)> + '_ {
+        self.rows.iter().filter_map(|(cursor, definition, position, row)| {
+            definition.owner()?;
+            let payload = crate::streams::row_value::<crate::streams::PublicationRow>(row.as_ref())?;
+            Some((definition, *cursor, At { value: payload, position: *position }))
+        })
     }
 
     pub fn select<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<S>> + '_ {
-        self.rows
-            .iter()
-            .filter_map(|(_, definition, position, row)| {
-                if definition.id() != S::ID || definition.version() != S::VERSION {
-                    return None;
-                }
+        self.rows.iter().filter_map(|(_, definition, position, row)| {
+            if definition.id() != S::ID || definition.version() != S::VERSION {
+                return None;
+            }
 
-                row.downcast_ref::<S>().cloned().map(|value| At {
-                    value,
-                    position: *position,
-                })
-            })
+            row.downcast_ref::<S>().cloned().map(|value| At { value, position: *position })
+        })
     }
 }
 
 impl<A: Application, S: Series<A>> Serving<A> for S {
     #[allow(clippy::type_complexity)]
     fn reader<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<Position>,
-        end: Bound<Position>,
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
         limits: crate::streams::ReadLimits,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>,
-                > + Send
-                + 'read,
-        >,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn crate::streams::RowSource>, crate::streams::ReadError>> + Send + 'read>> {
         Box::pin(Series::reader(self, stream, track, start, end, limits))
     }
 
     fn rows<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<Position>,
-        end: Bound<Position>,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Vec<At<Arc<dyn Any + Send + Sync>>>,
-                        crate::streams::BeneathWindow,
-                    >,
-                > + Send
-                + 'read,
-        >,
-    > {
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<Position>, end: Bound<Position>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<At<Arc<dyn Any + Send + Sync>>>, crate::streams::BeneathWindow>> + Send + 'read>> {
         Box::pin(Series::rows(self, stream, track, start, end))
     }
 
     fn buckets<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<u64>,
-        end: Bound<u64>,
-        budget: usize,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow>>
-                + Send
-                + 'read,
-        >,
-    > {
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<u64>, end: Bound<u64>, budget: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow>> + Send + 'read>> {
         Box::pin(Series::buckets(self, stream, track, start, end, budget))
     }
 
     fn aggregate<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
-        start: Bound<u64>,
-        end: Bound<u64>,
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String], start: Bound<u64>, end: Bound<u64>,
         kind: crate::Aggregate,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>,
-                > + Send
-                + 'read,
-        >,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>> + Send + 'read>> {
         Box::pin(Series::aggregate(self, stream, track, start, end, kind))
     }
 
     fn seal<'read>(
-        &'read mut self,
-        stream: crate::streams::Definition,
-        track: &'read [String],
+        &'read mut self, stream: crate::streams::Definition, track: &'read [String],
     ) -> Pin<Box<dyn Future<Output = Position> + Send + 'read>> {
         Box::pin(Series::seal(self, stream, track))
     }

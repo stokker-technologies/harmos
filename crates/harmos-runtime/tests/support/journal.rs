@@ -26,9 +26,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use serde::{Deserializer, Serializer};
 // Local Imports
 use harmos_runtime::{
-    Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope,
-    state::Kind, state::Position, state::Prepared, state::Recorded, state::SystemFact,
-    storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
+    Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Prepared,
+    state::Recorded, state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -83,10 +82,7 @@ pub trait Wire: Application + Sized {
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error>;
 
     fn decode<'de, D: Deserializer<'de> + Copy>(
-        kind: Kind,
-        id: &DefinitionId,
-        version: u32,
-        payload: D,
+        kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error>;
 }
 
@@ -113,17 +109,14 @@ impl Store {
         self.lines()
             .iter()
             .flat_map(|line| {
-                let frame: Vec<serde_json::Value> =
-                    serde_json::from_str(line).expect("a stored frame is a JSON array");
+                let frame: Vec<serde_json::Value> = serde_json::from_str(line).expect("a stored frame is a JSON array");
                 frame
             })
             .collect()
     }
 
     fn frames(&self) -> MutexGuard<'_, Frames> {
-        self.0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -163,15 +156,10 @@ impl<A: Wire> Journal<A> {
 
     fn encode(&self, entry: &Entry<Recorded<A>>) -> Result<Member, serde_json::Error> {
         let (id, version, payload) = if let Some(prepared) = &entry.prepared {
-            (
-                prepared.id.clone(),
-                prepared.version,
-                prepared.payload.clone(),
-            )
+            (prepared.id.clone(), prepared.version, prepared.payload.clone())
         } else if let Recorded::System(fact) = &entry.value {
             let (id, version) = fact.identify();
-            let payload =
-                serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
+            let payload = serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
 
             (id, version, payload)
         } else {
@@ -181,14 +169,7 @@ impl<A: Wire> Journal<A> {
             (id, version, payload)
         };
 
-        Ok(Envelope {
-            position: entry.position,
-            kind: entry.value.kind(),
-            id,
-            version,
-            metadata: entry.metadata.clone(),
-            payload,
-        })
+        Ok(Envelope { position: entry.position, kind: entry.value.kind(), id, version, metadata: entry.metadata.clone(), payload })
     }
 
     fn persist(&mut self) {
@@ -211,11 +192,7 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
         self.written
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        _applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, _applied: Position) -> Position {
         // A halted copy refuses to advance: the stalled checkpoint is the
         // loud form of the gap it refused to write across.
         if self.halted {
@@ -237,32 +214,19 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
         let mut index = 0;
         while index < entries.len() {
             let entry = &entries[index];
-            if frames
-                .range(..=entry.position)
-                .next_back()
-                .is_some_and(|(_, (end, _))| *end >= entry.position)
-            {
+            if frames.range(..=entry.position).next_back().is_some_and(|(_, (end, _))| *end >= entry.position) {
                 index += 1;
                 continue;
             }
-            let (first, end) = entry
-                .metadata
-                .commit
-                .unwrap_or((entry.position, entry.position));
+            let (first, end) = entry.metadata.commit.unwrap_or((entry.position, entry.position));
             if first != entry.position {
                 return self.halt();
             }
             let count = usize::try_from(end.0 - first.0 + 1).unwrap_or(usize::MAX);
-            let Some(group) = entries
-                .get(index..)
-                .and_then(|remaining| remaining.get(..count))
-            else {
+            let Some(group) = entries.get(index..).and_then(|remaining| remaining.get(..count)) else {
                 return self.halt();
             };
-            let encoded = group
-                .iter()
-                .map(|member| self.encode(member))
-                .collect::<Result<Vec<_>, _>>();
+            let encoded = group.iter().map(|member| self.encode(member)).collect::<Result<Vec<_>, _>>();
             let Ok(line) = encoded.and_then(|group| serde_json::to_string(&group)) else {
                 return self.halt();
             };
@@ -326,9 +290,7 @@ impl<A: Wire> Source<A> for Journal<A> {
             }
             expected = end.0 + 1;
             if first <= origin && origin < end {
-                return Err(Incompatible::unreadable(
-                    "recovery origin splits a logical commit",
-                ));
+                return Err(Incompatible::unreadable("recovery origin splits a logical commit"));
             }
             if end <= origin {
                 continue;
@@ -404,10 +366,7 @@ impl<A: Wire> Source<A> for Journal<A> {
         let mut boundary = frames.origin;
         let mut retained = Vec::new();
         for line in std::mem::take(&mut frames.lines) {
-            let end = members(&line)
-                .ok()
-                .and_then(|group| group.last().map(|member| member.position))
-                .unwrap_or(Position::ORIGIN);
+            let end = members(&line).ok().and_then(|group| group.last().map(|member| member.position)).unwrap_or(Position::ORIGIN);
             if end <= beneath {
                 boundary = end;
             } else {
@@ -420,19 +379,8 @@ impl<A: Wire> Source<A> for Journal<A> {
 }
 
 impl<A: Application> Snapshot<A> {
-    pub fn folding(
-        origin: A::State,
-        at: Position,
-        write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static,
-    ) -> Self {
-        Self {
-            replica: origin,
-            taken: at,
-            durable: at,
-            complete: at,
-            halted: false,
-            write: Box::new(write),
-        }
+    pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
+        Self { replica: origin, taken: at, durable: at, complete: at, halted: false, write: Box::new(write) }
     }
 }
 
@@ -441,11 +389,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
         self.taken
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<A>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, applied: Position) -> Position {
         if self.halted {
             return self.durable;
         }
@@ -454,12 +398,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
                 // Without original bytes a carried historical value cannot
                 // prove which apply produced the accepted state.
                 let replayed = entry.prepared.as_ref().is_some_and(|prepared| {
-                    harmos_runtime::state::TransactionCatalog::replay(
-                        &**change,
-                        prepared,
-                        &mut self.replica,
-                    )
-                    .is_ok()
+                    harmos_runtime::state::TransactionCatalog::replay(&**change, prepared, &mut self.replica).is_ok()
                 });
                 if !replayed {
                     self.halted = true;
@@ -467,11 +406,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
                 }
             }
             self.taken = entry.position;
-            if entry
-                .metadata
-                .commit
-                .is_none_or(|(_, end)| end == entry.position)
-            {
+            if entry.metadata.commit.is_none_or(|(_, end)| end == entry.position) {
                 self.complete = entry.position;
             }
         }
@@ -483,10 +418,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
             self.taken = end;
             self.complete = end;
         }
-        if self.complete == self.taken
-            && self.durable < self.taken
-            && (self.write)(&self.replica, self.taken).is_ok()
-        {
+        if self.complete == self.taken && self.durable < self.taken && (self.write)(&self.replica, self.taken).is_ok() {
             self.durable = self.taken;
         }
 
@@ -496,13 +428,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
 
 /* === Public Functions === */
 /// One standalone frame, as some build stored it.
-pub fn frame(
-    position: u64,
-    kind: Kind,
-    id: &str,
-    version: u32,
-    payload: serde_json::Value,
-) -> String {
+pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_json::Value) -> String {
     let member = serde_json::json!({
         "position": position,
         "kind": kind,
@@ -528,10 +454,7 @@ fn members(line: &str) -> Result<Vec<Member>, String> {
     let Some(first) = group.first() else {
         return Err("an empty frame".to_owned());
     };
-    let consecutive = group
-        .iter()
-        .enumerate()
-        .all(|(offset, member)| member.position.0 == first.position.0 + offset as u64);
+    let consecutive = group.iter().enumerate().all(|(offset, member)| member.position.0 == first.position.0 + offset as u64);
     if !consecutive {
         return Err("a frame's members are not consecutive".to_owned());
     }
@@ -541,23 +464,15 @@ fn members(line: &str) -> Result<Vec<Member>, String> {
 
 fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Incompatible> {
     let unreadable = |reason: &dyn std::fmt::Display| {
-        Incompatible::unreadable(format!(
-            "{} version {} at {}: {reason}",
-            member.id, member.version, member.position
-        ))
+        Incompatible::unreadable(format!("{} version {} at {}: {reason}", member.id, member.version, member.position))
     };
 
     // System Facts Decode Through Harmos Itself
     if member.kind == Kind::Record {
         match SystemFact::restore(&member.id, member.version, &member.payload) {
             Ok(Some(fact)) => {
-                let payload = Payload {
-                    prepared: None,
-                    id: member.id.clone(),
-                    version: member.version,
-                    value: Recorded::System(fact),
-                    apply: None,
-                };
+                let payload =
+                    Payload { prepared: None, id: member.id.clone(), version: member.version, value: Recorded::System(fact), apply: None };
                 return Ok(Some(envelope(member, payload)));
             }
             Ok(None) => {}
@@ -575,24 +490,13 @@ fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Inco
         }
         (Kind::Transaction, Err(refusal)) => return Err(unreadable(&refusal)),
     };
-    payload.prepared = Some(Prepared {
-        id: member.id.clone(),
-        version: member.version,
-        payload: member.payload.clone(),
-    });
+    payload.prepared = Some(Prepared { id: member.id.clone(), version: member.version, payload: member.payload.clone() });
 
     Ok(Some(envelope(member, payload)))
 }
 
 fn envelope<P>(member: Member, payload: P) -> Envelope<P> {
-    Envelope {
-        position: member.position,
-        kind: member.kind,
-        id: member.id,
-        version: member.version,
-        metadata: member.metadata,
-        payload,
-    }
+    Envelope { position: member.position, kind: member.kind, id: member.id, version: member.version, metadata: member.metadata, payload }
 }
 
 /* === Tests === */

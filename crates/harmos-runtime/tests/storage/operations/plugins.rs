@@ -34,11 +34,11 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::writes::WriteReceipt;
 use harmos_runtime::{Error, Identifier, Result};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -135,7 +135,11 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
         cardinality: harmos_runtime::schema::Cardinality::Required,
     };
     let schema = super::super::schema();
-    fixture.storage.write_schema(&schema, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![field]] }).await.unwrap();
+    fixture
+        .storage
+        .write_schema(&schema, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![field]] })
+        .await
+        .unwrap();
     for (index, value) in values.iter().enumerate() {
         let payload = value.encode_to_vec();
         let item = Identifier::new(format!("value{index}")).unwrap();
@@ -149,7 +153,8 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone())).unwrap();
+    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+        .unwrap();
     let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let definitions = PluginDefinitions::new(
         [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
@@ -200,7 +205,8 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone())).unwrap();
+    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+        .unwrap();
     let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let schema = super::super::schema();
     let other = SchemaKey { id: Identifier::new("other").unwrap(), version: NonZeroU32::MIN, ..schema.clone() };

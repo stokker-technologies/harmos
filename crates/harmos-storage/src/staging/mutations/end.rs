@@ -34,11 +34,7 @@ use super::*;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn finish_file_once(
-        &self,
-        mutation: &MutationId,
-        token: &FileSession,
-    ) -> Result<FileReference> {
+    pub async fn finish_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileReference> {
         self.inner.primary.history().check(&token.history)?;
         let fingerprint = fingerprint("storage.finish_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
@@ -62,11 +58,7 @@ impl<C> StorageManager<C> {
         }).await?.reference()
     }
 
-    pub async fn abandon_file_once(
-        &self,
-        mutation: &MutationId,
-        token: &FileSession,
-    ) -> Result<FileProgress> {
+    pub async fn abandon_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProgress> {
         self.inner.primary.history().check(&token.history)?;
         let fingerprint = fingerprint("storage.abandon_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
@@ -78,22 +70,11 @@ impl<C> StorageManager<C> {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            reserve(
-                state,
-                mutation,
-                fingerprint,
-                std::mem::size_of::<MutationValue>(),
-                0,
-                &self.inner.settings,
-            )?;
+            reserve(state, mutation, fingerprint, std::mem::size_of::<MutationValue>(), 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
-            file.mutation = Some(Mutation {
-                id: mutation.clone(),
-                kind: Kind::Abandon,
-            });
+            file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Abandon });
             file.abandoned = true;
-            file.session.as_mut().expect("managed producer").reason =
-                "producer explicitly abandoned";
+            file.session.as_mut().expect("managed producer").reason = "producer explicitly abandoned";
             file.command = Some(Command::Abort);
             file.progress.lock().unwrap().closed = true;
             Ok(true)

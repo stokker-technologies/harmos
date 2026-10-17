@@ -63,12 +63,7 @@ impl Registrar {
         Self::default()
     }
 
-    pub fn register<T: Serialize>(
-        &mut self,
-        namespace: impl Into<String>,
-        schema: u32,
-        value: &T,
-    ) -> Result<(), RegistrationError> {
+    pub fn register<T: Serialize>(&mut self, namespace: impl Into<String>, schema: u32, value: &T) -> Result<(), RegistrationError> {
         let namespace = namespace.into();
         if !artifact_subset(&namespace) {
             return Err(RegistrationError::InvalidNamespace { namespace });
@@ -76,28 +71,16 @@ impl Registrar {
         if schema == 0 {
             return Err(RegistrationError::ZeroSchema { namespace });
         }
-        if self
-            .registrations
-            .iter()
-            .any(|entry| entry.namespace == namespace)
-        {
+        if self.registrations.iter().any(|entry| entry.namespace == namespace) {
             return Err(RegistrationError::DuplicateNamespace { namespace });
         }
-        let payload = serde_json::to_vec(value).map_err(|source| RegistrationError::Encode {
-            namespace: namespace.clone(),
-            source,
-        })?;
-        self.registrations.push(Registration {
-            namespace,
-            schema,
-            payload,
-        });
+        let payload = serde_json::to_vec(value).map_err(|source| RegistrationError::Encode { namespace: namespace.clone(), source })?;
+        self.registrations.push(Registration { namespace, schema, payload });
         Ok(())
     }
 
     pub fn finish(mut self) -> Vec<Registration> {
-        self.registrations
-            .sort_by(|left, right| left.namespace.cmp(&right.namespace));
+        self.registrations.sort_by(|left, right| left.namespace.cmp(&right.namespace));
         self.registrations
     }
 }

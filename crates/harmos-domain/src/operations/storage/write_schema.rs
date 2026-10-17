@@ -58,16 +58,8 @@ pub struct WriteSchema {
 impl MemorySize for WriteSchema {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.mutation
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.mutation)),
-            )
-            .saturating_add(
-                self.schema
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.schema)),
-            )
+            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
+            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of_val(&self.schema)))
     }
 }
 

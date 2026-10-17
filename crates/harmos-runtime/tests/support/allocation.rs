@@ -11,11 +11,7 @@
 mod feeds {
     use serde::{Deserialize, Serialize};
 
-    #[harmos_runtime::stream(
-        description = "A row published into a small ring.",
-        id = "narrow",
-        window = 128
-    )]
+    #[harmos_runtime::stream(description = "A row published into a small ring.", id = "narrow", window = 128)]
     #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Narrow(pub u64);
 
@@ -60,9 +56,7 @@ use std::time::{Duration, Instant};
 
 // Local Imports
 use feeds::{Narrow, Waveform, Wide};
-use harmos_runtime::{
-    Application, Runtime, state::At, state::Never, streams::Item, streams::Stream,
-};
+use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
 
 /* === Constants === */
 const PHASES: [(u64, Duration); 7] = [
@@ -108,10 +102,7 @@ impl Application for Probe {
 
 // The one unsafe block this crate's tests carry: a pass-through allocator is
 // the only way to observe allocation counts from safe test code.
-#[allow(
-    unsafe_code,
-    reason = "counting allocations requires a global allocator shim"
-)]
+#[allow(unsafe_code, reason = "counting allocations requires a global allocator shim")]
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         count_allocation();
@@ -210,10 +201,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         let mut snapshots = 0_u64;
         let mut rows = 0_u64;
         while !queried_done.load(Ordering::Acquire) || snapshots == 0 {
-            let snapshot = queried_streams
-                .query::<Waveform>(..)
-                .await
-                .expect("the waveform fits inside its declared window");
+            let snapshot = queried_streams.query::<Waveform>(..).await.expect("the waveform fits inside its declared window");
             let scanned = snapshot.map(std::hint::black_box).count() as u64;
             rows += scanned;
             snapshots += 1;
@@ -231,10 +219,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         let mut sequence = 0_u64;
         for (rows, rest) in PHASES {
             for _ in 0..rows {
-                published_streams.publish(Waveform {
-                    captured_at_ns: sequence * 40_000,
-                    sample: (sequence as i16).wrapping_mul(31),
-                });
+                published_streams.publish(Waveform { captured_at_ns: sequence * 40_000, sample: (sequence as i16).wrapping_mul(31) });
                 sequence += 1;
             }
             std::thread::sleep(rest);
@@ -249,10 +234,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
 
     assert_eq!(delivered + missed, ROWS, "watch loss is exactly accounted");
     println!("\nSTREAMS-AC006 — {ROWS} waveform rows in seven ramp phases");
-    println!(
-        "  publish: {publish_elapsed:.2?}, {:.0} rows/s",
-        ROWS as f64 / publish_elapsed.as_secs_f64()
-    );
+    println!("  publish: {publish_elapsed:.2?}, {:.0} rows/s", ROWS as f64 / publish_elapsed.as_secs_f64());
     println!("  watch: {watch_elapsed:.2?}, {delivered} delivered, {missed} gap rows");
     println!("  query: {snapshots} snapshots, {queried_rows} rows scanned");
     println!(
@@ -286,16 +268,10 @@ fn count_allocation() {
 }
 
 async fn measured_runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::builder((), ())
-        .register(feeds::Bank::catalog())
-        .runtime()
-        .await
-        .expect("a memory-only boot recovers nothing")
+    Runtime::<Probe>::builder((), ()).register(feeds::Bank::catalog()).runtime().await.expect("a memory-only boot recovers nothing")
 }
 
-async fn next<S: Clone + 'static>(
-    watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin),
-) -> Option<Item<S>> {
+async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }
 

@@ -58,20 +58,14 @@ pub trait AggregateExecution {
     /// Start an incremental reduction over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Groups>;
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch>;
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 }
 
 /* === Implementations === */
 impl AggregateExecution for Aggregate {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.groups.len() > 64 || self.measures.is_empty() || self.measures.len() > 64 {
-            return Err(invalid(
-                "aggregate requires at most 64 groups and 1..64 measures",
-            ));
+            return Err(invalid("aggregate requires at most 64 groups and 1..64 measures"));
         }
         let mut fields = Vec::new();
         for group in &self.groups {
@@ -87,10 +81,8 @@ impl AggregateExecution for Aggregate {
                 return Err(invalid("aggregate requires scalar values"));
             }
             let statistic = measure.statistic;
-            if !matches!(
-                statistic,
-                crate::Aggregate::Count | crate::Aggregate::Min | crate::Aggregate::Max
-            ) && !numeric_type(field.data_type())
+            if !matches!(statistic, crate::Aggregate::Count | crate::Aggregate::Min | crate::Aggregate::Max)
+                && !numeric_type(field.data_type())
             {
                 return Err(invalid("numeric aggregate requires numeric field"));
             }
@@ -110,30 +102,16 @@ impl AggregateExecution for Aggregate {
                 }
                 _ => DataType::Float64,
             };
-            let mut field = Field::new(
-                &measure.name,
-                output,
-                !matches!(statistic, crate::Aggregate::Count),
-            );
+            let mut field = Field::new(&measure.name, output, !matches!(statistic, crate::Aggregate::Count));
             if field.data_type() == &exact_type() {
-                field = field.with_metadata(std::collections::HashMap::from([(
-                    "harmos.logical_type".to_owned(),
-                    "exact-rational-v1".to_owned(),
-                )]));
+                field = field
+                    .with_metadata(std::collections::HashMap::from([("harmos.logical_type".to_owned(), "exact-rational-v1".to_owned())]));
             }
             fields.push(field);
         }
         for field in &fields {
-            if field.name().is_empty()
-                || fields
-                    .iter()
-                    .filter(|other| other.name() == field.name())
-                    .count()
-                    != 1
-            {
-                return Err(invalid(
-                    "aggregate output names must be nonempty and unique",
-                ));
+            if field.name().is_empty() || fields.iter().filter(|other| other.name() == field.name()).count() != 1 {
+                return Err(invalid("aggregate output names must be nonempty and unique"));
             }
         }
         Ok(Schema::new(fields))
@@ -142,13 +120,7 @@ impl AggregateExecution for Aggregate {
     /// Start an incremental reduction over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Groups> {
         let schema = Arc::new(self.output_schema(input)?);
-        let mut groups = Groups {
-            plan: self.clone(),
-            schema,
-            groups: Vec::new(),
-            capture: 0,
-            retained: 0,
-        };
+        let mut groups = Groups { plan: self.clone(), schema, groups: Vec::new(), capture: 0, retained: 0 };
         // An ungrouped reduction always yields its identity row, even for no input.
         if self.groups.is_empty() {
             groups.retained = group_bound(self, &[])?;
@@ -157,11 +129,7 @@ impl AggregateExecution for Aggregate {
         Ok(groups)
     }
 
-    fn apply(
-        &self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<RecordBatch> {
+    fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         let mut groups = self.start(input.schema().as_ref())?;
         groups.push(input, check)?;
         groups.finish(check)
@@ -194,27 +162,14 @@ impl Groups {
     }
 
     /// Fold one batch into the groups. A failed batch leaves no partial update.
-    pub fn push(
-        &mut self,
-        input: &RecordBatch,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<()> {
+    pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
         // Extract Keys And Values Before Any Group Changes.
         let mut rows = Vec::with_capacity(input.num_rows());
         for row in 0..input.num_rows() {
             check()?;
-            let keys = self
-                .plan
-                .groups
-                .iter()
-                .map(|group| group.field.value(input, row).map(normalized))
-                .collect::<Result<Vec<_>>>()?;
-            let values = self
-                .plan
-                .measures
-                .iter()
-                .map(|measure| measure.field.value(input, row).map(normalized))
-                .collect::<Result<Vec<_>>>()?;
+            let keys = self.plan.groups.iter().map(|group| group.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
+            let values =
+                self.plan.measures.iter().map(|measure| measure.field.value(input, row).map(normalized)).collect::<Result<Vec<_>>>()?;
             rows.push((keys, values));
         }
 
@@ -231,26 +186,15 @@ impl Groups {
                 }
             };
             let group = &mut self.groups[index];
-            for ((measure, accumulator), value) in self
-                .plan
-                .measures
-                .iter()
-                .zip(&mut group.accumulators)
-                .zip(values)
-            {
+            for ((measure, accumulator), value) in self.plan.measures.iter().zip(&mut group.accumulators).zip(values) {
                 // Retained order statistics grow only by the selected scalars.
-                if Agg::Of(measure.statistic).retains_values()
-                    || matches!(value, ScalarValue::Text(_))
-                {
+                if Agg::Of(measure.statistic).retains_values() || matches!(value, ScalarValue::Text(_)) {
                     let bytes = value.memory_size().saturating_mul(4).saturating_add(128);
                     self.retained = self.retained.saturating_add(bytes);
                 }
                 accumulator.push(self.capture, &value, &mut Scratch::new(usize::MAX))?;
             }
-            self.capture = self
-                .capture
-                .checked_add(1)
-                .ok_or_else(|| invalid("query capture count overflow"))?;
+            self.capture = self.capture.checked_add(1).ok_or_else(|| invalid("query capture count overflow"))?;
         }
         Ok(())
     }
@@ -275,8 +219,7 @@ impl Groups {
             .zip(values)
             .map(|(field, values)| values_array(field.data_type(), &values))
             .collect::<Result<Vec<_>>>()?;
-        RecordBatch::try_new(self.schema, columns)
-            .map_err(|_| invalid("aggregate output batch is invalid"))
+        RecordBatch::try_new(self.schema, columns).map_err(|_| invalid("aggregate output batch is invalid"))
     }
 
     // Binary Search Over Groups Kept In Key Order.
@@ -302,10 +245,7 @@ fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
         .map(MemorySize::memory_size)
         .try_fold(0usize, |total, bytes| total.checked_add(bytes))
         .and_then(|bytes| {
-            plan.measures
-                .len()
-                .checked_mul(std::mem::size_of::<Accumulator>() * 4)
-                .and_then(|accumulators| bytes.checked_add(accumulators))
+            plan.measures.len().checked_mul(std::mem::size_of::<Accumulator>() * 4).and_then(|accumulators| bytes.checked_add(accumulators))
         })
         .and_then(|bytes| bytes.checked_mul(4))
         .and_then(|bytes| bytes.checked_add(1024))
@@ -313,14 +253,7 @@ fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
 }
 
 fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
-    Group {
-        keys,
-        accumulators: plan
-            .measures
-            .iter()
-            .map(|measure| Accumulator::new(Agg::Of(measure.statistic)))
-            .collect(),
-    }
+    Group { keys, accumulators: plan.measures.iter().map(|measure| Accumulator::new(Agg::Of(measure.statistic))).collect() }
 }
 
 fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {

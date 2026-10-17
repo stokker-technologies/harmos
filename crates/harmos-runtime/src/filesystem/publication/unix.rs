@@ -56,10 +56,7 @@ pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
 pub(super) fn move_directory(source: &Path, destination: &Path) -> io::Result<()> {
     match fs::symlink_metadata(destination) {
         Ok(_) => {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "destination already exists",
-            ));
+            return Err(io::Error::new(io::ErrorKind::AlreadyExists, "destination already exists"));
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
@@ -98,10 +95,7 @@ pub(super) fn remove(path: &Path) -> io::Result<()> {
     directory.sync_all()
 }
 
-pub(super) fn confirm_with_checkpoint<E>(
-    path: &Path,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<(), ConfirmError<E>> {
+pub(super) fn confirm_with_checkpoint<E>(path: &Path, checkpoint: &mut impl FnMut() -> Result<(), E>) -> Result<(), ConfirmError<E>> {
     checkpoint().map_err(ConfirmError::Checkpoint)?;
     sync_file(path).map_err(|error| confirm_error(path, error))?;
     checkpoint().map_err(ConfirmError::Checkpoint)?;

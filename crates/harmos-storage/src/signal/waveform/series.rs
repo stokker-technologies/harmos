@@ -45,16 +45,10 @@ pub struct Series<'a> {
 impl<'a> Series<'a> {
     #[must_use]
     pub fn new(values: &'a [f64]) -> Self {
-        let values = if values.iter().all(|value| value.is_finite()) {
-            Cow::Borrowed(values)
-        } else {
-            Cow::Owned(finite(values.iter().copied()))
-        };
+        let values =
+            if values.iter().all(|value| value.is_finite()) { Cow::Borrowed(values) } else { Cow::Owned(finite(values.iter().copied())) };
 
-        Self {
-            values,
-            sorted: false,
-        }
+        Self { values, sorted: false }
     }
 
     // Orders the values in place, so every later median and percentile reads
@@ -143,11 +137,7 @@ impl<'a> Series<'a> {
         let lower = position.floor() as usize;
         let upper = position.ceil() as usize;
 
-        Some(between(
-            ordered[lower],
-            ordered[upper],
-            position - lower as f64,
-        ))
+        Some(between(ordered[lower], ordered[upper], position - lower as f64))
     }
 
     // Every value satisfies the predicate; vacuously true for no values, the
@@ -180,19 +170,13 @@ impl<'a> From<&'a [f64]> for Series<'a> {
 impl From<Vec<f64>> for Series<'static> {
     fn from(mut values: Vec<f64>) -> Self {
         values.retain(|value| value.is_finite());
-        Self {
-            values: Cow::Owned(values),
-            sorted: false,
-        }
+        Self { values: Cow::Owned(values), sorted: false }
     }
 }
 
 impl FromIterator<f64> for Series<'static> {
     fn from_iter<I: IntoIterator<Item = f64>>(values: I) -> Self {
-        Self {
-            values: Cow::Owned(finite(values)),
-            sorted: false,
-        }
+        Self { values: Cow::Owned(finite(values)), sorted: false }
     }
 }
 
@@ -200,10 +184,7 @@ impl FromIterator<f64> for Series<'static> {
 
 /* === Private Functions === */
 fn finite(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
-    values
-        .into_iter()
-        .filter(|value| value.is_finite())
-        .collect()
+    values.into_iter().filter(|value| value.is_finite()).collect()
 }
 
 // A point a fraction of the way from one value to the next that stays finite

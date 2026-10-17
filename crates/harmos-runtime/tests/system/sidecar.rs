@@ -26,8 +26,8 @@ use harmos_runtime::operations::{FailureKind, StreamSettings};
 use harmos_runtime::plugin::PluginState;
 use harmos_runtime::sidecar::Executable;
 use harmos_runtime::streams::Item;
-use schematic_domain::model::{Connection, Point, Snapshot};
 use schematic_domain::model::schematic::progress::AnalysisProgress;
+use schematic_domain::model::{Connection, Point, Snapshot};
 use schematic_domain::operations::{AnalyzeExchange, AnalyzeUpload, ListDirectories, Native, ProposeRoute};
 
 /* === Constants === */
@@ -69,17 +69,11 @@ impl harmos_runtime::Application for Host {
 
 /* === Private Functions === */
 fn snapshot() -> Snapshot {
-    Snapshot {
-        symbols: vec![1, 2],
-        connections: vec![Connection { from: 1, to: 2 }],
-    }
+    Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] }
 }
 
 fn stream_settings() -> StreamSettings {
-    StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    }
+    StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() }
 }
 
 fn plugin_settings() -> PluginSidecarSettings {
@@ -93,7 +87,6 @@ fn plugin_settings() -> PluginSidecarSettings {
     }
 }
 
-
 /* === Tests === */
 
 #[tokio::test]
@@ -106,7 +99,9 @@ async fn sidecar_composition_walks() {
             .env(ENV_SCENE, "1")
             .env("TOKIO_WORKER_THREADS", "0")
             .kill_on_drop(true)
-            .output().await.unwrap();
+            .output()
+            .await
+            .unwrap();
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(output.status.success(), "owned environment scene failed:\n{stdout}\n{stderr}");
@@ -119,16 +114,9 @@ async fn sidecar_composition_walks() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("boards")).unwrap();
     std::fs::write(directory.path().join("notes.txt"), b"not a directory").unwrap();
-    let executable = Executable::at(support::fixtures::artifact("schematic-sidecar"))
-        .unwrap()
-        .directory(directory.path());
+    let executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
     assert_eq!(executable.declaration().id, PLUGIN);
-    let runtime = Runtime::<Host>::builder((), ())
-        .register(Lanes::catalog())
-        .register(Streams::catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<Host>::builder((), ()).register(Lanes::catalog()).register(Streams::catalog()).runtime().await.unwrap();
     // Scene 2: Locked Tokio Rejects Zero Workers Before The Native Plugin Is Ready.
     // This Exercises A Real Startup Crash Through An Existing Environment Option.
     let crashing = executable.clone().variable("TOKIO_WORKER_THREADS", "0");
@@ -155,9 +143,7 @@ async fn sidecar_composition_walks() {
     assert_eq!(directories.directories, ["boards"]);
 
     // Scene 3: A Unary Operation Crosses The Same Native Transport
-    let routed = runtime.operations.call(ProposeRoute {
-        from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 },
-    }).await.unwrap();
+    let routed = runtime.operations.call(ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }).await.unwrap();
     assert_eq!(routed.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
 
     // Scene 4: Upload Progress Proves The Child Holds Its Shared Analysis Permit
@@ -168,7 +154,8 @@ async fn sidecar_composition_walks() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Held Upload", 1));
 
     // Scene 5: A Bidirectional Call Waits For That Permit Until Cancellation Settles
-    let mut exchange = runtime.operations.exchange(AnalyzeExchange { title: "Waiting Exchange".into() }, stream_settings(), stream_settings()).unwrap();
+    let mut exchange =
+        runtime.operations.exchange(AnalyzeExchange { title: "Waiting Exchange".into() }, stream_settings(), stream_settings()).unwrap();
     exchange.send(snapshot()).await.unwrap();
     {
         let next = exchange.next();

@@ -48,15 +48,10 @@ impl<C> StorageManager<C> {
                     break;
                 }
                 if !state.status.running {
-                    return Err(Error::NotReady {
-                        domain: "storage worker",
-                    });
+                    return Err(Error::NotReady { domain: "storage worker" });
                 }
             }
-            changed
-                .changed()
-                .await
-                .map_err(|_| Error::NotReady { domain: "storage" })?;
+            changed.changed().await.map_err(|_| Error::NotReady { domain: "storage" })?;
         }
         if lifecycle.primary_touched && !lifecycle.primary_closed {
             self.inner.primary.close().await?;
@@ -88,10 +83,7 @@ impl<C> StorageManager<C> {
 
     pub(super) fn check_raw_recovery(&self) -> Result<()> {
         if self.inner.state.lock().unwrap().journal_saved.is_some() {
-            return Err(Error::InvalidInput {
-                field: "recovery ownership",
-                reason: "managed journal owns recovery writes",
-            });
+            return Err(Error::InvalidInput { field: "recovery ownership", reason: "managed journal owns recovery writes" });
         }
         Ok(())
     }

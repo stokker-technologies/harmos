@@ -63,21 +63,12 @@ pub trait Operation: Send + Sized + 'static {
     // Construct the operation for one invocation from its resources and the
     // first attempt's context; stop and cleanup run only after success.
     fn initialize<'ctx>(
-        resources: Arc<Self::Resources>,
-        context: Self::Context<'ctx>,
+        resources: Arc<Self::Resources>, context: Self::Context<'ctx>,
     ) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Self::Declaration,
-        endpoints: &mut Self::Endpoints,
-    ) -> impl Future<
-        Output = Result<
-            super::Response<<Self::Declaration as OperationDeclaration>::Response>,
-            Self::Error,
-        >,
-    > + Send;
+        &mut self, context: Self::Context<'ctx>, request: &mut Self::Declaration, endpoints: &mut Self::Endpoints,
+    ) -> impl Future<Output = Result<super::Response<<Self::Declaration as OperationDeclaration>::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -108,10 +99,7 @@ impl<I: InputEndpoint, O: OutputEndpoint> EndpointSet for (I, O) {
         self.0.transferred() || self.1.transferred()
     }
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        (
-            Some(std::any::TypeId::of::<I::Item>()),
-            Some(std::any::TypeId::of::<O::Item>()),
-        )
+        (Some(std::any::TypeId::of::<I::Item>()), Some(std::any::TypeId::of::<O::Item>()))
     }
 }
 

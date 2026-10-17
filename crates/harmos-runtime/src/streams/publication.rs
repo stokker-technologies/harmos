@@ -63,20 +63,11 @@ pub(super) struct Pool {
 /* === Implementations === */
 impl Pool {
     pub(super) fn new() -> Self {
-        Self {
-            bytes: Arc::new(Semaphore::new(RETAINED_BYTES)),
-            rows: Arc::new(Semaphore::new(RETAINED_ROWS)),
-            admission: Mutex::new(()),
-        }
+        Self { bytes: Arc::new(Semaphore::new(RETAINED_BYTES)), rows: Arc::new(Semaphore::new(RETAINED_ROWS)), admission: Mutex::new(()) }
     }
 
     pub(super) fn retain(
-        &self,
-        definition: &crate::streams::Definition,
-        generation: Option<u64>,
-        row: PublicationRow,
-        wire_sequence: u64,
-        missed: u64,
+        &self, definition: &crate::streams::Definition, generation: Option<u64>, row: PublicationRow, wire_sequence: u64, missed: u64,
         window: Option<(&super::window::Window, u64)>,
     ) -> Result<ManagedPublication, StreamPublicationError> {
         let bytes = row
@@ -91,20 +82,10 @@ impl Pool {
         let missing_rows = usize::from(self.rows.available_permits() == 0);
         if missing_bytes > 0 || missing_rows > 0 {
             let (window, taken) = window.ok_or(StreamPublicationError::Capacity)?;
-            window
-                .reclaim(missing_bytes, missing_rows, taken)
-                .ok_or(StreamPublicationError::Capacity)?;
+            window.reclaim(missing_bytes, missing_rows, taken).ok_or(StreamPublicationError::Capacity)?;
         }
-        let slot = self
-            .rows
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| StreamPublicationError::Capacity)?;
-        let bytes = self
-            .bytes
-            .clone()
-            .try_acquire_many_owned(bytes as u32)
-            .map_err(|_| StreamPublicationError::Capacity)?;
+        let slot = self.rows.clone().try_acquire_owned().map_err(|_| StreamPublicationError::Capacity)?;
+        let bytes = self.bytes.clone().try_acquire_many_owned(bytes as u32).map_err(|_| StreamPublicationError::Capacity)?;
         Ok(ManagedPublication(Arc::new(Owned {
             stream: Arc::<str>::from(definition.id()),
             owner: Arc::from(definition.owner().expect("plugin publication owner")),
@@ -138,18 +119,11 @@ impl ManagedPublication {
     }
 
     pub fn sequence(&self) -> u64 {
-        *self
-            .0
-            .logical_sequence
-            .get()
-            .expect("committed publication")
+        *self.0.logical_sequence.get().expect("committed publication")
     }
 
     pub(super) fn assign_sequence(&self, sequence: u64) {
-        self.0
-            .logical_sequence
-            .set(sequence)
-            .expect("one original publication append");
+        self.0.logical_sequence.set(sequence).expect("one original publication append");
     }
 
     pub(super) fn reclaimable_bytes(&self) -> Option<usize> {

@@ -49,10 +49,7 @@ impl<'a> ContextMut<'a> {
         Ok(self.context.insert(value)?)
     }
 
-    pub fn insert_portable<T: harmos_domain::operations::ContextValue>(
-        &mut self,
-        value: T,
-    ) -> Result<()> {
+    pub fn insert_portable<T: harmos_domain::operations::ContextValue>(&mut self, value: T) -> Result<()> {
         Ok(self.context.insert_portable(value)?)
     }
 }

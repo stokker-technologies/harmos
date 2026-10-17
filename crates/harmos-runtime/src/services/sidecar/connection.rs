@@ -56,12 +56,8 @@ pub(crate) struct Endpoint {
 /* === Implementations === */
 impl Endpoint {
     pub(super) fn new(
-        requests: mpsc::UnboundedSender<Request>,
-        arrivals: mpsc::Sender<Arrival>,
-        operations: &[Definition],
-        contracts: &[Contract],
-        ended: watch::Receiver<bool>,
-        plugin: Option<crate::plugin::PluginScope>,
+        requests: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[Definition], contracts: &[Contract],
+        ended: watch::Receiver<bool>, plugin: Option<crate::plugin::PluginScope>,
     ) -> Self {
         Self {
             provider: None,
@@ -72,12 +68,7 @@ impl Endpoint {
             capacity: Mutex::new(None),
             operations: operations.to_vec(),
             contracts: contracts.to_vec(),
-            initialized: watch::channel(
-                plugin
-                    .as_ref()
-                    .is_none_or(|scope| scope.lifecycle().is_none()),
-            )
-            .0,
+            initialized: watch::channel(plugin.as_ref().is_none_or(|scope| scope.lifecycle().is_none())).0,
             plugin,
             observers: None,
             observer_outcome: None,
@@ -93,11 +84,7 @@ impl Endpoint {
         self
     }
 
-    pub(crate) fn retain_provider(
-        &self,
-        dependent: &Arc<crate::supervision::instance::Instance>,
-        retirement: bool,
-    ) -> crate::Result<()> {
+    pub(crate) fn retain_provider(&self, dependent: &Arc<crate::supervision::instance::Instance>, retirement: bool) -> crate::Result<()> {
         if let Some(provider) = &self.provider {
             dependent.depend_on(provider, retirement)?;
         }
@@ -114,48 +101,26 @@ impl Endpoint {
     }
 
     pub(crate) fn observer_outcome(&self) -> crate::Result<()> {
-        let outcome = self
-            .observer_outcome
-            .as_ref()
-            .and_then(|outcome| outcome.lock().expect("observer outcome is healthy").clone());
+        let outcome = self.observer_outcome.as_ref().and_then(|outcome| outcome.lock().expect("observer outcome is healthy").clone());
         match outcome {
-            Some(source) => Err(crate::Error::TaskFailed {
-                domain: "remote observer",
-                source,
-            }),
+            Some(source) => Err(crate::Error::TaskFailed { domain: "remote observer", source }),
             None => Ok(()),
         }
     }
 
     pub(crate) fn capture_observe_contract(&self) -> crate::Result<()> {
-        if !self
-            .plugin
-            .as_ref()
-            .is_some_and(|scope| scope.observe_contract().is_some())
-        {
+        if !self.plugin.as_ref().is_some_and(|scope| scope.observe_contract().is_some()) {
             return Ok(());
         }
-        let original =
-            self.observers
-                .as_ref()
-                .and_then(Weak::upgrade)
-                .ok_or(crate::Error::Closing {
-                    domain: "native observer owner",
-                })?;
+        let original = self.observers.as_ref().and_then(Weak::upgrade).ok_or(crate::Error::Closing { domain: "native observer owner" })?;
         original.capture_control()
     }
 
     pub(crate) fn bind_capacity(&self, limit: NonZeroUsize) -> crate::Result<Arc<Semaphore>> {
         if limit.get() > Semaphore::MAX_PERMITS {
-            return Err(crate::Error::InvalidInput {
-                field: "native operation capacity",
-                reason: "capacity exceeds the semaphore limit",
-            });
+            return Err(crate::Error::InvalidInput { field: "native operation capacity", reason: "capacity exceeds the semaphore limit" });
         }
-        let mut capacity = self
-            .capacity
-            .lock()
-            .expect("native operation capacity poisoned");
+        let mut capacity = self.capacity.lock().expect("native operation capacity poisoned");
         if let Some((original, semaphore)) = capacity.as_ref() {
             if *original != limit {
                 return Err(crate::Error::InvalidInput {
@@ -172,10 +137,7 @@ impl Endpoint {
 
     pub(crate) fn reserve_capacity(&self) -> Option<OwnedSemaphorePermit> {
         let semaphore = {
-            let capacity = self
-                .capacity
-                .lock()
-                .expect("native operation capacity poisoned");
+            let capacity = self.capacity.lock().expect("native operation capacity poisoned");
             Arc::clone(&capacity.as_ref()?.1)
         };
         semaphore.try_acquire_owned().ok()
@@ -194,19 +156,11 @@ impl Endpoint {
     }
 
     pub(super) async fn publish(
-        &self,
-        scope: &crate::plugin::PluginScope,
-        request: &mut crate::operations::streams::Publish,
+        &self, scope: &crate::plugin::PluginScope, request: &mut crate::operations::streams::Publish,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
         // Calls On One Stream Stage In Arrival Order
-        let turn = self
-            .turns
-            .lock()
-            .expect("native publication turns poisoned")
-            .entry(request.stream.clone())
-            .or_default()
-            .clone();
+        let turn = self.turns.lock().expect("native publication turns poisoned").entry(request.stream.clone()).or_default().clone();
         let _turn = turn.lock().await;
         let lease = scope.publication_in(context, &request.stream, request.schema)?;
 
@@ -224,50 +178,29 @@ impl Endpoint {
             }
         }
 
-        let permit = self
-            .arrivals
-            .reserve()
-            .await
-            .map_err(|_| crate::Error::Closing {
-                domain: "native publication delivery",
-            })?;
-        if !self.accepts()
-            || !self
-                .plugin
-                .as_ref()
-                .is_some_and(|original| original.same_activation(scope))
-        {
-            return Err(crate::Error::Closing {
-                domain: "native publication connection",
-            });
+        let permit = self.arrivals.reserve().await.map_err(|_| crate::Error::Closing { domain: "native publication delivery" })?;
+        if !self.accepts() || !self.plugin.as_ref().is_some_and(|original| original.same_activation(scope)) {
+            return Err(crate::Error::Closing { domain: "native publication connection" });
         }
-        let first = request.sequence.ok_or(crate::Error::InvalidInput {
-            field: "native publication",
-            reason: "the original producer sequence is required",
-        })?;
+        let first = request
+            .sequence
+            .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the original producer sequence is required" })?;
         let rows = 1 + request.following.len() as u64;
         first
             .checked_add(rows - 1)
-            .ok_or(crate::Error::InvalidInput {
-                field: "native publication",
-                reason: "the producer sequence must not overflow",
-            })?;
-        let head = (
-            std::mem::take(&mut request.payload),
-            request.published_unix_micros,
-        );
+            .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the producer sequence must not overflow" })?;
+        let head = (std::mem::take(&mut request.payload), request.published_unix_micros);
         // Each Following Delta Rebuilds A Row's Stamp From Its Predecessor's.
         let mut previous = request.published_unix_micros;
         let mut following = Vec::with_capacity(request.following.len());
         for row in std::mem::take(&mut request.following) {
             let stamp = match (previous, row.published_delta_micros) {
                 (_, None) => None,
-                (Some(previous), Some(delta)) => Some(previous.checked_add(delta).ok_or(
-                    crate::Error::InvalidInput {
-                        field: "native publication",
-                        reason: "a row stamp must not overflow",
-                    },
-                )?),
+                (Some(previous), Some(delta)) => Some(
+                    previous
+                        .checked_add(delta)
+                        .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "a row stamp must not overflow" })?,
+                ),
                 (None, Some(_)) => {
                     return Err(crate::Error::InvalidInput {
                         field: "native publication",
@@ -280,13 +213,7 @@ impl Endpoint {
         }
         let mut batch: Vec<_> = std::iter::once(head)
             .chain(following)
-            .map(
-                |(payload, published_unix_micros)| crate::streams::PublicationRow {
-                    payload,
-                    published_unix_micros,
-                    context: None,
-                },
-            )
+            .map(|(payload, published_unix_micros)| crate::streams::PublicationRow { payload, published_unix_micros, context: None })
             .collect();
         // Every Row Carries The Call Context; The Last Row Takes The Original.
         if let Some((last, rest)) = batch.split_last_mut() {
@@ -296,18 +223,12 @@ impl Endpoint {
             last.context = request.context.take();
         }
         let staged = {
-            let mut sequences = self
-                .sequences
-                .lock()
-                .expect("native publication sequence poisoned");
+            let mut sequences = self.sequences.lock().expect("native publication sequence poisoned");
             let previous = sequences.get(&request.stream).copied().unwrap_or(0);
             let missed = first
                 .checked_sub(previous)
                 .and_then(|advance| advance.checked_sub(1))
-                .ok_or(crate::Error::InvalidInput {
-                    field: "native publication",
-                    reason: "the producer sequence must strictly advance",
-                })?;
+                .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the producer sequence must strictly advance" })?;
             let staged = lease.stage_rows_in(context, batch, first, missed);
             // Rows Before A Refused Row Stay Staged; The Rest Count As Missed.
             if let Some(advanced) = (staged.staged.len() as u64).checked_sub(1) {
@@ -319,10 +240,7 @@ impl Endpoint {
             permit.send(Arrival::Publications(staged.staged));
         }
         match staged.refused {
-            Some(source) => Err(crate::Error::OperationFailed {
-                operation: "host.publish".into(),
-                source: Arc::new(source),
-            }),
+            Some(source) => Err(crate::Error::OperationFailed { operation: "host.publish".into(), source: Arc::new(source) }),
             None => Ok(()),
         }
     }
@@ -352,59 +270,34 @@ impl Endpoint {
         if !self.accepts() {
             return Err(SidecarError::Unavailable);
         }
-        self.requests
-            .send(request)
-            .map_err(|_| SidecarError::Unavailable)
+        self.requests.send(request).map_err(|_| SidecarError::Unavailable)
     }
 
     pub(crate) async fn phase(&self, command: WireCommand) -> Result<WireAnswer, SidecarError> {
         self.request(command, None).await
     }
 
-    pub(crate) async fn attempt(
-        &self,
-        command: WireCommand,
-        children: Children,
-    ) -> Result<WireAnswer, SidecarError> {
+    pub(crate) async fn attempt(&self, command: WireCommand, children: Children) -> Result<WireAnswer, SidecarError> {
         self.request(command, Some(children)).await
     }
 
-    async fn request(
-        &self,
-        command: WireCommand,
-        children: Option<Children>,
-    ) -> Result<WireAnswer, SidecarError> {
+    async fn request(&self, command: WireCommand, children: Option<Children>) -> Result<WireAnswer, SidecarError> {
         if !self.accepts() {
             return Err(SidecarError::Unavailable);
         }
         let params = command.encode().map_err(|error| match error {
-            harmos_sdk::operations::WireCodecError::Oversized => SidecarError::refused(
-                Frame::OVERSIZED,
-                "operation control exceeds the native frame limit",
-            ),
+            harmos_sdk::operations::WireCodecError::Oversized => {
+                SidecarError::refused(Frame::OVERSIZED, "operation control exceeds the native frame limit")
+            }
             error => SidecarError::Malformed(error.to_string()),
         })?;
-        let frame = Frame::Call {
-            id: u64::MAX,
-            method: WIRE_METHOD.to_owned(),
-            params,
-        };
+        let frame = Frame::Call { id: u64::MAX, method: WIRE_METHOD.to_owned(), params };
         if !frame.fits() {
-            return Err(SidecarError::refused(
-                Frame::OVERSIZED,
-                "operation control exceeds the native frame limit",
-            ));
+            return Err(SidecarError::refused(Frame::OVERSIZED, "operation control exceeds the native frame limit"));
         }
-        let Frame::Call { method, params, .. } = frame else {
-            unreachable!()
-        };
+        let Frame::Call { method, params, .. } = frame else { unreachable!() };
         let (answer, answered) = oneshot::channel();
-        let request = Request {
-            method,
-            params,
-            answer,
-            children,
-        };
+        let request = Request { method, params, answer, children };
         self.send(request)?;
         let payload = answered.await.map_err(|_| SidecarError::Unavailable)??;
         WireAnswer::decode(&payload).map_err(|error| SidecarError::Malformed(error.to_string()))
@@ -413,10 +306,7 @@ impl Endpoint {
     pub(crate) async fn settle(&self) -> Result<(), SidecarError> {
         let mut ended = self.ended.clone();
         while !*ended.borrow_and_update() {
-            ended
-                .changed()
-                .await
-                .map_err(|_| SidecarError::Unavailable)?;
+            ended.changed().await.map_err(|_| SidecarError::Unavailable)?;
         }
         Ok(())
     }

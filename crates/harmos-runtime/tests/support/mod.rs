@@ -76,10 +76,7 @@ mod feeds {
 }
 
 /* === Re-Exports === */
-#[allow(
-    unused_imports,
-    reason = "each integration-test binary compiles only the fixture slice it needs"
-)]
+#[allow(unused_imports, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub use self::{
     app::{booted, runtime, runtime_from, streaming},
     feeds::{Capture, Probe, Pulse, Reading, Run},
@@ -96,11 +93,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 // Local Imports
 use harmos_runtime::{
-    Application, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible,
-    runtime::Registration, state::DecodeError, state::Entry, state::Envelope, state::Invert,
-    state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
-    state::Undoable, storage::JournalConsumer, storage::Payload, storage::Recovery,
-    storage::Source, streams::Definition,
+    Application, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError, state::Entry,
+    state::Envelope, state::Invert, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction, state::Undoable,
+    storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Definition,
 };
 
 /* === Constants === */
@@ -126,18 +121,7 @@ pub const NOTED: (Kind, &str, u32) = (Kind::Record, "ledger.noted", 1);
 pub type Stored = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
 
 /* === Structs === */
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Account(pub u8);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -226,10 +210,7 @@ impl Ledger {
     }
 
     pub fn bulky(words: usize) -> Self {
-        Self {
-            bulk: vec![0; words],
-            ..Self::default()
-        }
+        Self { bulk: vec![0; words], ..Self::default() }
     }
 }
 
@@ -266,39 +247,18 @@ impl Application for Bank {
 
 impl Registration<Bank> for Definitions {
     fn register(self) -> Catalog<Bank> {
-        fn decode(
-            id: &DefinitionId,
-            version: u32,
-            bytes: &[u8],
-        ) -> Result<Option<Change>, DecodeError> {
-            let malformed = |_| DecodeError::Malformed {
-                id: id.clone(),
-                version,
-            };
+        fn decode(id: &DefinitionId, version: u32, bytes: &[u8]) -> Result<Option<Change>, DecodeError> {
+            let malformed = |_| DecodeError::Malformed { id: id.clone(), version };
             match (id.as_str(), version) {
-                ("ledger.deposit", 1 | 2) => serde_json::from_slice(bytes)
-                    .map(Change::Deposit)
-                    .map(Some)
-                    .map_err(malformed),
-                ("ledger.withdraw", 1) => serde_json::from_slice(bytes)
-                    .map(Change::Withdraw)
-                    .map(Some)
-                    .map_err(malformed),
-                ("ledger.freeze", 1) => serde_json::from_slice::<()>(bytes)
-                    .map(|()| Some(Change::Freeze))
-                    .map_err(malformed),
-                ("ledger.explode", 1) => serde_json::from_slice::<()>(bytes)
-                    .map(|()| Some(Change::Explode))
-                    .map_err(malformed),
+                ("ledger.deposit", 1 | 2) => serde_json::from_slice(bytes).map(Change::Deposit).map(Some).map_err(malformed),
+                ("ledger.withdraw", 1) => serde_json::from_slice(bytes).map(Change::Withdraw).map(Some).map_err(malformed),
+                ("ledger.freeze", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Freeze)).map_err(malformed),
+                ("ledger.explode", 1) => serde_json::from_slice::<()>(bytes).map(|()| Some(Change::Explode)).map_err(malformed),
                 _ => Ok(None),
             }
         }
 
-        Catalog::Transactions {
-            definitions: self.0,
-            decode,
-            inverses: Some(inverses),
-        }
+        Catalog::Transactions { definitions: self.0, decode, inverses: Some(inverses) }
     }
 }
 
@@ -321,10 +281,7 @@ impl Undoable for Deposit {
 
 impl Invert<Ledger> for Deposit {
     fn invert(&self, _before: &Ledger) -> Withdraw {
-        Withdraw {
-            account: self.account,
-            amount: self.amount,
-        }
+        Withdraw { account: self.account, amount: self.amount }
     }
 }
 
@@ -343,10 +300,7 @@ impl Transaction<Ledger> for DepositV1 {
 
 impl From<DepositV1> for Deposit {
     fn from(old: DepositV1) -> Self {
-        Self {
-            account: old.account,
-            amount: old.amount,
-        }
+        Self { account: old.account, amount: old.amount }
     }
 }
 
@@ -357,9 +311,7 @@ impl Transaction<Ledger> for Withdraw {
         if self.amount <= 0 {
             return Err(Refusal::NotPositive);
         }
-        (ledger.balance(self.account) >= self.amount)
-            .then_some(())
-            .ok_or(Refusal::Overdrawn)
+        (ledger.balance(self.account) >= self.amount).then_some(()).ok_or(Refusal::Overdrawn)
     }
 
     fn apply(&self, ledger: &mut Ledger) {
@@ -374,10 +326,7 @@ impl Undoable for Withdraw {
 
 impl Invert<Ledger> for Withdraw {
     fn invert(&self, _before: &Ledger) -> Deposit {
-        Deposit {
-            account: self.account,
-            amount: self.amount,
-        }
+        Deposit { account: self.account, amount: self.amount }
     }
 }
 
@@ -424,12 +373,7 @@ impl Mirror {
     pub fn new() -> (Self, Arc<AtomicU64>) {
         let checkpoint = Arc::new(AtomicU64::new(0));
 
-        (
-            Self {
-                checkpoint: Arc::clone(&checkpoint),
-            },
-            checkpoint,
-        )
+        (Self { checkpoint: Arc::clone(&checkpoint) }, checkpoint)
     }
 }
 
@@ -438,11 +382,7 @@ impl JournalConsumer<Bank> for Mirror {
         Position(self.checkpoint.load(Ordering::Acquire))
     }
 
-    async fn drain(
-        &mut self,
-        _entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         self.checkpoint.store(applied.0, Ordering::Release);
 
         applied
@@ -457,10 +397,7 @@ impl Copied {
     }
 
     pub fn resuming(entries: &Stored) -> Self {
-        Self {
-            entries: Arc::clone(entries),
-            resume: Position::ORIGIN,
-        }
+        Self { entries: Arc::clone(entries), resume: Position::ORIGIN }
     }
 
     fn held(&self) -> std::sync::MutexGuard<'_, Vec<Arc<Entry<Recorded<Bank>>>>> {
@@ -473,11 +410,7 @@ impl JournalConsumer<Bank> for Copied {
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        _applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, _applied: Position) -> Position {
         let mut reached = self.resume;
         let mut held = self.held();
 
@@ -497,12 +430,9 @@ impl JournalConsumer<Bank> for Copied {
 
 impl Source<Bank> for Copied {
     async fn load(&mut self) -> Result<Recovery<Bank>, Incompatible> {
-        let entries: Vec<Envelope<Payload<Bank>>> =
-            self.held().iter().map(|entry| stored(entry)).collect();
+        let entries: Vec<Envelope<Payload<Bank>>> = self.held().iter().map(|entry| stored(entry)).collect();
 
-        self.resume = entries
-            .last()
-            .map_or(Position::ORIGIN, |envelope| envelope.position);
+        self.resume = entries.last().map_or(Position::ORIGIN, |envelope| envelope.position);
 
         Ok(Recovery {
             commits: Vec::new(),
@@ -517,10 +447,7 @@ impl Source<Bank> for Copied {
 
 impl Ancient {
     pub fn resuming(entries: &Stored) -> Self {
-        Self {
-            entries: Arc::clone(entries),
-            resume: Position::ORIGIN,
-        }
+        Self { entries: Arc::clone(entries), resume: Position::ORIGIN }
     }
 }
 
@@ -529,11 +456,7 @@ impl JournalConsumer<Bank> for Ancient {
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        _entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         self.resume = applied;
 
         applied
@@ -557,9 +480,7 @@ impl Source<Bank> for Ancient {
             })
             .collect();
 
-        self.resume = entries
-            .last()
-            .map_or(Position::ORIGIN, |envelope| envelope.position);
+        self.resume = entries.last().map_or(Position::ORIGIN, |envelope| envelope.position);
 
         Ok(Recovery {
             commits: Vec::new(),
@@ -581,11 +502,7 @@ impl harmos_runtime::state::CatalogCodec for Change {
                 Self::Freeze => "ledger.freeze",
                 Self::Explode => "ledger.explode",
             }),
-            if matches!(self, Self::Deposit(_)) {
-                2
-            } else {
-                1
-            },
+            if matches!(self, Self::Deposit(_)) { 2 } else { 1 },
         )
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -609,11 +526,7 @@ impl harmos_runtime::state::CatalogCodec for Fact {
 }
 
 impl harmos_runtime::state::RecordCatalog for Fact {
-    fn restore(
-        id: &harmos_runtime::DefinitionId,
-        version: u32,
-        payload: &serde_json::Value,
-    ) -> Result<Option<Self>, serde_json::Error> {
+    fn restore(id: &harmos_runtime::DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
         if id.as_str() != "ledger.noted" || version != 1 {
             return Ok(None);
         }
@@ -626,9 +539,7 @@ impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
 /* === Public Functions === */
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(
-        [DEPOSIT, DEPOSIT_V1, WITHDRAW, FREEZE, EXPLODE, NOTED]
-            .map(|(kind, id, version)| (kind, DefinitionId::new(id), version))
-            .into(),
+        [DEPOSIT, DEPOSIT_V1, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into(),
     )
 }
 
@@ -665,32 +576,15 @@ pub fn pulse(sample: u64) -> Pulse {
 }
 
 pub fn capture(run: u64, probe: u64, ordinal: u64, value: i64) -> Capture {
-    Capture {
-        run: Run(run),
-        probe: Probe(probe),
-        ordinal,
-        value,
-    }
+    Capture { run: Run(run), probe: Probe(probe), ordinal, value }
 }
 
 pub async fn balance(runtime: &Runtime<Bank>, account: Account) -> i64 {
-    runtime
-        .state
-        .state()
-        .read(|ledger| ledger.balance(account))
-        .await
-        .expect("reads are open")
-        .value
+    runtime.state.state().read(|ledger| ledger.balance(account)).await.expect("reads are open").value
 }
 
 pub async fn ledger(runtime: &Runtime<Bank>) -> Ledger {
-    runtime
-        .state
-        .state()
-        .read(Clone::clone)
-        .await
-        .expect("reads are open")
-        .value
+    runtime.state.state().read(Clone::clone).await.expect("reads are open").value
 }
 
 pub fn alice() -> PrincipalId {
@@ -736,13 +630,7 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
                 id: id.clone(),
                 version,
                 metadata: entry.metadata.clone(),
-                payload: Payload {
-                    prepared: None,
-                    id,
-                    version,
-                    value: Recorded::System(fact.clone()),
-                    apply: None,
-                },
+                payload: Payload { prepared: None, id, version, value: Recorded::System(fact.clone()), apply: None },
             };
         }
     };
@@ -772,10 +660,7 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
 
 fn ancient(entry: &Entry<Recorded<Bank>>, deposit: Deposit) -> Envelope<Payload<Bank>> {
     let (kind, id, version) = DEPOSIT_V1;
-    let old = DepositV1 {
-        account: deposit.account,
-        amount: deposit.amount,
-    };
+    let old = DepositV1 { account: deposit.account, amount: deposit.amount };
 
     Envelope {
         position: entry.position,

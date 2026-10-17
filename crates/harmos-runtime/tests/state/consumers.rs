@@ -16,15 +16,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 // Third Party Imports
-use support::{
-    Bank, Copied, Ledger, Pulse, booted, catalog, deposit, ledger, pulse, streams, withdraw,
-};
+use support::{Bank, Copied, Ledger, Pulse, booted, catalog, deposit, ledger, pulse, streams, withdraw};
 // Local Imports
 use crate::state::support;
 use harmos_runtime::{
-    Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch,
-    storage::Cursor, storage::JournalConsumer, storage::Recovery, storage::Source,
-    storage::StreamConsumer,
+    Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch, storage::Cursor,
+    storage::JournalConsumer, storage::Recovery, storage::Source, storage::StreamConsumer,
 };
 
 /* === Constants === */
@@ -64,13 +61,7 @@ impl Recorder {
     fn new() -> (Self, Asked) {
         let asked: Asked = Arc::new(Mutex::new(Vec::new()));
 
-        (
-            Self {
-                asked: Arc::clone(&asked),
-                resume: Position::ORIGIN,
-            },
-            asked,
-        )
+        (Self { asked: Arc::clone(&asked), resume: Position::ORIGIN }, asked)
     }
 }
 
@@ -79,25 +70,15 @@ impl JournalConsumer<Bank> for Recorder {
         self.resume
     }
 
-    async fn drain(
-        &mut self,
-        _entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
-        self.asked
-            .lock()
-            .expect("the probe is never poisoned")
-            .push("drain");
+    async fn drain(&mut self, _entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
+        self.asked.lock().expect("the probe is never poisoned").push("drain");
         self.resume = applied;
 
         applied
     }
 
     async fn flush(&mut self) {
-        self.asked
-            .lock()
-            .expect("the probe is never poisoned")
-            .push("flush");
+        self.asked.lock().expect("the probe is never poisoned").push("flush");
     }
 }
 
@@ -114,9 +95,7 @@ impl Tape {
     }
 
     fn resuming(kept: &Arc<Kept>) -> Self {
-        Self {
-            kept: Arc::clone(kept),
-        }
+        Self { kept: Arc::clone(kept) }
     }
 }
 
@@ -132,24 +111,13 @@ impl StreamConsumer<Bank> for Tape {
     async fn drain(&mut self, batch: Batch<Bank>) -> Cursor {
         let resume = self.resume();
         let reached = batch.reaches();
-        let samples: Vec<u64> = batch
-            .select::<Pulse>()
-            .map(|row| row.value.sample)
-            .collect();
+        let samples: Vec<u64> = batch.select::<Pulse>().map(|row| row.value.sample).collect();
         let missed = (reached.0 - resume.0) - samples.len() as u64;
 
         if missed > 0 {
-            self.kept
-                .gaps
-                .lock()
-                .expect("the tape is never poisoned")
-                .push(missed);
+            self.kept.gaps.lock().expect("the tape is never poisoned").push(missed);
         }
-        self.kept
-            .samples
-            .lock()
-            .expect("the tape is never poisoned")
-            .extend(samples);
+        self.kept.samples.lock().expect("the tape is never poisoned").extend(samples);
         self.kept.cursor.store(reached.0, Ordering::Release);
 
         reached
@@ -165,11 +133,7 @@ impl JournalConsumer<Bank> for Networked {
         JournalConsumer::resume(&self.inner)
     }
 
-    async fn drain(
-        &mut self,
-        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
-        applied: Position,
-    ) -> Position {
+    async fn drain(&mut self, entries: Vec<Arc<Entry<Recorded<Bank>>>>, applied: Position) -> Position {
         self.inner.drain(entries, applied).await
     }
 }
@@ -192,11 +156,7 @@ async fn drain_precedes_flush() {
     let runtime = booted(Ledger::default(), |builder| builder.attach(recorder)).await;
 
     for amount in [10, 20] {
-        runtime
-            .state
-            .commit(deposit(amount))
-            .await
-            .expect("accepted");
+        runtime.state.commit(deposit(amount)).await.expect("accepted");
     }
     let applied = runtime.state.applied();
     let settled = runtime.stop().await.unwrap();
@@ -205,20 +165,13 @@ async fn drain_precedes_flush() {
     // everything that happened before it.
     let asked = asked.lock().expect("the probe is never poisoned").clone();
 
-    assert_eq!(
-        settled, applied,
-        "the frontier stop reports is read back after the flush"
-    );
+    assert_eq!(settled, applied, "the frontier stop reports is read back after the flush");
     assert!(
         asked.ends_with(&["drain", "flush", "drain"]),
         "the final drain precedes the flush, and the one drain after it is \
          the read-back of what the flush made durable: {asked:?}"
     );
-    assert_eq!(
-        asked.iter().filter(|verb| **verb == "flush").count(),
-        1,
-        "flush happens once, at stop, never per drain"
-    );
+    assert_eq!(asked.iter().filter(|verb| **verb == "flush").count(), 1, "flush happens once, at stop, never per drain");
 }
 
 #[tokio::test]
@@ -231,20 +184,9 @@ async fn recorder_resumes_own() {
     }
     runtime.stop().await.unwrap();
 
-    assert_eq!(
-        kept.cursor.load(Ordering::Acquire),
-        5,
-        "the first supervisor made every published row durable"
-    );
-    assert_eq!(
-        *kept.samples.lock().expect("the tape is never poisoned"),
-        vec![1, 2, 3, 4, 5]
-    );
-    assert_eq!(
-        kept.flushed.load(Ordering::Acquire),
-        1,
-        "a stream recorder rides the same stop order as every other fold"
-    );
+    assert_eq!(kept.cursor.load(Ordering::Acquire), 5, "the first supervisor made every published row durable");
+    assert_eq!(*kept.samples.lock().expect("the tape is never poisoned"), vec![1, 2, 3, 4, 5]);
+    assert_eq!(kept.flushed.load(Ordering::Acquire), 1, "a stream recorder rides the same stop order as every other fold");
 
     let runtime = recording(Tape::resuming(&kept)).await;
     for sample in 6..=9 {
@@ -252,21 +194,13 @@ async fn recorder_resumes_own() {
     }
     runtime.stop().await.unwrap();
 
-    assert_eq!(
-        kept.cursor.load(Ordering::Acquire),
-        9,
-        "new rows continue after the durable cursor instead of reusing it"
-    );
+    assert_eq!(kept.cursor.load(Ordering::Acquire), 9, "new rows continue after the durable cursor instead of reusing it");
     assert_eq!(
         *kept.samples.lock().expect("the tape is never poisoned"),
         vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
         "reattachment neither skips nor repeats a row"
     );
-    assert_eq!(
-        kept.flushed.load(Ordering::Acquire),
-        2,
-        "every attachment is flushed by its own stop"
-    );
+    assert_eq!(kept.flushed.load(Ordering::Acquire), 2, "every attachment is flushed by its own stop");
 }
 
 #[tokio::test]
@@ -304,12 +238,7 @@ async fn recovery_accepts_source() {
     let frontier = live.state.applied();
     live.stop().await.unwrap();
 
-    let recovered = booted(Ledger::default(), |builder| {
-        builder.recover(Networked {
-            inner: Copied::resuming(&stored),
-        })
-    })
-    .await;
+    let recovered = booted(Ledger::default(), |builder| builder.recover(Networked { inner: Copied::resuming(&stored) })).await;
 
     assert_eq!(ledger(&recovered).await, expected);
     assert_eq!(recovered.state.applied(), frontier);

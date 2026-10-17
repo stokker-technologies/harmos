@@ -85,16 +85,8 @@ pub enum FilePhase {
 impl MemorySize for FileMetadata {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.id
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
-            .saturating_add(
-                self.scope
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Option<Identifier>>()),
-            )
+            .saturating_add(self.id.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
+            .saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of::<Option<Identifier>>()))
             .saturating_add(self.media_type.capacity())
     }
 }
@@ -102,48 +94,24 @@ impl MemorySize for FileMetadata {
 impl MemorySize for FileReference {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.position
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-            )
-            .saturating_add(
-                self.metadata
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<FileMetadata>()),
-            )
+            .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of::<FileMetadata>()))
     }
 }
 
 impl MemorySize for FileSession {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.history
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StoreHistory>()),
-            )
-            .saturating_add(
-                self.id
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
+            .saturating_add(self.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
+            .saturating_add(self.id.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
     }
 }
 
 impl MemorySize for StagedFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(
-                self.history
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<StoreHistory>()),
-            )
-            .saturating_add(
-                self.id
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of::<Identifier>()),
-            )
+            .saturating_add(self.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
+            .saturating_add(self.id.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
     }
 }
 

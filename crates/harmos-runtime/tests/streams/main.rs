@@ -23,11 +23,7 @@ mod aggregates;
 #[path = "retention.rs"]
 mod retention;
 
-#[cfg(any(
-    feature = "plugin",
-    feature = "plugin-guest",
-    feature = "plugin-sidecar"
-))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[path = "../streams/listeners.rs"]
 mod listeners;
 
@@ -65,9 +61,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos_runtime::{
-    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer,
-    streams::BeneathWindow, streams::Definition, streams::Item, streams::Stream,
-    streams::StreamManager,
+    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
+    streams::Definition, streams::Item, streams::Stream, streams::StreamManager,
 };
 use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 
@@ -102,9 +97,7 @@ impl StreamConsumer<Bank> for Selecting {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn next<S: Clone + 'static>(
-    watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin),
-) -> Option<Item<S>> {
+async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }
 
@@ -154,12 +147,7 @@ async fn rows_gaps_account() {
     while delivered + missed < published {
         match next(&mut live).await.expect("the watch is live") {
             Item::Row(At { value, .. }) => {
-                assert!(
-                    value.sample > last,
-                    "delivery is in publish order with no repeats: {} then {}",
-                    last,
-                    value.sample
-                );
+                assert!(value.sample > last, "delivery is in publish order with no repeats: {} then {}", last, value.sample);
                 last = value.sample;
                 delivered += 1;
             }
@@ -168,11 +156,7 @@ async fn rows_gaps_account() {
     }
 
     publisher.join().expect("the publisher panics nowhere");
-    assert_eq!(
-        delivered + missed,
-        published,
-        "no row is lost silently: what was not delivered was counted"
-    );
+    assert_eq!(delivered + missed, published, "no row is lost silently: what was not delivered was counted");
     assert_eq!(last, published, "the newest row is always delivered");
 
     runtime.stop().await.unwrap();
@@ -184,12 +168,7 @@ async fn publish_never_waits() {
     // A watcher that makes no progress at all while publishing runs, and a
     // snapshot taken before it: zero consumer progress of any kind.
     let mut stalled = runtime.streams.watch::<Pulse>();
-    let held: Vec<At<Pulse>> = runtime
-        .streams
-        .query::<Pulse>(..)
-        .await
-        .expect("nothing was evicted yet")
-        .collect();
+    let held: Vec<At<Pulse>> = runtime.streams.query::<Pulse>(..).await.expect("nothing was evicted yet").collect();
     let streams = runtime.streams.clone();
 
     // A bare OS thread with no async runtime underneath: a publish that
@@ -203,20 +182,12 @@ async fn publish_never_waits() {
     });
     publisher.join().expect("publish is sync and infallible");
 
-    assert!(
-        held.is_empty(),
-        "the earlier snapshot is unmoved by publishes"
-    );
+    assert!(held.is_empty(), "the earlier snapshot is unmoved by publishes");
 
     // The stalled watcher, polled only now, accounts for every row: the exact
     // gap, then the newest window in order.
     let window = Pulse::WINDOW as u64;
-    assert_eq!(
-        next(&mut stalled).await,
-        Some(Item::Gap {
-            missed: published - window
-        })
-    );
+    assert_eq!(next(&mut stalled).await, Some(Item::Gap { missed: published - window }));
     for sample in (published - window + 1)..=published {
         assert!(matches!(
             next(&mut stalled).await,
@@ -253,20 +224,12 @@ async fn beneath_window_refused() {
     }
 
     assert_eq!(
-        runtime
-            .streams
-            .query::<Pulse>(..)
-            .await
-            .expect_err("an unbounded start reaches beneath the window"),
+        runtime.streams.query::<Pulse>(..).await.expect_err("an unbounded start reaches beneath the window"),
         BeneathWindow::Unserved,
         "with no series adapter attached the window is the whole served history"
     );
     assert_eq!(
-        runtime
-            .streams
-            .query::<Pulse>(Position::ORIGIN..)
-            .await
-            .expect_err("the origin lies beneath the floor"),
+        runtime.streams.query::<Pulse>(Position::ORIGIN..).await.expect_err("the origin lies beneath the floor"),
         BeneathWindow::Unserved,
     );
 
@@ -337,11 +300,7 @@ async fn demand_reflects_watchers() {
     let other = runtime.streams.watch::<Reading>();
 
     assert_eq!(*demand.borrow(), 2);
-    assert_eq!(
-        *runtime.streams.demand::<Reading>().borrow(),
-        1,
-        "demand is per stream: the other feed's watcher is not this one's"
-    );
+    assert_eq!(*runtime.streams.demand::<Reading>().borrow(), 1, "demand is per stream: the other feed's watcher is not this one's");
 
     drop(first);
     assert_eq!(*demand.borrow(), 1);
@@ -364,24 +323,12 @@ async fn consumer_selection_demand() {
     let pulse_demand = runtime.streams.demand::<Pulse>();
     let reading_demand = runtime.streams.demand::<Reading>();
 
-    assert_eq!(
-        *pulse_demand.borrow(),
-        1,
-        "the attached consumer counts for the stream it selected"
-    );
-    assert_eq!(
-        *reading_demand.borrow(),
-        0,
-        "selection is per definition, not per facility"
-    );
+    assert_eq!(*pulse_demand.borrow(), 1, "the attached consumer counts for the stream it selected");
+    assert_eq!(*reading_demand.borrow(), 0, "selection is per definition, not per facility");
 
     runtime.stop().await.unwrap();
 
-    assert_eq!(
-        *pulse_demand.borrow(),
-        0,
-        "the consumer leaves demand when its supervisor joins"
-    );
+    assert_eq!(*pulse_demand.borrow(), 0, "the consumer leaves demand when its supervisor joins");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -414,19 +361,13 @@ async fn demand_drives_capture() {
     while !*acknowledgements.borrow_and_update() {
         acknowledgements.changed().await.expect("the loop is alive");
     }
-    assert!(
-        capture.load(Ordering::Acquire),
-        "a watcher appearing turns capture on"
-    );
+    assert!(capture.load(Ordering::Acquire), "a watcher appearing turns capture on");
 
     drop(watching);
     while *acknowledgements.borrow_and_update() {
         acknowledgements.changed().await.expect("the loop is alive");
     }
-    assert!(
-        !capture.load(Ordering::Acquire),
-        "the last watcher leaving turns capture off"
-    );
+    assert!(!capture.load(Ordering::Acquire), "the last watcher leaving turns capture off");
 
     // The loop ends when the facility is gone entirely — no lifecycle control
     // was ever exercised by the substrate itself. Stopping ends delivery; it is
@@ -446,17 +387,9 @@ async fn stop_ends_watch() {
     runtime.streams.publish(pulse(2));
     runtime.stop().await.unwrap();
 
-    assert!(
-        matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(1))
-    );
-    assert!(
-        matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(2))
-    );
-    assert_eq!(
-        next(&mut live).await,
-        None,
-        "every row published before the stop is delivered, then the watch ends"
-    );
+    assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(1)));
+    assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(2)));
+    assert_eq!(next(&mut live).await, None, "every row published before the stop is delivered, then the watch ends");
 }
 
 #[tokio::test]
@@ -471,10 +404,7 @@ async fn colliding_id_refused() {
     let Err(refused) = refused else {
         panic!("two definitions share an id; the boot cannot honor both");
     };
-    assert!(
-        refused.to_string().contains("pulse"),
-        "the refusal names the colliding id: {refused}"
-    );
+    assert!(refused.to_string().contains("pulse"), "the refusal names the colliding id: {refused}");
 }
 
 #[tokio::test]
@@ -488,19 +418,13 @@ async fn empty_window_refused() {
         const WINDOW: usize = 0;
     }
 
-    let refused = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(support::catalog())
-        .register([Hollow::definition()])
-        .runtime()
-        .await;
+    let refused =
+        Runtime::<Bank>::builder(Ledger::default(), ()).register(support::catalog()).register([Hollow::definition()]).runtime().await;
 
     let Err(refused) = refused else {
         panic!("a window of zero rows retains nothing and cannot be honored");
     };
-    assert!(
-        refused.to_string().contains("hollow"),
-        "the refusal names the stream it cannot honor: {refused}"
-    );
+    assert!(refused.to_string().contains("hollow"), "the refusal names the stream it cannot honor: {refused}");
 }
 
 #[allow(dead_code)]

@@ -27,9 +27,7 @@ use std::time::Duration;
 use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
-use harmos_runtime::operations::{
-    Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
-};
+use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::Service, services::ServiceStatus};
 
@@ -53,13 +51,17 @@ const ABANDON: u64 = u64::MAX;
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
         #[harmos_runtime::message]
-        #[harmos_runtime::operation(id = $id, version = 1, response = Blob, policy = POLICY,
-            visibility = Visibility::$visibility)]
+        #[harmos_runtime::operation(id = $id, version = 1, response = Blob, policy = POLICY, visibility = Visibility::$visibility)]
         #[derive(Clone)]
-        pub struct $name { pub id: u64, pub data: Vec<u8> }
+        pub struct $name {
+            pub id: u64,
+            pub data: Vec<u8>,
+        }
 
         impl From<Blob> for $name {
-            fn from(value: Blob) -> Self { Self { id: value.id, data: value.data } }
+            fn from(value: Blob) -> Self {
+                Self { id: value.id, data: value.data }
+            }
         }
     };
 }
@@ -254,7 +256,10 @@ impl Operation for Publishing {
     ) -> Result<harmos_runtime::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("nested-prepared-{}", request.id));
-        host.publisher::<Process>().publish_on::<Blob>(&Blob { id: request.id, data: request.data.clone() }).await.map_err(Refusal::from)?;
+        host.publisher::<Process>()
+            .publish_on::<Blob>(&Blob { id: request.id, data: request.data.clone() })
+            .await
+            .map_err(Refusal::from)?;
         Ok(Blob { id: request.id, data: request.data.clone() }.into())
     }
 
@@ -281,7 +286,8 @@ impl Operation for CallbackPublication {
     }
 
     async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut harmos_runtime::operations::streams::Publish, endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut harmos_runtime::operations::streams::Publish,
+        endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         self.owner.calls.fetch_add(1, Ordering::SeqCst);
         let id = self.owner.echo.forced().unwrap_or_else(|| request.sequence.unwrap());

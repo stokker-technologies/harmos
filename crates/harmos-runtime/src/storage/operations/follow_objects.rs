@@ -54,35 +54,21 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<ObjectEntry>;
 
-    async fn initialize<'ctx>(
-        storage: Arc<StorageManager<C>>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self> {
+    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut FollowObjects,
-        output: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut FollowObjects, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         if !request.selection.follows_revisions() {
-            return Err(Error::InvalidInput {
-                field: "storage follow",
-                reason: "following delivers every object revision",
-            });
+            return Err(Error::InvalidInput { field: "storage follow", reason: "following delivers every object revision" });
         }
-        let mut follower = self
-            .storage
-            .follow::<ObjectEntry>(request.after.as_ref(), request.selection.clone())
-            .await?;
+        let mut follower = self.storage.follow::<ObjectEntry>(request.after.as_ref(), request.selection.clone()).await?;
         loop {
             let page = follower.next().await?;
             for entry in page.entries() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+                output.send_with(entry.memory_size(), || Ok(entry.clone())).await?;
             }
         }
     }

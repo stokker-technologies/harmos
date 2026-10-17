@@ -63,49 +63,31 @@ impl<'a> Scope<'a> {
         Self { core }
     }
 
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(crate) fn original_control(&self) -> Weak<Instance> {
         self.core.parent.clone()
     }
 
     pub(crate) fn reserve_tracked<O>(
-        &self,
-        id: OperationInstanceId,
-        lane: &'static str,
-        submitted: tokio::time::Instant,
-        privileged: bool,
+        &self, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> crate::Result<Reservation<O>>
     where
         O: Send + 'static,
     {
         let children = Arc::downgrade(&self.core.children);
-        let preparation =
-            self.core
-                .instances
-                .reserve(id, lane, submitted, privileged, move || {
-                    if let Some(children) = children.upgrade() {
-                        let removed = children
-                            .lock()
-                            .expect("scope child lock is healthy")
-                            .remove(&id);
-                        drop(removed);
-                    }
-                    retired();
-                })?;
+        let preparation = self.core.instances.reserve(id, lane, submitted, privileged, move || {
+            if let Some(children) = children.upgrade() {
+                let removed = children.lock().expect("scope child lock is healthy").remove(&id);
+                drop(removed);
+            }
+            retired();
+        })?;
         let child = Child::new(preparation.control());
         if let Some(parent) = self.core.parent.upgrade() {
             parent.track(&child.settlement());
         }
-        self.core
-            .children
-            .lock()
-            .expect("scope child lock is healthy")
-            .insert(id, child);
+        self.core.children.lock().expect("scope child lock is healthy").insert(id, child);
         Ok(preparation.inherit(self.core.cause))
     }
 
@@ -122,9 +104,7 @@ impl<'a> Scope<'a> {
     }
 
     /// The Runtime-Owned Storage Instance, When Storage Is Enabled.
-    pub fn storage<A: crate::Application>(
-        &self,
-    ) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
         self.core.instances.handles_of::<A>().storage.get()
     }
 
@@ -148,35 +128,17 @@ impl<'a> Scope<'a> {
 
 impl std::fmt::Debug for Scope<'_> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Scope")
-            .field("lane", &self.core.admission.name())
-            .field("cause", &self.core.cause)
-            .finish()
+        formatter.debug_struct("Scope").field("lane", &self.core.admission.name()).field("cause", &self.core.cause).finish()
     }
 }
 
 impl ScopeCore {
-    pub(crate) fn new(
-        instances: Arc<Instances>,
-        admission: Admission,
-        cause: Option<Position>,
-        parent: Weak<Instance>,
-    ) -> Self {
-        Self {
-            instances,
-            parent,
-            admission,
-            cause,
-            children: Arc::new(Mutex::new(BTreeMap::new())),
-        }
+    pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
+        Self { instances, parent, admission, cause, children: Arc::new(Mutex::new(BTreeMap::new())) }
     }
 
     pub(crate) fn close(self) -> ClosedScope {
-        let children: Vec<_> =
-            std::mem::take(&mut *self.children.lock().expect("scope child lock is healthy"))
-                .into_values()
-                .collect();
+        let children: Vec<_> = std::mem::take(&mut *self.children.lock().expect("scope child lock is healthy")).into_values().collect();
         for child in &children {
             child.control.cancel();
         }
@@ -188,10 +150,7 @@ impl ScopeCore {
 impl ClosedScope {
     pub(crate) async fn drain(&mut self) {
         for child in &mut self.children {
-            let _ = child
-                .settled
-                .wait_for(|status| status.phase() == Phase::Settled)
-                .await;
+            let _ = child.settled.wait_for(|status| status.phase() == Phase::Settled).await;
         }
     }
 }

@@ -66,10 +66,7 @@ pub struct CollectionArguments {
 
 /* === Implementations === */
 impl BuildArguments {
-    pub fn settings(
-        self,
-        backend: harmos_packaging::config::BuildBackend,
-    ) -> harmos_packaging::config::BuildSettings {
+    pub fn settings(self, backend: harmos_packaging::config::BuildBackend) -> harmos_packaging::config::BuildSettings {
         harmos_packaging::config::BuildSettings {
             backend,
             manifest: self.manifest_path,
@@ -86,9 +83,7 @@ impl BuildArguments {
 
 impl CollectionArguments {
     pub fn build(
-        self,
-        settings: &harmos_packaging::config::BuildSettings,
-        cancellation: &harmos_packaging::BuildCancellation,
+        self, settings: &harmos_packaging::config::BuildSettings, cancellation: &harmos_packaging::BuildCancellation,
     ) -> Result<harmos_packaging::Build, harmos_packaging::Error> {
         match (self.from_cargo_json, self.metadata_json, self.archive_json) {
             (Some(messages), Some(metadata), Some(receipt)) => {
@@ -104,8 +99,7 @@ impl CollectionArguments {
             }
             (None, None, None) => harmos_packaging::build_with_cancellation(settings, cancellation),
             _ => Err(harmos_packaging::Error::Settings(
-                "collection requires Cargo messages, metadata and the archive producer receipt"
-                    .into(),
+                "collection requires Cargo messages, metadata and the archive producer receipt".into(),
             )),
         }
     }

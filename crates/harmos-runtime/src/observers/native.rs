@@ -47,14 +47,8 @@ struct Retained(Activity);
 impl crate::supervision::cleanup::Resource for Retained {
     fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
         Box::pin(async move {
-            self.0
-                .stop()
-                .await
-                .map_err(|source| Arc::new(failed(source)))?;
-            self.0
-                .cleanup()
-                .await
-                .map_err(|source| Arc::new(failed(source)))
+            self.0.stop().await.map_err(|source| Arc::new(failed(source)))?;
+            self.0.cleanup().await.map_err(|source| Arc::new(failed(source)))
         })
     }
 }
@@ -71,12 +65,7 @@ where
         Ok(ObserverDefinition {
             id: self.instance.id().to_owned(),
             interval: self.instance.interval(),
-            demand_keys: self
-                .instance
-                .demand_keys()
-                .iter()
-                .map(|key| key.name())
-                .collect(),
+            demand_keys: self.instance.demand_keys().iter().map(|key| key.name()).collect(),
             streams: self
                 .instance
                 .streams()
@@ -88,13 +77,8 @@ where
                         row_metadata: entry.row_metadata(),
                         schema: entry.schema,
                         window: entry.window,
-                        row: crate::schema::graph::Schema::from_declaration(
-                            entry.row,
-                            &crate::config::SchemaSettings::default(),
-                        )
-                        .map_err(|source| Error::RecordSchema {
-                            source: source.into(),
-                        })?,
+                        row: crate::schema::graph::Schema::from_declaration(entry.row, &crate::config::SchemaSettings::default())
+                            .map_err(|source| Error::RecordSchema { source: source.into() })?,
                     })
                 })
                 .collect::<Result<Vec<_>>>()?,
@@ -124,10 +108,7 @@ where
         if let Err(source) = closed {
             let failure = Arc::new(failed(source));
             activation.retain(Retained(activity), Arc::clone(&failure));
-            return Err(Error::TaskFailed {
-                domain: "native observer cleanup",
-                source: failure,
-            });
+            return Err(Error::TaskFailed { domain: "native observer cleanup", source: failure });
         }
         match interrupted {
             None => Ok(()),
@@ -140,10 +121,7 @@ where
 
 /* === Private Functions === */
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::TaskFailed {
-        domain: "native observer",
-        source: Arc::new(source),
-    }
+    Error::TaskFailed { domain: "native observer", source: Arc::new(source) }
 }
 
 /* === Tests === */

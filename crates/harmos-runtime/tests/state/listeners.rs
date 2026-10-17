@@ -21,6 +21,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 use harmos_runtime::operations::{Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
@@ -29,7 +30,6 @@ use harmos_runtime::plugin::{
 use harmos_runtime::records::PluginListenerRegistration;
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime, state::Position};
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 
 /* === Constants === */
 
@@ -231,10 +231,7 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources {
-            owner: Some(self.owner.clone()),
-            ..Resources::default()
-        }))
+        Ok(PluginBackend::Embedded(Resources { owner: Some(self.owner.clone()), ..Resources::default() }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
@@ -268,18 +265,8 @@ impl PluginLifecycle for Host {
         let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         if let Some(registration) = &mut resources.listeners {
             registration.lock().await.shutdown().await?;
-        } else if let Some(scope) = resources
-            .endpoint
-            .as_ref()
-            .and_then(|endpoint| endpoint.scope())
-        {
-            resources
-                .owner
-                .as_ref()
-                .unwrap()
-                .records
-                .shutdown_listeners_for(scope)
-                .await?;
+        } else if let Some(scope) = resources.endpoint.as_ref().and_then(|endpoint| endpoint.scope()) {
+            resources.owner.as_ref().unwrap().records.shutdown_listeners_for(scope).await?;
         }
         if let Some(registration) = &mut resources.operations {
             registration.shutdown().await?;
@@ -293,10 +280,7 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 fn fact(value: u32) -> Fact {
-    Fact {
-        value,
-        dropped: Arc::new(AtomicUsize::new(0)),
-    }
+    Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
 }
 
 fn candidate() -> PluginDefinitions {
@@ -437,7 +421,8 @@ async fn failure_fences_side() {
         while host.scope.as_ref().unwrap().is_ready() {
             tokio::task::yield_now().await;
         }
-    }).await;
+    })
+    .await;
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
     assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
     assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
@@ -489,7 +474,8 @@ async fn runtime_signals_listener() {
             } => {},
             result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
         }
-    }).await;
+    })
+    .await;
     assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
     drop(stopping);
     host.owner.release.notify_one();

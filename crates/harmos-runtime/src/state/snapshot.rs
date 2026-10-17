@@ -30,8 +30,8 @@ use super::snapshot_codec;
 use crate::state::{Tail, TrackedState, Undos, dispatch::Dispatch};
 use crate::storage::{SchemaKey, StorageManager};
 use crate::{
-    Application, Error, Result, runtime::Incompatible, state::At, state::Entry, state::Position,
-    state::Receipt, state::Recorded, state::RequestKey, storage::Payload,
+    Application, Error, Result, runtime::Incompatible, state::At, state::Entry, state::Position, state::Receipt, state::Recorded,
+    state::RequestKey, storage::Payload,
 };
 
 /* === Constants === */
@@ -39,19 +39,9 @@ use crate::{
 /* === Macros === */
 
 /* === Type Aliases === */
-type Encoding<A> = fn(
-    &SnapshotPolicy,
-    &At<<A as Application>::State>,
-    &Undos<A>,
-    &Tail<A>,
-    &HashMap<RequestKey, Receipt>,
-) -> Result<Vec<u8>>;
-type Decoding<A> = fn(
-    &[u8],
-    &SnapshotPolicy,
-    &Dispatch<A, Payload<A>>,
-    usize,
-) -> std::result::Result<Restored<A>, Incompatible>;
+type Encoding<A> =
+    fn(&SnapshotPolicy, &At<<A as Application>::State>, &Undos<A>, &Tail<A>, &HashMap<RequestKey, Receipt>) -> Result<Vec<u8>>;
+type Decoding<A> = fn(&[u8], &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
 
 /* === Structs === */
 #[derive(Clone, Debug)]
@@ -85,12 +75,7 @@ impl<A: Application> Snapshots<A> {
     where
         A::State: Serialize + DeserializeOwned,
     {
-        Self {
-            policy,
-            encode: snapshot_codec::encode::<A>,
-            decode: snapshot_codec::decode::<A>,
-            last: AtomicU64::new(0),
-        }
+        Self { policy, encode: snapshot_codec::encode::<A>, decode: snapshot_codec::decode::<A>, last: AtomicU64::new(0) }
     }
 
     pub(crate) fn resumed(&self, position: Position) {
@@ -98,12 +83,8 @@ impl<A: Application> Snapshots<A> {
     }
 
     pub(crate) async fn capture(
-        &self,
-        storage: &StorageManager<crate::storage::ErasedCatalog>,
-        tracked: &TrackedState<A>,
-        undos: &Undos<A>,
-        receipts: &HashMap<RequestKey, Receipt>,
-        final_save: bool,
+        &self, storage: &StorageManager<crate::storage::ErasedCatalog>, tracked: &TrackedState<A>, undos: &Undos<A>,
+        receipts: &HashMap<RequestKey, Receipt>, final_save: bool,
     ) {
         if tracked.poisoned() {
             return;
@@ -123,37 +104,29 @@ impl<A: Application> Snapshots<A> {
             }
             let mut sealing = tracked.sealing.subscribe();
             let reservation = storage.reserve_snapshot(self.policy.max_bytes.get());
-            let mut permit = if final_save {
-                reservation.await?
-            } else {
-                if *sealing.borrow() {
-                    return Ok(());
-                }
-                let mut reservation = pin!(reservation);
-                let mut changed = pin!(sealing.changed());
-                let Some(permit) = poll_fn(|cx| {
-                    if changed.as_mut().poll(cx).is_ready() {
-                        Poll::Ready(None)
-                    } else {
-                        reservation.as_mut().poll(cx).map(Some)
+            let mut permit =
+                if final_save {
+                    reservation.await?
+                } else {
+                    if *sealing.borrow() {
+                        return Ok(());
                     }
-                })
-                .await
-                else {
-                    return Ok(());
+                    let mut reservation = pin!(reservation);
+                    let mut changed = pin!(sealing.changed());
+                    let Some(permit) = poll_fn(|cx| {
+                        if changed.as_mut().poll(cx).is_ready() { Poll::Ready(None) } else { reservation.as_mut().poll(cx).map(Some) }
+                    })
+                    .await
+                    else {
+                        return Ok(());
+                    };
+                    permit?
                 };
-                permit?
-            };
             let state = tracked.state.read().await;
             let tail = tracked.tail.read().await;
             self.last.store(position.0, Ordering::Relaxed);
-            let payload = catch_unwind(AssertUnwindSafe(|| {
-                (self.encode)(&self.policy, &state, undos, &tail, receipts)
-            }))
-            .map_err(|_| Error::InvalidInput {
-                field: "state snapshot",
-                reason: "serializer panicked",
-            })??;
+            let payload = catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &state, undos, &tail, receipts)))
+                .map_err(|_| Error::InvalidInput { field: "state snapshot", reason: "serializer panicked" })??;
             permit.snapshot_payload(payload)?;
             permit.commit(position);
             Ok::<(), Error>(())

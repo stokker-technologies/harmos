@@ -11,9 +11,9 @@
 // Tool And The Generated Python Package.
 
 /* === Modules === */
-mod schematic;
 #[path = "../support/fixtures.rs"]
 mod fixtures;
+mod schematic;
 
 /* === Re-Exports === */
 

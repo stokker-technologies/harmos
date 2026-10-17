@@ -40,13 +40,8 @@ use crate::storage::MutationId;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn write_objects_once(
-        &self,
-        mutation: &MutationId,
-        objects: &[ObjectValue],
-    ) -> Result<Vec<ObjectReceipt>> {
-        let count = NonZeroUsize::new(objects.len())
-            .ok_or_else(|| invalid("object batch must not be empty"))?;
+    pub async fn write_objects_once(&self, mutation: &MutationId, objects: &[ObjectValue]) -> Result<Vec<ObjectReceipt>> {
+        let count = NonZeroUsize::new(objects.len()).ok_or_else(|| invalid("object batch must not be empty"))?;
         let mut hash = Sha256::new();
         part(&mut hash, b"storage.write_objects:v1");
         hash.update((objects.len() as u64).to_le_bytes());
@@ -59,10 +54,7 @@ impl<C> StorageManager<C> {
         self.admit_object_group(
             self.object_admission_bytes(),
             count,
-            Some(Mutation {
-                id: mutation,
-                fingerprint: hash.finalize().into(),
-            }),
+            Some(Mutation { id: mutation, fingerprint: hash.finalize().into() }),
             |group| {
                 for object in objects {
                     group.write_value(object)?;

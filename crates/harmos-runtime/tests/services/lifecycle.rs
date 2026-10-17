@@ -68,9 +68,7 @@ impl Resident<App> for Worker {
         context.ready();
         match self.0.mode {
             Mode::Complete => Ok(()),
-            Mode::Retry if attempt == 0 => {
-                Err(Fault::Environmental(std::io::Error::other("disconnected")))
-            }
+            Mode::Retry if attempt == 0 => Err(Fault::Environmental(std::io::Error::other("disconnected"))),
             Mode::Retry => {
                 context.stopping().await;
                 Ok(())
@@ -115,15 +113,8 @@ fn trace(mode: Mode, block_cleanup: bool, fail_cleanup: bool) -> Arc<Trace> {
 }
 
 async fn runtime(
-    mode: Mode,
-    block_cleanup: bool,
-    fail_cleanup: bool,
-    backoff: Duration,
-) -> (
-    Runtime<App>,
-    harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
-    Arc<Trace>,
-) {
+    mode: Mode, block_cleanup: bool, fail_cleanup: bool, backoff: Duration,
+) -> (Runtime<App>, harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
     let trace = trace(mode, block_cleanup, fail_cleanup);
     runtime
@@ -157,10 +148,7 @@ async fn runtime(
     (runtime, lease, trace)
 }
 
-async fn observed(
-    receiver: &mut watch::Receiver<OperationStatus>,
-    wanted: impl Fn(&OperationStatus) -> bool,
-) -> OperationStatus {
+async fn observed(receiver: &mut watch::Receiver<OperationStatus>, wanted: impl Fn(&OperationStatus) -> bool) -> OperationStatus {
     receiver.wait_for(wanted).await.unwrap().clone()
 }
 
@@ -169,15 +157,11 @@ async fn observed(
 #[tokio::test]
 async fn queued_cancel_unstarted() {
     // A factory-registered resident released while queued never builds its owner.
-    let (runtime, lease, built) =
-        runtime(Mode::Complete, false, false, Duration::from_millis(1)).await;
+    let (runtime, lease, built) = runtime(Mode::Complete, false, false, Duration::from_millis(1)).await;
     assert_eq!(lease.status().phase(), OperationPhase::Queued);
     let mut lifecycle = lease.subscribe();
     lease.release().await.unwrap();
-    let status = observed(&mut lifecycle, |status| {
-        status.phase() == OperationPhase::Stopped
-    })
-    .await;
+    let status = observed(&mut lifecycle, |status| status.phase() == OperationPhase::Stopped).await;
     assert_eq!(status.outcome(), Some(OperationOutcome::Cancelled));
     assert!(status.cancellation_requested());
     assert!(status.started_at().is_none());
@@ -192,10 +176,7 @@ async fn queued_cancel_unstarted() {
         .runtime()
         .await
         .unwrap();
-    let snapshot = runtime
-        .operations
-        .resident(&harmos_runtime::operations::resident::Key::root("owned"))
-        .unwrap();
+    let snapshot = runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("owned")).unwrap();
     assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Queued);
     runtime.stop().await.unwrap();
     assert_eq!(owned.attempts.load(Ordering::SeqCst), 0);
@@ -205,8 +186,7 @@ async fn queued_cancel_unstarted() {
 
 #[tokio::test]
 async fn finalizing_projects_cleanup() {
-    let (runtime, lease, trace) =
-        runtime(Mode::Complete, true, false, Duration::from_millis(1)).await;
+    let (runtime, lease, trace) = runtime(Mode::Complete, true, false, Duration::from_millis(1)).await;
     let snapshots = runtime.operations.watch_residents();
     trace.cleanup_entered.notified().await;
     let pending = lease.status();
@@ -214,18 +194,10 @@ async fn finalizing_projects_cleanup() {
     assert_eq!(pending.outcome(), Some(OperationOutcome::Succeeded));
     assert!(pending.cleanup_pending());
     assert!(pending.settled_at().is_none());
-    let snapshot = runtime
-        .operations
-        .resident(&harmos_runtime::operations::resident::Key::root("worker"))
-        .unwrap();
+    let snapshot = runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("worker")).unwrap();
     assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Finalizing);
     assert_eq!(
-        snapshots
-            .borrow()
-            .get(&harmos_runtime::operations::resident::Key::root("worker"))
-            .unwrap()
-            .lifecycle
-            .phase(),
+        snapshots.borrow().get(&harmos_runtime::operations::resident::Key::root("worker")).unwrap().lifecycle.phase(),
         OperationPhase::Finalizing
     );
     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
@@ -241,8 +213,7 @@ async fn finalizing_projects_cleanup() {
 
 #[tokio::test]
 async fn failed_cleanup_projected() {
-    let (runtime, lease, trace) =
-        runtime(Mode::Complete, false, true, Duration::from_millis(1)).await;
+    let (runtime, lease, trace) = runtime(Mode::Complete, false, true, Duration::from_millis(1)).await;
     let mut lifecycle = lease.subscribe();
     let failed = observed(&mut lifecycle, |status| status.cleanup_failure().is_some()).await;
     assert_eq!(failed.phase(), OperationPhase::Finalizing);
@@ -259,13 +230,9 @@ async fn failed_cleanup_projected() {
 
 #[tokio::test(start_paused = true)]
 async fn cancel_wakes_backoff() {
-    let (runtime, lease, trace) =
-        runtime(Mode::Retry, false, false, Duration::from_secs(100)).await;
+    let (runtime, lease, trace) = runtime(Mode::Retry, false, false, Duration::from_secs(100)).await;
     let mut lifecycle = lease.subscribe();
-    let waiting = observed(&mut lifecycle, |status| {
-        status.phase() == OperationPhase::Restarting
-    })
-    .await;
+    let waiting = observed(&mut lifecycle, |status| status.phase() == OperationPhase::Restarting).await;
     assert_eq!(waiting.attempt(), 0);
     assert_eq!(waiting.outcome(), None);
     assert!(!waiting.cleanup_pending());
@@ -281,13 +248,9 @@ async fn cancel_wakes_backoff() {
 
 #[tokio::test(start_paused = true)]
 async fn restart_cancels_refill() {
-    let (runtime, lease, trace) =
-        runtime(Mode::Retry, false, false, Duration::from_millis(1)).await;
+    let (runtime, lease, trace) = runtime(Mode::Retry, false, false, Duration::from_millis(1)).await;
     let mut lifecycle = lease.subscribe();
-    let running = observed(&mut lifecycle, |status| {
-        status.phase() == OperationPhase::Running
-    })
-    .await;
+    let running = observed(&mut lifecycle, |status| status.phase() == OperationPhase::Running).await;
     assert_eq!(running.attempt(), 1);
     assert_eq!(running.outcome(), None);
     assert_eq!(trace.factories.load(Ordering::SeqCst), 1);

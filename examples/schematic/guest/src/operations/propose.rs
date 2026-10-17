@@ -43,15 +43,8 @@ impl Routing {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn run(
-        &mut self,
-        _context: &harmos_guest::Context,
-        request: &mut ProposeRoute,
-    ) -> Result<Route, Error> {
-        let corner = schematic_domain::model::Point {
-            x: request.to.x,
-            y: request.from.y,
-        };
+    async fn run(&mut self, _context: &harmos_guest::Context, request: &mut ProposeRoute) -> Result<Route, Error> {
+        let corner = schematic_domain::model::Point { x: request.to.x, y: request.from.y };
         let mut points = vec![request.from.clone(), corner, request.to.clone()];
         points.dedup();
         Ok(Route { points })

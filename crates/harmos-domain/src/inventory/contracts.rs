@@ -23,8 +23,7 @@ use crate::PREFIX;
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
 use crate::operations::{
-    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
-    Visibility, WireDeclaration, lifecycle,
+    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration, lifecycle,
 };
 use crate::plugin::{Grant, Requirement};
 use crate::schema::declaration::Named;
@@ -154,15 +153,8 @@ pub enum Error {
 
 /* === Implementations === */
 impl NamedContract {
-    pub fn resolve(
-        self,
-        declarations: &[Named],
-        settings: &mut SchemaSettings,
-    ) -> Result<Contract, Error> {
-        let mut roots = vec![
-            ("request", self.request.as_str()),
-            ("response", self.response.as_str()),
-        ];
+    pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Contract, Error> {
+        let mut roots = vec![("request", self.request.as_str()), ("response", self.response.as_str())];
         if let Some(input) = &self.input {
             roots.push(("input", input.as_str()));
         }
@@ -171,44 +163,22 @@ impl NamedContract {
         }
         let schema = Schema::from_named_roots(&roots, declarations, settings)?;
         let schema = super::retain_schema(schema, settings)?;
-        Ok(
-            Contract::new(self.operation, self.version, self.codec, schema)?
-                .with_grpc(self.grpc)?,
-        )
+        Ok(Contract::new(self.operation, self.version, self.codec, schema)?.with_grpc(self.grpc)?)
     }
 }
 
 impl NamedManifest {
-    pub fn resolve(
-        self,
-        declarations: &[Named],
-        settings: &mut SchemaSettings,
-    ) -> Result<Manifest, Error> {
+    pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
         if self.provides.len() > ENTRY_LIMIT || self.requires.len() > ENTRY_LIMIT {
             return Err(Error::Budget);
         }
-        let provides = self
-            .provides
-            .into_iter()
-            .map(|contract| contract.resolve(declarations, settings))
-            .collect::<Result<_, _>>()?;
+        let provides = self.provides.into_iter().map(|contract| contract.resolve(declarations, settings)).collect::<Result<_, _>>()?;
         let requires = self
             .requires
             .into_iter()
-            .map(|entry| {
-                Ok(Required {
-                    contract: entry.contract.resolve(declarations, settings)?,
-                    grants: entry.grants,
-                })
-            })
+            .map(|entry| Ok(Required { contract: entry.contract.resolve(declarations, settings)?, grants: entry.grants }))
             .collect::<Result<_, Error>>()?;
-        let manifest = Manifest {
-            facility: self.facility,
-            owner: self.owner,
-            provides,
-            requires,
-            lifecycle: self.lifecycle,
-        };
+        let manifest = Manifest { facility: self.facility, owner: self.owner, provides, requires, lifecycle: self.lifecycle };
         validate(&manifest)?;
         Ok(manifest)
     }
@@ -218,11 +188,7 @@ impl TryFrom<Decoded> for Manifest {
     type Error = Error;
 
     fn try_from(value: Decoded) -> Result<Self, Error> {
-        if value
-            .kind
-            .as_deref()
-            .is_some_and(|kind| kind != "contracts")
-        {
+        if value.kind.as_deref().is_some_and(|kind| kind != "contracts") {
             return Err(Error::Kind);
         }
         let manifest = Self {
@@ -238,15 +204,10 @@ impl TryFrom<Decoded> for Manifest {
 }
 
 impl Required {
-    pub fn from_tree(
-        entries: &[Node<Requirement>],
-    ) -> Result<Vec<Self>, crate::operations::ContractError> {
+    pub fn from_tree(entries: &[Node<Requirement>]) -> Result<Vec<Self>, crate::operations::ContractError> {
         let mut required = Vec::with_capacity(crate::catalog::count(entries));
         crate::catalog::try_for_each(entries, |entry| {
-            required.push(Self {
-                contract: entry.declaration.contract()?,
-                grants: entry.grants.to_vec(),
-            });
+            required.push(Self { contract: entry.declaration.contract()?, grants: entry.grants.to_vec() });
             Ok::<(), crate::operations::ContractError>(())
         })?;
         Ok(required)
@@ -292,18 +253,10 @@ pub fn decode(fragment: &[u8]) -> Result<Manifest, Error> {
 }
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Manifest, Error> {
-    let mut matching = manifests
-        .into_iter()
-        .filter(|value| value.facility == facility && value.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing {
-        facility: facility.to_owned(),
-        owner: owner.to_owned(),
-    })?;
+    let mut matching = manifests.into_iter().filter(|value| value.facility == facility && value.owner == owner);
+    let manifest = matching.next().ok_or_else(|| Error::Missing { facility: facility.to_owned(), owner: owner.to_owned() })?;
     if matching.next().is_some() {
-        return Err(Error::Duplicate {
-            facility: facility.to_owned(),
-            owner: owner.to_owned(),
-        });
+        return Err(Error::Duplicate { facility: facility.to_owned(), owner: owner.to_owned() });
     }
     validate(&manifest)?;
     Ok(manifest)
@@ -314,10 +267,7 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
         return Err(Error::Identity);
     }
     let required = manifest.requires.iter().map(|required| &required.contract);
-    for (direction, contracts) in [
-        ("provides", manifest.provides.iter().collect::<Vec<_>>()),
-        ("requires", required.collect()),
-    ] {
+    for (direction, contracts) in [("provides", manifest.provides.iter().collect::<Vec<_>>()), ("requires", required.collect())] {
         if contracts.len() > ENTRY_LIMIT {
             return Err(Error::Budget);
         }
@@ -325,18 +275,11 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
         for contract in contracts {
             contract.operation().validate()?;
             if !ids.insert(&contract.operation().id) {
-                return Err(Error::OperationDuplicate {
-                    direction,
-                    id: contract.operation().id.to_string(),
-                });
+                return Err(Error::OperationDuplicate { direction, id: contract.operation().id.to_string() });
             }
         }
     }
-    let grants = manifest
-        .requires
-        .iter()
-        .map(|required| required.grants.len())
-        .sum::<usize>();
+    let grants = manifest.requires.iter().map(|required| required.grants.len()).sum::<usize>();
     if grants > ENTRY_LIMIT {
         return Err(Error::Budget);
     }
@@ -345,37 +288,24 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
         let operation = &required.contract.operation().id;
         for grant in &required.grants {
             if grant.operation() != operation.as_str()
-                || grant
-                    .scope()
-                    .is_none_or(|scope| scope.is_empty() || scope.len() > GRANT_LIMIT)
+                || grant.scope().is_none_or(|scope| scope.is_empty() || scope.len() > GRANT_LIMIT)
                 || !seen.insert(grant)
             {
-                return Err(Error::Grant {
-                    id: required.contract.operation().id.to_string(),
-                });
+                return Err(Error::Grant { id: required.contract.operation().id.to_string() });
             }
         }
     }
-    if manifest.lifecycle[0].action() != lifecycle::Action::Initialize
-        || manifest.lifecycle[1].action() != lifecycle::Action::Shutdown
-    {
+    if manifest.lifecycle[0].action() != lifecycle::Action::Initialize || manifest.lifecycle[1].action() != lifecycle::Action::Shutdown {
         return Err(Error::LifecycleOrder);
     }
     for descriptor in &manifest.lifecycle {
-        lifecycle::Descriptor::new(
-            descriptor.action(),
-            descriptor.contract().operation().policy,
-        )?;
+        lifecycle::Descriptor::new(descriptor.action(), descriptor.contract().operation().policy)?;
     }
     Ok(())
 }
 
 pub const fn encoded_tree_len(
-    facility: &str,
-    owner: &str,
-    provides: &[Node<WireDeclaration>],
-    requires: &[Node<Requirement>],
-    lifecycle: &[OperationPolicy; 2],
+    facility: &str, owner: &str, provides: &[Node<WireDeclaration>], requires: &[Node<Requirement>], lifecycle: &[OperationPolicy; 2],
 ) -> usize {
     let size = encoded::<0>(facility, owner, provides, requires, lifecycle).cursor;
     assert!(size - PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
@@ -383,35 +313,19 @@ pub const fn encoded_tree_len(
 }
 
 pub const fn encode_tree<const N: usize>(
-    facility: &str,
-    owner: &str,
-    provides: &[Node<WireDeclaration>],
-    requires: &[Node<Requirement>],
-    lifecycle: &[OperationPolicy; 2],
+    facility: &str, owner: &str, provides: &[Node<WireDeclaration>], requires: &[Node<Requirement>], lifecycle: &[OperationPolicy; 2],
 ) -> [u8; N] {
     assert!(N == encoded_tree_len(facility, owner, provides, requires, lifecycle));
     encoded::<N>(facility, owner, provides, requires, lifecycle).bytes
 }
 
-pub const fn identity_len(
-    facility: &str,
-    id: &str,
-    version: &str,
-    description: &str,
-    config: &str,
-) -> usize {
+pub const fn identity_len(facility: &str, id: &str, version: &str, description: &str, config: &str) -> usize {
     let size = encoded_identity::<0>(facility, id, version, description, config).cursor;
     assert!(size - PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
     size
 }
 
-pub const fn encode_identity<const N: usize>(
-    facility: &str,
-    id: &str,
-    version: &str,
-    description: &str,
-    config: &str,
-) -> [u8; N] {
+pub const fn encode_identity<const N: usize>(facility: &str, id: &str, version: &str, description: &str, config: &str) -> [u8; N] {
     assert!(N == identity_len(facility, id, version, description, config));
     encoded_identity::<N>(facility, id, version, description, config).bytes
 }
@@ -466,10 +380,7 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
     out.raw(b",\"retries\":");
     match value.retries {
         RetryPolicy::Never => out.quoted("never"),
-        RetryPolicy::OnTransient {
-            max_retries,
-            backoff: value,
-        } => {
+        RetryPolicy::OnTransient { max_retries, backoff: value } => {
             out.raw(b"{\"on_transient\":{\"max_retries\":");
             out.number(max_retries as u64);
             out.raw(b",\"backoff\":");
@@ -480,11 +391,7 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
     out.raw(b",\"restart\":");
     match value.restart {
         RestartPolicy::Never => out.quoted("never"),
-        RestartPolicy::OnTransient {
-            credit,
-            sustained_health,
-            backoff: value,
-        } => {
+        RestartPolicy::OnTransient { credit, sustained_health, backoff: value } => {
             out.raw(b"{\"on_transient\":{\"credit\":");
             out.number(credit as u64);
             out.raw(b",\"sustained_health\":");
@@ -498,18 +405,9 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
 }
 
 /* === Private Functions === */
-const fn encoded_identity<const N: usize>(
-    facility: &str,
-    id: &str,
-    version: &str,
-    description: &str,
-    config: &str,
-) -> Encoder<N> {
+const fn encoded_identity<const N: usize>(facility: &str, id: &str, version: &str, description: &str, config: &str) -> Encoder<N> {
     assert!(valid_identity(facility, id));
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(PREFIX);
     out.raw(b"{\"kind\":\"plugin\",\"facility\":");
     out.quoted(facility);
@@ -526,19 +424,12 @@ const fn encoded_identity<const N: usize>(
 }
 
 const fn encoded<const N: usize>(
-    facility: &str,
-    owner: &str,
-    provides: &[Node<WireDeclaration>],
-    requires: &[Node<Requirement>],
-    lifecycle: &[OperationPolicy; 2],
+    facility: &str, owner: &str, provides: &[Node<WireDeclaration>], requires: &[Node<Requirement>], lifecycle: &[OperationPolicy; 2],
 ) -> Encoder<N> {
     assert!(valid_identity(facility, owner));
     assert!(crate::catalog::count(provides) <= ENTRY_LIMIT);
     assert!(crate::catalog::count(requires) <= ENTRY_LIMIT);
-    let mut out = Encoder {
-        bytes: [0; N],
-        cursor: 0,
-    };
+    let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(PREFIX);
     out.raw(b"{\"kind\":\"contracts\",\"facility\":");
     out.quoted(facility);
@@ -556,11 +447,7 @@ const fn encoded<const N: usize>(
     out
 }
 
-const fn required<const N: usize>(
-    out: &mut Encoder<N>,
-    entries: &[Node<Requirement>],
-    first: &mut bool,
-) {
+const fn required<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Requirement>], first: &mut bool) {
     let mut index = 0;
     while index < entries.len() {
         match &entries[index] {
@@ -585,10 +472,7 @@ const fn required<const N: usize>(
                     let Some(scope) = scope else {
                         panic!("a requirement grant names its scope");
                     };
-                    assert!(
-                        !scope.is_empty() && scope.len() <= GRANT_LIMIT,
-                        "grant scopes are nonempty and bounded"
-                    );
+                    assert!(!scope.is_empty() && scope.len() <= GRANT_LIMIT, "grant scopes are nonempty and bounded");
                     out.raw(b"{\"operation\":");
                     out.quoted(operation);
                     out.raw(b",\"scope\":");
@@ -604,11 +488,7 @@ const fn required<const N: usize>(
     }
 }
 
-const fn tree<const N: usize>(
-    out: &mut Encoder<N>,
-    entries: &[Node<WireDeclaration>],
-    first: &mut bool,
-) {
+const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<WireDeclaration>], first: &mut bool) {
     let mut index = 0;
     while index < entries.len() {
         match &entries[index] {
@@ -662,11 +542,7 @@ const fn backoff<const N: usize>(out: &mut Encoder<N>, value: Backoff) {
             duration(out, delay);
             jitter
         }
-        Backoff::Exponential {
-            initial,
-            maximum,
-            jitter,
-        } => {
+        Backoff::Exponential { initial, maximum, jitter } => {
             out.raw(b"{\"exponential\":{\"initial\":");
             duration(out, initial);
             out.raw(b",\"maximum\":");

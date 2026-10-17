@@ -63,16 +63,12 @@ impl StorageSchema {
     }
 
     pub(super) fn encoded_bytes(&self) -> Result<usize> {
-        self.schema
-            .preparation(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| invalid())?;
+        self.schema.preparation(&harmos_domain::config::SchemaSettings::default()).map_err(|_| invalid())?;
         encoded_size(self)
     }
 
     pub fn encoding_memory_bytes(&self) -> Result<usize> {
-        self.schema
-            .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| invalid())
+        self.schema.validation_memory_bytes(&harmos_domain::config::SchemaSettings::default()).map_err(|_| invalid())
     }
 }
 
@@ -102,25 +98,14 @@ impl<'de> Visitor<'de> for StorageVisitor {
         formatter.write_str("bounded graph_v1 storage metadata")
     }
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> std::result::Result<Self::Value, A::Error> {
-        let mut input = Input {
-            map,
-            position: None,
-            key: None,
-            encoding: None,
-        };
+        let mut input = Input { map, position: None, key: None, encoding: None };
         // Forward Only The Graph Fields To The Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
-        let schema = crate::schema::graph::Seed {
-            settings: &harmos_domain::config::SchemaSettings::default(),
-        }
-        .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
-        let Encoding::GraphV1 = input
-            .encoding
-            .ok_or_else(|| A::Error::missing_field("encoding"))?;
+        let schema = crate::schema::graph::Seed { settings: &harmos_domain::config::SchemaSettings::default() }
+            .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
+        let Encoding::GraphV1 = input.encoding.ok_or_else(|| A::Error::missing_field("encoding"))?;
         Ok(StorageSchema::new(
-            input
-                .position
-                .ok_or_else(|| A::Error::missing_field("position"))?,
+            input.position.ok_or_else(|| A::Error::missing_field("position"))?,
             input.key.ok_or_else(|| A::Error::missing_field("key"))?,
             schema,
         ))
@@ -129,10 +114,7 @@ impl<'de> Visitor<'de> for StorageVisitor {
 
 impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
     type Error = A::Error;
-    fn next_key_seed<K: DeserializeSeed<'de>>(
-        &mut self,
-        seed: K,
-    ) -> std::result::Result<Option<K::Value>, A::Error> {
+    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, A::Error> {
         while let Some(key) = self.map.next_key::<String>()? {
             match key.as_str() {
                 "position" => {
@@ -158,10 +140,7 @@ impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
         }
         Ok(None)
     }
-    fn next_value_seed<V: DeserializeSeed<'de>>(
-        &mut self,
-        seed: V,
-    ) -> std::result::Result<V::Value, A::Error> {
+    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> std::result::Result<V::Value, A::Error> {
         self.map.next_value_seed(seed)
     }
 }
@@ -171,10 +150,7 @@ impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
 /* === Private Functions === */
 
 fn invalid() -> Error {
-    Error::InvalidInput {
-        field: "storage schema",
-        reason: "invalid shared schema preparation",
-    }
+    Error::InvalidInput { field: "storage schema", reason: "invalid shared schema preparation" }
 }
 
 /* === Tests === */
