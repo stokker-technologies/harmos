@@ -109,13 +109,13 @@ struct Batches {
 struct FloodRows;
 
 struct Flood {
-    resources: Arc<()>,
-    attachment: Arc<harmos_sidecar::ObserverAttachment<(), harmos_sidecar::Publisher<Flood>>>,
+    resources: Arc<super::witness::Witness>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<super::witness::Witness, harmos_sidecar::Publisher<Flood>>>,
 }
 
-#[derive(Default)]
 struct Flooding {
     next: u64,
+    witness: Arc<super::witness::Witness>,
 }
 
 #[derive(Clone, Default, serde::Deserialize)]
@@ -825,9 +825,12 @@ impl harmos_runtime::Plugin for MultiStream {
 
 #[harmos_runtime::observer(streams(FloodRows), interval_ms = 1)]
 impl Flooding {
+    async fn initialize(resources: &super::witness::Witness) -> Self {
+        Self { next: 0, witness: super::witness::Witness::find(resources.key()).unwrap() }
+    }
     async fn observe(
         &mut self,
-        ctx: &ObserverContext<'_, (), harmos_sidecar::Publisher<Flood>>,
+        ctx: &ObserverContext<'_, super::witness::Witness, harmos_sidecar::Publisher<Flood>>,
     ) -> Result<(), harmos_sidecar::PublishError> {
         if self.next == FLOOD_ROWS {
             return Ok(());
@@ -837,7 +840,9 @@ impl Flooding {
         for sample in self.next..self.next + FLOOD_BATCH {
             batch.push(support::pulse(sample));
         }
+        self.witness.mark("publication.started");
         publisher.publish_batch_on::<FloodRows>(&batch).await?;
+        self.witness.mark("publication.completed");
         self.next += FLOOD_BATCH;
         Ok(())
     }
@@ -851,12 +856,13 @@ impl harmos_runtime::operations::lifecycle::Policy for Flood {
 #[harmos_runtime::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = (), requires(harmos_runtime::operations::streams::Publish),
     observers = FloodObservers, streams(FloodRows))]
 impl harmos_runtime::Plugin for Flood {
-    type Config = ();
+    type Config = String;
     type Context = harmos_sidecar::Supervisor;
-    type Resources = ();
+    type Resources = super::witness::Witness;
     type Error = harmos_sidecar::Refusal;
-    fn prepare(_: ()) -> Result<Self, Self::Error> {
-        let resources = Arc::new(());
+    fn prepare(key: String) -> Result<Self, Self::Error> {
+        let resources = super::witness::Witness::find(&key)
+            .ok_or_else(|| harmos_sidecar::Refusal::of("publication witness unavailable"))?;
         let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<FloodObservers>(
             resources.clone(),
             Self::STREAMS,
@@ -869,7 +875,7 @@ impl harmos_runtime::Plugin for Flood {
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn resources(&self) -> Arc<()> {
+    fn resources(&self) -> Arc<super::witness::Witness> {
         self.resources.clone()
     }
     fn bind_operations(

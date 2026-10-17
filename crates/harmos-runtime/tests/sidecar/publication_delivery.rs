@@ -338,12 +338,13 @@ async fn batches_keep_order() {
 }
 
 #[tokio::test]
-async fn slow_ingest_lossless() {
+async fn held_ingest_lossless() {
+    let witness = super::super::witness::Witness::open();
     let capacity = std::num::NonZeroUsize::new(4).unwrap();
     let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
     let mut fixture = Managed::attach(
         source,
-        serde_json::to_vec(&()).unwrap(),
+        serde_json::to_vec(witness.key()).unwrap(),
         Lanes::NativeOpen,
         capacity,
         vec![],
@@ -356,7 +357,8 @@ async fn slow_ingest_lossless() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
 
-    // A Deliberately Slow Ingest: Every Batch Costs 3 ms
+    // Hold The First Ingest Batch: A Wider Publication Cannot Complete Until Ack.
+    witness.marked("publication.started").await;
     let mut samples = Vec::new();
     let mut batches = 0;
     (async {
@@ -377,7 +379,10 @@ async fn slow_ingest_lossless() {
                     }),
             );
             batches += 1;
-            tokio::time::sleep(Duration::from_millis(3)).await;
+            if batches == 1 {
+                assert_eq!(witness.count("publication.completed"), 0,
+                    "the unacknowledged first window must pace its wider publication");
+            }
         }
     }).await;
 
