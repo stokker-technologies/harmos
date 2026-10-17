@@ -81,6 +81,8 @@ struct Capture {
     inputs: CaptureInputs,
     messages: CaptureFile,
     metadata: CaptureFile,
+    artifacts: BTreeMap<PathBuf, String>,
+    generated: BTreeMap<PathBuf, String>,
 }
 
 #[derive(Deserialize)]
@@ -197,7 +199,21 @@ impl Build {
         if provided.len() != artifacts.len() {
             return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
         }
-        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default())
+        for artifact in &artifacts {
+            if receipt.artifacts.get(&artifact.path) != Some(&artifact.sha256) {
+                return Err(Error::ArtifactChanged(artifact.path.clone()));
+            }
+        }
+        let build = finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default())?;
+        for schema in &build.schemas {
+            for (name, sha256) in &schema.files {
+                let path = schema.directory.join(name);
+                if receipt.generated.get(&path) != Some(sha256) {
+                    return Err(Error::ArtifactChanged(path));
+                }
+            }
+        }
+        Ok(build)
     }
 
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
@@ -343,6 +359,7 @@ fn finish_build(
             continue;
         }
         let module = std::fs::read(&artifact.path)?;
+        if digest(&module) != artifact.sha256 { return Err(Error::ArtifactChanged(artifact.path.clone())); }
         super::Declaration::inspect(&module, super::Facility::Guest)?;
         if module.starts_with(b"\0asm\x0d\0\x01\0") {
             continue;
