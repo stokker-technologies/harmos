@@ -276,7 +276,7 @@ async fn panic_releases_reservation() {
 }
 
 #[tokio::test]
-async fn primary_failure_retries_stop() {
+async fn primary_stop_retries() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
@@ -320,7 +320,7 @@ async fn undersized_queue_refuses() {
 }
 
 #[tokio::test]
-async fn primary_failure_halts_commits() {
+async fn primary_failure_halts() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;

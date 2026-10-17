@@ -172,7 +172,7 @@ async fn saved_facts_reconcile() {
 }
 
 #[tokio::test]
-async fn reconcile_saves_before_services() {
+async fn reconciliation_precedes_services() {
     let store = Store::new();
     store.seed().await;
     let storage = store.manager();
@@ -215,7 +215,7 @@ async fn reconcile_saves_before_services() {
 }
 
 #[tokio::test]
-async fn reconcile_failure_keeps_repairs() {
+async fn failed_reconcile_repairs() {
     let store = Store::new();
     let storage = store.manager();
     let started = Arc::new(AtomicBool::new(false));
@@ -278,7 +278,7 @@ async fn cancelled_reconcile_seals() {
 }
 
 #[tokio::test]
-async fn repair_save_refuses_boot() {
+async fn repair_save_blocks() {
     let store = Store::new();
     let storage = store.manager();
     let started = Arc::new(AtomicBool::new(false));
@@ -338,7 +338,7 @@ async fn reconcile_panic_saves() {
 }
 
 #[tokio::test]
-async fn cancelled_boot_awaits_save() {
+async fn cancelled_boot_settles() {
     let store = Store::new();
     let storage = store.manager();
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);

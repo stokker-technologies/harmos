@@ -255,7 +255,7 @@ async fn grpc_stream_lifecycle() {
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn grpc_wrong_shape_refusal() {
+async fn grpc_shape_refusal() {
     let counts = Arc::new(Counts::default());
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();

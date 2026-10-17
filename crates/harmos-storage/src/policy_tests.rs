@@ -53,7 +53,7 @@ fn construct(settings: StorageSettings) -> crate::Result<StorageManager> {
 use crate::*;
 
 #[test]
-fn response_fits_read_budget() {
+fn response_fits_budget() {
     let mut settings = storage_settings();
     construct(settings.clone()).unwrap();
     settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() + 1).unwrap();

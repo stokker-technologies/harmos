@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn push_clock_never_regresses() {
+    fn clock_never_regresses() {
         let mut batch = Batch::<Samples> {
             rows: Vec::new(), stamps: Vec::new(), latest: None, clock: || None,
         };
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_stamps_preserve_source_time() {
+    fn explicit_source_stamps() {
         let mut batch = Batch::<Samples> {
             rows: Vec::new(), stamps: Vec::new(), latest: None,
             clock: || panic!("explicit stamps do not consult the kit clock"),

@@ -282,7 +282,7 @@ async fn oversized_group_refused() {
 }
 
 #[tokio::test]
-async fn state_failure_retries_stop() {
+async fn state_stop_retries() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -304,7 +304,7 @@ async fn state_failure_retries_stop() {
 }
 
 #[tokio::test]
-async fn journal_gap_refuses_boot() {
+async fn journal_gap_blocks() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -327,7 +327,7 @@ async fn journal_gap_refuses_boot() {
 }
 
 #[tokio::test]
-async fn corrupt_group_refuses_boot() {
+async fn corrupt_group_blocks() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -511,7 +511,7 @@ async fn cancelled_replay_releases() {
 }
 
 #[tokio::test]
-async fn save_failure_halts_commits() {
+async fn save_failure_halts() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -622,7 +622,7 @@ async fn keyed_receipt_survives() {
 }
 
 #[tokio::test]
-async fn keyed_receipt_keeps_group() {
+async fn keyed_group_retained() {
     let store = Store::new();
     let storage = store.manager(config());
     let builder = || {
@@ -667,7 +667,7 @@ async fn keyed_receipt_keeps_group() {
 }
 
 #[tokio::test]
-async fn duplicate_key_refuses_boot() {
+async fn duplicate_key_blocks() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -701,7 +701,7 @@ async fn duplicate_key_refuses_boot() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn commits_skip_recovery_save() {
+async fn commits_skip_save() {
     for explicit_barrier in [false, true] {
         let store = Store::new();
         let storage = store.manager(config());

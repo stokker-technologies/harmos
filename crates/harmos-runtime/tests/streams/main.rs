@@ -283,7 +283,7 @@ async fn beneath_window_refused() {
 }
 
 #[tokio::test]
-async fn as_of_cuts_stamp() {
+async fn historical_stamp_cut() {
     let runtime = streaming().await;
 
     let first = runtime.state.commit(deposit(10)).await.expect("accepted");

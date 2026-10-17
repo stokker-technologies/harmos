@@ -152,7 +152,7 @@ async fn storage_precedes_recovery() {
 }
 
 #[tokio::test]
-async fn open_failure_skips_services() {
+async fn failed_open_skips() {
     for fail_recovery in [false, true] {
         let probe = Probe::new();
         let storage = probe.storage.clone();
@@ -247,7 +247,7 @@ async fn cancelled_recovery_closes() {
 }
 
 #[tokio::test]
-async fn cancelled_drain_awaits_consumer() {
+async fn cancelled_drain_settles() {
     let mut probe = Probe::new();
     let gate = Arc::new(Gate::default());
     probe.drain_gate = Some(gate.clone());
@@ -270,7 +270,7 @@ async fn cancelled_drain_awaits_consumer() {
 }
 
 #[tokio::test]
-async fn consumer_panic_refuses_boot() {
+async fn consumer_panic_blocks() {
     let mut probe = Probe::new();
     probe.panic_drain = true;
     let storage = probe.storage.clone();
@@ -342,7 +342,7 @@ async fn reserved_service_refused() {
 }
 
 #[tokio::test]
-async fn service_writes_at_start() {
+async fn service_start_writes() {
     let probe = Probe::new();
     let storage = probe.storage.clone();
     let entered = Arc::new(Notify::new());
@@ -494,7 +494,7 @@ async fn init_failure_closes() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn deadline_awaits_service_cleanup() {
+async fn deadline_awaits_cleanup() {
     let probe = Probe::new();
     let gate = Arc::new(Gate::default());
     let resident_gate = Arc::clone(&gate);
@@ -541,7 +541,7 @@ async fn deadline_awaits_service_cleanup() {
 }
 
 #[tokio::test]
-async fn cancelled_init_awaits_service() {
+async fn cancelled_init_settles() {
     let probe = Probe::new();
     let startup_gate = Arc::new(Gate::default());
     let cleanup_gate = Arc::new(Gate::default());

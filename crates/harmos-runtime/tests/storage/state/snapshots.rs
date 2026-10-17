@@ -269,7 +269,7 @@ async fn snapshot_resumes_durable() {
 }
 
 #[tokio::test]
-async fn journal_replays_without_snapshot() {
+async fn journal_replays_alone() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = builder(policy(100))
@@ -439,7 +439,7 @@ async fn snapshot_waits_queue() {
 }
 
 #[tokio::test]
-async fn corrupt_snapshot_refuses_boot() {
+async fn corrupt_snapshot_blocks() {
     for field in [
         "version", "schema", "position", "undo", "receipts", "tail", "boundary",
     ] {
@@ -523,7 +523,7 @@ async fn cancelled_snapshot_releases() {
 }
 
 #[tokio::test]
-async fn snapshot_budget_refuses_boot() {
+async fn snapshot_budget_blocks() {
     let store = Store::new();
     let mut config = config();
     config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();

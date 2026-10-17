@@ -44,7 +44,7 @@ use super::*;
 
 /* === Tests === */
 #[tokio::test]
-async fn builtin_operations_over_grpc() {
+async fn builtin_grpc_roundtrip() {
     use harmos_runtime::builtin::{Cancel, InstanceState, Status};
     #[harmos_runtime::message]
     #[harmos_runtime::operation(

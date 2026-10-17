@@ -116,7 +116,7 @@ fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
 /* === Tests === */
 
 #[test]
-fn completed_stream_excludes_test_harnesses() {
+fn test_harnesses_excluded() {
     let (_directory, path) = fixture();
     let stream = [artifact(Path::new("absent-test-harness"), true), artifact(&path, false),
         json!({"reason": "build-finished", "success": true})];
@@ -128,19 +128,19 @@ fn completed_stream_excludes_test_harnesses() {
 }
 
 #[test]
-fn incomplete_stream_is_refused() {
+fn incomplete_stream_refused() {
     let (_directory, path) = fixture();
     assert!(matches!(collect(&[artifact(&path, false)], selected()), Err(Error::Cargo(_))));
 }
 
 #[test]
-fn failed_build_is_refused() {
+fn failed_build_refused() {
     let (_directory, path) = fixture();
     assert!(matches!(collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": false})], selected()), Err(Error::Cargo(_))));
 }
 
 #[test]
-fn missing_selected_producer_is_refused() {
+fn missing_producer_refused() {
     let (_directory, path) = fixture();
     let mut packages = selected();
     packages.insert("path+file:///missing#other@0.1.0".into(), "other".into());
@@ -148,7 +148,7 @@ fn missing_selected_producer_is_refused() {
 }
 
 #[test]
-fn ambiguous_selected_outputs_are_refused() {
+fn ambiguous_outputs_refused() {
     let (directory, path) = fixture();
     let second = directory.path().join("debug/different-sidecar");
     std::fs::write(&second, b"another emitted output").unwrap();
@@ -157,7 +157,7 @@ fn ambiguous_selected_outputs_are_refused() {
 }
 
 #[test]
-fn mismatched_backend_target_is_refused() {
+fn mismatched_target_refused() {
     let mut capture = Captured::new(&[], selected());
     capture.settings.target = Some("wasm32-unknown-unknown".into());
     capture.receipt["target"] = json!("wasm32-unknown-unknown");
@@ -166,13 +166,13 @@ fn mismatched_backend_target_is_refused() {
 }
 
 #[test]
-fn messages_after_completion_are_refused() {
+fn post_completion_refused() {
     let stream = [json!({"reason": "build-finished", "success": true}), json!({"reason": "build-finished", "success": true})];
     assert!(matches!(collect(&stream, selected()), Err(Error::Cargo(_))));
 }
 
 #[test]
-fn packaging_refuses_changed_artifact_bytes() {
+fn packaging_checks_bytes() {
     let (_directory, path) = fixture();
     let build = collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected()).unwrap();
     std::fs::write(&path, b"replaced after the build").unwrap();
@@ -182,7 +182,7 @@ fn packaging_refuses_changed_artifact_bytes() {
 }
 
 #[test]
-fn collection_refuses_bytes_changed_after_compile() {
+fn collection_checks_bytes() {
     let (_directory, path) = fixture();
     let capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
     std::fs::write(&path, b"not the producer output").unwrap();
@@ -190,7 +190,7 @@ fn collection_refuses_bytes_changed_after_compile() {
 }
 
 #[test]
-fn collection_refuses_changed_messages() {
+fn collection_checks_messages() {
     let (_directory, path) = fixture();
     let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
     capture.messages.push(' ');
@@ -198,7 +198,7 @@ fn collection_refuses_changed_messages() {
 }
 
 #[test]
-fn collection_refuses_changed_metadata() {
+fn collection_checks_metadata() {
     let (_directory, path) = fixture();
     let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
     capture.metadata.push(' ');
@@ -206,7 +206,7 @@ fn collection_refuses_changed_metadata() {
 }
 
 #[test]
-fn collection_refuses_requested_profile_relabel() {
+fn profile_relabel_refused() {
     let (_directory, path) = fixture();
     let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
     capture.settings.profile = BuildProfile::Release;
@@ -214,7 +214,7 @@ fn collection_refuses_requested_profile_relabel() {
 }
 
 #[test]
-fn collection_refuses_schema_changed_after_compile() {
+fn collection_checks_schema() {
     let (directory, path) = fixture();
     let output = directory.path().join("debug/build/plugin/out");
     let catalog = output.join("grpc/operations");

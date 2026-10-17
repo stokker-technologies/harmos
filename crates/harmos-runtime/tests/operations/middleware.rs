@@ -202,7 +202,7 @@ fn context(actor: &'static str) -> CallContext {
 /* === Tests === */
 
 #[test]
-fn portable_overlays_preserve_local_values() {
+fn portable_preserves_local() {
     use harmos_runtime::Message;
     use harmos_runtime::operations::{CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES};
     let mut original = context("alice");
@@ -253,7 +253,7 @@ fn portable_overlays_preserve_local_values() {
 }
 
 #[tokio::test]
-async fn child_overlay_preserves_principal_and_parent_stage() {
+async fn child_preserves_authority() {
     let runtime = runtime().await;
     runtime.operations.register_operation::<Overlay<false>>("app", Lanes::Open, Arc::new(())).unwrap();
     runtime.operations.register_operation::<Overlay<true>>("app", Lanes::Open, Arc::new(())).unwrap();

@@ -255,7 +255,7 @@ async fn children_attempt_lifetime() {
 }
 
 #[tokio::test]
-async fn initialization_failure_skips_cleanup() {
+async fn initialization_failure() {
     let counts = Arc::new(Counts::default());
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();

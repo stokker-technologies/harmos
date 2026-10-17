@@ -256,21 +256,21 @@ fn succeeded(output: &Output) {
 /* === Tests === */
 
 #[test]
-fn sidecar_starter_checks_and_tests() {
+fn sidecar_starter_works() {
     Project::new("sidecar").check_and_test();
 }
 
 #[test]
-fn guest_starter_checks_and_tests() {
+fn guest_starter_works() {
     Project::new("guest").check_and_test();
 }
 
 #[test]
-fn sidecar_dev_rebuilds_and_cancels() {
+fn sidecar_dev_lifecycle() {
     dev_rebuilds("sidecar");
 }
 
 #[test]
-fn guest_dev_rebuilds_and_cancels() {
+fn guest_dev_lifecycle() {
     dev_rebuilds("guest");
 }

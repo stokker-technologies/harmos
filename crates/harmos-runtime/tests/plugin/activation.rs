@@ -81,7 +81,7 @@ impl Operation for WireClient {
 /* === Tests === */
 
 #[tokio::test]
-async fn runtime_embedded_wire_contracts() {
+async fn embedded_wire_contracts() {
     use harmos_runtime::operations::{AuthoredContracts, Contract};
     use harmos_domain::inventory::contracts::Required;
     let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ())
@@ -182,7 +182,7 @@ async fn runtime_embedded_wire_contracts() {
 }
 
 #[tokio::test]
-async fn runtime_owned_embedded_plugins() {
+async fn owned_embedded_plugins() {
     let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let handle = runtime.handle();
     assert!(runtime.plugin.same_instance(&handle.plugin));
@@ -247,7 +247,7 @@ async fn runtime_owned_embedded_plugins() {
 }
 
 #[tokio::test]
-async fn inert_registration_preserves_live_graph() {
+async fn inert_preserves_graph() {
     let mut session = session();
     let mut host = Host::new().await;
     session.initialize(&mut host).await.unwrap();

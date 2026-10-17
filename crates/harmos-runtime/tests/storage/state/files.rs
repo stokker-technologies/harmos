@@ -56,7 +56,7 @@ fn retired_header(history: &StoreHistory) -> Vec<u8> {
 
 /* === Tests === */
 #[tokio::test]
-async fn checkpoint_tail_survives_reopen() {
+async fn checkpoint_survives_reopen() {
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();

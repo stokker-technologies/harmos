@@ -127,7 +127,7 @@ fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::Query {
 /* === Tests === */
 
 #[tokio::test]
-async fn journal_skips_unrelated_backlog() {
+async fn unrelated_backlog_skipped() {
     let f = Fixture::new(config()).await;
     let durable = f.storage.cursor_saved();
 
@@ -184,7 +184,7 @@ async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
 }
 
 #[tokio::test]
-async fn journal_awaits_required_data() {
+async fn journal_awaits_data() {
     let data = Arc::new(Data::new(history()));
     let state = Arc::new(Recovery::new(history()));
     let policy = config();

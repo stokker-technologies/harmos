@@ -245,7 +245,7 @@ async fn lazy_construction_lifecycle() {
 }
 
 #[tokio::test]
-async fn init_failure_skips_stop() {
+async fn failed_init_skips() {
     let (runtime, trace) = runtime().await;
     trace.fail_initialize.store(true, Ordering::SeqCst);
     // A failed initialization owns no instance, so a failing
