@@ -46,6 +46,8 @@ pub type Kind<R = Definition> = graph::Kind<R>;
 #[derive(Clone, Copy)]
 pub struct Definition {
     pub name: &'static str,
+    /// The variant an absent oneof selects, or `None` when one is required.
+    pub default_variant: Option<usize>,
     pub identity: fn() -> TypeId,
     pub fields: fn() -> &'static [Field<Definition>],
     pub marker: fn() -> &'static [u8],
@@ -138,6 +140,7 @@ impl Definition {
     pub const fn of<T: super::Described + ?Sized>() -> Self {
         Self {
             name: T::NAME,
+            default_variant: T::DEFAULT_VARIANT,
             identity: TypeId::of::<T>,
             fields: fields::<T>,
             marker: marker::<T>,

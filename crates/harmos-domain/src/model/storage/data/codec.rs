@@ -87,33 +87,6 @@ impl crate::model::storage::codec::Value for Encoding {
     ) -> Result<Self::Native, crate::MessageError> {
         encoding(input.value()?)
     }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>) {
-        Unsigned::write(&(*value as u64), tag, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &Self::Native, tag: u32) -> usize {
-        Unsigned::size(&(*value as u64), tag)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(
-        input: crate::__private::DecodeInput<'_>,
-        tag: u32,
-    ) -> Result<usize, crate::MessageError> {
-        Self::read(input, tag).map(|_| 0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(
-        input: crate::__private::DecodeInput<'_>,
-        tag: u32,
-    ) -> Result<Self::Native, crate::MessageError> {
-        // An Absent Historical Field Explicitly Means Protobuf V1.
-        encoding(crate::model::storage::position::codec::uint_field(input, tag)?.unwrap_or(0))
-    }
 }
 
 /* === Public Functions === */

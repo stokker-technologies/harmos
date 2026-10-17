@@ -84,43 +84,6 @@ impl SchemaKey {
         }
         Ok(())
     }
-
-    #[cfg(feature = "grpc")]
-    pub fn migrate_protobuf<T: crate::Message + crate::__private::Protobuf + MemorySize>(
-        &self,
-        payload: &[u8],
-        target: &Self,
-        max_payload_bytes: NonZeroUsize,
-        max_memory_bytes: NonZeroUsize,
-    ) -> Result<Vec<u8>> {
-        target.require_postcard()?;
-        if self.payload_encoding != PayloadEncoding::ProtobufV1
-            || self.id != target.id
-            || self.version >= target.version
-        {
-            return Err(invalid(
-                "migration requires legacy protobuf and a newer version of the same schema",
-            ));
-        }
-        check_length(payload.len(), max_payload_bytes)?;
-        let required = <T as crate::__private::Protobuf>::decoding_memory(payload)
-            .map_err(|_| invalid("invalid legacy protobuf payload"))?;
-        if required > max_memory_bytes.get() {
-            return Err(invalid("migration exceeds its memory allowance"));
-        }
-        let value = <T as crate::__private::Protobuf>::decode(payload)
-            .map_err(|_| invalid("invalid legacy protobuf payload"))?;
-        let length = crate::Message::encoded_len(&value);
-        check_length(length, max_payload_bytes)?;
-        if value
-            .memory_size()
-            .checked_add(length)
-            .is_none_or(|size| size > max_memory_bytes.get())
-        {
-            return Err(invalid("migration exceeds its memory allowance"));
-        }
-        Ok(crate::Message::encode_to_vec(&value))
-    }
 }
 
 impl MemorySize for SchemaKey {

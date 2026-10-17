@@ -19,7 +19,6 @@ version = { workspace = true }
 [features]
 default = ["derive"]
 derive = ["dep:harmos-macros"]
-grpc = ["dep:prost"]
 
 # === Dependencies ===
 
@@ -40,7 +39,6 @@ time = { workspace = true, default-features = true }
 
 # Serialization
 postcard = { workspace = true }
-prost = { workspace = true, default-features = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 
@@ -110,7 +108,7 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 [[test]]
 name = "message"
 path = "tests/message/main.rs"
-required-features = ["derive", "grpc"]
+required-features = ["derive"]
 
 # === Bench Targets ===
 

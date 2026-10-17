@@ -94,19 +94,6 @@ impl crate::__private::PostcardValue for NoStream {
     }
 }
 
-#[cfg(feature = "grpc")]
-impl crate::Protobuf for NoStream {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        match *self {}
-    }
-    fn encoded_len(&self) -> usize {
-        match *self {}
-    }
-    fn decode(_: &[u8]) -> Result<Self, MessageError> {
-        Err(absent())
-    }
-}
-
 /* === Public Functions === */
 // The Item Types An Operation Streams, Input Then Output.
 pub fn item_types<O: super::OperationDeclaration>() -> (Option<TypeId>, Option<TypeId>) {

@@ -235,22 +235,6 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 /* === Implementations === */
 harmos_domain::postcard_product!(Activation {});
 
-harmos_domain::with_protobuf! {
-impl harmos_domain::Protobuf for Activation {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        Vec::new()
-    }
-
-    fn encoded_len(&self) -> usize {
-        0
-    }
-
-    fn decode(_: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        Ok(Self)
-    }
-}
-}
-
 impl crate::schema::Described for Activation {
     const NAME: &'static str = "harmos::activation";
     const FIELDS: &'static [crate::schema::declaration::Field] = &[];

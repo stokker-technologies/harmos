@@ -23,15 +23,7 @@ use std::num::NonZeroU32;
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "grpc")]
-use crate::__private::DecodeInput;
-#[cfg(feature = "grpc")]
-use crate::__private::Protobuf as Message;
 use crate::__private::{PostcardReader, PostcardValue};
-#[cfg(feature = "grpc")]
-use crate::model::storage::position::codec::{
-    bytes_field, field_len, identifier, text_field, uint_field, write_bytes, write_header,
-};
 use crate::schema::declaration::{self, Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{Identifier, MemorySize, MessageError};
@@ -74,39 +66,6 @@ macro_rules! product {
             }
             fn read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<Self, crate::MessageError> {
                 let value = input.nested(|input| Ok(Self { $($field: <$codec as crate::model::storage::codec::Value>::postcard_read(input)?),* }))?;
-                let check: fn(&Self) -> std::result::Result<(), crate::MessageError> = $check;
-                check(&value)?;
-                Ok(value)
-            }
-        }
-        #[cfg(feature = "grpc")]
-        #[allow(unused_variables)]
-        impl crate::__private::Protobuf for $ty {
-            fn encode_to_vec(&self) -> Vec<u8> {
-                let mut bytes = Vec::with_capacity(<Self as crate::__private::Protobuf>::encoded_len(self));
-                <Self as crate::__private::Protobuf>::encode_into(self, &mut bytes);
-                bytes
-            }
-            fn encode_into(&self, bytes: &mut Vec<u8>) {
-                $(<$codec as crate::model::storage::codec::Value>::write(&self.$field, $tag, bytes);)*
-            }
-            fn encoded_len(&self) -> usize {
-                0usize$(.saturating_add(<$codec as crate::model::storage::codec::Value>::size(&self.$field, $tag)))*
-            }
-            fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-                <Self as crate::__private::Protobuf>::decode_input(crate::__private::DecodeInput::new(bytes))
-            }
-            fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-                <Self as crate::__private::Protobuf>::decoding_memory_input(crate::__private::DecodeInput::new(bytes))
-            }
-            fn decoding_memory_input(input: crate::__private::DecodeInput<'_>) -> std::result::Result<usize, crate::MessageError> {
-                let memory = std::mem::size_of::<Self>();
-                $(let memory = crate::__private::decoding_add(memory, <$codec as crate::model::storage::codec::Value>::memory(input, $tag)?)?;)*
-                Ok(memory)
-            }
-            fn decode_input(input: crate::__private::DecodeInput<'_>) -> std::result::Result<Self, crate::MessageError> {
-                <Self as crate::__private::Protobuf>::decoding_memory_input(input)?;
-                let value = Self { $($field: <$codec as crate::model::storage::codec::Value>::read(input, $tag)?),* };
                 let check: fn(&Self) -> std::result::Result<(), crate::MessageError> = $check;
                 check(&value)?;
                 Ok(value)
@@ -168,6 +127,8 @@ macro_rules! variants {
                 },
             }),+];
 
+            // Every Storage Oneof Requires Its Variant; An Absent One Is Refused.
+            const DEFAULT_VARIANT: Option<usize> = None;
             const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
                 crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
             }>(Self::NAME, Self::FIELDS);
@@ -209,69 +170,6 @@ macro_rules! variants {
                     })+
                     _ => Err(crate::MessageError::borrowed(concat!("unknown ", stringify!($ty), " variant"))),
                 })
-            }
-        }
-        crate::with_protobuf! {
-            impl crate::__private::Protobuf for $ty {
-                fn encode_to_vec(&self) -> Vec<u8> {
-                    let mut bytes = Vec::with_capacity(<Self as crate::__private::Protobuf>::encoded_len(self));
-                    <Self as crate::__private::Protobuf>::encode_into(self, &mut bytes);
-                    bytes
-                }
-                #[allow(unused_variables)]
-                fn encode_into(&self, bytes: &mut Vec<u8>) {
-                    match self {
-                        $($pat => {
-                            let length = 0usize$(.saturating_add(<$codec as crate::model::storage::codec::Value>::size($field, $ftag)))*;
-                            crate::model::storage::position::codec::write_header($tag, length, bytes);
-                            $(<$codec as crate::model::storage::codec::Value>::write($field, $ftag, bytes);)*
-                        })+
-                    }
-                }
-                #[allow(unused_variables)]
-                fn encoded_len(&self) -> usize {
-                    match self {
-                        $($pat => crate::model::storage::codec::length_delimited_size(
-                            $tag,
-                            0usize$(.saturating_add(<$codec as crate::model::storage::codec::Value>::size($field, $ftag)))*,
-                        ),)+
-                    }
-                }
-                fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-                    <Self as crate::__private::Protobuf>::decode_input(crate::__private::DecodeInput::new(bytes))
-                }
-                fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-                    <Self as crate::__private::Protobuf>::decoding_memory_input(crate::__private::DecodeInput::new(bytes))
-                }
-                #[allow(unused_variables)]
-                fn decoding_memory_input(input: crate::__private::DecodeInput<'_>) -> std::result::Result<usize, crate::MessageError> {
-                    let (tag, child) = input
-                        .variant(&[$($tag),+])?
-                        .ok_or_else(|| crate::MessageError::borrowed(concat!("missing ", stringify!($ty), " variant")))?;
-                    let memory = std::mem::size_of::<Self>();
-                    match tag {
-                        $($tag => {
-                            child.fields(&mut |_| Ok(()))?;
-                            $(let memory = crate::__private::decoding_add(memory, <$codec as crate::model::storage::codec::Value>::memory(child, $ftag)?)?;)*
-                            Ok(memory)
-                        })+
-                        _ => unreachable!("variant tags are selected"),
-                    }
-                }
-                #[allow(unused_variables)]
-                fn decode_input(input: crate::__private::DecodeInput<'_>) -> std::result::Result<Self, crate::MessageError> {
-                    <Self as crate::__private::Protobuf>::decoding_memory_input(input)?;
-                    let (tag, child) = input
-                        .variant(&[$($tag),+])?
-                        .ok_or_else(|| crate::MessageError::borrowed(concat!("missing ", stringify!($ty), " variant")))?;
-                    match tag {
-                        $($tag => {
-                            $(let $field = <$codec as crate::model::storage::codec::Value>::read(child, $ftag)?;)*
-                            Ok($build)
-                        })+
-                        _ => unreachable!("variant tags are selected"),
-                    }
-                }
             }
         }
         };
@@ -316,13 +214,7 @@ pub struct Many<A>(PhantomData<fn() -> A>);
 /* === Enums === */
 
 /* === Traits === */
-#[cfg(feature = "grpc")]
-pub trait Native: PostcardValue + crate::__private::Protobuf + MemorySize + Described {}
-#[cfg(feature = "grpc")]
-impl<T: PostcardValue + crate::__private::Protobuf + MemorySize + Described> Native for T {}
-#[cfg(not(feature = "grpc"))]
 pub trait Native: PostcardValue + MemorySize + Described {}
-#[cfg(not(feature = "grpc"))]
 impl<T: PostcardValue + MemorySize + Described> Native for T {}
 
 pub trait Coded: Copy + PartialEq + Send + Sync + 'static {
@@ -353,14 +245,6 @@ pub trait Value: 'static {
     fn postcard_size(value: &Self::Native) -> usize;
     fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize>;
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<Self::Native>;
-    #[cfg(feature = "grpc")]
-    fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>);
-    #[cfg(feature = "grpc")]
-    fn size(value: &Self::Native, tag: u32) -> usize;
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize>;
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Self::Native>;
 }
 
 /* === Implementations === */
@@ -374,51 +258,6 @@ impl<T: Native> Value for Repeated<T> {
     type Native = Vec<T>;
     const KIND: Kind = Nested::<T>::KIND;
     const CARDINALITY: Cardinality = Cardinality::Repeated;
-    #[cfg(feature = "grpc")]
-    fn write(values: &Vec<T>, tag: u32, bytes: &mut Vec<u8>) {
-        for value in values {
-            Nested::<T>::write(value, tag, bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(values: &Vec<T>, tag: u32) -> usize {
-        values.iter().fold(0usize, |size, value| {
-            size.saturating_add(Nested::<T>::size(value, tag))
-        })
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        let mut memory = 0usize;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                let child = input.child(field.bytes()?)?;
-                memory = crate::__private::decoding_add(memory, T::decoding_memory_input(child)?)?;
-            }
-            Ok(())
-        })?;
-        Ok(memory)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<T>> {
-        let mut count = 0usize;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                count = crate::__private::decoding_add(count, 1)?;
-            }
-            Ok(())
-        })?;
-        let mut values = crate::__private::decoding_vector(count)?;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                values.push(T::decode_input(input.child(field.bytes()?)?)?);
-            }
-            Ok(())
-        })?;
-        Ok(values)
-    }
 }
 
 impl<T: Native> Value for Nested<T> {
@@ -432,28 +271,6 @@ impl<T: Native> Value for Nested<T> {
     const KIND: Kind = Kind::Message {
         definition: T::DEFINITION,
     };
-    #[cfg(feature = "grpc")]
-    fn write(value: &T, tag: u32, bytes: &mut Vec<u8>) {
-        write_header(tag, Message::encoded_len(value), bytes);
-        Message::encode_into(value, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &T, tag: u32) -> usize {
-        length_delimited_size(tag, Message::encoded_len(value))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        bytes_field(input, tag)?
-            .ok_or_else(|| MessageError::borrowed("missing storage message field"))?;
-        Ok(T::decoding_memory_input(input.field(tag)?)?.saturating_sub(std::mem::size_of::<T>()))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<T> {
-        T::decode_input(input.field(tag)?)
-    }
 }
 
 impl<T: Value> Value for Optional<T> {
@@ -496,35 +313,6 @@ impl<T: Value> Value for Optional<T> {
     type Native = Option<T::Native>;
     const KIND: Kind = T::KIND;
     const CARDINALITY: Cardinality = Cardinality::Optional;
-    #[cfg(feature = "grpc")]
-    fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>) {
-        if let Some(value) = value {
-            T::write(value, tag, bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &Self::Native, tag: u32) -> usize {
-        value.as_ref().map_or(0, |value| T::size(value, tag))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        if present(input, tag)? {
-            T::memory(input, tag)
-        } else {
-            Ok(0)
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Self::Native> {
-        if present(input, tag)? {
-            T::read(input, tag).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 impl Value for Id {
@@ -532,25 +320,6 @@ impl Value for Id {
     postcard_field!();
     type Native = Identifier;
     const KIND: Kind = Kind::String;
-    #[cfg(feature = "grpc")]
-    fn write(value: &Identifier, tag: u32, bytes: &mut Vec<u8>) {
-        write_bytes(tag, value.as_str().as_bytes(), bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &Identifier, tag: u32) -> usize {
-        length_delimited_size(tag, value.as_str().len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Ok(text_field(input, tag)?.unwrap_or("").len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Identifier> {
-        identifier(text_field(input, tag)?.unwrap_or(""))
-    }
 }
 
 impl Value for Bytes {
@@ -558,25 +327,6 @@ impl Value for Bytes {
     postcard_field!();
     type Native = Vec<u8>;
     const KIND: Kind = Kind::Bytes;
-    #[cfg(feature = "grpc")]
-    fn write(value: &Vec<u8>, tag: u32, bytes: &mut Vec<u8>) {
-        write_bytes(tag, value, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &Vec<u8>, tag: u32) -> usize {
-        length_delimited_size(tag, value.len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Ok(bytes_field(input, tag)?.unwrap_or(&[]).len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<u8>> {
-        Ok(Box::<[u8]>::from(bytes_field(input, tag)?.unwrap_or(&[])).into_vec())
-    }
 }
 
 impl Value for Unsigned {
@@ -584,26 +334,6 @@ impl Value for Unsigned {
     postcard_field!();
     type Native = u64;
     const KIND: Kind = Kind::U64;
-    #[cfg(feature = "grpc")]
-    fn write(value: &u64, tag: u32, bytes: &mut Vec<u8>) {
-        crate::__private::prost::encoding::uint64::encode(tag, value, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &u64, tag: u32) -> usize {
-        crate::__private::prost::encoding::uint64::encoded_len(tag, value)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        uint_field(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<u64> {
-        Ok(uint_field(input, tag)?.unwrap_or(0))
-    }
 }
 
 // A whole percentage rank, carried as a protobuf `uint32`; the rank's range is
@@ -613,28 +343,6 @@ impl Value for Percent {
     postcard_field!();
     type Native = u8;
     const KIND: Kind = Kind::U32;
-    #[cfg(feature = "grpc")]
-    fn write(value: &u8, tag: u32, bytes: &mut Vec<u8>) {
-        crate::__private::prost::encoding::uint32::encode(tag, &u32::from(*value), bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &u8, tag: u32) -> usize {
-        crate::__private::prost::encoding::uint32::encoded_len(tag, &u32::from(*value))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<u8> {
-        uint_field(input, tag)?
-            .map_or(Ok(0), u8::try_from)
-            .map_err(|_| MessageError::borrowed("percentile rank exceeds a byte"))
-    }
 }
 
 impl Value for Version {
@@ -642,29 +350,6 @@ impl Value for Version {
     postcard_field!();
     type Native = NonZeroU32;
     const KIND: Kind = Kind::U32;
-    #[cfg(feature = "grpc")]
-    fn write(value: &NonZeroU32, tag: u32, bytes: &mut Vec<u8>) {
-        crate::__private::prost::encoding::uint32::encode(tag, &value.get(), bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &NonZeroU32, tag: u32) -> usize {
-        crate::__private::prost::encoding::uint32::encoded_len(tag, &value.get())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<NonZeroU32> {
-        uint_field(input, tag)?
-            .and_then(|value| u32::try_from(value).ok())
-            .and_then(NonZeroU32::new)
-            .ok_or_else(|| MessageError::borrowed("invalid storage schema version"))
-    }
 }
 
 macro_rules! varint {
@@ -674,29 +359,6 @@ macro_rules! varint {
             postcard_field!();
             type Native = $native;
             const KIND: Kind = Kind::$kind;
-            #[cfg(feature = "grpc")]
-            fn write(value: &$native, tag: u32, bytes: &mut Vec<u8>) {
-                if *value != <$native>::default() {
-                    crate::__private::prost::encoding::$encoding::encode(tag, value, bytes);
-                }
-            }
-            #[cfg(feature = "grpc")]
-            fn size(value: &$native, tag: u32) -> usize {
-                if *value == <$native>::default() {
-                    0
-                } else {
-                    crate::__private::prost::encoding::$encoding::encoded_len(tag, value)
-                }
-            }
-            #[cfg(feature = "grpc")]
-            fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-                Self::read(input, tag)?;
-                Ok(0)
-            }
-            #[cfg(feature = "grpc")]
-            fn read(input: DecodeInput<'_>, tag: u32) -> Result<$native> {
-                uint_field(input, tag)?.map_or(Ok(<$native>::default()), $from)
-            }
         }
     };
 }
@@ -713,44 +375,6 @@ impl Value for Float {
     postcard_field!();
     type Native = f64;
     const KIND: Kind = Kind::F64;
-    #[cfg(feature = "grpc")]
-    fn write(value: &f64, tag: u32, bytes: &mut Vec<u8>) {
-        if value.to_bits() != 0 {
-            crate::__private::prost::encoding::double::encode(tag, value, bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &f64, tag: u32) -> usize {
-        if value.to_bits() == 0 {
-            0
-        } else {
-            crate::__private::prost::encoding::double::encoded_len(tag, value)
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<f64> {
-        let mut value = 0.0;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                let crate::__private::DecodeValue::Bits64(bits) =
-                    field.scalar(crate::__private::DecodeScalar::Bits64)?
-                else {
-                    unreachable!("validated fixed-width scalar");
-                };
-                value = f64::from_bits(bits);
-            }
-            Ok(())
-        })?;
-        Ok(value)
-    }
 }
 
 impl Value for Text {
@@ -758,31 +382,6 @@ impl Value for Text {
     postcard_field!();
     type Native = String;
     const KIND: Kind = Kind::String;
-    #[cfg(feature = "grpc")]
-    fn write(value: &String, tag: u32, bytes: &mut Vec<u8>) {
-        if !value.is_empty() {
-            write_bytes(tag, value.as_bytes(), bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &String, tag: u32) -> usize {
-        if value.is_empty() {
-            0
-        } else {
-            length_delimited_size(tag, value.len())
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Ok(text_field(input, tag)?.unwrap_or("").len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<String> {
-        Ok(Box::<str>::from(text_field(input, tag)?.unwrap_or("")).into_string())
-    }
 }
 
 impl<E: Coded> Value for Code<E> {
@@ -806,35 +405,6 @@ impl<E: Coded> Value for Code<E> {
 
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<E> {
         E::from_code(u64::from(input.value::<u32>()?))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &E, tag: u32, bytes: &mut Vec<u8>) {
-        let code = value.code();
-        if code != 0 {
-            crate::__private::prost::encoding::uint32::encode(tag, &code, bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &E, tag: u32) -> usize {
-        let code = value.code();
-        if code == 0 {
-            0
-        } else {
-            crate::__private::prost::encoding::uint32::encoded_len(tag, &code)
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<E> {
-        E::from_code(uint_field(input, tag)?.unwrap_or(0))
     }
 }
 
@@ -862,33 +432,6 @@ impl Value for Index {
 
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<usize> {
         host_width(input.value::<u64>()?)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &usize, tag: u32, bytes: &mut Vec<u8>) {
-        if *value != 0 {
-            crate::__private::prost::encoding::uint64::encode(tag, &(*value as u64), bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &usize, tag: u32) -> usize {
-        if *value == 0 {
-            0
-        } else {
-            crate::__private::prost::encoding::uint64::encoded_len(tag, &(*value as u64))
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        host_width(uint_field(input, tag)?.unwrap_or(0))
     }
 }
 
@@ -937,35 +480,6 @@ macro_rules! wide {
             fn postcard_read(input: &mut PostcardReader<'_>) -> Result<$native> {
                 let high = input.value::<$high>()?;
                 let low = input.value::<u64>()?;
-                ($join)(high, low)
-            }
-            #[cfg(feature = "grpc")]
-            fn write(value: &$native, tag: u32, bytes: &mut Vec<u8>) {
-                let (high, low): ($high, u64) = ($split)(*value);
-                let length =
-                    <$high_codec as Value>::size(&high, 1).saturating_add(Unsigned::size(&low, 2));
-                write_header(tag, length, bytes);
-                <$high_codec as Value>::write(&high, 1, bytes);
-                Unsigned::write(&low, 2, bytes);
-            }
-            #[cfg(feature = "grpc")]
-            fn size(value: &$native, tag: u32) -> usize {
-                let (high, low): ($high, u64) = ($split)(*value);
-                length_delimited_size(
-                    tag,
-                    <$high_codec as Value>::size(&high, 1).saturating_add(Unsigned::size(&low, 2)),
-                )
-            }
-            #[cfg(feature = "grpc")]
-            fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-                Self::read(input, tag)?;
-                Ok(0)
-            }
-            #[cfg(feature = "grpc")]
-            fn read(input: DecodeInput<'_>, tag: u32) -> Result<$native> {
-                let child = input.child(bytes_field(input, tag)?.unwrap_or(&[]))?;
-                let high = <$high_codec as Value>::read(child, 1)?;
-                let low = uint_field(child, 2)?.unwrap_or(0);
                 ($join)(high, low)
             }
         }
@@ -1038,27 +552,6 @@ impl<A: Value> Value for Wrap<A> {
     fn postcard_read(input: &mut PostcardReader<'_>) -> Result<A::Native> {
         A::postcard_read(input)
     }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &A::Native, tag: u32, bytes: &mut Vec<u8>) {
-        write_header(tag, A::size(value, 1), bytes);
-        A::write(value, 1, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &A::Native, tag: u32) -> usize {
-        length_delimited_size(tag, A::size(value, 1))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        A::memory(input.child(bytes_field(input, tag)?.unwrap_or(&[]))?, 1)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<A::Native> {
-        A::read(input.child(bytes_field(input, tag)?.unwrap_or(&[]))?, 1)
-    }
 }
 
 // Repeated Messages, Each Holding One Element At Tag 1.
@@ -1103,75 +596,11 @@ impl<A: Value> Value for Many<A> {
         }
         Ok(values)
     }
-
-    #[cfg(feature = "grpc")]
-    fn write(values: &Vec<A::Native>, tag: u32, bytes: &mut Vec<u8>) {
-        for value in values {
-            Wrap::<A>::write(value, tag, bytes);
-        }
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(values: &Vec<A::Native>, tag: u32) -> usize {
-        values.iter().fold(0usize, |size, value| {
-            size.saturating_add(Wrap::<A>::size(value, tag))
-        })
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        let mut memory = 0usize;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                let child = input.child(field.bytes()?)?;
-                memory = crate::__private::decoding_add(
-                    memory,
-                    std::mem::size_of::<A::Native>().saturating_add(A::memory(child, 1)?),
-                )?;
-            }
-            Ok(())
-        })?;
-        Ok(memory)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<A::Native>> {
-        let mut count = 0usize;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                count = crate::__private::decoding_add(count, 1)?;
-            }
-            Ok(())
-        })?;
-        let mut values = crate::__private::decoding_vector(count)?;
-        input.fields(&mut |field| {
-            if field.tag == tag {
-                values.push(A::read(input.child(field.bytes()?)?, 1)?);
-            }
-            Ok(())
-        })?;
-        Ok(values)
-    }
 }
 
 // One Message Holding A Pair At Tags 1 And 2.
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(feature = "grpc")]
-pub fn length_delimited_size(tag: u32, length: usize) -> usize {
-    field_len(length)
-        .saturating_add(crate::__private::prost::encoding::key_len(tag).saturating_sub(1))
-}
-
-#[cfg(feature = "grpc")]
-fn present(input: DecodeInput<'_>, tag: u32) -> Result<bool> {
-    let mut present = false;
-    input.fields(&mut |field| {
-        present |= field.tag == tag;
-        Ok(())
-    })?;
-    Ok(present)
-}
 
 /* === Tests === */

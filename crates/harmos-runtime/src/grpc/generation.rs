@@ -84,7 +84,7 @@ pub fn generate_server(
             (true, true) => "exchange",
         };
         let uri = format!("/{identity}/{}", method.name);
-        routes.push_str(&format!("{uri:?} => {harmos_path}::grpc::server::{handler}::<{}>(authority, settings, request).await,\n", method.declaration));
+        routes.push_str(&format!("{uri:?} => {harmos_path}::grpc::server::{handler}::<{}, {harmos_path}::grpc::Transcoded>(authority, settings, request).await,\n", method.declaration));
     }
     let source = format!(
         r#"

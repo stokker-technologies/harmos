@@ -57,19 +57,13 @@ crate::declare!(Shutdown {
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, PartialEq)]
-#[cfg_attr(feature = "grpc", derive(prost::Message))]
-#[cfg_attr(not(feature = "grpc"), derive(Debug, Default))]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct Initialize {
-    #[cfg_attr(feature = "grpc", prost(bytes = "vec", tag = "1"))]
     pub config_json: Vec<u8>,
-    #[cfg_attr(feature = "grpc", prost(bytes = "vec", tag = "2"))]
     pub generation_context: Vec<u8>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "grpc", derive(prost::Message))]
-#[cfg_attr(not(feature = "grpc"), derive(Debug, Default))]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Shutdown {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

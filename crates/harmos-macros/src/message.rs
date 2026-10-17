@@ -9,7 +9,6 @@
 
 /* === Modules === */
 mod composition;
-mod decoding;
 mod enumeration;
 mod postcard;
 
@@ -80,16 +79,6 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             "a message requires a non-generic struct with named fields (use {} for an empty message)",
         ));
     }
-    if item
-        .attrs
-        .iter()
-        .any(|attribute| attribute.path().is_ident("prost"))
-    {
-        return Err(Error::new(
-            item.span(),
-            "message owns protobuf attributes and tags",
-        ));
-    }
     let harmos = HarmosPath::resolve(explicit);
     let row_metadata = crate::presentation::fields(&mut item.fields)?;
     let mut tags = BTreeMap::new();
@@ -98,16 +87,6 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         // Macro-Forwarded Types Carry Invisible Delimiter Groups
         while let Type::Group(group) = &field.ty {
             field.ty = (*group.elem).clone();
-        }
-        if field
-            .attrs
-            .iter()
-            .any(|attribute| attribute.path().is_ident("prost"))
-        {
-            return Err(Error::new(
-                field.span(),
-                "remove prost attributes: message derives tags from field names",
-            ));
         }
         let name = field.ident.as_ref().expect("named field").to_string();
         let name = name.strip_prefix("r#").unwrap_or(&name);
@@ -120,22 +99,18 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
                 ),
             ));
         }
-        let (encoding, kind, cardinality) = encoding(&field.ty, &harmos)?;
+        let (_, kind, cardinality) = encoding(&field.ty, &harmos)?;
         fields.push(quote! {
             #harmos::schema::graph::Field {
                 name: ::std::borrow::Cow::Borrowed(#name), tag: #number,
                 kind: #kind, cardinality: #cardinality,
             }
         });
-        let number = syn::LitStr::new(&number.to_string(), field.span());
-        field
-            .attrs
-            .push(syn::parse_quote!(#[prost(#encoding, tag = #number)]));
     }
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
     let declaration = composition::declare(&mut item, &harmos, skip_debug)?;
     let name = &item.ident;
-    let schema = described(name, quote!(&[#(#fields),*]), &harmos);
+    let schema = described(name, quote!(&[#(#fields),*]), quote!(), &harmos);
     let owned_fields = item.fields.iter().map(|field| {
         let name = field.ident.as_ref().expect("named field");
         quote! {
@@ -182,7 +157,12 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
 }
 
 /* === Private Functions === */
-fn described(name: &syn::Ident, fields: TokenStream, harmos: &HarmosPath) -> TokenStream {
+fn described(
+    name: &syn::Ident,
+    fields: TokenStream,
+    extra: TokenStream,
+    harmos: &HarmosPath,
+) -> TokenStream {
     quote! {
         impl #harmos::schema::Described for #name {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
@@ -190,6 +170,7 @@ fn described(name: &syn::Ident, fields: TokenStream, harmos: &HarmosPath) -> Tok
             const MARKER: &'static [u8] = &#harmos::schema::declaration::encode::<{
                 #harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
             }>(Self::NAME, Self::FIELDS);
+            #extra
         }
     }
 }
@@ -202,10 +183,7 @@ fn tag(name: &str) -> u32 {
     if tag >= 19_000 { tag + 1_000 } else { tag }
 }
 
-fn encoding(
-    ty: &Type,
-    harmos: &HarmosPath,
-) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
+fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
     let Type::Path(path) = ty else {
         return Err(unsupported(ty));
     };
@@ -215,7 +193,7 @@ fn encoding(
     if matches!(name.as_str(), "Box" | "Rc" | "Arc") {
         let inner = boxed(ty).ok_or_else(|| unsupported_box(ty))?;
         return Ok((
-            quote!(message, required),
+            true,
             message_kind(inner, harmos),
             quote!(#harmos::schema::Cardinality::Required),
         ));
@@ -236,7 +214,7 @@ fn encoding(
         };
         if name == "Vec" && inner_name.as_deref() == Some("u8") {
             return Ok((
-                quote!(bytes = "vec"),
+                false,
                 quote!(#harmos::schema::graph::Kind::Bytes),
                 quote!(#harmos::schema::Cardinality::Required),
             ));
@@ -248,33 +226,19 @@ fn encoding(
             return Err(unsupported(ty));
         }
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
-        let is_scalar = scalar.is_some();
-        let (wire, kind) = scalar
-            .map(|(wire, kind)| (wire, quote!(#harmos::schema::graph::Kind::#kind)))
-            .unwrap_or_else(|| (quote!(message), message_kind(inner, harmos)));
-        return Ok(if name == "Option" {
-            (
-                quote!(#wire, optional),
-                kind,
-                quote!(#harmos::schema::Cardinality::Optional),
-            )
-        } else if is_scalar && inner_name.as_deref() != Some("String") {
-            (
-                quote!(#wire, repeated, packed = "true"),
-                kind,
-                quote!(#harmos::schema::Cardinality::Repeated),
-            )
+        let kind = scalar
+            .map(|kind| quote!(#harmos::schema::graph::Kind::#kind))
+            .unwrap_or_else(|| message_kind(inner, harmos));
+        let cardinality = if name == "Option" {
+            quote!(#harmos::schema::Cardinality::Optional)
         } else {
-            (
-                quote!(#wire, repeated),
-                kind,
-                quote!(#harmos::schema::Cardinality::Repeated),
-            )
-        });
+            quote!(#harmos::schema::Cardinality::Repeated)
+        };
+        return Ok((false, kind, cardinality));
     }
-    if let Some((wire, kind)) = scalar(&name) {
+    if let Some(kind) = scalar(&name) {
         return Ok((
-            wire,
+            false,
             quote!(#harmos::schema::graph::Kind::#kind),
             quote!(#harmos::schema::Cardinality::Required),
         ));
@@ -297,7 +261,7 @@ fn encoding(
         return Err(unsupported(ty));
     }
     Ok((
-        quote!(message, required),
+        true,
         message_kind(ty, harmos),
         quote!(#harmos::schema::Cardinality::Required),
     ))
@@ -356,16 +320,16 @@ fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
     })
 }
 
-fn scalar(name: &str) -> Option<(TokenStream, TokenStream)> {
+fn scalar(name: &str) -> Option<TokenStream> {
     Some(match name {
-        "bool" => (quote!(bool), quote!(Bool)),
-        "u32" => (quote!(uint32), quote!(U32)),
-        "u64" => (quote!(uint64), quote!(U64)),
-        "i32" => (quote!(int32), quote!(I32)),
-        "i64" => (quote!(int64), quote!(I64)),
-        "f32" => (quote!(float), quote!(F32)),
-        "f64" => (quote!(double), quote!(F64)),
-        "String" => (quote!(string), quote!(String)),
+        "bool" => quote!(Bool),
+        "u32" => quote!(U32),
+        "u64" => quote!(U64),
+        "i32" => quote!(I32),
+        "i64" => quote!(I64),
+        "f32" => quote!(F32),
+        "f64" => quote!(F64),
+        "String" => quote!(String),
         _ => return None,
     })
 }

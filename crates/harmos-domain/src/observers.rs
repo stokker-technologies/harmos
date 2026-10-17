@@ -52,13 +52,9 @@ crate::declare!(Control {
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "grpc", derive(prost::Message))]
-#[cfg_attr(not(feature = "grpc"), derive(Debug, Default))]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Control {
-    #[cfg_attr(feature = "grpc", prost(string, tag = "1"))]
     pub observer: String,
-    #[cfg_attr(feature = "grpc", prost(uint64, tag = "2"))]
     pub generation: u64,
 }
 

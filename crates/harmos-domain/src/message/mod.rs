@@ -8,15 +8,13 @@
  */
 
 /* === Modules === */
-pub(crate) mod input;
+pub(crate) mod allocation;
 pub mod postcard;
 
 /* === Re-Exports === */
 // Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
-#[cfg_attr(not(feature = "grpc"), allow(unused_imports))]
-pub(crate) use input::{
-    DecodeField, DecodeInput, DecodeScalar, DecodeValue, add as decoding_add,
-    multiply as decoding_multiply, vector as decoding_vector,
+pub(crate) use allocation::{
+    add as decoding_add, multiply as decoding_multiply, vector as decoding_vector,
 };
 pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 
@@ -98,43 +96,12 @@ pub trait Message: Sized + Send + Sync {
     }
 }
 
-#[cfg(feature = "grpc")]
-pub trait Protobuf: Sized + Send + Sync {
-    fn encode_to_vec(&self) -> Vec<u8>;
-    fn encode_into(&self, bytes: &mut Vec<u8>) {
-        bytes.extend_from_slice(&self.encode_to_vec());
-    }
-    fn encoded_len(&self) -> usize;
-    fn decode(bytes: &[u8]) -> Result<Self, MessageError>;
-    fn decoding_memory(_bytes: &[u8]) -> Result<usize, MessageError> {
-        Err(MessageError::borrowed(
-            "decoding memory bound is unsupported",
-        ))
-    }
-
-    fn decoding_memory_input(input: DecodeInput<'_>) -> Result<usize, MessageError> {
-        Self::decoding_memory(input.contiguous()?)
-    }
-
-    fn decode_input(input: DecodeInput<'_>) -> Result<Self, MessageError> {
-        Self::decode(input.contiguous()?)
-    }
-}
-
 pub trait MemorySize: Sized {
     fn memory_size(&self) -> usize;
 }
 
 // A Value That Crosses A Process Boundary: Every Operation Request, Response
-// And Stream Item. The Protobuf Codec Joins It Exactly When This Crate Carries
-// One, So Every Expansion Gated By `with_protobuf!` Agrees With The Bound.
-#[cfg(feature = "grpc")]
-pub trait Portable:
-    Message + Protobuf + MemorySize + crate::schema::Described + Send + Sync + 'static
-{
-}
-
-#[cfg(not(feature = "grpc"))]
+// And Stream Item. Transport Codecs Derive From The Postcard Value And Its Shape.
 pub trait Portable:
     Message + MemorySize + crate::schema::Described + Send + Sync + 'static
 {
@@ -147,13 +114,6 @@ pub trait Storable: Message + MemorySize {
 }
 
 /* === Implementations === */
-#[cfg(feature = "grpc")]
-impl<T> Portable for T where
-    T: Message + Protobuf + MemorySize + crate::schema::Described + Send + Sync + 'static
-{
-}
-
-#[cfg(not(feature = "grpc"))]
 impl<T> Portable for T where
     T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static
 {
@@ -261,80 +221,6 @@ impl MessageError {
     pub const fn borrowed(reason: &'static str) -> Self {
         Self(Cow::Borrowed(reason))
     }
-}
-
-#[cfg(feature = "grpc")]
-impl<T: prost::Message + Default + 'static> Protobuf for T {
-    fn encode_into(&self, bytes: &mut Vec<u8>) {
-        <T as prost::Message>::encode_raw(self, bytes);
-    }
-    fn encode_to_vec(&self) -> Vec<u8> {
-        prost::Message::encode_to_vec(self)
-    }
-    fn encoded_len(&self) -> usize {
-        prost::Message::encoded_len(self)
-    }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
-        primitive_protobuf_memory::<T>(bytes)
-    }
-    fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
-        <T as prost::Message>::decode(bytes).map_err(|error| MessageError::new(error.to_string()))
-    }
-}
-
-#[cfg(feature = "grpc")]
-fn primitive_protobuf_memory<T: 'static>(bytes: &[u8]) -> Result<usize, MessageError> {
-    use std::any::TypeId;
-    let ty = TypeId::of::<T>();
-    let empty = ty == TypeId::of::<()>();
-    let text = ty == TypeId::of::<String>();
-    let blob = ty == TypeId::of::<Vec<u8>>();
-    let scalar = if [
-        TypeId::of::<bool>(),
-        TypeId::of::<u32>(),
-        TypeId::of::<u64>(),
-        TypeId::of::<i32>(),
-        TypeId::of::<i64>(),
-    ]
-    .contains(&ty)
-    {
-        Some(DecodeScalar::Varint)
-    } else if ty == TypeId::of::<f32>() {
-        Some(DecodeScalar::Bits32)
-    } else if ty == TypeId::of::<f64>() {
-        Some(DecodeScalar::Bits64)
-    } else {
-        None
-    };
-    if !empty && !text && !blob && scalar.is_none() {
-        return Err(MessageError::borrowed(
-            "decoding memory bound is unsupported",
-        ));
-    }
-    let mut largest = 0;
-    DecodeInput::new(bytes).fields(&mut |field| {
-        if field.tag != 1 || empty {
-            return Ok(());
-        }
-        if let Some(kind) = scalar {
-            field.scalar(kind)?;
-        }
-        if text {
-            largest = largest.max(field.text()?.len());
-        }
-        if blob {
-            largest = largest.max(field.bytes()?.len());
-        }
-        Ok(())
-    })?;
-    // Prost May Retain A Previous Duplicate's Capacity While Growing Its Buffer.
-    // Include Minimum Vec Allocation, Geometric Growth And Overlapping Storage.
-    let heap = if largest == 0 {
-        0
-    } else {
-        decoding_multiply(largest.max(8), 4)?
-    };
-    decoding_add(std::mem::size_of::<T>(), heap)
 }
 
 /* === Public Functions === */

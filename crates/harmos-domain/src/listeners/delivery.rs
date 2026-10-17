@@ -214,23 +214,6 @@ impl<L: Listener> Message for Delivery<L> {
     }
 }
 
-// Callbacks Never Bind gRPC; Their Protobuf Codec Is The Listener Envelope.
-#[cfg(feature = "grpc")]
-impl<L: Listener> crate::Protobuf for Delivery<L> {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        Message::encode_to_vec(self)
-    }
-    fn encoded_len(&self) -> usize {
-        Message::encoded_len(self)
-    }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
-        <Self as Message>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
-        <Self as Message>::decode(bytes)
-    }
-}
-
 impl<L: Listener> crate::operations::OperationDeclaration for Delivery<L> {
     type Response = ();
     type Input = crate::operations::NoStream;

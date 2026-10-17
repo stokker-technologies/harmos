@@ -42,7 +42,7 @@ pub mod __private {
 
 /* === Re-Exports === */
 
-pub use codec::{Codec, Encode, EncodeSettings, Encoder};
+pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};

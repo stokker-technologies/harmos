@@ -18,8 +18,8 @@ use std::sync::Arc;
 // Third Party Imports
 use prost::encoding::{WireType, decode_key, decode_varint};
 // Local Imports
-use super::{Cardinality, graph};
-use crate::config::SchemaSettings;
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::{Cardinality, graph};
 
 /* === Constants === */
 const DEPTH: usize = 32;
@@ -179,7 +179,7 @@ impl Validator {
     }
 }
 
-impl crate::MemorySize for Validator {
+impl harmos_domain::MemorySize for Validator {
     fn memory_size(&self) -> usize {
         self.definitions.iter().fold(
             std::mem::size_of::<Self>().saturating_add(2 * std::mem::size_of::<usize>()),

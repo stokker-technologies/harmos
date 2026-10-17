@@ -23,14 +23,8 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-#[cfg(feature = "grpc")]
-use crate::__private::{DecodeInput, decoding_add};
 use crate::Identifier;
-#[cfg(feature = "grpc")]
-use crate::MessageError;
 use crate::model::storage::keys::invalid;
-#[cfg(feature = "grpc")]
-use crate::model::storage::position::codec::{identifier, text_field, uint_field};
 use crate::model::storage::{ObjectKey, ObjectValue, StorageCursor, StoreHistory};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
@@ -201,67 +195,6 @@ crate::postcard_product!(ObjectVersionToken {
     history: StoreHistory,
     revision: NonZeroU64
 });
-
-#[cfg(feature = "grpc")]
-impl crate::__private::Protobuf for ObjectVersionToken {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(<Self as crate::__private::Protobuf>::encoded_len(self));
-        <Self as crate::__private::Protobuf>::encode_into(self, &mut bytes);
-        bytes
-    }
-
-    fn encode_into(&self, bytes: &mut Vec<u8>) {
-        use crate::model::storage::position::codec::write_bytes;
-        write_bytes(1, self.history.store.as_str().as_bytes(), bytes);
-        write_bytes(2, self.history.epoch.as_str().as_bytes(), bytes);
-        crate::__private::prost::encoding::uint64::encode(3, &self.revision.get(), bytes);
-    }
-
-    fn encoded_len(&self) -> usize {
-        use crate::__private::prost::encoding::encoded_len_varint;
-        [self.history.store.as_str(), self.history.epoch.as_str()]
-            .into_iter()
-            .fold(
-                1usize.saturating_add(encoded_len_varint(self.revision.get())),
-                |bytes, value| {
-                    bytes
-                        .saturating_add(1)
-                        .saturating_add(encoded_len_varint(value.len() as u64))
-                        .saturating_add(value.len())
-                },
-            )
-    }
-
-    fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        <Self as crate::__private::Protobuf>::decode_input(DecodeInput::new(bytes))
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, MessageError> {
-        <Self as crate::__private::Protobuf>::decoding_memory_input(DecodeInput::new(bytes))
-    }
-
-    fn decoding_memory_input(input: DecodeInput<'_>) -> std::result::Result<usize, MessageError> {
-        let store = text_field(input, 1)?.unwrap_or("");
-        let epoch = text_field(input, 2)?.unwrap_or("");
-        NonZeroU64::new(uint_field(input, 3)?.unwrap_or(0))
-            .ok_or_else(|| MessageError::borrowed("object revision must be positive"))?;
-        decoding_add(
-            decoding_add(std::mem::size_of::<Self>(), store.len())?,
-            epoch.len(),
-        )
-    }
-
-    fn decode_input(input: DecodeInput<'_>) -> std::result::Result<Self, MessageError> {
-        let store = identifier(text_field(input, 1)?.unwrap_or(""))?;
-        let epoch = identifier(text_field(input, 2)?.unwrap_or(""))?;
-        let revision = NonZeroU64::new(uint_field(input, 3)?.unwrap_or(0))
-            .ok_or_else(|| MessageError::borrowed("object revision must be positive"))?;
-        Ok(Self {
-            history: StoreHistory { store, epoch },
-            revision,
-        })
-    }
-}
 
 impl Described for ObjectVersionToken {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectVersionToken));

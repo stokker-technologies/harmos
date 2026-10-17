@@ -108,10 +108,10 @@ pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
         <O::Input as Direction>::STREAMED,
         <O::Output as Direction>::STREAMED,
     ) {
-        (false, false) => server::unary::<O>,
-        (true, false) => server::upload::<O>,
-        (false, true) => server::download::<O>,
-        (true, true) => server::exchange::<O>,
+        (false, false) => server::unary::<O, super::Transcoded>,
+        (true, false) => server::upload::<O, super::Transcoded>,
+        (false, true) => server::download::<O, super::Transcoded>,
+        (true, true) => server::exchange::<O, super::Transcoded>,
     }
 }
 

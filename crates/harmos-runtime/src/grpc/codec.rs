@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-mod sealed {
-    pub trait Encoding {}
-}
 
 /* === Re-Exports === */
 pub use crate::config::EncodeSettings;
@@ -28,9 +25,11 @@ use tonic::{
 };
 
 // Local Imports
-use super::envelope::{encode, size};
+use super::envelope::delimited;
 use super::{DecodeSettings, Decoder, Event};
-use crate::{MemorySize, Protobuf, operations::StreamItem};
+use crate::{MemorySize, MessageError, operations::StreamItem};
+use harmos_domain::Portable;
+use harmos_sdk::grpc::DecodeInput;
 
 /* === Constants === */
 
@@ -40,25 +39,34 @@ use crate::{MemorySize, Protobuf, operations::StreamItem};
 
 /* === Structs === */
 
-pub struct Codec<D, E> {
-    decoder: Decoder<D>,
+pub struct Codec<W, D, E> {
+    decoder: Decoder<W, D>,
     encode: EncodeSettings,
     response: PhantomData<fn() -> E>,
 }
 
-pub struct Encoder<E> {
+pub struct Encoder<W, E> {
     settings: EncodeSettings,
     scratch: Vec<u8>,
-    response: PhantomData<fn() -> E>,
+    response: PhantomData<fn() -> (W, E)>,
 }
+
+/// Typed payloads: protobuf transcoded from each value's canonical Postcard form.
+pub struct Transcoded;
 
 /* === Enums === */
 
 /* === Traits === */
-pub trait Encode: sealed::Encoding + Send + 'static {
-    fn wire_len(&self) -> usize;
+/// How one payload type crosses the gRPC wire under the strategy `Self`.
+pub trait Wire<T>: Send + Sync + 'static {
+    fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
+    fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError>;
+    fn decode(input: DecodeInput<'_>) -> Result<T, MessageError>;
+}
 
-    fn write(&self, bytes: &mut Vec<u8>);
+/// A gRPC response message written under the strategy `W`.
+pub trait Encode<W>: Send + 'static {
+    fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
 }
 
 /* === Implementations === */
@@ -75,40 +83,43 @@ impl EncodeSettings {
     }
 }
 
-impl<T: Protobuf + 'static> sealed::Encoding for crate::operations::Response<T> {}
-impl<T: Protobuf + 'static> Encode for crate::operations::Response<T> {
-    fn wire_len(&self) -> usize {
-        self.encoded_len()
+impl<T: Portable> Wire<T> for Transcoded {
+    fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
+        harmos_sdk::grpc::encode(value, bytes)
     }
 
-    fn write(&self, bytes: &mut Vec<u8>) {
-        self.encode_into(bytes);
-    }
-}
-impl<I: Protobuf + 'static, R: Protobuf + 'static> sealed::Encoding
-    for Event<StreamItem<I>, crate::operations::Response<R>>
-{
-}
-impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode
-    for Event<StreamItem<I>, crate::operations::Response<R>>
-{
-    fn wire_len(&self) -> usize {
-        let payload = match self {
-            Self::Item(value) => value.encoded_len(),
-            Self::Completion(value) => value.encoded_len(),
-        };
-        size(payload)
+    fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError> {
+        harmos_sdk::grpc::decoding_memory::<T>(input)
     }
 
-    fn write(&self, bytes: &mut Vec<u8>) {
+    fn decode(input: DecodeInput<'_>) -> Result<T, MessageError> {
+        harmos_sdk::grpc::decode::<T>(input)
+    }
+}
+
+impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for crate::operations::Response<T> {
+    fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
+        W::encode(self, bytes)
+    }
+}
+
+impl<W, I, R> Encode<W> for Event<StreamItem<I>, crate::operations::Response<R>>
+where
+    W: Wire<I> + Wire<R>,
+    I: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+{
+    fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
         match self {
-            Self::Item(value) => encode(1, &**value, bytes),
-            Self::Completion(value) => encode(2, &**value, bytes),
+            Self::Item(value) => delimited(1, bytes, |bytes| <W as Wire<I>>::encode(value, bytes)),
+            Self::Completion(value) => {
+                delimited(2, bytes, |bytes| <W as Wire<R>>::encode(value, bytes))
+            }
         }
     }
 }
 
-impl<D: Protobuf + MemorySize + 'static, E: Encode> Codec<D, E> {
+impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
     pub fn server(self) -> tonic::server::Grpc<Self> {
         let decode = self.decoder.message_limit();
         let encode = self.encode.message_bytes.get();
@@ -126,11 +137,13 @@ impl<D: Protobuf + MemorySize + 'static, E: Encode> Codec<D, E> {
         })
     }
 }
-impl<D: Protobuf + MemorySize + 'static, E: Encode> tonic::codec::Codec for Codec<D, E> {
+impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Codec
+    for Codec<W, D, E>
+{
     type Encode = E;
     type Decode = StreamItem<D>;
-    type Encoder = Encoder<E>;
-    type Decoder = Decoder<D>;
+    type Encoder = Encoder<W, E>;
+    type Decoder = Decoder<W, D>;
     fn encoder(&mut self) -> Self::Encoder {
         Encoder {
             settings: self.encode,
@@ -143,30 +156,21 @@ impl<D: Protobuf + MemorySize + 'static, E: Encode> tonic::codec::Codec for Code
         self.decoder.fork()
     }
 }
-impl<E: Encode> Encoder<E> {
+impl<W, E: Encode<W>> Encoder<W, E> {
     fn message(&mut self, value: &E) -> Result<&[u8], Status> {
-        let length = value.wire_len();
-        if length > self.settings.message_bytes.get() {
+        self.scratch.clear();
+        value
+            .write(&mut self.scratch)
+            .map_err(|error| Status::internal(error.to_string()))?;
+        if self.scratch.len() > self.settings.message_bytes.get() {
             return Err(Status::resource_exhausted(
                 "gRPC encoded message exceeds wire ceiling",
-            ));
-        }
-        self.scratch.clear();
-        if self.scratch.capacity() < length {
-            self.scratch
-                .try_reserve_exact(length)
-                .map_err(|_| Status::resource_exhausted("gRPC encoding allocation refused"))?;
-        }
-        value.write(&mut self.scratch);
-        if self.scratch.len() != length {
-            return Err(Status::internal(
-                "gRPC payload codec violated its encoded length",
             ));
         }
         Ok(&self.scratch)
     }
 }
-impl<E: Encode> tonic::codec::Encoder for Encoder<E> {
+impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
     type Item = E;
     type Error = Status;
     fn encode(&mut self, item: E, destination: &mut EncodeBuf<'_>) -> Result<(), Status> {

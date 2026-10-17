@@ -25,7 +25,7 @@ use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
-use super::{Codec, Event, InputEnvelope, InputError};
+use super::{Codec, Event, InputEnvelope, InputError, Wire};
 use crate::operations::{OperationDeclaration, OperationInstance, StreamItem};
 use crate::{Error, Refusal, operations::OperationManager};
 
@@ -242,19 +242,20 @@ where
 }
 
 /* === Public Functions === */
-pub fn unary<O>(
+pub fn unary<O, W>(
     authority: Authority,
     settings: Settings,
     request: http::Request<Body>,
 ) -> HttpFuture
 where
     O: OperationDeclaration,
+    W: Wire<O> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<O, crate::operations::Response<O::Response>>::new(
+        let codec = match Codec::<W, O, crate::operations::Response<O::Response>>::new(
             settings.decode,
             settings.encode,
         ) {
@@ -269,19 +270,21 @@ where
         codec.server().unary(call, request).await
     })
 }
-pub fn download<O>(
+pub fn download<O, W>(
     authority: Authority,
     settings: Settings,
     request: http::Request<Body>,
 ) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
+    W: Wire<O> + Wire<<O::Output as crate::operations::Direction>::Item> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
+            W,
             O,
             Event<
                 StreamItem<<O::Output as crate::operations::Direction>::Item>,
@@ -300,19 +303,21 @@ where
         codec.server().server_streaming(call, request).await
     })
 }
-pub fn upload<O>(
+pub fn upload<O, W>(
     authority: Authority,
     settings: Settings,
     request: http::Request<Body>,
 ) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
+    W: Wire<O> + Wire<<O::Input as crate::operations::Direction>::Item> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
+            W,
             InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
             crate::operations::Response<O::Response>,
         >::new(settings.decode, settings.encode)
@@ -328,19 +333,24 @@ where
         codec.server().client_streaming(call, request).await
     })
 }
-pub fn exchange<O>(
+pub fn exchange<O, W>(
     authority: Authority,
     settings: Settings,
     request: http::Request<Body>,
 ) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
+    W: Wire<O>
+        + Wire<<O::Input as crate::operations::Direction>::Item>
+        + Wire<<O::Output as crate::operations::Direction>::Item>
+        + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
+            W,
             InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
             Event<
                 StreamItem<<O::Output as crate::operations::Direction>::Item>,
