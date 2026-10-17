@@ -51,8 +51,8 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
-fn whole(file: &harmos_runtime::storage::FileReference) -> harmos_runtime::storage::operations::ReadFile {
-    harmos_runtime::storage::operations::ReadFile { file: file.clone(), range: harmos_runtime::storage::ByteRange { offset: 0, limit: None } }
+fn whole(file: &harmos_storage::FileReference) -> harmos_domain::operations::storage::ReadFile {
+    harmos_domain::operations::storage::ReadFile { file: file.clone(), range: harmos_storage::ByteRange { offset: 0, limit: None } }
 }
 
 #[tokio::test]
@@ -82,15 +82,15 @@ async fn file_awaits_flush() {
     assert_eq!(f.storage.status().saved.sequence, 0);
     let mut durable = f
         .storage
-        .query(harmos_runtime::storage::operations::Query {
+        .query(harmos_domain::operations::storage::Query {
             at: f.storage.cursor_saved(),
-            source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
+            source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
             transforms: Vec::new(),
-            slice: harmos_runtime::storage::query::RowSlice::default(),
+            slice: harmos_storage::query::RowSlice::default(),
         })
         .await
         .unwrap();
-    assert!(matches!(durable.next().await.unwrap(), Some(harmos_runtime::storage::query::QueryArrow::Schema(_))));
+    assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
     assert!(durable.next().await.unwrap().is_none());
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);

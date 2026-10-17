@@ -23,19 +23,18 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use crate::backend::{Data, Recovery, history, storage_settings};
-use crate::support::{Bank, Ledger, catalog};
 use crate::waveforms::{self, Experiment, Objects, Sample};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::scalar::{Agg, ExactNumber, ScalarValue};
-use harmos_runtime::storage::query::{
+use harmos_domain::operations::storage::Query;
+use harmos_storage::query::scalar::{Agg, ExactNumber, ScalarValue};
+use harmos_storage::query::{
     Accumulator, ObjectVersions, RecordSelection, RowSlice, Scratch, Source,
 };
-use harmos_runtime::storage::{
+use harmos_storage::{
     ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager,
     StorageSettings,
 };
 use harmos_storage::Error;
-use harmos_runtime::{Aggregate, Runtime};
+use harmos_domain::Aggregate;
 
 /* === Constants === */
 
@@ -57,7 +56,7 @@ use harmos_runtime::{Aggregate, Runtime};
 
 async fn manager(
     settings: StorageSettings,
-) -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Objects>>) {
+) -> (StorageManager<Objects>, Arc<Data<Objects>>) {
     let data = Arc::new(Data::<Objects>::with_catalog(history()));
     let storage = StorageManager::<Objects>::new(
         StorageBackends {
@@ -67,12 +66,8 @@ async fn manager(
         settings,
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-    (runtime, storage, data)
+    crate::fixture::start(&storage).await;
+    (storage, data)
 }
 
 fn paged() -> StorageSettings {
@@ -150,7 +145,7 @@ fn ratio(negative: bool, numerator: u128, denominator: u128) -> ScalarValue {
 
 #[tokio::test]
 async fn typed_objects_page() {
-    let (runtime, storage, _) = manager(paged()).await;
+    let (storage, _) = manager(paged()).await;
     let first = write(&storage, "a", "one").await;
     let second = write(&storage, "a", "two").await;
     let third = write(&storage, "b", "three").await;
@@ -221,12 +216,12 @@ async fn typed_objects_page() {
     assert_eq!(filtered, [("two".into(), second)]);
     let latest = labels(&storage, read(None, ObjectVersions::Latest)).await;
     assert!(!latest.iter().any(|(label, _)| label == "one"));
-    runtime.stop().await.unwrap();
+
 }
 
 #[tokio::test]
 async fn typed_records_page() {
-    let (runtime, storage, _) = manager(paged()).await;
+    let (storage, _) = manager(paged()).await;
     storage
         .write_schema(&waveforms::schema(), &waveforms::definition())
         .await
@@ -301,12 +296,12 @@ async fn typed_records_page() {
         .collect();
     assert_eq!(phase.len(), 3);
     assert!(phase.iter().all(|record| record.payload.phase == 1));
-    runtime.stop().await.unwrap();
+
 }
 
 #[tokio::test]
 async fn unwritten_schema_empty() {
-    let (runtime, storage, _) = manager(paged()).await;
+    let (storage, _) = manager(paged()).await;
     write(&storage, "a", "one").await;
     let at = storage.cursor_saved();
     let mut reader = storage
@@ -328,9 +323,9 @@ async fn unwritten_schema_empty() {
         .unwrap();
     assert!(query.next().await.is_err());
     drop(query);
-    runtime.stop().await.unwrap();
 
-    let (runtime, storage, _) = manager(paged()).await;
+
+    let (storage, _) = manager(paged()).await;
     storage
         .write_schema(&waveforms::schema(), &waveforms::definition())
         .await
@@ -342,7 +337,7 @@ async fn unwritten_schema_empty() {
     let mut reader = storage.read_objects(read).await.unwrap();
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
-    runtime.stop().await.unwrap();
+
 }
 
 #[tokio::test]
@@ -350,7 +345,7 @@ async fn typed_budget_refuses() {
     let mut settings = paged();
     settings.budget.read_memory_bytes = NonZeroUsize::new(128).unwrap();
     settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
-    let (runtime, storage, _) = manager(settings).await;
+    let (storage, _) = manager(settings).await;
     write(&storage, "a", "one").await;
     let objects = async {
         storage
@@ -385,13 +380,13 @@ async fn typed_budget_refuses() {
         Err(Error::ResourceExhausted { .. })
     ));
     assert_eq!(storage.status().read_bytes, 0);
-    runtime.stop().await.unwrap();
+
 
     // An Admitted Reader Refuses A Page No Budget Split Can Hold.
     let mut settings = paged();
     settings.budget.read_memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
     settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
-    let (runtime, storage, _) = manager(settings).await;
+    let (storage, _) = manager(settings).await;
     write(&storage, "large", &"x".repeat(16 * 1024)).await;
     let mut reader = storage
         .read_objects(ObjectRead::<Experiment> {
@@ -408,7 +403,7 @@ async fn typed_budget_refuses() {
     ));
     drop(reader);
     assert_eq!(storage.status().read_bytes, 0);
-    runtime.stop().await.unwrap();
+
 }
 
 #[test]
@@ -488,7 +483,7 @@ fn public_scalar_fold() {
 
 #[tokio::test]
 async fn snapshot_reads_concurrent() {
-    let (runtime, storage, data) = manager(storage_settings()).await;
+    let (storage, data) = manager(storage_settings()).await;
     write(&storage, "a", "one").await;
     let key = "a".to_owned();
     let read = || storage.read_object::<Experiment>(&key, ObjectVersion::Latest);
@@ -520,7 +515,7 @@ async fn snapshot_reads_concurrent() {
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 0);
     closing.await.unwrap();
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+
 }
 
 /* === Tests === */

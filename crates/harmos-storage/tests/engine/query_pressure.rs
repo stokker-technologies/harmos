@@ -165,7 +165,7 @@ async fn pressure_reloads_page() {
 
     // Poll Through Conversion Refusal Into WorkingCredit Admission. No
     // Reducer Mutation Or Cursor Commit May Survive This Abandoned Page.
-    assert!(crate::pending(next.as_mut()).await);
+    assert!(pending(next.as_mut()).await);
     assert!(
         storage.status().read_bytes < capacity,
         "raw page must be released before waiting"
@@ -256,7 +256,7 @@ async fn cancelled_advance_poisons() {
         .reserve_arrow_memory(capacity - occupied - overhead)
         .unwrap();
     let mut next = Box::pin(reader.next());
-    assert!(crate::pending(next.as_mut()).await);
+    assert!(pending(next.as_mut()).await);
     drop(next);
     assert!(reader.next().await.is_err());
     assert!(reader.completion().is_err());
@@ -502,5 +502,5 @@ fn fill(f: &super::fixture::Fixture) -> harmos_storage::arrow::RetainedMemory {
 // Whether One Poll Leaves The Future Waiting.
 async fn pending<F: std::future::Future>(future: std::pin::Pin<&mut F>) -> bool {
     let mut future = future;
-    std::future::poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx).is_pending())).await
+    std::future::poll_fn(|cx| std::task::Poll::Ready(future.as_mut().poll(cx).is_pending())).await
 }

@@ -20,12 +20,11 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::{Bank, Data, Ledger, Recovery, catalog, history};
-use harmos_runtime::Runtime;
-use harmos_runtime::storage::{
+use crate::backend::{Data, Recovery, history};
+use harmos_storage::{
     ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject,
 };
-use harmos_runtime::{DefinitionId, Identified, Identifier, Message};
+use harmos_domain::{DefinitionId, Identified, Identifier, Message};
 
 /* === Constants === */
 
@@ -34,31 +33,31 @@ use harmos_runtime::{DefinitionId, Identified, Identifier, Message};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos_runtime::message]
+#[harmos_domain::message]
 #[derive(Clone, PartialEq)]
 struct Document {
     id: String,
     status: String,
 }
 
-#[harmos_runtime::message]
+#[harmos_domain::message]
 #[derive(Clone, PartialEq)]
 struct LegacyDocument {
     id: String,
     status: String,
 }
 
-#[harmos_runtime::message]
+#[harmos_domain::message]
 struct Duplicate {
     id: String,
 }
 
-#[harmos_runtime::message]
+#[harmos_domain::message]
 struct ZeroVersion {
     id: String,
 }
 
-#[harmos_runtime::message]
+#[harmos_domain::message]
 #[derive(Clone, PartialEq)]
 struct Counter {
     id: u64,
@@ -66,30 +65,30 @@ struct Counter {
 }
 
 /* === Enums === */
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum NumericObjects {
     Counter(Counter),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Objects {
     Current(Document),
     Historical(LegacyDocument),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum RenamedVariants {
     NothingToDoWithWireNames(Document),
     Old(LegacyDocument),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Ambiguous {
     First(Document),
     Second(Duplicate),
 }
 
-#[harmos_runtime::catalog]
+#[harmos_domain::catalog]
 enum Invalid {
     Zero(ZeroVersion),
 }
@@ -197,18 +196,14 @@ async fn numeric_keys_roundtrip() {
         storage_settings(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    crate::fixture::start(&storage).await;
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
     storage.flush_until(&admitted.position).await.unwrap();
     let found = storage
         .read_object::<Counter>(
             &42,
-            harmos_runtime::storage::ObjectVersion::Exact(admitted.version.clone()),
+            harmos_storage::ObjectVersion::Exact(admitted.version.clone()),
         )
         .await
         .unwrap()
@@ -217,12 +212,12 @@ async fn numeric_keys_roundtrip() {
     assert_eq!(found.version, admitted.version);
     assert!(
         storage
-            .read_object::<Counter>(&43, harmos_runtime::storage::ObjectVersion::Latest,)
+            .read_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,)
             .await
             .unwrap()
             .is_none()
     );
-    runtime.stop().await.unwrap();
+    storage.close().await.unwrap();
 }
 
 #[test]
@@ -292,7 +287,7 @@ fn forged_values_refused() {
         match case {
             0 => {
                 value.item =
-                    harmos_runtime::storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap())
+                    harmos_storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap())
                         .unwrap()
             }
             1 => value.schema.id = Identifier::new("other").unwrap(),

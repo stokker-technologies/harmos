@@ -15,13 +15,12 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
-use harmos_runtime::storage::*;
+use harmos_storage::*;
 use harmos_storage::Error;
-use harmos_runtime::{Identifier, Runtime};
+use harmos_domain::Identifier;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 
 /* === Constants === */
@@ -48,11 +47,7 @@ async fn oversized_batch_refused() {
         settings,
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    crate::fixture::start(&storage).await;
 
     // An Impossible Batch Is Refused Before Ownership Or Cursor Advancement.
     let schema = waveforms::schema();
@@ -92,5 +87,5 @@ async fn oversized_batch_refused() {
     assert_eq!(durable.sequence, 1);
     assert_eq!(data.records.lock().unwrap().len(), 1);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+
 }

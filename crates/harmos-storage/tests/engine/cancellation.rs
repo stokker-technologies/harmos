@@ -15,12 +15,11 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
 
 // Third Party Imports
-use harmos_runtime::storage::*;
-use harmos_runtime::{Identifier, Runtime};
+use harmos_storage::*;
+use harmos_domain::Identifier;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 
 /* === Constants === */
@@ -33,7 +32,7 @@ use super::waveforms;
 /* === Public Functions === */
 /* === Private Functions === */
 // Start Journaled Storage With One Active Query And One Pending Write Batch.
-async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager, Runtime<Bank>) {
+async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
@@ -46,19 +45,15 @@ async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager, Runti
         settings,
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-    (data, storage, runtime)
+    crate::fixture::start(&storage).await;
+    (data, storage)
 }
 
 /* === Tests === */
 #[tokio::test]
 async fn dropped_write_retained() {
     let directory = tempfile::tempdir().unwrap();
-    let (data, storage, runtime) = start(directory.path()).await;
+    let (data, storage) = start(directory.path()).await;
     let schema = waveforms::schema();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("cancelled").unwrap();
@@ -96,23 +91,23 @@ async fn dropped_write_retained() {
     );
     assert_eq!(storage.status().pending_bytes, 0);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+
 }
 
 #[tokio::test]
 async fn cancelled_query_releases() {
     let directory = tempfile::tempdir().unwrap();
-    let (_data, storage, runtime) = start(directory.path()).await;
+    let (_data, storage) = start(directory.path()).await;
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
-    let query = || harmos_runtime::storage::operations::Query {
+    let query = || harmos_domain::operations::storage::Query {
         at: accepted.clone(),
-        source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
+        source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection {
             scope: None,
             item: None,
         }),
         transforms: vec![],
-        slice: harmos_runtime::storage::query::RowSlice {
+        slice: harmos_storage::query::RowSlice {
             offset: 0,
             limit: None,
         },
@@ -125,11 +120,11 @@ async fn cancelled_query_releases() {
     let mut following = storage.query(query()).await.unwrap();
     assert!(matches!(
         following.next().await.unwrap(),
-        Some(harmos_runtime::storage::query::QueryArrow::Schema(_))
+        Some(harmos_storage::query::QueryArrow::Schema(_))
     ));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);
     drop(following);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
+
 }
