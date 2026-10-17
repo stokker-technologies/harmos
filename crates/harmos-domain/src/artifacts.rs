@@ -92,7 +92,7 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
     // One Current Format: Any Other Versioned Fragment Is Refused, Never Interpreted.
     for position in retired.find_iter(artifact) {
         let version = &artifact[position + family.len()..];
-        if version.starts_with(b"V") && !version.starts_with(&PREFIX[family.len()..]) {
+        if version.starts_with(b"V") && !version.starts_with(b"V6:") {
             return Err(ScanError::IncompatiblePayload);
         }
     }
