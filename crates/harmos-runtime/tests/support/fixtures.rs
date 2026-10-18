@@ -60,9 +60,13 @@ pub fn dependencies() -> PathBuf {
     directory().join(stamp()["metadata"]["dependencies"].as_str().expect("the fixture stamp names the dependency directory"))
 }
 
-pub fn binary(name: &str) -> PathBuf {
+// Nextest Names The Extracted Executable At Run Time; Plain `cargo test` Only Has The Compile-Time Path.
+pub fn binary(name: &str, compiled: Option<&str>) -> PathBuf {
     let variable = format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_"));
-    std::env::var_os(&variable).map(PathBuf::from).unwrap_or_else(|| panic!("{variable} is unset; run the story under nextest"))
+    std::env::var_os(&variable)
+        .map(PathBuf::from)
+        .or_else(|| compiled.map(PathBuf::from))
+        .unwrap_or_else(|| panic!("{variable} is unset and the package does not own {name}"))
 }
 
 // The Vendored Protobuf Compiler Travels With The Stamped Offline Inputs, Not The Build Runner's Registry
