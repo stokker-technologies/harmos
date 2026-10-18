@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:1a0cefdf8065fad822e655fb471df89cf8c493fe888f5164de61cd93a241d99c
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:268e31164197b535f5d8be6e6e9f490d94d68931f5f3ee91bc1a39817931c9f7
 name: CI
 "on":
   push:
@@ -45,6 +45,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -89,6 +92,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -132,6 +138,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -219,6 +228,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -307,6 +319,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -399,6 +414,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -453,6 +471,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -541,6 +562,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -629,6 +653,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -717,6 +744,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -813,6 +843,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -917,6 +950,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -964,6 +1000,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -1015,6 +1054,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -1038,6 +1080,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -1085,6 +1130,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -1136,6 +1184,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
@@ -1187,6 +1238,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false

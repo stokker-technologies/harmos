@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:09e45cd345cd0a8d6925e9768f961e1aabf86ce4566e8b4fa7c162aefc3ad9ce
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:76b621c72485558b22b7e9c071c8d71ded8e4ea8e83606a9f772c1810f4f1976
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -32,6 +32,9 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
