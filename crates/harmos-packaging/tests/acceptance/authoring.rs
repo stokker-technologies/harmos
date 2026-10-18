@@ -99,7 +99,10 @@ impl Project {
         let mut command = Command::new(program);
         // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
         for (name, _) in std::env::vars_os() {
-            if name.to_str().is_some_and(|name| name.starts_with("NEXTEST") || name == "VIRTUAL_ENV") {
+            if name
+                .to_str()
+                .is_some_and(|name| name.starts_with("NEXTEST") || matches!(name, "VIRTUAL_ENV" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS"))
+            {
                 command.env_remove(name);
             }
         }
