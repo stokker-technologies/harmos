@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-sidecar"
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,21 +14,14 @@ version = { workspace = true }
 [[bin]]
 name = "harmos-sidecar-catalog-fixture"
 path = "tests/fixtures/catalog_sidecar.rs"
-required-features = ["kit"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 
 [[bin]]
 name = "harmos-sidecar-throughput-fixture"
 path = "tests/fixtures/throughput_sidecar.rs"
-required-features = ["kit"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-sidecar-attach-fixture"
-path = "tests/fixtures/attach_sidecar.rs"
-required-features = ["transport"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 
@@ -37,26 +31,19 @@ bench = false
 default = ["derive", "kit"]
 kit = ["transport", "dep:getrandom"]
 # The Shared Process Boundary Without Plugin Authoring Or Callback Runners
-transport = [
-  "dep:sha2",
-  "dep:getrandom",
-  "dep:libc",
-  "dep:postcard",
-  "dep:futures-util",
-  "dep:tokio",
-  "dep:windows-sys",
-]
+transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futures-util", "dep:tokio", "dep:windows-sys"]
 
-derive = ["harmos-contract/derive"]
+derive = ["harmos-domain/derive"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
-grpc = ["harmos-contract/grpc"]
-streaming = ["harmos-contract/streaming"]
+grpc = ["harmos-sdk/grpc"]
+streaming = ["harmos-sdk/streaming"]
 
 # === Dependencies ===
 
 [dependencies]
 # Local
-harmos-contract = { workspace = true }
+harmos-sdk = { workspace = true }
+harmos-domain = { workspace = true }
 
 # Git
 
@@ -173,7 +160,7 @@ tokio = { workspace = true, default-features = true, features = ["time", "test-u
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = true }
+criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies ===
 
@@ -244,24 +231,13 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 # === Test Targets ===
 
 [[test]]
-name = "kit"
-path = "tests/kit/main.rs"
-required-features = ["kit"]
-
-[[test]]
-name = "attach"
-path = "tests/attach/main.rs"
-required-features = ["transport"]
-
-[[test]]
-name = "transport"
-path = "tests/transport/main.rs"
-required-features = ["kit"]
+name = "integration"
+path = "tests/integration/main.rs"
 
 # === Bench Targets ===
 
 [[bench]]
-name = "transport"
+name = "system-transport"
 path = "benches/transport/main.rs"
 required-features = ["kit"]
 harness = false

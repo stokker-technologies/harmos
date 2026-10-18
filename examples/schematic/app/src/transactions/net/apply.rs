@@ -46,12 +46,7 @@ impl Transaction<Schematic> for ApplyRoute {
 
     fn check(&self, schematic: &Schematic) -> Result<(), Self::Error> {
         schematic.require_net(self.net)?;
-        if self.points.len() == 1
-            || self
-                .points
-                .windows(2)
-                .any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y)
-        {
+        if self.points.len() == 1 || self.points.windows(2).any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y) {
             return Err(SchematicError::InvalidRoute);
         }
         Ok(())
@@ -64,10 +59,7 @@ impl Transaction<Schematic> for ApplyRoute {
 
 impl Invert<Schematic> for ApplyRoute {
     fn invert(&self, before: &Schematic) -> Self {
-        Self {
-            net: self.net,
-            points: before.net(self.net).route.clone(),
-        }
+        Self { net: self.net, points: before.net(self.net).route.clone() }
     }
 }
 

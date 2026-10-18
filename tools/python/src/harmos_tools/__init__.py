@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Harmos repository capabilities, invoked through mise."""
+"""Harmos repository tooling, invoked through mise."""
 
 # === Imports === #
 

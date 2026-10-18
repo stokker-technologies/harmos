@@ -1,0 +1,48 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+
+// A Request Type Owns Its One Operation Declaration.
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+#[harmos_domain::message]
+#[harmos_domain::operation(id = "__PACKAGE_NAME__.greet", version = 1, response = crate::domain::model::greeting::Greeting, policy = super::POLICY)]
+pub struct Greet { pub name: String }
+
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

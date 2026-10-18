@@ -7,6 +7,12 @@
  * ***
  */
 
+// Serves a plugin's observers through its one observe control. Each host
+// submission names an observer and runs it for as long as the invocation
+// lasts: the attempt binds, initializes and ticks the observer on a thread of
+// its own, and the invocation's cleanup stops and cleans it up once the host
+// cancels it.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -15,51 +21,46 @@
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 // Third Party Imports
-
+use tokio::sync::oneshot;
 // Local Imports
-use super::{Controlled, Instance, ObserverHost, ObserverStatus, control::Stopped};
-use crate::{ObserverControl, Refusal, Supervisor};
-use harmos_contract::observers::{Control, Status};
-use harmos_contract::operations::{
-    Failure, Operation, ServingError, Visibility, WireOperation, WireTable,
-};
-use harmos_contract::plugin::Attachment;
+use super::{Activity, Instance, ObserverError, ObserverHost};
+use crate::{Refusal, Supervisor};
+use harmos_domain::observers::Control;
+use harmos_sdk::operations::{Operation, ServingError, WireTable};
+use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
 
 /* === Macros === */
 
 /* === Type Aliases === */
-type StopFuture = Pin<Box<dyn Future<Output = Result<Status, Refusal>> + Send>>;
 
 /* === Structs === */
 pub struct ObserverAttachment<R, H = Supervisor> {
     resources: Arc<R>,
-    declarations: Vec<harmos_contract::inventory::observers::Declaration>,
-    state: Mutex<State<R>>,
-    _host: PhantomData<fn() -> H>,
+    declarations: Vec<harmos_domain::inventory::observers::Declaration>,
+    instances: BTreeMap<&'static str, Instance<R, H>>,
+    closing: AtomicBool,
 }
 
-struct State<R> {
-    control: Controlled<Arc<R>>,
-    contexts: BTreeMap<String, (u64, [u8; 32])>,
-    closing: bool,
-}
-
-struct Start<R, H, O> {
+struct Observe<R, H> {
     attachment: Arc<ObserverAttachment<R, H>>,
-    _operation: PhantomData<fn() -> O>,
+    running: Option<Running>,
+    activity: Option<Activity>,
 }
 
-struct Stop<R, H, O> {
-    attachment: Arc<ObserverAttachment<R, H>>,
-    work: Option<StopFuture>,
-    result: Option<Status>,
-    _operation: PhantomData<fn() -> O>,
+struct Interrupt<'a>(&'a mut Option<oneshot::Sender<()>>);
+
+// One activation observing on its own thread until told to stop; joining it
+// hands the activity back for stopping and cleanup.
+struct Running {
+    stop: Option<oneshot::Sender<()>>,
+    failed: Option<oneshot::Receiver<ObserverError>>,
+    returned: Option<oneshot::Receiver<Activity>>,
 }
 
 /* === Enums === */
@@ -69,41 +70,25 @@ struct Stop<R, H, O> {
 /* === Implementations === */
 impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     pub fn new(
-        instances: Vec<Instance<R, H>>,
-        resources: Arc<R>,
-        grants: &[harmos_contract::inventory::publications::Entry],
+        instances: Vec<Instance<R, H>>, resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry],
     ) -> Result<Arc<Self>, Refusal> {
         super::validate_outputs(&instances, grants).map_err(Refusal::of)?;
         let declarations: Vec<_> = instances.iter().map(Instance::declaration).collect();
-        let mut ids = std::collections::BTreeSet::new();
-        if declarations
-            .iter()
-            .any(|entry| entry.id.is_empty() || !ids.insert(entry.id.clone()))
-        {
-            return Err(Refusal::of(
-                "observer identities must be nonempty and unique",
-            ));
+        let mut selected = BTreeMap::new();
+        for instance in instances {
+            if instance.id().is_empty() || selected.contains_key(instance.id()) {
+                return Err(Refusal::of("observer identities must be nonempty and unique"));
+            }
+            selected.insert(instance.id(), instance);
         }
-        Ok(Arc::new(Self {
-            resources,
-            declarations,
-            _host: PhantomData,
-            state: Mutex::new(State {
-                control: Controlled::of(instances, Arc::clone),
-                contexts: BTreeMap::new(),
-                closing: false,
-            }),
-        }))
+        Ok(Arc::new(Self { resources, declarations, instances: selected, closing: AtomicBool::new(false) }))
     }
 
-    pub fn from_catalog<C>(
-        resources: Arc<R>,
-        grants: &[harmos_contract::inventory::publications::Entry],
-    ) -> Result<Arc<Self>, Refusal>
+    pub fn from_catalog<C>(resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry]) -> Result<Arc<Self>, Refusal>
     where
-        C: harmos_contract::catalog::Catalog<super::Declarations<R, H>>,
+        C: harmos_domain::catalog::Catalog<super::Declarations<R, H>>,
     {
-        use harmos_contract::catalog::Projection;
+        use harmos_domain::catalog::Projection;
         let mut instances = Vec::new();
         C::ENTRIES
             .try_for_each(|prepare| {
@@ -114,43 +99,14 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
         Self::new(instances, resources, grants)
     }
 
-    pub fn bind<A, B>(
-        self: &Arc<Self>,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), ServingError>
-    where
-        A: WireOperation<Request = Control, Response = ()>,
-        B: WireOperation<Request = Control, Response = Status>,
-    {
-        if A::VISIBILITY != Visibility::Host || B::VISIBILITY != Visibility::Host {
-            return Err(ServingError::Catalog);
-        }
-        table.bind_operation::<Start<R, H, A>>(Arc::clone(self))?;
-        table.bind_operation::<Stop<R, H, B>>(Arc::clone(self))
-    }
-
-    fn begin_stop(&self, control: &Control) -> Result<Stopped, Refusal> {
-        let token = token(control)?;
-        let mut state = self.state.lock().map_err(Refusal::of)?;
-        validate_context(&state.contexts, control, token)?;
-        let stopped = state.control.begin_stop(&native(control))?;
-        if state
-            .contexts
-            .get(&control.observer)
-            .is_none_or(|(generation, _)| *generation <= control.generation)
-        {
-            state
-                .contexts
-                .insert(control.observer.clone(), (control.generation, token));
-        }
-        Ok(stopped)
+    // Bind the built-in observe control the host submits to run an observer.
+    pub fn bind(self: &Arc<Self>, table: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
+        table.bind_observe_control::<Observe<R, H>>(Arc::clone(self))
     }
 }
 
-impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor>
-    for ObserverAttachment<R, H>
-{
-    fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
+impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor> for ObserverAttachment<R, H> {
+    fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.declarations.clone()
     }
 
@@ -158,187 +114,140 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor>
         self.resources.clone()
     }
 
+    // Running activations are invocations the host cancels and cleans up;
+    // quiescing only refuses new ones.
     fn quiesce(&self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + '_>> {
-        let stopped = self
-            .state
-            .lock()
-            .map(|mut state| {
-                state.closing = true;
-                state.control.begin_quiesce()
-            })
-            .map_err(|_| ServingError::Catalog);
-        Box::pin(async move {
-            let stopped = stopped?;
-            for stop in stopped {
-                let result = stop.wait().await.and_then(|status| match status {
-                    ObserverStatus::Stopped(_) => Ok(()),
-                    ObserverStatus::Retained(exit) => Err(Refusal::of(exit)),
-                    _ => Err(Refusal::of("observer cleanup is pending")),
-                });
-                result.map_err(|source| ServingError::Handler {
-                    failure: Failure::Permanent,
-                    source: Arc::new(source),
-                })?;
-            }
-            Ok(())
-        })
+        self.closing.store(true, Ordering::Release);
+        Box::pin(std::future::ready(Ok(())))
     }
 }
 
-impl<R, H, O> Operation for Start<R, H, O>
+impl<R, H> Operation for Observe<R, H>
 where
     R: Send + Sync + 'static,
     H: ObserverHost<R>,
-    O: WireOperation<Request = Control, Response = ()>,
 {
-    type Declaration = O;
+    type Declaration = Control;
     type Resources = ObserverAttachment<R, H>;
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    fn new(attachment: Arc<Self::Resources>) -> Result<Self, Refusal> {
-        Ok(Self {
-            attachment,
-            _operation: PhantomData,
-        })
+    async fn initialize<'ctx>(attachment: Arc<Self::Resources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { attachment, running: None, activity: None })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        control: &mut Control,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, control: &mut Control, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            let token = token(control)?;
-            let host = host.for_observer_context(token)?;
-            let mut state = self.attachment.state.lock().map_err(Refusal::of)?;
-            if state.closing {
+        if self.running.is_none() {
+            if self.attachment.closing.load(Ordering::Acquire) {
                 return Err(Refusal::of("observer admission is closing"));
             }
-            validate_context(&state.contexts, control, token)?;
-            state
-                .control
-                .start(&native(control), &self.attachment.resources, &host)?;
-            state
-                .contexts
-                .insert(control.observer.clone(), (control.generation, token));
-            Ok(())
+            let name = self.attachment.instances.get(control.observer.as_str()).ok_or_else(|| Refusal::of("unknown observer"))?.id();
+            self.running = Some(Running::spawn(Arc::clone(&self.attachment), name, host.clone())?);
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-impl<R, H, O> Operation for Stop<R, H, O>
-where
-    R: Send + Sync + 'static,
-    H: ObserverHost<R>,
-    O: WireOperation<Request = Control, Response = Status>,
-{
-    type Declaration = O;
-    type Resources = ObserverAttachment<R, H>;
-    type Error = Refusal;
-    type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-
-    fn new(attachment: Arc<Self::Resources>) -> Result<Self, Refusal> {
-        Ok(Self {
-            attachment,
-            work: None,
-            result: None,
-            _operation: PhantomData,
-        })
-    }
-
-    async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        control: &mut Control,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<Status>, Refusal> {
-        let result: ::core::result::Result<Status, Self::Error> = async move {
-            if self.work.is_none() && self.result.is_none() {
-                token(control)?;
-                let stopped = self.attachment.begin_stop(control)?;
-                self.work = Some(Box::pin(async move { status(stopped.wait().await?) }));
-            }
-            self.settle().await
+        let running = self.running.as_mut().expect("spawned activation");
+        let failed = running.failed.as_mut();
+        // Cancelling This Attempt Interrupts The Observing Thread
+        let _interrupt = Interrupt(&mut running.stop);
+        let failure = match failed {
+            Some(failed) => failed.await.ok(),
+            None => None,
+        };
+        running.failed.take();
+        match failure {
+            Some(failure) => Err(Refusal::of(failure)),
+            None => Err(Refusal::of("observer activation ended")),
         }
-        .await;
-        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Refusal> {
-        if self.work.is_none() && self.result.is_none() {
-            return Ok(());
+        let failure = if let Some(mut running) = self.running.take() {
+            let (activity, failure) = running.join().await;
+            self.activity = activity;
+            failure
+        } else {
+            None
+        };
+        let stopped = match self.activity.as_mut() {
+            Some(activity) => activity.stop().await.map_err(Refusal::of),
+            None => Ok(()),
+        };
+        match failure {
+            Some(failure) => Err(Refusal::of(failure)),
+            None => stopped,
         }
-        self.settle().await.map(|_| ())
+    }
+
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
+        match self.activity.as_mut() {
+            Some(activity) => activity.cleanup().await.map_err(Refusal::of),
+            None => Ok(()),
+        }
     }
 }
 
-impl<R: Send + Sync + 'static, H: ObserverHost<R>, O> Stop<R, H, O> {
-    async fn settle(&mut self) -> Result<Status, Refusal> {
-        if let Some(result) = self.result {
-            return Ok(result);
+impl Drop for Interrupt<'_> {
+    fn drop(&mut self) {
+        if let Some(stop) = self.0.take() {
+            let _ = stop.send(());
         }
-        let result = self
-            .work
-            .as_mut()
-            .expect("original stop future exists")
-            .await;
-        self.work = None;
-        let result = result?;
-        self.result = Some(result);
-        Ok(result)
+    }
+}
+
+impl Running {
+    fn spawn<R: Send + Sync + 'static, H: ObserverHost<R>>(
+        attachment: Arc<ObserverAttachment<R, H>>, observer: &'static str, host: Supervisor,
+    ) -> Result<Self, Refusal> {
+        let (stop, stopped) = oneshot::channel();
+        let (failing, failed) = oneshot::channel();
+        let (returning, returned) = oneshot::channel();
+        crate::kit::task::spawn(observer.to_owned(), async move {
+            let Some(instance) = attachment.instances.get(observer) else {
+                return;
+            };
+            let resources = Arc::clone(&attachment.resources);
+            // Binding Happens On The Activation's Own Thread
+            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
+            let mut activity = match bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound))
+            {
+                Ok(activity) => activity,
+                Err(failure) => {
+                    let _ = failing.send(failure);
+                    return;
+                }
+            };
+            tokio::select! {
+                failure = activity.observe(|| {}) => {
+                    let _ = failing.send(failure);
+                }
+                _ = stopped => {}
+            }
+            let _ = returning.send(activity);
+        })
+        .map_err(Refusal::of)?;
+        Ok(Self { stop: Some(stop), failed: Some(failed), returned: Some(returned) })
+    }
+
+    // Interrupt the activation and take its activity back.
+    async fn join(&mut self) -> (Option<Activity>, Option<ObserverError>) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        let activity = match self.returned.take() {
+            Some(returned) => returned.await.ok(),
+            None => None,
+        };
+        // Joining the activation also settles its failure sender. Cancellation
+        // of run must not discard an error that shutdown still needs to report.
+        let failure = self.failed.take().and_then(|mut failed| failed.try_recv().ok());
+        (activity, failure)
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn token(control: &Control) -> Result<[u8; 32], Refusal> {
-    let token: [u8; 32] = control.context.as_slice().try_into().map_err(Refusal::of)?;
-    if control.generation == 0 || token == [0; 32] {
-        return Err(Refusal::of("invalid observer generation context"));
-    }
-    Ok(token)
-}
-
-fn validate_context(
-    contexts: &BTreeMap<String, (u64, [u8; 32])>,
-    control: &Control,
-    token: [u8; 32],
-) -> Result<(), Refusal> {
-    if contexts
-        .get(&control.observer)
-        .is_some_and(|(generation, prior)| *generation == control.generation && *prior != token)
-    {
-        return Err(Refusal::of(
-            "observer generation context cannot be replaced",
-        ));
-    }
-    Ok(())
-}
-
-fn native(control: &Control) -> ObserverControl {
-    ObserverControl {
-        observer: control.observer.clone(),
-        generation: control.generation,
-    }
-}
-
-fn status(status: ObserverStatus) -> Result<Status, Refusal> {
-    let (exit, settled) = match status {
-        ObserverStatus::Stopped(exit) => (exit, true),
-        ObserverStatus::Retained(exit) => (exit, false),
-        _ => return Err(Refusal::of("observer cleanup has not produced a receipt")),
-    };
-    Ok(Status {
-        exit: exit as i32,
-        settled,
-    })
-}
 
 /* === Tests === */

@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-cli"
 edition.workspace = true
 rust-version.workspace = true
@@ -49,12 +50,7 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = [
-  "macros",
-  "rt",
-  "rt-multi-thread",
-  "time",
-] }
+tokio = { workspace = true, default-features = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 
 # Networking
 
@@ -68,8 +64,9 @@ tokio = { workspace = true, default-features = true, features = [
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
-schematic-contract = { path = "../contract", features = ["grpc"] }
+harmos-domain = { workspace = true }
+harmos-packaging = { workspace = true, features = ["bindings-proto"] }
+schematic-domain = { path = "../domain" }
 
 # Git
 

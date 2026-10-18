@@ -14,6 +14,8 @@ mod bindings;
 #[cfg(feature = "guest")]
 mod guest;
 mod inspect;
+mod new;
+mod package;
 #[cfg(feature = "sidecar")]
 mod sidecar;
 
@@ -38,6 +40,8 @@ mod sidecar;
 /* === Enums === */
 #[derive(clap::Subcommand)]
 pub enum Command {
+    #[command(about = "Create A Plugin From An Embedded Current Starter.")]
+    New(new::Arguments),
     #[command(about = "Generate Producer-Owned Transport Bindings.")]
     Bindings(bindings::Arguments),
     #[command(about = "Build Or Watch Native Sidecar Plugins.")]
@@ -46,27 +50,22 @@ pub enum Command {
     #[command(about = "Build Or Watch Sandboxed Guest Plugins.")]
     #[cfg(feature = "guest")]
     Guest(guest::Arguments),
-    #[command(about = "Inspect Embedded Plugin Metadata Without Executing Plugin Code.")]
-    Inspect(inspect::Arguments),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 impl Command {
-    pub fn run(
-        self,
-        cancellation: &harmos::packaging::BuildCancellation,
-    ) -> Result<(), crate::error::Error> {
+    pub fn run(self, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), crate::error::Error> {
         #[cfg(not(any(feature = "sidecar", feature = "guest")))]
         let _ = cancellation;
         match self {
+            Self::New(arguments) => new::run(arguments).map_err(Into::into),
             Self::Bindings(arguments) => bindings::run(arguments),
             #[cfg(feature = "sidecar")]
             Self::Sidecar(arguments) => sidecar::run(arguments, cancellation).map_err(Into::into),
             #[cfg(feature = "guest")]
             Self::Guest(arguments) => guest::run(arguments, cancellation).map_err(Into::into),
-            Self::Inspect(arguments) => inspect::run(arguments).map_err(Into::into),
         }
     }
 }

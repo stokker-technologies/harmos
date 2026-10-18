@@ -70,10 +70,7 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
         return Ok(None);
     };
     if value != VALUE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "unsupported inherited control channel",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "unsupported inherited control channel"));
     }
     let descriptor = duplicate(DESCRIPTOR, 0)?;
     // SAFETY: The Successful Duplication Validated The Reserved Descriptor. The Executable

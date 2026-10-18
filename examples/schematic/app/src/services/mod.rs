@@ -32,12 +32,8 @@ use crate::app::{Runtime, SchematicEditor};
 
 /* === Enums === */
 pub enum Plugin {
-    Guest {
-        manager: harmos::plugin::PluginHost<SchematicEditor>,
-    },
-    Sidecar {
-        manager: harmos::plugin::PluginHost<SchematicEditor>,
-    },
+    Guest { manager: harmos::plugin::PluginHost<SchematicEditor> },
+    Sidecar { manager: harmos::plugin::PluginHost<SchematicEditor> },
 }
 
 /* === Traits === */
@@ -48,16 +44,12 @@ impl Plugin {
         let bytes = std::fs::read(path).map_err(guest::failure)?;
         let loaded = guest::load(runtime, &bytes).map_err(guest::failure)?;
         guest::start(runtime, loaded).await?;
-        Ok(Self::Guest {
-            manager: runtime.plugin.clone(),
-        })
+        Ok(Self::Guest { manager: runtime.plugin.clone() })
     }
 
     pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos::Result<Self> {
         sidecar::start(runtime, path, directory).await?;
-        Ok(Self::Sidecar {
-            manager: runtime.plugin.clone(),
-        })
+        Ok(Self::Sidecar { manager: runtime.plugin.clone() })
     }
 
     pub async fn stop(self) -> harmos::Result<()> {

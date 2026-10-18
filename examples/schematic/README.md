@@ -5,11 +5,11 @@ The algorithms are deliberately small so the Harmos workflow stays visible.
 
 ## Run It
 
-From the repository root, after `mise install --locked` and `mise run sync`:
+From the repository root, after `mise install --locked`, `mise run sync` and `mise run build`:
 
 ```sh
-mise run run:schematic:sidecar
-mise run run:schematic:guest
+target/debug/schematic-cli
+target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
 ```
 
 Read [walkthrough.rs](cli/src/walkthrough.rs) alongside the output. It creates a
@@ -25,15 +25,15 @@ Reopened: 2 symbols, 1 net, 3 route points
 
 | Directory | Owns |
 | --- | --- |
-| [contract](contract/src/operations/mod.rs) | Portable requests, responses, and struct-owned operation declarations. |
+| [domain](domain/src/operations/mod.rs) | The model and the operation catalogs: portable `schematic` operations and native `directories` access. |
 | [app](app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
 | [cli](cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
 | [guest](guest/src/operations/mod.rs) | Validation, routing, and streamed analysis in a sandboxed Wasm component. |
-| [sidecar](sidecar/src/operations/mod.rs) | The same operations in a native child process, plus directory access. |
+| [sidecar](sidecar/src/operations/mod.rs) | The shared operations in a native child process, directory access, and upload/exchange analysis. |
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
-The contract and SDKs compile without the host runtime.
+The domain crate and SDKs compile without the host runtime.
 
 ## Streaming And Native Access
 
@@ -47,11 +47,20 @@ cargo run -p schematic-cli -- --guest target/artifacts/schematic-tools.wasm --ad
 [advanced.rs](cli/src/advanced.rs) drains three analysis findings, joins the
 response, then starts another analysis and cancels it with settlement.
 
+The native catalog also exposes `AnalyzeUpload { title }` (client stream of
+snapshots) and `AnalyzeExchange { title }` (snapshot input and finding output).
+Both retain one shared analysis permit until input EOF or cancellation. Blank or
+oversized titles and invalid snapshots return an invalid-input failure. Each
+accepted snapshot publishes `AnalysisProgress { title, checked }` on the
+sidecar-declared stream `schematic.analysis_progress`. The domain's
+`ValidatedSchematic` object rejects missing identities and invalid connections
+at storage encode and decode boundaries.
+
 Only the sidecar exposes `ListDirectories`. Its empty request returns sorted
 names of immediate subdirectories in the caller's current working directory,
 which the host explicitly supplies to the child. The guest catalog omits this
 operation because this guest has no filesystem grant. WebAssembly can support
-filesystem capabilities when a host provides them; this example does not.
+filesystem access when a host provides it; this example does not.
 
 The CLI accepts `--sidecar <executable>` or `--guest <component>`. Without either,
 it selects `plugins/schematic-sidecar` relative to its own executable, falling
@@ -67,7 +76,7 @@ CLI from any working directory; native directory listing uses that directory.
 Windows executables have the `.exe` suffix.
 
 The CLI, sidecar and guest build scripts derive their schema bundles from the
-shared Rust contract. Each bundle contains `manifest.txt`, `descriptors.bin` and
+shared Rust domain crate. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest catalog includes only portable operations. The
 `schematic.v1.Schematic` schema describes known methods. Exporting it does not
@@ -79,12 +88,10 @@ Examples and test reports remain GitHub Actions artifacts.
 
 ## Tests And Persistence
 
-The [app tests](app/tests/app/) cover edits, recovery, streams, and deterministic
-simulation. Acceptance compares both backends and checks native directory access
-against a temporary directory. Detailed shutdown, backlog-flush, and process
-settlement stress belongs in the [lifecycle fixture](../../tests/fixtures/lifecycle/).
+This example is the system fixture of the Harmos test suite: the build stamps its
+CLI, sidecar and guest component under `target/fixtures/`, and the system stories
+in `crates/*/tests/system/` drive those artifacts.
 
-The [JSONL adapter](../../tests/support/jsonl-adapter/) is test infrastructure
-shared with this example. A document's recovery journal is distinct from a native
+The [JSONL adapter](storage/) is the example's persistence format. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.

@@ -23,9 +23,9 @@ use std::path::Path;
 // Local Imports
 use crate::Result;
 use harmos::{state::Focus, state::PrincipalId};
-use schematic_app::contract::{
+use schematic_app::domain::{
     model,
-    operations::{ProposeRoute, ValidateSchematic, propose, validate},
+    operations::{ProposeRoute, ValidateSchematic},
 };
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
@@ -48,12 +48,7 @@ use schematic_app::{app, config::Settings, document::Document, services::Plugin,
 
 /* === Public Functions === */
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn run(
-    guest: Option<&Path>,
-    sidecar: &Path,
-    directory: &Path,
-    advanced: bool,
-) -> Result<()> {
+pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
     // Create A Document And Its Recovery Journal
     let scratch = tempfile::tempdir()?;
     let path = scratch.path().join("schematic.json");
@@ -111,18 +106,8 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     let state = runtime.state.as_principal(principal.clone());
 
     // Place And Connect Two Symbols
-    let resistor = PlaceSymbol {
-        symbol: SymbolId(1),
-        reference: "R1".to_owned(),
-        at: Point::new(10, 20),
-        rotation: Rotation::Zero,
-    };
-    let controller = PlaceSymbol {
-        symbol: SymbolId(2),
-        reference: "U1".to_owned(),
-        at: Point::new(60, 40),
-        rotation: Rotation::Zero,
-    };
+    let resistor = PlaceSymbol { symbol: SymbolId(1), reference: "R1".to_owned(), at: Point::new(10, 20), rotation: Rotation::Zero };
+    let controller = PlaceSymbol { symbol: SymbolId(2), reference: "U1".to_owned(), at: Point::new(60, 40), rotation: Rotation::Zero };
     state.commit(resistor).await?;
     state.commit(controller).await?;
     let connection = ConnectPins {
@@ -131,10 +116,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         pins: BTreeSet::from([PinRef::new(SymbolId(1), 1), PinRef::new(SymbolId(2), 1)]),
     };
     state.commit(connection).await?;
-    let movement = MoveSymbol {
-        symbol: SymbolId(1),
-        to: Point::new(20, 20),
-    };
+    let movement = MoveSymbol { symbol: SymbolId(1), to: Point::new(20, 20) };
     state.commit(movement).await?;
     println!("Placed R1 and U1, connected POWER, moved R1");
 
@@ -146,47 +128,20 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         .values()
         .flat_map(|net| {
             let symbols: Vec<_> = net.pins.iter().map(|pin| pin.symbol.0).collect();
-            symbols
-                .windows(2)
-                .map(|pair| model::Connection {
-                    from: pair[0],
-                    to: pair[1],
-                })
-                .collect::<Vec<_>>()
+            symbols.windows(2).map(|pair| model::Connection { from: pair[0], to: pair[1] }).collect::<Vec<_>>()
         })
         .collect();
-    let schematic = model::Snapshot {
-        symbols,
-        connections,
-    };
-    let validation = validate::Request {
-        schematic: schematic.clone(),
-    };
-    let validation = runtime
-        .operations
-        .call::<ValidateSchematic>(validation)
-        .await?;
+    let schematic = model::Snapshot { symbols, connections };
+    let validation = ValidateSchematic { schematic: schematic.clone() };
+    let validation = runtime.operations.call(validation).await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
     let from = snapshot.symbol(SymbolId(1)).position;
     let to = snapshot.symbol(SymbolId(2)).position;
-    let request = propose::Request {
-        from: model::Point {
-            x: from.x,
-            y: from.y,
-        },
-        to: model::Point { x: to.x, y: to.y },
-    };
-    let proposed = runtime.operations.call::<ProposeRoute>(request).await?;
-    let points = proposed
-        .points
-        .iter()
-        .map(|point| Point::new(point.x, point.y))
-        .collect();
-    let change = ApplyRoute {
-        net: NetId(1),
-        points,
-    };
+    let request = ProposeRoute { from: model::Point { x: from.x, y: from.y }, to: model::Point { x: to.x, y: to.y } };
+    let proposed = runtime.operations.call(request).await?;
+    let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
+    let change = ApplyRoute { net: NetId(1), points };
     state.commit(change).await?;
     println!("Applied route: {:?}", proposed.points);
 

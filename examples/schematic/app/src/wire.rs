@@ -23,7 +23,7 @@ use crate::app::SchematicEditor;
 use crate::records::Records;
 use crate::transactions::Transactions;
 use harmos::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
-use jsonl_adapter::Wire;
+use schematic_storage::Wire;
 
 /* === Constants === */
 
@@ -56,21 +56,16 @@ impl Wire for SchematicEditor {
     }
 
     fn decode<'de, D: Deserializer<'de> + Copy>(
-        kind: Kind,
-        id: &DefinitionId,
-        version: u32,
-        payload: D,
+        kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error> {
         Ok(match kind {
-            Kind::Transaction => {
-                Transactions::restore(id, version, payload)?.map(|(change, apply)| Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Transaction(Arc::new(change)),
-                    apply,
-                })
-            }
+            Kind::Transaction => Transactions::restore(id, version, payload)?.map(|(change, apply)| Payload {
+                prepared: None,
+                id: id.clone(),
+                version,
+                value: Recorded::Transaction(Arc::new(change)),
+                apply,
+            }),
             Kind::Record => Records::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),

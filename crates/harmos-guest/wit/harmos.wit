@@ -1,9 +1,11 @@
 package harmos:guest@0.2.0;
 
 interface capabilities {
+    /// A carrier refusal: its code beside the encoded Harmos failure it
+    /// carries unchanged across the component boundary.
     record refusal {
         code: string,
-        message: string,
+        failure: list<u8>,
     }
 
     /// One consumer-owned declaration registered before initialization.

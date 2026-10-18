@@ -1,0 +1,95 @@
+# === Workspace ===
+
+[workspace]
+resolver = "3"
+members = ["app", "cli", "domain", "guest", "sidecar", "storage"]
+
+# === Workspace Package ===
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+publish = false
+
+# === Workspace Dependencies ===
+
+[workspace.dependencies]
+# Local
+harmos = { path = "../../crates/harmos" }
+harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
+harmos-guest = { path = "../../crates/harmos-guest", default-features = false }
+harmos-packaging = { path = "../../crates/harmos-packaging", default-features = false }
+harmos-sidecar = { path = "../../crates/harmos-sidecar", default-features = false }
+
+# Git
+
+# Error Handling
+thiserror = { version = "2", default-features = false }
+
+# Logging
+tracing = { version = "0.1", default-features = false }
+
+# Utilities
+sha2 = { version = "0.11.0", default-features = false }
+
+# Serialization
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false }
+
+# Configuration
+clap = { version = "4", default-features = false }
+
+# Filesystem
+tempfile = { version = "3", default-features = false }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Workspace Lints ===
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+# === Lints ===
+
+# === Profiles ===
+
+# Guest fuel counts Wasm instructions, including schema decoding at initialization; unoptimized guests exhaust it.
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.regalloc2]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# === Patches ===
+
+# === Other ===

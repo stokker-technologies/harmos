@@ -114,28 +114,17 @@ fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
 
     for variant in &catalog.variants {
         let syn::Fields::Unnamed(fields) = &variant.fields else {
-            return Err(Error::new(
-                variant.span(),
-                "a stream catalog variant names exactly one row type",
-            ));
+            return Err(Error::new(variant.span(), "a stream catalog variant names exactly one row type"));
         };
         let [field] = &fields.unnamed.iter().collect::<Vec<_>>()[..] else {
-            return Err(Error::new(
-                variant.span(),
-                "a stream catalog variant names exactly one row type",
-            ));
+            return Err(Error::new(variant.span(), "a stream catalog variant names exactly one row type"));
         };
 
-        members.push(Member {
-            definition: field.ty.clone(),
-        });
+        members.push(Member { definition: field.ty.clone() });
     }
 
     if members.is_empty() {
-        return Err(Error::new(
-            catalog.span(),
-            "a stream catalog declares at least one row type",
-        ));
+        return Err(Error::new(catalog.span(), "a stream catalog declares at least one row type"));
     }
 
     Ok(members)
@@ -162,12 +151,7 @@ fn harmos_path(attribute: TokenStream) -> Result<HarmosPath, Error> {
     Ok(HarmosPath::resolve(harmos_path))
 }
 
-fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }

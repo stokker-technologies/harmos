@@ -42,9 +42,7 @@ pub(crate) fn validate_id(id: &LitStr) -> Result<(), Error> {
     let value = id.value();
     let valid = !value.is_empty()
         && value.starts_with(|first: char| first.is_ascii_lowercase())
-        && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.' | b'_')
-        });
+        && value.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.' | b'_'));
 
     valid.then_some(()).ok_or_else(|| {
         Error::new(
@@ -55,12 +53,7 @@ pub(crate) fn validate_id(id: &LitStr) -> Result<(), Error> {
     })
 }
 
-pub(crate) fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+pub(crate) fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }
@@ -68,22 +61,11 @@ pub(crate) fn set_once<T>(
 }
 
 pub(crate) fn symbol(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    value.chars().map(|character| if character.is_ascii_alphanumeric() { character.to_ascii_uppercase() } else { '_' }).collect()
 }
 
 pub(crate) fn description(argument: Option<LitStr>, attributes: &[syn::Attribute]) -> String {
-    argument
-        .map(|written| written.value())
-        .unwrap_or_else(|| documentation(attributes))
+    argument.map(|written| written.value()).unwrap_or_else(|| documentation(attributes))
 }
 
 pub(crate) fn documentation(attributes: &[syn::Attribute]) -> String {
@@ -132,10 +114,7 @@ fn documented(attribute: &syn::Attribute) -> Option<String> {
 }
 
 fn version_argument(span: proc_macro2::Span) -> Error {
-    Error::new(
-        span,
-        "remove `version`: executable versions come from Cargo package.version",
-    )
+    Error::new(span, "remove `version`: executable versions come from Cargo package.version")
 }
 
 /* === Tests === */

@@ -99,11 +99,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             )
         }
     });
-    let fallback = &lanes
-        .iter()
-        .find(|lane| lane.default)
-        .expect("one default lane is declared")
-        .name;
+    let fallback = &lanes.iter().find(|lane| lane.default).expect("one default lane is declared").name;
 
     Ok(quote! {
         #[derive(Clone, Copy, Debug)]
@@ -157,12 +153,7 @@ fn harmos_path(attribute: TokenStream) -> Result<HarmosPath, Error> {
     Ok(HarmosPath::resolve(harmos_path))
 }
 
-fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }
@@ -175,10 +166,7 @@ fn declarations(catalog: &ItemEnum) -> Result<Vec<Declared>, Error> {
 
     for variant in &catalog.variants {
         if !matches!(variant.fields, syn::Fields::Unit) {
-            return Err(Error::new(
-                variant.span(),
-                "a lane is a bare variant: it names one lane and carries no payload",
-            ));
+            return Err(Error::new(variant.span(), "a lane is a bare variant: it names one lane and carries no payload"));
         }
 
         let mut declared = variant.attrs.iter().filter(|attribute| is_lane(attribute));
@@ -210,18 +198,11 @@ fn declarations(catalog: &ItemEnum) -> Result<Vec<Declared>, Error> {
             return Err(Error::new(second.span(), "a lane declares one capacity"));
         }
 
-        lanes.push(Declared {
-            name: variant.ident.clone(),
-            capacity,
-            default: fallback.is_some(),
-        });
+        lanes.push(Declared { name: variant.ident.clone(), capacity, default: fallback.is_some() });
     }
 
     if lanes.is_empty() {
-        return Err(Error::new(
-            catalog.span(),
-            "a lane catalog declares at least one lane",
-        ));
+        return Err(Error::new(catalog.span(), "a lane catalog declares at least one lane"));
     }
     let mut defaults = lanes.iter().filter(|lane| lane.default);
     if defaults.next().is_none() {
@@ -232,10 +213,7 @@ fn declarations(catalog: &ItemEnum) -> Result<Vec<Declared>, Error> {
         ));
     }
     if let Some(second) = defaults.next() {
-        return Err(Error::new(
-            second.name.span(),
-            "a lane catalog marks exactly one lane `#[default]`",
-        ));
+        return Err(Error::new(second.name.span(), "a lane catalog marks exactly one lane `#[default]`"));
     }
 
     Ok(lanes)
@@ -260,18 +238,12 @@ fn capacity(attribute: &Attribute) -> Result<Capacity, Error> {
                 parenthesized!(width in input);
                 let width: LitInt = width.parse()?;
                 if width.base10_parse::<usize>()? == 0 {
-                    return Err(Error::new(
-                        width.span(),
-                        "a lane must admit at least one job",
-                    ));
+                    return Err(Error::new(width.span(), "a lane must admit at least one job"));
                 }
                 Capacity::Concurrent(width)
             }
             _ => {
-                return Err(Error::new(
-                    word.span(),
-                    "a lane's capacity is `serial`, `concurrent(n)`, or `unbounded`",
-                ));
+                return Err(Error::new(word.span(), "a lane's capacity is `serial`, `concurrent(n)`, or `unbounded`"));
             }
         };
         if !input.is_empty() {
@@ -284,9 +256,7 @@ fn capacity(attribute: &Attribute) -> Result<Capacity, Error> {
 
 fn strip(catalog: &mut ItemEnum) {
     for variant in &mut catalog.variants {
-        variant
-            .attrs
-            .retain(|attribute| !is_lane(attribute) && !is_default(attribute));
+        variant.attrs.retain(|attribute| !is_lane(attribute) && !is_default(attribute));
     }
 }
 

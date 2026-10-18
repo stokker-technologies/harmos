@@ -33,33 +33,21 @@ use super::{SharedOpening, exchange};
 /* === Implementations === */
 /* === Public Functions === */
 pub(super) async fn run_binary(
-    opening: SharedOpening,
-    data: crate::transport::Io,
-    control: crate::transport::Io,
-    stop: impl Future<Output = ()>,
+    opening: SharedOpening, data: crate::transport::Io, control: crate::transport::Io, stop: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
     run_binary_with_clock(opening, data, control, stop, super::host::published_at).await
 }
 
 pub(super) async fn run_binary_with_clock(
-    opening: SharedOpening,
-    data: crate::transport::Io,
-    control: crate::transport::Io,
-    stop: impl Future<Output = ()>,
+    opening: SharedOpening, data: crate::transport::Io, control: crate::transport::Io, stop: impl Future<Output = ()>,
     clock: fn() -> Option<i64>,
 ) -> std::io::Result<()> {
-    let crate::transport::Connection {
-        sender,
-        receiver,
-        mut driver,
-    } = crate::transport::Connection::new(data, control);
+    let crate::transport::Connection { sender, receiver, mut driver } = crate::transport::Connection::new(data, control);
     let (completed, _completion) = oneshot::channel();
     let (closing, stopping) = watch::channel(false);
     let mut input = Input::Binary(receiver);
     let output = Sender::Binary(sender.clone());
-    let mut serving = Box::pin(exchange(
-        opening, &mut input, &output, completed, stopping, clock,
-    ));
+    let mut serving = Box::pin(exchange(opening, &mut input, &output, completed, stopping, clock));
     let mut stop = Box::pin(stop);
     tokio::select! {
         result = &mut serving => {

@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-sidecar"
 description = "Portable schematic analysis and routing"
 edition.workspace = true
@@ -24,8 +25,9 @@ version.workspace = true
 
 [dependencies]
 # Local
-harmos-sidecar = { workspace = true, features = ["derive", "kit", "streaming"] }
-schematic-contract = { path = "../contract" }
+harmos-domain = { workspace = true, features = ["derive"] }
+harmos-sidecar = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
+schematic-domain = { path = "../domain" }
 
 # Git
 
@@ -48,7 +50,7 @@ tracing = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 # Networking
 
@@ -62,8 +64,9 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
-schematic-contract = { path = "../contract", features = ["grpc"] }
+harmos-domain = { workspace = true }
+harmos-packaging = { workspace = true, features = ["bindings-proto"] }
+schematic-domain = { path = "../domain" }
 
 # Git
 
@@ -95,45 +98,9 @@ schematic-contract = { path = "../contract", features = ["grpc"] }
 
 # === Dev Dependencies ===
 
-[dev-dependencies]
-# Local
-schematic-guest = { path = "../guest" }
-
-# Git
-
-# Error Handling
-
-# Logging
-
-# Utilities
-
-# Serialization
-
-# Configuration
-
-# Filesystem
-
-# Parsing
-
-# Concurrency
-
-# Async
-
-# Networking
-
-# Storage
-
-# UI
-
-# Testing
-
 # === Target Dependencies ===
 
 # === Test Targets ===
-
-[[test]]
-name = "operations"
-path = "tests/operations/main.rs"
 
 # === Bench Targets ===
 

@@ -63,8 +63,7 @@ pub(super) fn registrations<P: Plugin>() -> Result<Vec<Registration>, Registrati
 }
 
 pub(super) fn encode<P: Plugin>() -> io::Result<Vec<u8>> {
-    let registrations =
-        registrations::<P>().map_err(|error| io::Error::other(error.to_string()))?;
+    let registrations = registrations::<P>().map_err(|error| io::Error::other(error.to_string()))?;
     let mut output = Bounded(Vec::new());
     serde_json::to_writer(&mut output, &registrations).map_err(io::Error::other)?;
     Ok(output.0)

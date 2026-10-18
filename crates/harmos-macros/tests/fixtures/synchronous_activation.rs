@@ -39,11 +39,11 @@ pub struct Level;
 /* === Implementations === */
 #[harmos::observer(interval_ms = 100)]
 impl Level {
-    fn initialize(&mut self) -> Result<(), String> {
-        Ok(())
+    fn initialize(_resources: &Resources) -> Result<Self, String> {
+        Ok(Self)
     }
 
-    async fn observe(&mut self, _context: &harmos::plugin::sidecar::ObserverContext<'_, Resources>) -> Result<(), String> {
+    async fn observe(&mut self, _context: &harmos::sidecar::ObserverContext<'_, Resources>) -> Result<(), String> {
         Ok(())
     }
 }

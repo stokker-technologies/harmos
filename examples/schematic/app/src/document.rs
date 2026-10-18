@@ -25,7 +25,7 @@ use crate::app::{Origin, SchematicEditor};
 use crate::error::DocumentError;
 use crate::state::Schematic;
 use harmos::state::Position;
-use jsonl_adapter::{Jsonl, Sidecar};
+use schematic_storage::{Jsonl, Sidecar};
 
 /* === Constants === */
 
@@ -56,12 +56,7 @@ pub struct Document {
 /* === Implementations === */
 impl Document {
     pub fn new(path: impl AsRef<Path>) -> Self {
-        Self {
-            origin: Schematic::default(),
-            generation: 1,
-            position: Position::ORIGIN,
-            journal: journal_of(path.as_ref()),
-        }
+        Self { origin: Schematic::default(), generation: 1, position: Position::ORIGIN, journal: journal_of(path.as_ref()) }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(path = %path.as_ref().display()))]
@@ -71,30 +66,15 @@ impl Document {
         let reader = io::BufReader::new(file);
         let artifact: Artifact = serde_json::from_reader(reader)?;
 
-        Ok(Self {
-            origin: artifact.schematic,
-            generation: artifact.generation,
-            position: artifact.position,
-            journal: journal_of(path),
-        })
+        Ok(Self { origin: artifact.schematic, generation: artifact.generation, position: artifact.position, journal: journal_of(path) })
     }
 
-    pub fn save(
-        path: &Path,
-        snapshot: harmos::state::At<Schematic>,
-        checkpoint: &Sidecar,
-    ) -> Result<(), DocumentError> {
+    pub fn save(path: &Path, snapshot: harmos::state::At<Schematic>, checkpoint: &Sidecar) -> Result<(), DocumentError> {
         checkpoint.save(|generation, position| {
             if position != snapshot.position {
-                return Err(io::Error::other(
-                    "snapshot and settled journal positions differ",
-                ));
+                return Err(io::Error::other("snapshot and settled journal positions differ"));
             }
-            let artifact = Artifact {
-                generation,
-                position,
-                schematic: snapshot.value,
-            };
+            let artifact = Artifact { generation, position, schematic: snapshot.value };
             let parent = path.parent().unwrap_or_else(|| Path::new("."));
             let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
             serde_json::to_writer_pretty(&mut temporary, &artifact)?;
