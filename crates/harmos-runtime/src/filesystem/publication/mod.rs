@@ -11,7 +11,9 @@
 #[cfg(unix)]
 mod unix;
 
+// The Windows Publication Primitives Are A Win32 FFI Boundary; Each Call Carries Its SAFETY Argument.
 #[cfg(windows)]
+#[allow(unsafe_code)]
 mod windows;
 
 /* === Re-Exports === */

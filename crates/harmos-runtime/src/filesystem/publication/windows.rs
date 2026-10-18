@@ -62,8 +62,7 @@ pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
         return Err(io::Error::new(io::ErrorKind::NotFound, "storage volume does not exist"));
     }
     create_dir_all(parent)?;
-    let temporary = parent.join(format!(".{}", uuid::Uuid::now_v7()));
-    fs::create_dir(&temporary)?;
+    let temporary = tempfile::Builder::new().prefix(".").tempdir_in(parent)?.keep();
     let result = move_file(&temporary, path, false);
     // Only our empty directory can be removed. Never recursively remove an
     // ancestor or another writer's directory, including after a failed move.
