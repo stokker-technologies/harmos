@@ -195,9 +195,7 @@ pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Resu
 /* === Private Functions === */
 fn append_domain(operation: &Operation) -> Option<Domain> {
     match operation {
-        Operation::ObjectGroup { .. } | Operation::Records(_) | Operation::Stream(_) | Operation::Recovery(_) => {
-            Some(operation.domain())
-        }
+        Operation::ObjectGroup { .. } | Operation::Records(_) | Operation::Stream(_) | Operation::Recovery(_) => Some(operation.domain()),
         _ => None,
     }
 }
