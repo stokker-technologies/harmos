@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:4156d8c3425f090871241c0ffc14b9531cdbc4cb67e3b5d5f12974eeda86d461
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:bc7b5ab27c26e3923f266b1cf5d48215d900302c6b9c067c8709032d455b3063
 stages:
 - Check
 - Build
@@ -62,7 +62,8 @@ Check / Config:
     - .cache/cargo/git/
     policy: pull
   variables:
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo
 Check / Python:
   stage: Check
   tags: []
@@ -172,7 +173,8 @@ Check / Rust (linux):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Build / Dev (linux):
   stage: Build
   tags: []
@@ -247,7 +249,8 @@ Build / Dev (linux):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Build / Release (linux):
   stage: Build
   tags: []
@@ -308,7 +311,8 @@ Build / Release (linux):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Validate / Unit / Rust (linux):
   stage: Validate
   tags: []
@@ -505,7 +509,8 @@ Check / Rust (windows):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Build / Dev (windows):
   stage: Build
   tags: []
@@ -585,7 +590,8 @@ Build / Dev (windows):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Build / Release (windows):
   stage: Build
   tags: []
@@ -651,7 +657,8 @@ Build / Release (windows):
     project_tools.test.prune prune
   variables:
     COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
 Validate / Unit / Rust (windows):
   stage: Validate
   tags: []
@@ -863,7 +870,8 @@ Validate / Coverage:
     - .cache/cargo/git/
     policy: pull
   variables:
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo
 Publish / Prepare:
   stage: Publish
   tags: []

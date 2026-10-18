@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:a94cb27e20bfdd7a4d925fc0f16640ee4efd8ce98b1a6ee9d13a3132b1116890
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:9658332a03771ce074ce5d7a51def73b5dad950b03551b487a0683b628da44b5
 # === Settings === #
 
 [settings]
@@ -9,20 +9,25 @@ lockfile = true
 [tools]
 # Languages And Runtimes
 python = "3.15.0"
-rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview" }
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal" }
 
 # Package Managers
 uv = "0.13.0"
 
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
-"cargo:cargo-llvm-cov" = "0.9.1"
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+sccache = "0.18.0"
 
 # Formatting And Linting
+"aqua:rhysd/actionlint" = "1.7.12"
 taplo = "0.10.0"
 
 # Release And Signing
+gh = "2.102.0"
 git-cliff = "2.14.2"
+glab = "1.123.0"
+minisign = "0.12"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
