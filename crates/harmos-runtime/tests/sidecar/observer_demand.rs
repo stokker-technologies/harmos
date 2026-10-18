@@ -49,6 +49,7 @@ struct Counts {
     observed: [AtomicUsize; 2],
     stopped: [AtomicUsize; 2],
     rejected: AtomicUsize,
+    released: AtomicUsize,
     // Announces every counted step.
     progress: tokio::sync::watch::Sender<()>,
 }
@@ -100,6 +101,13 @@ impl Seed {
 impl Drop for Seed {
     fn drop(&mut self) {
         SEEDS.lock().unwrap().remove(&self.id);
+    }
+}
+
+impl Drop for Resources {
+    fn drop(&mut self) {
+        self.counts.released.fetch_add(1, SeqCst);
+        self.counts.progress.send_replace(());
     }
 }
 
@@ -286,6 +294,7 @@ async fn demand_survives_reload() {
     let held = demands.hold(&RECORD.name()).unwrap();
     until(&counts, || counts.started.iter().all(|count| count.load(SeqCst) == 2)).await;
     fixture.shutdown().await.unwrap();
+    assert_eq!(counts.released.load(SeqCst), 1, "shutdown releases the original observer resources before reload");
     assert!(fixture.runtime.operations.resident_definitions().iter().all(|definition| definition.kind() != Kind::Observer));
     assert_eq!(counts.stopped[0].load(SeqCst), 2);
     assert_eq!(counts.stopped[1].load(SeqCst), 2);
@@ -299,6 +308,7 @@ async fn demand_survives_reload() {
     drop(held);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
+    assert_eq!(counts.released.load(SeqCst), 2, "the replacement resources are released before shutdown returns");
     assert_eq!(counts.stopped[0].load(SeqCst), 3);
     assert_eq!(counts.stopped[1].load(SeqCst), 3);
 }

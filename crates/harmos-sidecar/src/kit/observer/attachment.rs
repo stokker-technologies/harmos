@@ -210,8 +210,11 @@ impl Running {
             let resources = Arc::clone(&attachment.resources);
             // Binding Happens On The Activation's Own Thread
             let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
-            let mut activity = match bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound))
-            {
+            let activated = bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound));
+            // The Activity Owns The Activation Now. Release this thread's
+            // extra attachment before waking either completion receiver.
+            drop(attachment);
+            let mut activity = match activated {
                 Ok(activity) => activity,
                 Err(failure) => {
                     let _ = failing.send(failure);
