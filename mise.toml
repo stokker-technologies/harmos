@@ -36,8 +36,8 @@ git-cliff = "2.14.2"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
-# A Fresh Checkout Has No Target Yet; Tools Fail On A Missing Temporary Directory, So Loading The Environment Creates It.
-TMPDIR = "{{config_root}}/target/tmp{{ exec(command='mkdir -p target/tmp') }}"
+# A Fresh Checkout Has No Target Yet; Loading The Environment Creates The Temporary Directory Portably.
+TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 
 # === Variables === #
 
