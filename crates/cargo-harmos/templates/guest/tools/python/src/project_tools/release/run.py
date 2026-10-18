@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:47fd946cd54a6eb3a04ffab821a66da14bb1f47374d68aa4ca0f69986c43965f
+# Rendered by stkr project update from templates/python/release/run.py; sha256:7bc054d79aeea581ff8682244cc599f036b80e0717e597c154da1261204d5c25
 # ***
 #
 # __PRODUCT_NAME__
@@ -28,7 +28,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 # isort: split
-from ..test import archive, run as test
+from ..test import archive
 from . import policy, registry, screenshots, version
 
 # Type Checking Imports
@@ -137,11 +137,11 @@ def tag_version(tag: str) -> str:
 
 
 def target(settings: dict) -> str:
-    selected = os.environ.get("RELEASE_TARGET")
-    if not isinstance(selected, str) or selected not in settings.get("targets", []):
-        raise policy.ToolError("RELEASE_TARGET must be one of release.targets")
     system = {"Linux": "linux", "Windows": "windows", "Darwin": "macos"}.get(platform.system())
     architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(platform.machine().lower(), platform.machine().lower())
+    selected = os.environ.get("RELEASE_TARGET", f"{system}-{architecture}")
+    if selected not in settings.get("targets", []):
+        raise policy.ToolError("native release target must be one of release.targets")
     if selected != f"{system}-{architecture}":
         raise policy.ToolError("release target differs from the native build host")
     return selected
@@ -458,37 +458,14 @@ def stage(directory: Path, settings: dict, folder: Path) -> None:
             "provider": provider,
             "run_id": run_id,
             "build_job": job_id,
+            "artifact_name": os.environ.get("RELEASE_ARTIFACT_NAME", ""),
             "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
             "inputs": identity,
             "tools": tools(directory, settings),
             "assets": selected,
-            "validation": None,
             "created_at": int(time.time()),
         },
     )
-
-
-def validate(directory: Path, settings: dict, folder: Path) -> None:
-    receipt = json.loads((folder / "platform.json").read_text())
-    verify_platform(directory, settings, folder, receipt, validated=False)
-    report_path = policy.inside(directory, test.MANIFEST.as_posix())
-    required = settings.get("tests")
-    if not isinstance(required, list) or not required:
-        raise policy.ToolError("release.tests must declare every required native suite")
-    missing = test.missing(directory, required, receipt["sha"])
-    if missing:
-        raise policy.ToolError("required test evidence failed or mismatched: " + ", ".join(missing))
-    receipt["validation"] = {
-        "job": registry.job_identity(settings),
-        "run_id": os.environ.get("GITHUB_RUN_ID" if settings["provider"] == "github" else "CI_PIPELINE_ID"),
-        "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
-        "outcome": "passed",
-        "tests": required,
-    }
-    if not receipt["validation"]["job"] or receipt["validation"]["run_id"] != receipt["run_id"]:
-        raise policy.ToolError("test job must identify the same native run as build")
-    shutil.copyfile(report_path, folder / "validation.json")
-    policy.write_json(folder / "platform.json", receipt)
 
 
 def verify_platform(
@@ -523,11 +500,6 @@ def verify_platform(
         if asset["target"] != receipt["target"]:
             raise policy.ToolError("asset target differs from native receipt")
     if validated:
-        result = receipt.get("validation") or {}
-        if result.get("outcome") != "passed" or result.get("run_id") != receipt["run_id"]:
-            raise policy.ToolError("release lacks successful matching native validation")
-        if hashlib.sha256((folder / "validation.json").read_bytes()).hexdigest() != result.get("sha256"):
-            raise policy.ToolError("validation report hash differs")
         registry.verify_jobs(settings, receipt)
 
 
@@ -591,12 +563,9 @@ def run(directory: Path, verb: str) -> None:
     root = policy.inside(directory, settings.get("directory", "target/release-assets"))
     if verb == "assets":
         print(json.dumps(assets(directory, settings), indent=2))
-    elif verb in ["stage", "validate"]:
+    elif verb == "stage":
         folder = policy.inside(root, target(settings))
-        if verb == "stage":
-            stage(directory, settings, folder)
-        else:
-            validate(directory, settings, folder)
+        stage(directory, settings, folder)
     elif verb == "assemble":
         assemble(directory, settings, root)
     else:
@@ -670,7 +639,6 @@ if __name__ == "__main__":
                 "candidate",
                 "tag",
                 "stage",
-                "validate",
                 "assemble",
                 "publish",
                 "finalize",

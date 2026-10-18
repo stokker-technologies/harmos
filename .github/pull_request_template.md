@@ -8,7 +8,7 @@
 
 ## Validation
 
-<!-- List commands and results, platform, and relevant Cargo features. Repository gates: mise run check and mise run test. State checks not run or failing and why. Include comparable evidence for performance claims. -->
+<!-- List commands and results, platform, and relevant Cargo features. Repository gate: mise run ci. State checks not run or failing and why. Include comparable evidence for performance claims. -->
 
 ## Compatibility And Documentation
 

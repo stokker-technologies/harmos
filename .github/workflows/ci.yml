@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:5a264aeb7ada9f57e4cc8212d1bbcadd177fdd879f0000ec0200fc8a66ba44c4
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:c5daf0d47b0550a2ba69a9052690faca98676a50d425f95df025cc099e385445
 name: CI
 "on":
   push:
@@ -6,19 +6,24 @@ name: CI
     - dev
     - main
     - release/v*
+    tags:
+    - v*
   pull_request: {}
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 env:
   MISE_LOCKED: "1"
+  CARGO_INCREMENTAL: "0"
   MISE_DATA_DIR: ${{ github.workspace }}/.cache/mise
-  CARGO_TERM_COLOR: always
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   source:
-    name: Source
+    name: Check / Source
     runs-on:
     - ubuntu-24.04
     timeout-minutes: 10
@@ -26,6 +31,12 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       id: tools
       with:
@@ -35,25 +46,43 @@ jobs:
       with:
         install: true
         cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
     - run: command -v cc
     - run: command -v pkg-config
     - run: mise run format:python --check
     - run: mise run format:rust --check
     - run: mise run format:toml --check
-    - run: mise run check:python
     - run: mise run lint:python
+    - run: mise run --skip-deps check
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:rhysd/actionlint,taplo
-  build:
-    name: Build
-    runs-on:
-    - ubuntu-24.04
+  check_rust:
+    name: Check / Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       id: tools
       with:
@@ -63,52 +92,148 @@ jobs:
       with:
         install: true
         cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ matrix.os }}-check_rust
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+        cache-workspace-crates: false
+        cache-on-failure: false
     - run: command -v cc
     - run: command -v pkg-config
-    - run: mise run build
-    - run: mise run test:unit
+    - run: mise run lint:rust
+    - run: >-
+        mise exec -- cargo check --locked --workspace --all-targets
+        --no-default-features
+    - run: >-
+        mise exec -- cargo check --locked -p harmos-domain --target
+        wasm32-unknown-unknown
+    - run: mise exec -- cargo check --locked -p harmos-domain --target wasm32-wasip2
+    - run: >-
+        mise exec -- cargo check --locked --manifest-path examples/schematic/Cargo.toml
+        -p schematic-domain --target wasm32-unknown-unknown
+    - run: >-
+        mise exec -- cargo check --locked --manifest-path examples/schematic/Cargo.toml
+        -p schematic-guest --target wasm32-unknown-unknown
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_dev:
+    name: Build / Dev (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ matrix.os }}-build_dev
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+        cache-workspace-crates: false
+        cache-on-failure: false
+    - run: command -v cc
+    - run: command -v pkg-config
+    - run: mise run build --profile dev
+    - run: mise run test:unit --profile dev
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
-        name: build-${{ github.sha }}
+        name: build-dev-${{ matrix.os }}
         path: |-
           target/nextest/
           target/fixtures/
+          target/wheels/
           dist/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
-      with:
-        name: evidence-build-${{ github.sha }}
-        path: .stkr/tests/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-    - run: mise run check
-    - run: mise run lint:rust
-    - run: mise run package:rust
-    - if: steps.tools.outputs.cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
       with:
         path: .cache/mise/
         key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: "!startsWith(github.ref, 'refs/tags/v')"
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
     env:
       MISE_ENABLE_TOOLS: >-
         python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
-  test_integration_rust:
-    name: Test / Integration / Rust
-    runs-on:
-    - ubuntu-24.04
-    timeout-minutes: 11
-    needs:
-    - build
+  build_release:
+    name: Build / Release (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       id: tools
       with:
@@ -118,117 +243,76 @@ jobs:
       with:
         install: true
         cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ matrix.os }}-build_release
+        save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+        cache-workspace-crates: false
+        cache-on-failure: false
     - run: command -v cc
     - run: command -v pkg-config
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: build-${{ github.sha }}
-        merge-multiple: true
-    - run: mise run test:integration:rust
+    - run: mise run build --profile release
+    - run: mise run test:unit --profile release
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
-        name: evidence-test_integration_rust-${{ github.sha }}
-        path: .stkr/tests/
+        name: build-release-${{ matrix.os }}
+        path: |-
+          target/nextest/
+          target/fixtures/
+          target/wheels/
+          dist/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
-    env:
-      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-  test_acceptance_rust:
-    name: Test / Acceptance / Rust
-    runs-on:
-    - ubuntu-24.04
-    timeout-minutes: 11
-    needs:
-    - build
-    - test_integration_rust
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      id: tools
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
       with:
         path: .cache/mise/
-        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
-      with:
-        install: true
-        cache: false
-        mise_dir: ${{ github.workspace }}/.cache/mise
-    - run: command -v cc
-    - run: command -v pkg-config
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: build-${{ github.sha }}
-        merge-multiple: true
-    - run: mise run test:acceptance:rust
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
-      with:
-        name: evidence-test_acceptance_rust-${{ github.sha }}
-        path: .stkr/tests/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
     env:
-      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-  test_system_rust:
-    name: Test / System / Rust
-    runs-on:
-    - ubuntu-24.04
-    timeout-minutes: 11
-    needs:
-    - build
-    - test_integration_rust
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      id: tools
-      with:
-        path: .cache/mise/
-        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
-      with:
-        install: true
-        cache: false
-        mise_dir: ${{ github.workspace }}/.cache/mise
-    - run: command -v cc
-    - run: command -v pkg-config
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: build-${{ github.sha }}
-        merge-multiple: true
-    - run: mise run test:system:rust
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
-      with:
-        name: evidence-test_system_rust-${{ github.sha }}
-        path: .stkr/tests/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-    env:
-      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-  gate:
-    name: Gate
-    runs-on:
-    - ubuntu-24.04
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  validate_bindings:
+    name: Validate / Bindings (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     needs:
-    - source
-    - build
-    - test_integration_rust
-    - test_acceptance_rust
-    - test_system_rust
+    - build_dev
+    - build_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       id: tools
       with:
@@ -238,47 +322,67 @@ jobs:
       with:
         install: true
         cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
     - run: command -v cc
     - run: command -v pkg-config
-    - if: >-
-        contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
-        contains(needs.*.result, 'skipped')
+    - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
       run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        pattern: evidence-*-${{ github.sha }}
-        path: .cache/evidence
+        pattern: >-
+          build-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{
+          matrix.os }}
+        merge-multiple: true
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.test.run collect .cache/evidence/*
-    - run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.test.run verify
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
+        harmos_tools.test.archive --install-wheels
+    - run: mise run check:python
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
       with:
-        name: gate-${{ github.sha }}
-        path: |-
-          .stkr/tests/
-          .stkr/benchmarks/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
     if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
     env:
-      MISE_ENABLE_TOOLS: python,uv
-  release_publish_dry:
-    name: Release / Publish / Dry
-    runs-on:
-    - stokker-local-linux-x64
-    timeout-minutes: 60
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  validate_test_integration_rust:
+    name: Validate / Integration / Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
     needs:
-    - gate
+    - build_dev
+    - build_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       id: tools
       with:
@@ -288,12 +392,483 @@ jobs:
       with:
         install: true
         cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
     - run: command -v cc
     - run: command -v pkg-config
-    - run: mise run package:rust --profile release
-    - run: mise run release:publish:dry
-    - run: mise run test:system
+    - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
+      run: exit 1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: >-
+          build-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{
+          matrix.os }}
+        merge-multiple: true
+    - run: >-
+        mise run test:integration:rust --profile ${{ startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-test_integration_rust-${{ matrix.os }}
+        path: target/tests/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  validate_test_acceptance_rust:
+    name: Validate / Acceptance / Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    needs:
+    - build_dev
+    - build_release
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
+      run: exit 1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: >-
+          build-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{
+          matrix.os }}
+        merge-multiple: true
+    - run: >-
+        mise run test:acceptance:rust --profile ${{ startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-test_acceptance_rust-${{ matrix.os }}
+        path: target/tests/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  validate_test_system_rust:
+    name: Validate / System / Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    needs:
+    - build_dev
+    - build_release
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
+      run: exit 1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: >-
+          build-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{
+          matrix.os }}
+        merge-multiple: true
+    - run: >-
+        mise run test:system:rust --profile ${{ startsWith(github.ref, 'refs/tags/v')
+        && 'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-test_system_rust-${{ matrix.os }}
+        path: target/tests/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  package_dev:
+    name: Package / Dev (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    needs:
+    - source
+    - check_rust
+    - validate_bindings
+    - validate_test_integration_rust
+    - validate_test_acceptance_rust
+    - validate_test_system_rust
+    - build_dev
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: build-dev-${{ matrix.os }}
+        merge-multiple: true
+    - run: mise run package --profile dev
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: package-dev-${{ matrix.os }}
+        path: |-
+          target/package/
+          target/release-assets/
+          dist/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
     if: >-
       github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
       startsWith(github.ref, 'refs/heads/release/v'))
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  package_release:
+    name: Package / Release (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    needs:
+    - source
+    - check_rust
+    - validate_bindings
+    - validate_test_integration_rust
+    - validate_test_acceptance_rust
+    - validate_test_system_rust
+    - build_release
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: build-release-${{ matrix.os }}
+        merge-multiple: true
+    - run: mise run package --profile release
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: package-release-${{ matrix.os }}
+        path: |-
+          target/package/
+          target/release-assets/
+          dist/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+        include:
+        - os: linux
+          runner:
+          - ubuntu-24.04
+        - os: windows
+          runner:
+          - windows-2022
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  publish_dry:
+    name: Publish / Dry
+    runs-on:
+    - stokker-local-linux-x64
+    timeout-minutes: 30
+    needs:
+    - source
+    - check_rust
+    - validate_bindings
+    - validate_test_integration_rust
+    - validate_test_acceptance_rust
+    - validate_test_system_rust
+    - build_dev
+    - package_dev
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - run: mise run release:publish:dry
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: >-
+      github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+      startsWith(github.ref, 'refs/heads/release/v'))
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  publish_release:
+    name: Publish / Release
+    runs-on:
+    - ubuntu-24.04
+    timeout-minutes: 30
+    needs:
+    - package_release
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Uv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/uv/
+        key: ${{ runner.os }}-${{ runner.arch }}-uv-${{ hashFiles('tools/python/uv.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-uv-
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: command -v cc
+    - run: command -v pkg-config
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: package-release-*
+        merge-multiple: true
+    - id: crates
+      uses: rust-lang/crates-io-auth-action@v1
+    - run: mise run release:publish
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.crates.outputs.token }}
+        GH_TOKEN: ${{ github.token }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest

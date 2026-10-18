@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:33cbc089b3f94a5428fe71590e10a157de3acd51f2afef13e16a1c36c8360e06
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:aec26c2443ffcdc13fa98ae616b5bf9b2fb2b3f59d56a3f30b1c0e99911ae1d4
 # === Settings === #
 
 [settings]
@@ -30,6 +30,7 @@ git-cliff = "2.14.2"
 # === Environment === #
 
 [env]
+TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 SCCACHE_STARTUP_DIR = "{{env.XDG_RUNTIME_DIR | default(value='/tmp')}}"
 
@@ -135,10 +136,6 @@ description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
 
-[tasks."test:verify"]
-description = "Verify The Evidence Of One Tree"
-run = "uv run --locked --project tools/python python -m project_tools.test.run verify"
-
 [tasks.coverage]
 description = "Measure Coverage Over Instrumented Lanes"
 run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
@@ -168,12 +165,10 @@ run = [
   { task = "format:toml --check" },
   { task = "format:rust --check" },
   { task = "format:python --check" },
+  { task = "build --profile {{usage.profile}}" },
   { task = "check" },
   { task = "lint" },
-  { task = "build --profile {{usage.profile}}" },
   { task = "test --profile {{usage.profile}}" },
-  { task = "package --profile {{usage.profile}}" },
-  { task = "test:verify" },
 ]
 
 [tasks."ci:nightly"]
@@ -205,7 +200,7 @@ run = [
 
 [tasks."release:publish:dry"]
 description = "Dry-Run Every Publication"
-run = "cargo publish --workspace --dry-run"
+run = "uv run --locked --project tools/python python -m project_tools.test.publish --rust"
 
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"

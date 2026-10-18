@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:f8e4911354a406cb3fedcdf2aa1c56292a0665cebda562b60725689fff9930b1
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:5e16b52b0843dc4a6ca40b78e852673b4cd84c0234f708e5f10639991b5b89a0
 # ***
 #
 # __PRODUCT_NAME__
@@ -227,7 +227,7 @@ def verify_jobs(settings: dict, receipt: dict, *, require_artifact: bool = True)
         run = document(settings, f"actions/runs/{run_id}")
         if not isinstance(run, dict) or run.get("head_sha") != sha:
             raise policy.ToolError("GitHub run SHA differs")
-        for job_id in [receipt["build_job"], receipt["validation"]["job"]]:
+        for job_id in [receipt["build_job"]]:
             job = document(settings, f"actions/jobs/{job_id}")
             if (
                 not isinstance(job, dict)
@@ -239,7 +239,7 @@ def verify_jobs(settings: dict, receipt: dict, *, require_artifact: bool = True)
                 raise policy.ToolError("required GitHub job missing, failed, skipped, cancelled or mismatched")
         if not require_artifact:
             return
-        name = f"release-{sha}-{receipt['target']}"
+        name = receipt["artifact_name"]
         artifacts = [
             value
             for value in pages(settings, f"actions/runs/{run_id}/artifacts", "artifacts")
@@ -251,13 +251,13 @@ def verify_jobs(settings: dict, receipt: dict, *, require_artifact: bool = True)
         data = request(settings, f"actions/artifacts/{artifact['id']}/zip", binary=True)
         if data is None or artifact.get("digest") != "sha256:" + hashlib.sha256(data).hexdigest():
             raise policy.ToolError("native GitHub artifact archive checksum differs")
-        verify_archive(receipt, data, "")
+        verify_archive(receipt, data, f"target/release-assets/{receipt['target']}/")
         receipt["artifact"] = {key: artifact[key] for key in ["id", "name", "digest"]}
     else:
         run = document(settings, f"pipelines/{run_id}")
         if not isinstance(run, dict) or run.get("sha") != sha:
             raise policy.ToolError("GitLab pipeline SHA differs")
-        for job_id in [receipt["build_job"], receipt["validation"]["job"]]:
+        for job_id in [receipt["build_job"]]:
             job = document(settings, f"jobs/{job_id}")
             if (
                 not isinstance(job, dict)
@@ -268,12 +268,12 @@ def verify_jobs(settings: dict, receipt: dict, *, require_artifact: bool = True)
                 raise policy.ToolError("required GitLab job missing, failed, skipped, cancelled or mismatched")
         if not require_artifact:
             return
-        data = request(settings, f"jobs/{receipt['validation']['job']}/artifacts", binary=True)
+        data = request(settings, f"jobs/{receipt['build_job']}/artifacts", binary=True)
         if data is None:
             raise policy.ToolError("native GitLab release archive missing or expired")
         verify_archive(receipt, data, f"target/release-assets/{receipt['target']}/")
         receipt["artifact"] = {
-            "job_id": receipt["validation"]["job"],
+            "job_id": receipt["build_job"],
             "run_id": run_id,
             "archive_sha256": hashlib.sha256(data).hexdigest(),
         }
@@ -289,9 +289,6 @@ def verify_archive(receipt: dict, data: bytes, prefix: str) -> None:
             value = archive.read(prefix + asset["name"])
             if len(value) != asset["size"] or hashlib.sha256(value).hexdigest() != asset["sha256"]:
                 raise policy.ToolError("downloaded native asset checksum differs")
-        report = archive.read(prefix + "validation.json")
-        if hashlib.sha256(report).hexdigest() != receipt["validation"]["sha256"]:
-            raise policy.ToolError("downloaded native test report checksum differs")
 
 
 def route(directory: Path, settings: dict, source: str, destination: str, base_sha: str) -> None:
@@ -681,8 +678,8 @@ def verify_publication(directory: Path, settings: dict) -> None:
     if manifest.get("sha") != sha or manifest.get("tag") != settings["tag"] or set(manifest.get("targets", {})) != set(settings["targets"]):
         raise policy.ToolError("remote release identity or target completeness differs")
     for receipt in manifest["targets"].values():
-        if receipt.get("sha") != sha or receipt.get("validation", {}).get("outcome") != "passed":
-            raise policy.ToolError("remote release validation differs")
+        if receipt.get("sha") != sha:
+            raise policy.ToolError("remote release revision differs")
         verify_jobs(settings, receipt, require_artifact=False)
     with tempfile.TemporaryDirectory(prefix="release-verification-") as temporary:
         root = Path(temporary)

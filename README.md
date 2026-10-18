@@ -692,19 +692,20 @@ mise run bench                  # Record benchmark results
 ```
 
 Local and development validation use the development profile. `mise run build`
-produces the workspace archive and stamped schematic/sandbox artifacts once;
-test layers consume that build and refuse missing or changed inputs. Separate
-`test:unit`, `test:integration`, `test:acceptance` and `test:system` tasks select
-behavioral layers. `mise run coverage` instruments the full selection separately.
-`mise run ci` runs the repository flow; nightly coverage and benchmarks remain
-outside the required development gate.
+compiles the workspace once into a nextest archive and stamps the
+schematic/sandbox artifacts under `target/fixtures/`; test layers run from that
+archive and refuse a missing or stale fixture. Separate `test:unit`,
+`test:integration`, `test:acceptance` and `test:system` tasks select behavioral
+layers, each writing its JUnit report under `target/tests/`.
+`mise run test:coverage` instruments the full selection separately. `mise run ci`
+runs the same graph as CI on the current tree; a failing lane fails the run.
 
-`dev` requires Linux checks, build, tests and exact-revision development artifact
-proof. Windows runs independently as advisory validation for `dev`, with visible
-failures and artifacts; `main` and releases require both platforms. Optimized
-distribution builds and publication belong to release-tag pipelines. Rust crates
-and product assets are the published distributions; generated Python bindings
-belong to their consuming producer package.
+CI runs the Check, Build and Validate stages on Linux and Windows, and both
+platforms are required for `dev`, `main` and releases. Pushes to `dev` add
+development packages and a publication dry run; nightly adds coverage and
+benchmarks. Optimized distribution builds and publication belong to release-tag
+pipelines. Rust crates and product assets are the published distributions;
+generated Python clients belong to their consuming producer package.
 
 Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into

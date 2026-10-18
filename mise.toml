@@ -155,7 +155,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
 
 [tasks."test:integration"]
@@ -169,7 +169,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
 
 [tasks."test:acceptance"]
@@ -183,7 +183,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
 
 [tasks."test:system"]
@@ -197,16 +197,11 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
 
-[tasks."test:verify"]
-description = "Verify Complete Candidate Evidence"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run verify"
-
-[tasks.coverage]
-description = "Measure Instrumented Rust Coverage"
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
 
@@ -274,22 +269,17 @@ description = "Run The CI Flow Locally"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format --check" },
-  { task = "lint" },
-  { task = "check" },
   { task = "build --profile {{usage.profile}}" },
-  { task = "test:unit --profile {{usage.profile}}" },
-  { task = "test:integration --profile {{usage.profile}}" },
-  { task = "test:acceptance --profile {{usage.profile}}" },
-  { task = "test:system --profile {{usage.profile}}" },
-  { task = "package --profile {{usage.profile}}" },
-  { task = "test:verify" },
+  { task = "check" },
+  { task = "lint" },
+  { task = "test --profile {{usage.profile}}" },
 ]
 
 [tasks."ci:nightly"]
-description = "Run Nightly Coverage And Benchmarks"
+description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
-  { task = "coverage" },
+  { task = "test:coverage" },
   { task = "build --profile bench" },
   { task = "bench:unit --refresh-baseline" },
   { task = "bench:integration --refresh-baseline" },

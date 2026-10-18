@@ -7,6 +7,17 @@
 [project]
 name = "Harmos"
 visibility = "public"
+platforms = ["linux", "windows"]
+
+# === Languages === #
+
+[languages.rust]
+roots = ["crates", "examples"]
+exclude = ["crates/cargo-harmos/templates"]
+
+[languages.python]
+roots = ["tools/python"]
+exclude = ["tools/python/.venv", "tools/python/.ruff_cache"]
 
 
 # === Repository === #
@@ -16,9 +27,6 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 
 
 # === CI === #
-
-[ci]
-dev_advisory = ["windows"]
 
 [ci.runners]
 linux = ["ubuntu-24.04"]
