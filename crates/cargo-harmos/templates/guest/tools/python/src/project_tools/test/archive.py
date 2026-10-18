@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:dbed626e49c7e988f97a30b39a53df6c753f4144222bd015b647bb42b44fb773
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:8bed334948a5af2aaf62d188325f301ecccf8d72a5732eda1bb2510100eaa948
 # ***
 #
 # __PRODUCT_NAME__
@@ -112,7 +112,21 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     path.with_name(MESSAGES).write_text("\n".join(messages) + "\n", encoding="utf-8")
     if files:
         stamp(directory, profile, files)
+    prune(path.parent, {ARCHIVE, MESSAGES}, archives=True)
     return path
+
+
+def prune(directory: Path, keep: set[str], *, archives: bool = False) -> None:
+    """Discard Superseded Roots Without Following Links Or Touching Flat Reports."""
+    for path in directory.iterdir():
+        if path.name in keep or path.is_symlink():
+            continue
+        if archives and path.name.startswith("listing-"):
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif archives and path.name.endswith(".tar.zst"):
+            path.unlink()
 
 
 def binaries(directory: Path, profile: str) -> list[str]:

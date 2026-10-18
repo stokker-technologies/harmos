@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:268e31164197b535f5d8be6e6e9f490d94d68931f5f3ee91bc1a39817931c9f7
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:f9bab5fc3ee17ae171ccf59ee460a4e763b36a46c53b1aa301b88a98a012e397
 name: CI
 "on":
   push:
@@ -119,8 +119,10 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   check_rust:
-    name: Check / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Check / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -198,19 +200,14 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: >-
         python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
   build_dev:
-    name: Build / Dev (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Build / Dev
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -289,19 +286,14 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: >-
         python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
   build_release:
-    name: Build / Release (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Build / Release
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -380,13 +372,6 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: >-
         python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
@@ -449,8 +434,10 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   validate_test_unit_rust:
-    name: Validate / Unit / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Validate / Unit / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
     - build_dev
@@ -530,18 +517,13 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   validate_test_integration_rust:
-    name: Validate / Integration / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Validate / Integration / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
     - build_dev
@@ -621,18 +603,13 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   validate_test_acceptance_rust:
-    name: Validate / Acceptance / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Validate / Acceptance / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
     - build_dev
@@ -712,18 +689,13 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   validate_test_system_rust:
-    name: Validate / System / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Validate / System / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
     - build_dev
@@ -803,18 +775,13 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   package_rust:
-    name: Package / Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+    name: Package / Rust
+    runs-on: >-
+      ${{
+      fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 30
     needs:
     - source
@@ -909,13 +876,6 @@ jobs:
         os:
         - linux
         - windows
-        include:
-        - os: linux
-          runner:
-          - ubuntu-24.04
-        - os: windows
-          runner:
-          - windows-2022
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   publish_dry:

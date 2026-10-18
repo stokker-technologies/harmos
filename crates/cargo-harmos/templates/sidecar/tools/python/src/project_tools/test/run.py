@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:ad1b020d890a510f28a9a97247493d1a0034c11c154e43719c0f043de6e295ec
+# Rendered by stkr project update from templates/python/test/run.py; sha256:6d912106ed288fdba8287c3a5dd3594a3d727170be8dd6e5ba5f56eb22e9f153
 # ***
 #
 # __PRODUCT_NAME__
@@ -305,6 +305,16 @@ def _scratch(directory: Path, key: str) -> Path:
     scratch = directory / SCRATCH / key
     shutil.rmtree(scratch, ignore_errors=True)
     scratch.mkdir(parents=True)
+    categories = (
+        *policy.CATEGORIES,
+        "coverage",
+        *(f"coverage-{category}" for category in policy.CATEGORIES),
+        "bench-unit",
+        "bench-integration",
+        "bench-system",
+    )
+    keep = {f"{category}-{language}" for category in categories for language in ("rust", "python", *SCRIPTS)}
+    archive.prune(scratch.parent, keep | {key})
     return scratch
 
 

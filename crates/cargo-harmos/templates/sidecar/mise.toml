@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:e2a3fb85369b17d1774f7c1d87ab13fb77fc114152f732799e0cc17c6dca363d
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:305bc0c387d516e0cd4dc9430073e2c72329e7d874242180d6edb5b20582f7eb
 # === Settings === #
 
 [settings]
@@ -100,6 +100,7 @@ run = [
 
 [tasks.build]
 description = "Build Binaries, Fixtures, Wheels And The Test Archive"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
 
@@ -122,20 +123,24 @@ run = "cargo harmos sidecar dev"
 
 [tasks.test]
 description = "Test Every Layer"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit --profile {{usage.profile}}"]
 
 [tasks."test:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
+env.CARGO_INCREMENTAL = "0"
 run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit:rust --profile {{usage.profile}}"]
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
 

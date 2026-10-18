@@ -129,6 +129,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 # Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
 
 # === Dev === #
 
@@ -144,11 +145,13 @@ depends = [
   "test:system --profile {{usage.profile}}",
   "test:generated --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
@@ -158,11 +161,13 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:integration"]
 description = "Test Integration Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:integration:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:integration:rust"]
 description = "Test Integration Rust"
@@ -172,11 +177,13 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:acceptance"]
 description = "Test Acceptance Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:acceptance:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:acceptance:rust"]
 description = "Test Acceptance Rust"
@@ -186,11 +193,13 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:system"]
 description = "Test System Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:system:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:system:rust"]
 description = "Test System Rust"
@@ -200,11 +209,13 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:generated"]
 description = "Test Generated Clients"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:generated:python"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:generated:python"]
 description = "Test Generated Python"
@@ -215,11 +226,13 @@ run = [
   "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/fixtures/generated/python/src",
   "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/fixtures/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/fixtures/generated/python/src'])]\"",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
+env = { CARGO_INCREMENTAL = "0" }
 
 # === Bench === #
 
