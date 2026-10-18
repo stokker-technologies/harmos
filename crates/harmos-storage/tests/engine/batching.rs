@@ -44,7 +44,7 @@ use harmos_storage::schema::graph::{Field, Kind};
 
 /* === Private Functions === */
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn append_kinds_coalesce() {
     let f = Fixture::new(config()).await;
     f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
@@ -65,11 +65,32 @@ async fn append_kinds_coalesce() {
     write(&f.storage, "four").await;
     f.storage.write_recovery(&[b"first"]).await.unwrap();
     f.storage.write_recovery(&[b"second"]).await.unwrap();
-    f.storage.flush().await.unwrap();
+    assert_eq!(f.storage.flush().await.unwrap().sequence, 8);
     f.storage.flush_recovery().await.unwrap();
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 2, 2, 1, 2]);
+    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 4, 1, 2]);
     assert_eq!(*f.data.control.writes.lock().unwrap(), (1..=8).collect::<Vec<_>>());
     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), vec![2]);
+
+    let schemas = f.data.schemas.lock().unwrap().clone();
+    assert_eq!(schemas.keys().copied().collect::<Vec<_>>(), [1, 6]);
+
+    let records = f.data.records.lock().unwrap().clone();
+    assert_eq!(records.keys().copied().collect::<Vec<_>>(), [2, 3, 7, 8]);
+    assert!(records.values().all(|record| record.payload == [1, 2, 3]));
+
+    let rows = f.data.rows.lock().unwrap().clone();
+    assert_eq!(rows.keys().copied().collect::<Vec<_>>(), [4, 5]);
+    for sequence in 1..=2 {
+        let row = &rows[&(sequence + 3)];
+        assert_eq!(row.sequence, sequence);
+        assert_eq!(row.record.payload, [1]);
+    }
+
+    let recovery = f.recovery.entries.lock().unwrap().clone();
+    assert_eq!(recovery.keys().copied().collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(recovery[&1].payload, b"first");
+    assert_eq!(recovery[&2].payload, b"second");
+
     f.finish().await;
 }
 

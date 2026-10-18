@@ -240,7 +240,12 @@ async fn settle<A: Application>(
             };
             health.credit -= 1;
             report.health(ServiceStatus::BackingOff);
-            let delay = backoff.delay(health.failures, report.id().value()).unwrap_or(Duration::ZERO);
+            let entropy = report.id().value();
+
+            #[cfg(feature = "simulation")]
+            let entropy = crate::simulation::executor::entropy_or(entropy);
+
+            let delay = backoff.delay(health.failures, entropy).unwrap_or(Duration::ZERO);
             let mut waiting = stopping.subscribe();
             let interrupted = crate::supervision::interruptible(executor::sleep(delay), &mut waiting).await.is_none();
             if interrupted {

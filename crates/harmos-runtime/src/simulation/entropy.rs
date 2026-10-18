@@ -61,7 +61,7 @@ impl Context {
         self.inner.draws.lock().expect("simulation entropy trace lock is healthy").clone()
     }
 
-    fn draw(&self) -> u64 {
+    pub(super) fn draw(&self) -> u64 {
         let mut state = self.inner.state.lock().expect("simulation entropy state lock is healthy");
         *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut mixed = *state;

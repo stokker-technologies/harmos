@@ -42,13 +42,6 @@ pub(super) struct Progress {
 }
 
 /* === Enums === */
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Objects,
-    Records,
-    Stream,
-    Recovery,
-}
 
 /* === Traits === */
 
@@ -65,10 +58,10 @@ impl Progress {
 
 impl Batch {
     pub(super) fn prepare(inner: &Arc<Inner>, first: &Pending) -> Option<Self> {
-        let kind = kind(&first.operation)?;
+        let domain = append_domain(&first.operation)?;
         let mut state = inner.state.lock().unwrap();
         // Ready State Writes May Bypass An Earlier Unrelated Primary Barrier.
-        let boundary = if kind == Kind::Recovery { state.recovery_request?.index } else { state.write_boundary()? };
+        let boundary = if domain == Domain::Recovery { state.recovery_request?.index } else { state.write_boundary()? };
         let available = inner
             .settings
             .request
@@ -81,15 +74,17 @@ impl Batch {
         let mut operations = 0;
         let mut encoded_bytes = 0usize;
         for entry in state.queue.iter().filter(|entry| {
-            entry.index >= first.index && state.needs_write(entry) && (kind == Kind::Recovery || entry.operation.domain() == Domain::Data)
+            entry.index >= first.index
+                && state.needs_write(entry)
+                && (domain == Domain::Recovery || entry.operation.domain() == Domain::Data)
         }) {
             if entry.index > boundary {
                 break;
             }
-            if !compatible(entry, kind) {
+            if append_domain(&entry.operation) != Some(domain) {
                 break;
             }
-            if kind == Kind::Recovery
+            if domain == Domain::Recovery
                 && entry.operation.required_data().is_some_and(|required| !state.status.saved.covers(required).unwrap_or(false))
             {
                 break;
@@ -125,7 +120,7 @@ impl Batch {
                 .filter(|entry| {
                     entry.index >= first.index
                         && state.needs_write(entry)
-                        && (kind == Kind::Recovery || entry.operation.domain() == Domain::Data)
+                        && (domain == Domain::Recovery || entry.operation.domain() == Domain::Data)
                 })
                 .take(operations)
                 .cloned(),
@@ -200,18 +195,11 @@ pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Resu
 }
 
 /* === Private Functions === */
-fn kind(operation: &Operation) -> Option<Kind> {
+fn append_domain(operation: &Operation) -> Option<Domain> {
     match operation {
-        Operation::ObjectGroup { .. } => Some(Kind::Objects),
-        Operation::Records(_) => Some(Kind::Records),
-        Operation::Stream(_) => Some(Kind::Stream),
-        Operation::Recovery(_) => Some(Kind::Recovery),
+        Operation::ObjectGroup { .. } | Operation::Records(_) | Operation::Stream(_) | Operation::Recovery(_) => Some(operation.domain()),
         _ => None,
     }
-}
-
-fn compatible(entry: &Pending, first: Kind) -> bool {
-    kind(&entry.operation) == Some(first)
 }
 
 fn charge(operation: &Operation) -> Option<(usize, usize)> {

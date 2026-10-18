@@ -88,6 +88,11 @@ where
     }
 }
 
+pub(crate) fn entropy_or(fallback: u64) -> u64 {
+    let context = entropy::Context::current();
+    context.map_or(fallback, |context| context.draw())
+}
+
 pub(crate) fn now() -> tokio::time::Instant {
     tokio::time::Instant::now()
 }
