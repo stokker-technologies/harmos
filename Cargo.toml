@@ -2,14 +2,8 @@
 
 [workspace]
 resolver = "3"
-members = [
-  "crates/*",
-  "tests/fixtures/grpc",
-  "tests/fixtures/lifecycle",
-  "tests/support/jsonl-adapter",
-  "tests/fixtures/observer",
-  "examples/schematic/*",
-]
+members = ["crates/*"]
+exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 
 # === Workspace Package ===
 
@@ -24,13 +18,15 @@ publish = true
 
 [workspace.dependencies]
 # Local
-harmos = { path = "crates/harmos" }
-harmos-bundle = { path = "crates/harmos-bundle" }
-harmos-contract = { path = "crates/harmos-contract", default-features = false }
-harmos-guest = { path = "crates/harmos-guest", default-features = false }
-harmos-macros = { path = "crates/harmos-macros" }
-harmos-sidecar = { path = "crates/harmos-sidecar", default-features = false }
-harmos-signal = { path = "crates/harmos-signal", default-features = false }
+harmos = { path = "crates/harmos", version = "0.2.0" }
+harmos-domain = { path = "crates/harmos-domain", version = "0.2.0", default-features = false }
+harmos-guest = { path = "crates/harmos-guest", version = "0.2.0", default-features = false }
+harmos-macros = { path = "crates/harmos-macros", version = "0.2.0" }
+harmos-packaging = { path = "crates/harmos-packaging", version = "0.2.0", default-features = false }
+harmos-runtime = { path = "crates/harmos-runtime", version = "0.2.0", default-features = false }
+harmos-sdk = { path = "crates/harmos-sdk", version = "0.2.0", default-features = false }
+harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.2.0", default-features = false }
+harmos-storage = { path = "crates/harmos-storage", version = "0.2.0", default-features = false }
 
 # Git
 
@@ -66,7 +62,15 @@ windows-sys = { version = "0.61", default-features = false, features = [
 ] }
 
 # Serialization
+arrow-array = { version = "=59.3.0", default-features = false }
+arrow-buffer = { version = "=59.3.0", default-features = false }
+arrow-data = { version = "=59.3.0", default-features = false }
+arrow-ipc = { version = "=59.3.0", default-features = false }
+arrow-schema = { version = "=59.3.0", default-features = false }
+arrow-select = { version = "=59.3.0", default-features = false }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+flatbuffers = { version = "=25.12.19", default-features = false }
 prost = { version = "0.14", default-features = false }
 prost-reflect = { version = "0.16", default-features = false }
 protoc-bin-vendored = { version = "3", default-features = false }
@@ -131,31 +135,31 @@ all = "warn"
 
 # === Profiles ===
 
-# Guest Tests Compile Real Components With The Native JIT Compiler.
-[profile.dev.package.cranelift-codegen]
-opt-level = 3
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
-[profile.dev.package.cranelift-frontend]
+# Measured 2026-10-17: guest stories compile components with Cranelift; unoptimized it costs 25 s per story, optimized 1.7 s.
+[profile.dev.package.cranelift-codegen]
 opt-level = 3
 
 [profile.dev.package.regalloc2]
 opt-level = 3
 
-[profile.dev.package.wasmtime]
-opt-level = 3
-
-[profile.dev.package.wasmtime-environ]
-opt-level = 3
-
 [profile.dev.package.wasmtime-internal-cranelift]
 opt-level = 3
 
-# Artifact Admission Scans And Hashes Full Executables, Including Debug Builds.
-[profile.dev.package.memchr]
-opt-level = 3
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
-[profile.dev.package.sha2]
-opt-level = 3
+[profile.bench]
+inherits = "release"
+lto = false
+incremental = false
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
 # === Patches ===
 

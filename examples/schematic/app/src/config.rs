@@ -42,24 +42,15 @@ pub struct Settings {
 /* === Implementations === */
 impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
-        Self {
-            journal_sync_entries: NonZeroUsize::new(1).unwrap(),
-            recordings: recordings.into(),
-        }
+        Self { journal_sync_entries: NonZeroUsize::new(1).unwrap(), recordings: recordings.into() }
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {
         match std::env::var(RECORDINGS) {
             Ok(recordings) if !recordings.is_empty() => Ok(Self::new(recordings)),
-            Ok(_) => Err(ConfigError::Empty {
-                variable: RECORDINGS,
-            }),
-            Err(std::env::VarError::NotPresent) => Err(ConfigError::Missing {
-                variable: RECORDINGS,
-            }),
-            Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::NotUnicode {
-                variable: RECORDINGS,
-            }),
+            Ok(_) => Err(ConfigError::Empty { variable: RECORDINGS }),
+            Err(std::env::VarError::NotPresent) => Err(ConfigError::Missing { variable: RECORDINGS }),
+            Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::NotUnicode { variable: RECORDINGS }),
         }
     }
 

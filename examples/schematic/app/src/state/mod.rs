@@ -29,29 +29,21 @@ use crate::error::SchematicError;
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct SymbolId(pub u64);
 
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct NetId(pub u64);
 
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct PinRef {
     pub symbol: SymbolId,
     pub pin: u32,
@@ -85,9 +77,7 @@ pub struct Schematic {
 }
 
 /* === Enums === */
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum Rotation {
     #[default]
     Zero,
@@ -140,27 +130,15 @@ impl fmt::Display for PinRef {
 
 impl NetName {
     pub fn parse(text: &str) -> Self {
-        let Some((base, member)) = text
-            .strip_suffix(']')
-            .and_then(|open| open.rsplit_once('['))
-        else {
+        let Some((base, member)) = text.strip_suffix(']').and_then(|open| open.rsplit_once('[')) else {
             return Self::verbatim(text);
         };
 
-        member.parse().map_or_else(
-            |_| Self::verbatim(text),
-            |member| Self {
-                base: base.to_owned(),
-                member: Some(member),
-            },
-        )
+        member.parse().map_or_else(|_| Self::verbatim(text), |member| Self { base: base.to_owned(), member: Some(member) })
     }
 
     pub fn verbatim(text: impl Into<String>) -> Self {
-        Self {
-            base: text.into(),
-            member: None,
-        }
+        Self { base: text.into(), member: None }
     }
 }
 
@@ -176,55 +154,35 @@ impl fmt::Display for NetName {
 
 impl Schematic {
     pub fn require_symbol(&self, symbol: SymbolId) -> Result<(), SchematicError> {
-        self.symbols
-            .contains_key(&symbol)
-            .then_some(())
-            .ok_or(SchematicError::UnknownSymbol(symbol))
+        self.symbols.contains_key(&symbol).then_some(()).ok_or(SchematicError::UnknownSymbol(symbol))
     }
 
     pub fn require_symbol_free(&self, symbol: SymbolId) -> Result<(), SchematicError> {
-        (!self.symbols.contains_key(&symbol))
-            .then_some(())
-            .ok_or(SchematicError::SymbolTaken(symbol))
+        (!self.symbols.contains_key(&symbol)).then_some(()).ok_or(SchematicError::SymbolTaken(symbol))
     }
 
     pub fn require_net(&self, net: NetId) -> Result<(), SchematicError> {
-        self.nets
-            .contains_key(&net)
-            .then_some(())
-            .ok_or(SchematicError::UnknownNet(net))
+        self.nets.contains_key(&net).then_some(()).ok_or(SchematicError::UnknownNet(net))
     }
 
     pub fn require_name_free(&self, name: &NetName) -> Result<(), SchematicError> {
-        self.nets
-            .values()
-            .all(|net| net.name != *name)
-            .then_some(())
-            .ok_or_else(|| SchematicError::NameTaken(name.to_string()))
+        self.nets.values().all(|net| net.name != *name).then_some(()).ok_or_else(|| SchematicError::NameTaken(name.to_string()))
     }
 
     pub fn symbol(&self, symbol: SymbolId) -> &Symbol {
-        self.symbols
-            .get(&symbol)
-            .expect("check refuses a change naming a symbol that is not placed")
+        self.symbols.get(&symbol).expect("check refuses a change naming a symbol that is not placed")
     }
 
     pub fn symbol_mut(&mut self, symbol: SymbolId) -> &mut Symbol {
-        self.symbols
-            .get_mut(&symbol)
-            .expect("check refuses a change naming a symbol that is not placed")
+        self.symbols.get_mut(&symbol).expect("check refuses a change naming a symbol that is not placed")
     }
 
     pub fn net(&self, net: NetId) -> &Net {
-        self.nets
-            .get(&net)
-            .expect("check refuses a change naming a net that does not exist")
+        self.nets.get(&net).expect("check refuses a change naming a net that does not exist")
     }
 
     pub fn net_mut(&mut self, net: NetId) -> &mut Net {
-        self.nets
-            .get_mut(&net)
-            .expect("check refuses a change naming a net that does not exist")
+        self.nets.get_mut(&net).expect("check refuses a change naming a net that does not exist")
     }
 }
 

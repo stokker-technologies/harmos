@@ -113,46 +113,31 @@ impl Presentation {
 
     pub(crate) fn parse(&mut self, meta: &Meta, row: bool) -> Result<bool, Error> {
         match meta {
-            Meta::NameValue(pair) if pair.path.is_ident("label") => {
-                set(&mut self.label, text(&pair.value)?, meta)?
-            }
+            Meta::NameValue(pair) if pair.path.is_ident("label") => set(&mut self.label, text(&pair.value)?, meta)?,
             Meta::NameValue(pair) if pair.path.is_ident("description") => {
                 let written = syn::parse2::<LitStr>(pair.value.to_token_stream())?;
                 set(&mut self.description, written, meta)?;
             }
             Meta::NameValue(pair) if row && pair.path.is_ident("role") => {
                 let role = match &pair.value {
-                    Expr::Path(path) if path.path.get_ident().is_some() => {
-                        path.path.get_ident().unwrap().to_string()
-                    }
+                    Expr::Path(path) if path.path.get_ident().is_some() => path.path.get_ident().unwrap().to_string(),
                     other => text(other)?,
                 };
                 set(&mut self.role, role, meta)?;
             }
-            Meta::NameValue(pair) if row && pair.path.is_ident("unit") => {
-                set(&mut self.unit, text(&pair.value)?, meta)?
-            }
+            Meta::NameValue(pair) if row && pair.path.is_ident("unit") => set(&mut self.unit, text(&pair.value)?, meta)?,
             Meta::List(list) if list.path.is_ident("tags") => {
-                let tags = Punctuated::<syn::LitStr, Token![,]>::parse_terminated
-                    .parse2(list.tokens.clone())?;
+                let tags = Punctuated::<syn::LitStr, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
                 let mut unique = std::collections::BTreeSet::new();
                 for tag in &tags {
                     if !unique.insert(tag.value()) {
-                        return Err(Error::new(
-                            tag.span(),
-                            "a metadata tag is declared only once",
-                        ));
+                        return Err(Error::new(tag.span(), "a metadata tag is declared only once"));
                     }
                 }
-                set(
-                    &mut self.tags,
-                    tags.into_iter().map(|tag| tag.value()).collect(),
-                    meta,
-                )?;
+                set(&mut self.tags, tags.into_iter().map(|tag| tag.value()).collect(), meta)?;
             }
             Meta::List(list) if list.path.is_ident("attributes") => {
-                let pairs = Punctuated::<Attribute, Token![,]>::parse_terminated
-                    .parse2(list.tokens.clone())?;
+                let pairs = Punctuated::<Attribute, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
                 set(&mut self.attributes, attributes(pairs)?, meta)?;
             }
             _ => return Ok(false),
@@ -181,14 +166,9 @@ pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
                 retained.push(attribute);
                 continue;
             }
-            for meta in
-                attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?
-            {
+            for meta in attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)? {
                 if !presentation.parse(&meta, true)? {
-                    return Err(Error::new(
-                        meta.span(),
-                        "row accepts description, label, tags, attributes, role, and unit",
-                    ));
+                    return Err(Error::new(meta.span(), "row accepts description, label, tags, attributes, role, and unit"));
                 }
             }
         }
@@ -200,10 +180,7 @@ pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
         let name = name.to_string();
         let name = name.strip_prefix("r#").unwrap_or(&name);
         if !name.is_ascii() {
-            return Err(Error::new(
-                span,
-                "a row field requires an ASCII identifier for portable metadata",
-            ));
+            return Err(Error::new(span, "a row field requires an ASCII identifier for portable metadata"));
         }
         presentation.default_label(name);
         rows.push(json!({"metadata": presentation.metadata(name, &field.attrs), "role": presentation.role, "unit": presentation.unit}));
@@ -218,27 +195,17 @@ fn key(input: ParseStream<'_>) -> syn::Result<(String, proc_macro2::Span)> {
         let key: syn::LitStr = input.parse()?;
         return Ok((key.value(), key.span()));
     }
-    let key: syn::Ident = input
-        .parse()
-        .map_err(|_| input.error("a metadata key is an identifier or quoted string"))?;
+    let key: syn::Ident = input.parse().map_err(|_| input.error("a metadata key is an identifier or quoted string"))?;
     let name = key.to_string();
 
-    Ok((
-        name.strip_prefix("r#").unwrap_or(&name).to_owned(),
-        key.span(),
-    ))
+    Ok((name.strip_prefix("r#").unwrap_or(&name).to_owned(), key.span()))
 }
 
-fn attributes(
-    pairs: impl IntoIterator<Item = Attribute>,
-) -> syn::Result<serde_json::Map<String, Value>> {
+fn attributes(pairs: impl IntoIterator<Item = Attribute>) -> syn::Result<serde_json::Map<String, Value>> {
     let mut attributes = serde_json::Map::new();
     for pair in pairs {
         if attributes.insert(pair.key.clone(), pair.value).is_some() {
-            return Err(Error::new(
-                pair.span,
-                format!("attribute `{}` is declared twice", pair.key),
-            ));
+            return Err(Error::new(pair.span, format!("attribute `{}` is declared twice", pair.key)));
         }
     }
 
@@ -271,10 +238,7 @@ fn title(name: &str) -> String {
         .split_whitespace()
         .map(|word| {
             let mut chars = word.chars();
-            chars
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
-                .unwrap_or_default()
+            chars.next().map(|first| first.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -282,10 +246,7 @@ fn title(name: &str) -> String {
 
 fn set<T>(slot: &mut Option<T>, value: T, meta: &Meta) -> Result<(), Error> {
     if slot.replace(value).is_some() {
-        return Err(Error::new(
-            meta.span(),
-            "metadata property is declared twice",
-        ));
+        return Err(Error::new(meta.span(), "metadata property is declared twice"));
     }
 
     Ok(())
@@ -314,10 +275,7 @@ fn literal(expr: &Expr) -> Result<Value, Error> {
                     json!(
                         format!("-{}", value.base10_digits())
                             .parse::<i64>()
-                            .map_err(|_| Error::new(
-                                value.span(),
-                                "signed integer is out of range"
-                            ))?
+                            .map_err(|_| Error::new(value.span(), "signed integer is out of range"))?
                             .to_string()
                     ),
                 ),
@@ -326,10 +284,7 @@ fn literal(expr: &Expr) -> Result<Value, Error> {
             }
         }
         _ => {
-            return Err(Error::new(
-                expr.span(),
-                "metadata attributes require literals",
-            ));
+            return Err(Error::new(expr.span(), "metadata attributes require literals"));
         }
     };
 

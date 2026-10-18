@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-guest"
 description = "Portable schematic analysis and routing"
 edition.workspace = true
@@ -25,12 +26,12 @@ crate-type = ["cdylib", "rlib"]
 
 # === Dependencies ===
 
-# The contract crate and nothing above it: a guest compiles the editor's contract
+# The domain crate and nothing above it: a guest compiles the editor's domain
 # with its plugins, never the host half that serves it.
 [dependencies]
 # Local
 harmos-guest = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
-schematic-contract = { path = "../contract" }
+schematic-domain = { path = "../domain" }
 
 # Git
 
@@ -68,8 +69,9 @@ serde_json = { workspace = true, default-features = true }
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
-schematic-contract = { path = "../contract", features = ["grpc"] }
+harmos-domain = { workspace = true }
+harmos-packaging = { workspace = true, features = ["bindings-proto"] }
+schematic-domain = { path = "../domain" }
 
 # Git
 

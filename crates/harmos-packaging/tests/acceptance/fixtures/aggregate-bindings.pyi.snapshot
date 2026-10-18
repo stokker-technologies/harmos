@@ -1,0 +1,97 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Generated Operation Bindings From The Selected Producer Catalog"""
+
+# === Imports === #
+
+# Standard Library Imports
+
+# Third Party Imports
+from google.protobuf.message import Message
+
+# Local Imports
+from .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, ResponseStream as ResponseStream
+import bindings_aggregate._wire.test.v1.ShapesMessages.Aggregate.messages_pb2 as _wire_0
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+FixtureAggregateRequest = _wire_0.Row1
+FixtureAggregateResponse = _wire_0.Row1
+
+FIXTURE_AGGREGATE: Operation[FixtureAggregateRequest, FixtureAggregateResponse, Message, Message]
+
+# === Classes === #
+
+# === Public Functions === #
+
+# === Private Functions === #
+
+# === Entry Point === #
+
+from google.protobuf.internal import containers as _containers
+from google.protobuf import descriptor as _descriptor
+from google.protobuf import message as _message
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+
+DESCRIPTOR: _descriptor.FileDescriptor
+
+class Row1(_message.Message):
+    __slots__ = ("aggregate", "aggregates")
+    AGGREGATE_FIELD_NUMBER: _ClassVar[int]
+    AGGREGATES_FIELD_NUMBER: _ClassVar[int]
+    aggregate: Row2
+    aggregates: _containers.RepeatedCompositeFieldContainer[Row2]
+    def __init__(self, aggregate: _Optional[_Union[Row2, _Mapping]] = ..., aggregates: _Optional[_Iterable[_Union[Row2, _Mapping]]] = ...) -> None: ...
+
+class Row2(_message.Message):
+    __slots__ = ("Count", "Sum", "Mean", "Median", "Min", "Max", "Rms", "Std", "Percentile")
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    SUM_FIELD_NUMBER: _ClassVar[int]
+    MEAN_FIELD_NUMBER: _ClassVar[int]
+    MEDIAN_FIELD_NUMBER: _ClassVar[int]
+    MIN_FIELD_NUMBER: _ClassVar[int]
+    MAX_FIELD_NUMBER: _ClassVar[int]
+    RMS_FIELD_NUMBER: _ClassVar[int]
+    STD_FIELD_NUMBER: _ClassVar[int]
+    PERCENTILE_FIELD_NUMBER: _ClassVar[int]
+    Count: Row3
+    Sum: Row3
+    Mean: Row3
+    Median: Row3
+    Min: Row3
+    Max: Row3
+    Rms: Row3
+    Std: Row3
+    Percentile: Row4
+    def __init__(self, Count: _Optional[_Union[Row3, _Mapping]] = ..., Sum: _Optional[_Union[Row3, _Mapping]] = ..., Mean: _Optional[_Union[Row3, _Mapping]] = ..., Median: _Optional[_Union[Row3, _Mapping]] = ..., Min: _Optional[_Union[Row3, _Mapping]] = ..., Max: _Optional[_Union[Row3, _Mapping]] = ..., Rms: _Optional[_Union[Row3, _Mapping]] = ..., Std: _Optional[_Union[Row3, _Mapping]] = ..., Percentile: _Optional[_Union[Row4, _Mapping]] = ...) -> None: ...
+
+class Row3(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class Row4(_message.Message):
+    __slots__ = ("rank",)
+    RANK_FIELD_NUMBER: _ClassVar[int]
+    rank: int
+    def __init__(self, rank: _Optional[int] = ...) -> None: ...
+
+class Row0(_message.Message):
+    __slots__ = ("request", "response")
+    REQUEST_FIELD_NUMBER: _ClassVar[int]
+    RESPONSE_FIELD_NUMBER: _ClassVar[int]
+    request: Row1
+    response: Row1
+    def __init__(self, request: _Optional[_Union[Row1, _Mapping]] = ..., response: _Optional[_Union[Row1, _Mapping]] = ...) -> None: ...

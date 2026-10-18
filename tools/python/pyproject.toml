@@ -7,18 +7,8 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-test = [
-  "build==1.6.1",
-  "protobuf==7.36.2",
-  "pytest==9.1.1",
-  "pytest-benchmark==5.3.0",
-  "pytest-cov==7.1.0",
-  "pytest-timeout==2.4.0",
-  "setuptools==84.0.0",
-  "types-protobuf==7.35.1.20260906",
-  "wheel==0.48.0",
-]
-dev = ["ruff==0.17.0", "ty==0.0.86"]
+test = ["build==1.6.1", "protobuf==7.36.2", "setuptools==84.0.0", "types-protobuf==7.35.1.20260906", "wheel==0.48.0"]
+dev = ["ruff==0.17.0", "ty==0.0.86", "hatchling==1.32.4"]
 
 [build-system]
 requires = ["hatchling==1.32.4"]
@@ -33,56 +23,8 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]
 [tool.ruff]
 target-version = "py313"
 
-[tool.ruff.format]
-# Shared generated modules are formatted and validated by Hub.
-exclude = [
-  "src/harmos_tools/_policy.py",
-  "src/harmos_tools/docs.py",
-  "src/harmos_tools/docs_site.py",
-  "src/harmos_tools/docs_artifacts.py",
-  "src/harmos_tools/docs_registry.py",
-  "src/harmos_tools/evidence.py",
-  "src/harmos_tools/release.py",
-  "src/harmos_tools/screenshots.py",
-  "src/harmos_tools/version.py",
-]
-
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "UP", "B"]
 
 [tool.ty.environment]
 python-version = "3.13"
-
-[tool.pytest.ini_options]
-addopts = [
-  "--strict-config",
-  "--strict-markers",
-  "--import-mode=importlib",
-  "--timeout-method=thread",
-]
-
-[tool.harmos.benchmarks]
-paths = [
-  "writer",
-  "operations/dispatch",
-  "operations/runtime_cancel",
-  "storage",
-  "streams",
-  "streams/native_codec/postcard_encode",
-  "streams/native_codec/postcard_decode",
-  "streams/native_codec/envelope_encode",
-  "streams/native_codec/envelope_decode",
-  "streams/native_consumer/in_process",
-  "streams/native_consumer/executable",
-  "sidecar_transport/memory",
-  "sidecar_transport/process",
-  "sidecar_transport/capacity",
-  "host_guest_operation",
-  "native_guest_native/in_process",
-  "simulation_oracle",
-]
-summary = "report.md"
-logs = "run.log"
-measurements = "measurements.json"
-build_metadata = "build.json"
-print_report = true

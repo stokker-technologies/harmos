@@ -46,11 +46,7 @@ pub struct NetVoltage {
 /* === Implementations === */
 impl NetVoltage {
     pub const fn teaching(sampled_at_us: u64, millivolts: i32) -> Self {
-        Self {
-            net: NetId(1),
-            sampled_at_us,
-            millivolts,
-        }
+        Self { net: NetId(1), sampled_at_us, millivolts }
     }
 }
 

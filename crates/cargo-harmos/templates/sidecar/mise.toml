@@ -1,0 +1,222 @@
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:209ff3b83a3c385097b1db9c66c2e08b706e5aaf5040bfaf749f8000c8ff6bb1
+# === Settings === #
+
+[settings]
+lockfile = true
+
+# === Tools === #
+
+[tools]
+# Languages And Runtimes
+python = "3.15.0"
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview" }
+
+# Package Managers
+uv = "0.13.0"
+
+# Rust Toolchain
+"aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
+"cargo:cargo-llvm-cov" = "0.9.1"
+
+# Formatting And Linting
+taplo = "0.10.0"
+
+# Release And Signing
+git-cliff = "2.14.2"
+
+# Project Statistics
+"aqua:boyter/scc" = "4.1.0"
+
+# === Environment === #
+
+[env]
+UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
+SCCACHE_STARTUP_DIR = "{{env.XDG_RUNTIME_DIR | default(value='/tmp')}}"
+
+# === Variables === #
+
+[vars]
+
+# === Prepare === #
+
+[tasks.prepare]
+description = "Prepare Tools And Inputs"
+run = "uv sync --locked --project tools/python --all-groups"
+
+# === Format === #
+
+[tasks.format]
+description = "Format Every Language"
+usage = 'flag "--check"'
+depends = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {% if usage.check %}--check{% endif %}", "format:python {% if usage.check %}--check{% endif %}"]
+
+[tasks."format:python"]
+description = "Format Python"
+usage = 'flag "--check"'
+run = "uv run --locked --project tools/python ruff format{% if usage.check %} --check{% endif %}"
+
+[tasks."format:rust"]
+description = "Format Rust"
+usage = 'flag "--check"'
+run = "cargo fmt --all{% if usage.check %} --check{% endif %}"
+
+[tasks."format:toml"]
+description = "Format TOML"
+usage = 'flag "--check"'
+run = "git ls-files -z -- '*.toml' | xargs -0 taplo fmt --option column_width=140{% if usage.check %} --check{% endif %}"
+
+# === Lint === #
+
+[tasks.lint]
+description = "Lint Every Language"
+depends = ["lint:rust", "lint:python"]
+
+[tasks."lint:python"]
+description = "Lint Python"
+run = "uv run --locked --project tools/python ruff check"
+
+[tasks."lint:rust"]
+description = "Lint Rust"
+run = "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo clippy --workspace --all-targets --all-features -- -D warnings"
+
+# === Check === #
+
+[tasks.check]
+description = "Check Every Language And Conventions"
+depends = ["check:rust", "check:python"]
+
+[tasks."check:python"]
+description = "Check Python"
+run = "uv run --locked --project tools/python ty check"
+
+[tasks."check:rust"]
+description = "Check Rust"
+run = [
+  "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo check --workspace --all-targets --all-features",
+  "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo check --workspace --all-targets --no-default-features",
+]
+
+# === Build === #
+
+[tasks.build]
+description = "Build Binaries, Fixtures, Wheels And The Test Archive"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}}"
+
+# === Dev === #
+
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+
+[tasks.dev]
+description = "Watch And Rebuild The Plugin"
+run = "cargo harmos sidecar dev"
+
+# === Test === #
+
+[tasks.test]
+description = "Test Every Layer"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit --profile {{usage.profile}}"]
+
+[tasks."test:unit"]
+description = "Test Unit Layer"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit:rust --profile {{usage.profile}}"]
+
+[tasks."test:unit:rust"]
+description = "Test Unit Rust"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
+
+[tasks."test:verify"]
+description = "Verify The Evidence Of One Tree"
+run = "uv run --locked --project tools/python python -m project_tools.test.run verify"
+
+[tasks.coverage]
+description = "Measure Coverage Over Instrumented Lanes"
+run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
+
+# === Bench === #
+
+# === Docs === #
+
+# === Package === #
+
+[tasks.package]
+description = "Package Every Language"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["package:rust --profile {{usage.profile}}"]
+
+[tasks."package:rust"]
+description = "Package Rust"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "cargo package --workspace --no-verify"
+
+# === CI === #
+
+[tasks.ci]
+description = "Run The CI Flow Locally"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  { task = "format:toml --check" },
+  { task = "format:rust --check" },
+  { task = "format:python --check" },
+  { task = "check" },
+  { task = "lint" },
+  { task = "build --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
+  { task = "package --profile {{usage.profile}}" },
+  { task = "test:verify" },
+]
+
+[tasks."ci:nightly"]
+description = "Run The Nightly Coverage And Bench Flow"
+run = [
+  { task = "build" },
+  { task = "coverage" },
+]
+
+# === Release === #
+
+[tasks.release]
+description = "Prepare And Validate A Release"
+run = [
+  { task = "release:prepare" },
+  { task = "ci" },
+  { task = "release:publish:dry" },
+]
+
+[tasks."release:prepare"]
+description = "Prepare The Release Branch"
+run = "uv run --locked --project tools/python python -m project_tools.release.run prepare"
+
+[tasks."release:publish"]
+description = "Publish A Tagged Release"
+run = [
+  { task = "release:publish:rust" },
+]
+
+[tasks."release:publish:dry"]
+description = "Dry-Run Every Publication"
+run = "cargo publish --workspace --dry-run"
+
+[tasks."release:publish:rust"]
+description = "Publish Rust Crates"
+run = "cargo publish --workspace"
+
+# === Housekeeping === #
+
+[tasks.housekeeping]
+description = "Clean Owned Build Outputs And State"
+run = "stkr project housekeeping"
+
+[tasks."housekeeping:stats"]
+description = "Count Source Lines"
+run = "scc"

@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use schematic_contract::operations::validate::{Request, Response};
+use schematic_domain::operations::ValidateSchematic;
+use schematic_domain::operations::schematic::validate::Validation;
 
 /* === Constants === */
 
@@ -28,40 +29,23 @@ use schematic_contract::operations::validate::{Request, Response};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct ValidateSchematic;
+pub(crate) struct Validating;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_sidecar::operation(declaration = schematic_contract::operations::ValidateSchematic)]
-impl ValidateSchematic {
-    fn new(_: Arc<()>) -> Self {
+#[harmos_sidecar::operation]
+impl Validating {
+    async fn initialize(_: Arc<crate::Resources>, _: &harmos_sidecar::Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn run(
-        &mut self,
-        _context: &harmos_sidecar::Supervisor,
-        request: &mut Request,
-    ) -> Result<Response, Error> {
-        let symbols: std::collections::BTreeSet<_> =
-            request.schematic.symbols.iter().copied().collect();
-        let mut diagnostics = Vec::new();
-        if symbols.len() != request.schematic.symbols.len() {
-            diagnostics.push("Duplicate symbol IDs".to_owned());
-        }
-        for connection in &request.schematic.connections {
-            if !symbols.contains(&connection.from) || !symbols.contains(&connection.to) {
-                diagnostics.push(format!(
-                    "Connection {} to {} references a missing symbol",
-                    connection.from, connection.to
-                ));
-            }
-        }
-        Ok(Response { diagnostics })
+    async fn run(&mut self, _context: &harmos_sidecar::Supervisor, request: &mut ValidateSchematic) -> Result<Validation, Error> {
+        let diagnostics = request.schematic.diagnostics();
+        Ok(Validation { diagnostics })
     }
 }
 

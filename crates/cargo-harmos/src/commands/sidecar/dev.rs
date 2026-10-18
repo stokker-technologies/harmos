@@ -43,20 +43,11 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn run(
-    arguments: Arguments,
-    cancellation: &harmos::packaging::BuildCancellation,
-) -> Result<(), harmos::packaging::Error> {
+pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     let json = arguments.build.json;
-    let settings = arguments
-        .build
-        .settings(harmos::config::BuildBackend::Sidecar);
-    let policy = harmos::config::DevSettings {
-        debounce: std::time::Duration::from_millis(arguments.debounce_ms),
-    };
-    harmos::packaging::dev(&settings, policy, cancellation, |event| {
-        crate::output::dev(event, json)
-    })
+    let settings = arguments.build.settings(harmos_packaging::config::BuildBackend::Sidecar);
+    let policy = harmos_packaging::config::DevSettings { debounce: std::time::Duration::from_millis(arguments.debounce_ms) };
+    harmos_packaging::dev(&settings, policy, cancellation, |event| crate::output::dev(event, json))
 }
 
 /* === Private Functions === */

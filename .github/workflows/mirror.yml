@@ -22,17 +22,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Install Mise
-        run: |
-          sh tools/ci/install-mise.sh
-          echo "$GITHUB_WORKSPACE/.tmp/mise/bin" >> "$GITHUB_PATH"
       - name: Mirror Published Ref
         shell: bash
         env:
           GITLAB_MIRROR_SSH_KEY: ${{ secrets.GITLAB_MIRROR_SSH_KEY }}
           GITLAB_MIRROR_KNOWN_HOSTS: ${{ vars.GITLAB_MIRROR_KNOWN_HOSTS }}
-          MISE_AUTO_INSTALL: 'false'
-          MISE_LOCKED: '1'
         run: |
           set -euo pipefail
           test -n "$GITLAB_MIRROR_SSH_KEY"
@@ -44,4 +38,7 @@ jobs:
           printf '%s\n' "$GITLAB_MIRROR_SSH_KEY" > "$mirror_key"
           printf '%s\n' "$GITLAB_MIRROR_KNOWN_HOSTS" > "$mirror_hosts"
           export GIT_SSH_COMMAND="ssh -i $mirror_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$mirror_hosts"
-          mise run --skip-tools ci:mirror
+          case "${GITHUB_REF_NAME:?}" in dev|main) ;; *) exit 1 ;; esac
+          test "${GITHUB_REPOSITORY:?}" = "stokker-technologies/harmos"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA:?}"
+          git push --no-force --no-follow-tags git@gitlab.com:stokker-technologies/open-source/harmos.git "HEAD:refs/heads/${GITHUB_REF_NAME}"

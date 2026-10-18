@@ -10,7 +10,7 @@
 
 /* === Modules === */
 pub mod __harmos {
-    pub use harmos::{catalog, listeners, operations, plugin, schema, streams};
+    pub use harmos::{catalog, guest, listeners, operations, plugin, schema, sidecar, streams};
     pub use harmos::{MemorySize, Message, MessageError, Metadata, RowMetadata, StreamField, StreamSpec, __private};
 }
 

@@ -61,9 +61,7 @@ impl Prepared {
             verify_child(&self.0, child)?;
             Ok(self.0)
         });
-        let (read, write) = tokio::io::split(Pipe {
-            state: State::Connecting(connection),
-        });
+        let (read, write) = tokio::io::split(Pipe { state: State::Connecting(connection) });
         (Box::new(read), Box::new(write))
     }
 }
@@ -78,31 +76,21 @@ impl Pipe {
         }
         match &mut self.state {
             State::Connected(pipe) => Poll::Ready(Ok(pipe)),
-            State::Failed(kind, message) => {
-                Poll::Ready(Err(io::Error::new(*kind, message.clone())))
-            }
+            State::Failed(kind, message) => Poll::Ready(Err(io::Error::new(*kind, message.clone()))),
             State::Connecting(_) => unreachable!("connection is retained while pending"),
         }
     }
 }
 
 impl AsyncRead for Pipe {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        context: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
+    fn poll_read(self: Pin<&mut Self>, context: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         let pipe = ready!(self.get_mut().connected(context))?;
         Pin::new(pipe).poll_read(context, buffer)
     }
 }
 
 impl AsyncWrite for Pipe {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        context: &mut Context<'_>,
-        bytes: &[u8],
-    ) -> Poll<io::Result<usize>> {
+    fn poll_write(self: Pin<&mut Self>, context: &mut Context<'_>, bytes: &[u8]) -> Poll<io::Result<usize>> {
         let pipe = ready!(self.get_mut().connected(context))?;
         Pin::new(pipe).poll_write(context, bytes)
     }
@@ -122,11 +110,7 @@ pub(super) fn prepare(command: &mut Command) -> io::Result<Prepared> {
     getrandom::fill(&mut entropy).map_err(io::Error::other)?;
     let nonce: String = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
     let identity = format!("{}:{nonce}", std::process::id());
-    let server = ServerOptions::new()
-        .first_pipe_instance(true)
-        .max_instances(1)
-        .reject_remote_clients(true)
-        .create(name(&identity))?;
+    let server = ServerOptions::new().first_pipe_instance(true).max_instances(1).reject_remote_clients(true).create(name(&identity))?;
     command.env(VARIABLE, format!("windows-pipe:{identity}"));
     Ok(Prepared(server))
 }
@@ -142,33 +126,16 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
     let identity = value
         .to_str()
         .and_then(|value| value.strip_prefix("windows-pipe:"))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "unsupported Windows control channel",
-            )
-        })?;
-    let (parent, nonce) = identity.split_once(':').ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid control channel identity",
-        )
-    })?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unsupported Windows control channel"))?;
+    let (parent, nonce) =
+        identity.split_once(':').ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid control channel identity"))?;
     let parent = parent
         .parse::<u32>()
         .ok()
         .filter(|id| *id != 0)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "invalid control parent process",
-            )
-        })?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid control parent process"))?;
     if nonce.len() != 64 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid control channel nonce",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid control channel nonce"));
     }
     let pipe = ClientOptions::new().open(name(identity))?;
     let mut actual = 0;
@@ -177,10 +144,7 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
         return Err(io::Error::last_os_error());
     }
     if actual != parent {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "control pipe belongs to another parent",
-        ));
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "control pipe belongs to another parent"));
     }
     let (read, write) = tokio::io::split(pipe);
     Ok(Some((Box::new(read), Box::new(write))))
@@ -199,10 +163,7 @@ fn verify_child(pipe: &NamedPipeServer, expected: u32) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     if actual != expected {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "control pipe connected to another child",
-        ));
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "control pipe connected to another child"));
     }
     Ok(())
 }

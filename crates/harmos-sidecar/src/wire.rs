@@ -17,10 +17,8 @@
 // Third Party Imports
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 // Local Imports
-use harmos_contract::Message;
-use harmos_contract::operations::{
-    CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand,
-};
+use harmos_domain::Message;
+use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand};
 
 /* === Constants === */
 
@@ -38,20 +36,6 @@ pub struct PluginCatalog {
     pub operations: Vec<crate::operations::Definition>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ObserverControl {
-    pub observer: String,
-    pub generation: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ObserverUpdate {
-    pub control: ObserverControl,
-    pub status: crate::ObserverStatus,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Publication {
     pub stream: String,
@@ -65,27 +49,11 @@ pub struct Publication {
 /* === Enums === */
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
-    Call {
-        id: u64,
-        method: String,
-        params: Vec<u8>,
-    },
-    Cancel {
-        id: u64,
-    },
-    Push {
-        method: String,
-        params: Vec<u8>,
-    },
-    Answer {
-        id: u64,
-        result: Vec<u8>,
-    },
-    Refusal {
-        id: u64,
-        code: i64,
-        message: String,
-    },
+    Call { id: u64, method: String, params: Vec<u8> },
+    Cancel { id: u64 },
+    Push { method: String, params: Vec<u8> },
+    Answer { id: u64, result: Vec<u8> },
+    Refusal { id: u64, refusal: harmos_domain::Refusal },
 }
 
 /* === Traits === */
@@ -94,73 +62,44 @@ pub enum Frame {
 impl Frame {
     pub const REGISTER: &'static str = "harmos.register";
     pub const EXITING: &'static str = "harmos.exiting";
-    pub const OBSERVER_STATUS: &'static str = "harmos.observer.status";
     pub const LIMIT: usize = 16 * 1024 * 1024;
     pub const OVERSIZED: i64 = -32_603;
 
-    pub fn request_encoded_len<O: OperationDeclaration>(request: &O::Request) -> usize
-    where
-        O::Request: Message,
-    {
-        if O::ID.len() > Self::LIMIT {
+    pub fn request_encoded_len<O: OperationDeclaration>(request: &O) -> usize {
+        Self::request_payload_encoded_len(O::ID, harmos_domain::Message::encoded_len(request))
+    }
+
+    // The largest frame carrying an encoded request of `payload` bytes for
+    // `operation`, as a routed call or as a child call.
+    pub fn request_payload_encoded_len(operation: &str, payload: usize) -> usize {
+        if operation.len() > Self::LIMIT {
             return usize::MAX;
         }
-        let payload = binary_payload_growth(request.encoded_len());
-        let prepare = WireCommand::Prepare {
-            invocation: u64::MAX,
-            operation: O::ID.to_owned(),
-            payload: Vec::new(),
-        };
+        let payload = binary_payload_growth(payload);
+        let prepare = WireCommand::Prepare { invocation: u64::MAX, operation: operation.to_owned(), payload: Vec::new() };
         let child = WireChildCall {
             context: [u8::MAX; 32],
             generation_context: Some([u8::MAX; 32]),
             values: Vec::new(),
-            operation: O::ID.to_owned(),
+            operation: operation.to_owned(),
             payload: Vec::new(),
+            submit: true,
         };
-        call_encoded_len(
-            u64::MAX,
-            WIRE_METHOD,
-            prepare
-                .encode()
-                .map_or(usize::MAX, |bytes| bytes.len())
-                .saturating_add(payload),
-        )
-        .max(call_encoded_len(
-            u64::MAX,
-            CHILD_METHOD,
-            child
-                .encode()
-                .map_or(usize::MAX, |bytes| bytes.len())
-                .saturating_add(payload),
-        ))
+        call_encoded_len(u64::MAX, WIRE_METHOD, prepare.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(payload))
+            .max(call_encoded_len(u64::MAX, CHILD_METHOD, child.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(payload)))
     }
 
-    pub fn request_fits<O: OperationDeclaration>(request: &O::Request) -> bool
-    where
-        O::Request: Message,
-    {
+    pub fn request_fits<O: OperationDeclaration>(request: &O) -> bool {
         Self::request_encoded_len::<O>(request) <= Self::LIMIT
     }
 
-    pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize
-    where
-        O::Response: Message,
-    {
-        let empty = WireAnswer::Ready {
-            payload: Vec::new(),
-        };
-        let payload = empty
-            .encode()
-            .map_or(usize::MAX, |bytes| bytes.len())
-            .saturating_add(binary_payload_growth(reply.encoded_len()));
+    pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize {
+        let empty = WireAnswer::Ready { payload: Vec::new() };
+        let payload = empty.encode().map_or(usize::MAX, |bytes| bytes.len()).saturating_add(binary_payload_growth(reply.encoded_len()));
         answer_encoded_len(u64::MAX, payload)
     }
 
-    pub fn reply_fits<O: OperationDeclaration>(reply: &O::Response) -> bool
-    where
-        O::Response: Message,
-    {
+    pub fn reply_fits<O: OperationDeclaration>(reply: &O::Response) -> bool {
         Self::reply_encoded_len::<O>(reply) <= Self::LIMIT
     }
 
@@ -168,11 +107,11 @@ impl Frame {
         match self {
             Self::Call { id, method, params } => call_encoded_len(*id, method, params.len()),
             Self::Answer { id, result } => answer_encoded_len(*id, result.len()),
-            Self::Refusal { id, code, message } => refusal_encoded_len(*id, *code, message.len()),
+            Self::Refusal { id, refusal } => refusal_encoded_len(*id, refusal),
             Self::Cancel { id } => 2 + varint_len(*id) + varint_len(u64::MAX),
-            Self::Push { method, params } => 2usize
-                .saturating_add(binary_bytes_len(method.len()))
-                .saturating_add(binary_bytes_len(params.len())),
+            Self::Push { method, params } => {
+                2usize.saturating_add(binary_bytes_len(method.len())).saturating_add(binary_bytes_len(params.len()))
+            }
         }
     }
 
@@ -182,10 +121,7 @@ impl Frame {
 
     #[cfg(feature = "kit")]
     pub(crate) fn exiting(reason: String) -> Self {
-        Self::Push {
-            method: Self::EXITING.to_owned(),
-            params: reason.encode_to_vec(),
-        }
+        Self::Push { method: Self::EXITING.to_owned(), params: reason.encode_to_vec() }
     }
 
     pub fn exiting_reason(params: &[u8]) -> Option<String> {
@@ -198,10 +134,7 @@ impl Frame {
     {
         loop {
             let mut bytes = Vec::new();
-            let read = input
-                .take(Self::LIMIT as u64 + 1)
-                .read_until(b'\n', &mut bytes)
-                .await?;
+            let read = input.take(Self::LIMIT as u64 + 1).read_until(b'\n', &mut bytes).await?;
             if read == 0 {
                 return Ok(None);
             }
@@ -218,25 +151,27 @@ impl Frame {
 }
 
 /* === Public Functions === */
+// Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
-    stream: &str,
-    schema: u32,
-    sequence: u64,
-    payload: usize,
-    published_unix_micros: Option<i64>,
-    context: Option<&str>,
+    stream: &str, schema: u32, sequence: u64, payload: usize, published_unix_micros: Option<i64>, context: Option<&str>,
 ) -> usize {
     binary_bytes_len(stream.len())
         .saturating_add(varint_len(u64::from(schema)))
         .saturating_add(1 + varint_len(sequence))
-        .saturating_add(
-            1 + published_unix_micros.map_or(0, |value| {
-                varint_len(((value as u64) << 1) ^ ((value >> 63) as u64))
-            }),
-        )
+        .saturating_add(1 + published_unix_micros.map_or(0, zigzag_len))
         .saturating_add(1 + context.map_or(0, |value| binary_bytes_len(value.len())))
         .saturating_add(binary_bytes_len(payload))
+}
+
+// Postcard Length Of One Following Row.
+#[cfg(feature = "kit")]
+pub(crate) fn following_encoded_len(payload: usize, published_delta_micros: Option<i64>) -> usize {
+    binary_bytes_len(payload).saturating_add(1 + published_delta_micros.map_or(0, zigzag_len))
+}
+
+pub(crate) fn varint_len(value: u64) -> usize {
+    ((64 - value.leading_zeros()).max(1) as usize).div_ceil(7)
 }
 
 /* === Private Functions === */
@@ -245,28 +180,21 @@ fn binary_payload_growth(bytes: usize) -> usize {
 }
 
 fn call_encoded_len(id: u64, method: &str, payload_len: usize) -> usize {
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(binary_bytes_len(method.len()))
-        .saturating_add(binary_bytes_len(payload_len))
+    2usize.saturating_add(varint_len(id)).saturating_add(binary_bytes_len(method.len())).saturating_add(binary_bytes_len(payload_len))
 }
 
 fn answer_encoded_len(id: u64, payload_len: usize) -> usize {
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(binary_bytes_len(payload_len))
+    2usize.saturating_add(varint_len(id)).saturating_add(binary_bytes_len(payload_len))
 }
 
-fn refusal_encoded_len(id: u64, code: i64, message_len: usize) -> usize {
-    let zigzag = ((code as u64) << 1) ^ ((code >> 63) as u64);
-    2usize
-        .saturating_add(varint_len(id))
-        .saturating_add(varint_len(zigzag))
-        .saturating_add(binary_bytes_len(message_len))
+fn refusal_encoded_len(id: u64, refusal: &harmos_domain::Refusal) -> usize {
+    let refusal = postcard::experimental::serialized_size(refusal).unwrap_or(usize::MAX);
+    2usize.saturating_add(varint_len(id)).saturating_add(refusal)
 }
 
-fn varint_len(value: u64) -> usize {
-    ((64 - value.leading_zeros()).max(1) as usize).div_ceil(7)
+#[cfg(feature = "kit")]
+fn zigzag_len(value: i64) -> usize {
+    varint_len(((value as u64) << 1) ^ ((value >> 63) as u64))
 }
 
 fn binary_bytes_len(length: usize) -> usize {

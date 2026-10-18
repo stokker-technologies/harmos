@@ -1,5 +1,5 @@
 name: Change Proposal
-description: Propose a capability, API improvement, or simplification.
+description: Propose a feature, API improvement, or simplification.
 body:
   - type: textarea
     id: problem

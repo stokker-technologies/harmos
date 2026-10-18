@@ -36,7 +36,7 @@
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn build(build: &harmos::packaging::Build, json: bool) -> Result<(), harmos::packaging::Error> {
+pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_packaging::Error> {
     if json {
         println!("{}", serde_json::to_string_pretty(build)?);
     } else {
@@ -44,22 +44,14 @@ pub fn build(build: &harmos::packaging::Build, json: bool) -> Result<(), harmos:
             println!("{}: {}", artifact.producer, artifact.path.display());
         }
         for schema in &build.schemas {
-            println!(
-                "{}/{}: {}",
-                schema.producer,
-                schema.catalog,
-                schema.directory.display()
-            );
-        }
-        for package in &build.packages {
-            println!("{} package: {}", package.producer, package.path.display());
+            println!("{}/{}: {}", schema.producer, schema.catalog, schema.directory.display());
         }
     }
     Ok(())
 }
 
-pub fn dev(event: harmos::packaging::DevEvent, json: bool) -> Result<(), harmos::packaging::Error> {
-    use harmos::packaging::DevEvent;
+pub fn dev(event: harmos_packaging::DevEvent, json: bool) -> Result<(), harmos_packaging::Error> {
+    use harmos_packaging::DevEvent;
     let record = match event {
         DevEvent::Started { attempt } => {
             if !json {
@@ -67,19 +59,13 @@ pub fn dev(event: harmos::packaging::DevEvent, json: bool) -> Result<(), harmos:
             }
             serde_json::json!({"event":"started", "attempt":attempt})
         }
-        DevEvent::Finished {
-            attempt,
-            result: Ok(result),
-        } => {
+        DevEvent::Finished { attempt, result: Ok(result) } => {
             if !json {
                 build(&result, false)?;
             }
             serde_json::json!({"event":"built", "attempt":attempt, "build":result})
         }
-        DevEvent::Finished {
-            attempt,
-            result: Err(error),
-        } => {
+        DevEvent::Finished { attempt, result: Err(error) } => {
             eprintln!("Build attempt {attempt} failed: {error}");
             serde_json::json!({"event":"failed", "attempt":attempt, "error":error.to_string()})
         }

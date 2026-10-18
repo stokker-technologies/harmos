@@ -22,14 +22,14 @@ publish = false
 
 [features]
 default = ["sidecar", "guest"]
-sidecar = ["harmos/packaging-sidecar", "dep:ctrlc"]
-guest = ["harmos/packaging-guest", "dep:ctrlc"]
+sidecar = ["harmos-packaging/sidecar", "dep:ctrlc"]
+guest = ["harmos-packaging/guest", "dep:ctrlc"]
 
 # === Dependencies ===
 
 [dependencies]
 # Local
-harmos = { workspace = true, features = ["packaging", "bindings-python"] }
+harmos-packaging = { workspace = true, features = ["bindings-python"] }
 
 # Git
 

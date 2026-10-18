@@ -1,0 +1,8 @@
+# Rendered by stkr project update from templates/profiles/.gitignore; sha256:bf538afc95df9fa14e318061db5a902d9ca684aef34dee1ce29bdc156ea8b9f2
+/target/
+/.venv/
+/.cache/
+/.stkr/state/
+/.stkr/specifications/
+/.stkr/tests/
+/.stkr/benchmarks/

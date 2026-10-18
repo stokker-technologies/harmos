@@ -1,0 +1,344 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Build The Workspace And The Schematic System Fixture Once, Then Stamp Them"""
+
+# === Imports === #
+
+# Standard Library Imports
+import argparse
+import hashlib
+import importlib.resources
+import json
+import os
+import shutil
+import stat
+import sys
+from pathlib import Path
+
+from ..test import archive
+
+# Third Party Imports
+
+# Local Imports
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+ROOT = Path(__file__).resolve().parents[5]
+TARGET = ROOT / "target"
+FIXTURES = TARGET / "fixtures"
+STAMP = FIXTURES / "stamp.json"
+SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
+GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
+LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("dev", "release", "bench"), default="dev")
+    profile = parser.parse_args().profile
+    temporary = TARGET / "tmp"
+    temporary.mkdir(parents=True, exist_ok=True)
+    os.environ["TMPDIR"] = str(temporary)
+    os.environ["CARGO_TARGET_DIR"] = str(TARGET)
+    before = archive.tree(ROOT)
+    receipt = archive.build(ROOT, profile, ["--all-features"])
+    # The Workspace Capture Must Still Match Its Receipt Before Anything Is Staged Beside It.
+    _messages(receipt)
+    # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture, Beside
+    # The Facade Library The Authoring Stories Link (Nothing Under Test Depends On It).
+    tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "-p", "harmos", "--all-features"])
+    native = archive.compile(SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"])
+    schematic = _messages(native)
+    producers = [receipt, tooling, native]
+    tool = _executable(_messages(tooling), "cargo-harmos")
+    archive.verify_outputs(tooling, [tool])
+    shutil.rmtree(FIXTURES, ignore_errors=True)
+    FIXTURES.mkdir(parents=True)
+    files = {}
+    artifacts = {"cargo-harmos": _keep(tool, "cargo-harmos", [tooling], files)}
+    builds = {}
+    for package, manifest, backend, capture in [
+        ("schematic-sidecar", SCHEMATIC, "sidecar", native),
+        *((package, manifest, "guest", None) for package, manifest in GUESTS.items()),
+    ]:
+        if capture is None:
+            capture = archive.compile(manifest.parent, profile, ["-p", package, "--target", "wasm32-unknown-unknown"])
+            producers.append(capture)
+        built, collected, product = _collect(tool, manifest, package, backend, profile, tooling, capture)
+        producers.append(product)
+        artifacts[package], builds[package] = _stage_build(built, collected, package, [capture, product], files)
+    artifacts["schematic-cli"] = _keep(_executable(schematic, "schematic-cli"), "schematic-cli", [native], files)
+    # One Capture Supplies Every Library, So The Facade Links Exactly The Builds Beside It.
+    libraries = _libraries(_messages(tooling), [tooling], files)
+    exported = _offline_inputs(profile)
+    producers.append(exported)
+    # The Export Is One Tree Digest, So Its Whole Directory Is Staged Beside The Other Fixtures.
+    for name in exported["exports"]:
+        source = Path(name)
+        _copy(source, FIXTURES / "inputs" / source.relative_to(TARGET / "dependencies"), [exported], files)
+    # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
+    inputs = FIXTURES / "inputs"
+    executables = sorted(
+        path.relative_to(FIXTURES).as_posix() for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR
+    )
+    if archive.tree(ROOT) != before:
+        raise RuntimeError("sources changed while fixtures were building; rebuild the complete candidate")
+    archive.stamp(
+        ROOT,
+        producers,
+        files,
+        {
+            "artifacts": artifacts,
+            "libraries": libraries,
+            "builds": builds,
+            "build_roots": {name: str(ROOT) for name in builds},
+            "dependencies": "libraries",
+            "vendor": "inputs/vendor",
+            "wheels": "inputs/wheels",
+            "requirements": "inputs/requirements.txt",
+            "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
+            "input_executables": executables,
+        },
+    )
+
+
+# === Private Functions === #
+
+
+def _messages(record: dict) -> list[dict]:
+    content = _resolve(record["messages"]["path"]).read_bytes()
+    if hashlib.sha256(content).hexdigest() != record["messages"]["sha256"]:
+        raise RuntimeError("compiler messages differ from their original producer receipt")
+    return [json.loads(line) for line in content.decode("utf-8").splitlines() if line.startswith("{")]
+
+
+def _resolve(path: str) -> Path:
+    selected = Path(path)
+    return selected if selected.is_absolute() else ROOT / selected
+
+
+def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: str, owner: dict, capture: dict) -> tuple[dict, Path, dict]:
+    destination = TARGET / "collected" / package
+    shutil.rmtree(destination, ignore_errors=True)
+    result = destination / "build.json"
+    outputs = [result]
+    if backend == "guest":
+        messages = _messages(capture)
+        modules = {
+            Path(filename)
+            for message in messages
+            if message.get("reason") == "compiler-artifact"
+            and not message["profile"]["test"]
+            and message["target"]["name"] == package.replace("-", "_")
+            for filename in message["filenames"]
+            if filename.endswith(".wasm")
+        }
+        if len(modules) != 1:
+            raise RuntimeError(f"expected one raw {package} module, found {modules}")
+        module = modules.pop()
+        archive.verify_outputs(capture, [module])
+        if not module.read_bytes().startswith(b"\0asm\x0d\0\x01\0"):
+            transformed = module.with_suffix(".component.wasm")
+            transformed.unlink(missing_ok=True)
+            outputs.append(transformed)
+    command = [
+        str(tool),
+        "harmos",
+        backend,
+        "build",
+        "--manifest-path",
+        str(manifest),
+        "-p",
+        package,
+        "--profile",
+        profile,
+        "--target",
+        capture["target"],
+        "--from-cargo-json",
+        str(_resolve(capture["messages"]["path"])),
+        "--metadata-json",
+        str(_resolve(capture["metadata"]["path"])),
+        "--archive-json",
+        str(_resolve(capture["receipt"])),
+        "--json",
+    ]
+    produced = archive.native(
+        ROOT,
+        profile,
+        "package",
+        [command],
+        outputs,
+        locks=[ROOT / "Cargo.lock", manifest.parent / "Cargo.lock"],
+        inputs=[tool, _resolve(capture["receipt"])],
+        parents=[owner, capture],
+        stdout={0: result},
+    )
+    return json.loads(result.read_text(encoding="utf-8")), result, produced
+
+
+def _offline_inputs(profile: str) -> dict:
+    """Capture Locked Native Dependency Exports Before Copying Into Fixtures."""
+    destination = TARGET / "dependencies"
+    shutil.rmtree(destination, ignore_errors=True)
+    manifests = sorted({ROOT / "Cargo.toml", SCHEMATIC, *GUESTS.values()})
+    vendor = ["cargo", "vendor", "--locked", "--versioned-dirs"]
+    for manifest in manifests:
+        if manifest != ROOT / "Cargo.toml":
+            vendor += ["--sync", str(manifest)]
+    vendor.append(str(destination / "vendor"))
+    requirements = destination / "requirements.txt"
+    projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
+    commands = [vendor]
+    captured = {}
+    requirements_files = []
+    for index, project in enumerate(projects):
+        selected = requirements if index == 0 else destination / f"starter-{project.parents[1].name}.txt"
+        captured[len(commands)] = selected
+        requirements_files.append(selected)
+        commands.append(["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(project)])
+    bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
+    wheels = [path for path in bundled.iterdir() if path.name.startswith("pip-") and path.name.endswith(".whl")]
+    if len(wheels) != 1:
+        raise RuntimeError("the pinned Python must provide its bundled pip wheel to stage offline inputs")
+    launch = "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('pip',run_name='__main__')"
+    # Each Project Locks Its Own Closure, So Each Downloads Separately Into The Shared Wheel Directory.
+    download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
+    commands.extend([*download, "--requirement", str(selected)] for selected in requirements_files)
+    # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
+    # The Tracked Requirement Is A Declared Input Every Consuming Runner Can Verify.
+    editables = ROOT / "tools/python/editables.txt"
+    commands.append([*download, "--no-deps", "--requirement", str(editables)])
+    locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
+    inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0])), editables]
+    if (ROOT / ".cargo").is_dir():
+        inputs.append(ROOT / ".cargo")
+    return archive.native(ROOT, profile, "dependency-export", commands, [destination], locks=locks, inputs=inputs, stdout=captured)
+
+
+def _stage_build(build: dict, collected: Path, package: str, producers: list[dict], files: dict) -> tuple[str, str]:
+    selected = [artifact for artifact in build["artifacts"] if artifact["producer"] == package]
+    if len(selected) != 1:
+        raise RuntimeError(f"{package} did not produce exactly one artifact: {selected}")
+    artifact = selected[0]
+    root = FIXTURES / "builds" / package
+    source = Path(artifact["path"])
+    destination = root / source.relative_to(ROOT)
+    if _copy(source, destination, producers, files) != artifact["sha256"]:
+        raise RuntimeError("typed artifact digest differs from its original producer")
+    for schema in build["schemas"]:
+        source = Path(schema["directory"])
+        for name, expected in schema["files"].items():
+            original = source / name
+            if _copy(original, root / original.relative_to(ROOT), producers, files) != expected:
+                raise RuntimeError("typed schema digest differs from its original producer")
+    # Original Build JSON Remains Byte-Exact; Packaging Relocates Its Typed Paths.
+    receipt = FIXTURES / "receipts" / f"{package}.json"
+    _copy(collected, receipt, producers, files)
+    return destination.relative_to(FIXTURES).as_posix(), receipt.relative_to(FIXTURES).as_posix()
+
+
+def _copy(source: Path, destination: Path, producers: list[dict], files: dict) -> str:
+    owner = next(
+        (
+            record
+            for record in producers
+            if str(source)
+            in {
+                **record.get("artifacts", {}),
+                **record.get("generated", {}),
+                **record.get("exports", {}),
+            }
+        ),
+        None,
+    )
+    if owner is None:
+        raise RuntimeError(f"staged input has no original producer: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if source.is_dir():
+        shutil.copytree(source, destination, symlinks=True)
+    else:
+        shutil.copy2(source, destination)
+    expected = archive.verify_copy(owner, source, destination)
+    files[destination.relative_to(ROOT).as_posix()] = expected
+    return expected
+
+
+def _executable(messages: list[dict], name: str) -> Path:
+    found = {
+        message["executable"]
+        for message in messages
+        if message.get("reason") == "compiler-artifact"
+        and message["target"]["name"] == name
+        and message.get("executable")
+        and not message["profile"]["test"]
+    }
+    if len(found) != 1:
+        raise RuntimeError(f"expected one {name} executable, found {sorted(found)}")
+    return Path(found.pop())
+
+
+def _libraries(messages: list[dict], producers: list[dict], files: dict) -> dict[str, str]:
+    """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
+
+    A library built twice (a build-dependency feature set beside the normal one) resolves to
+    the build whose features include every other's.
+    """
+    found: dict[str, dict[str, set[str]]] = {name: {} for name in LIBRARIES}
+    destination = FIXTURES / "libraries"
+    destination.mkdir()
+    for message in messages:
+        if message.get("reason") != "compiler-artifact":
+            continue
+        name = message["target"]["name"]
+        for filename in message["filenames"]:
+            path = Path(filename)
+            if path.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
+                continue
+            if not (destination / path.name).exists():
+                _copy(path, destination / path.name, producers, files)
+            if name not in found:
+                continue
+            suffix = (
+                (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
+            )
+            if path.suffix == suffix:
+                found[name][(destination / path.name).relative_to(FIXTURES).as_posix()] = set(message["features"])
+    selected = {name: _widest(builds) for name, builds in found.items()}
+    ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
+    if ambiguous:
+        raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
+    return {name: path for name, path in selected.items() if path is not None}
+
+
+def _widest(builds: dict[str, set[str]]) -> str | None:
+    widest = [path for path, features in builds.items() if all(other <= features for other in builds.values())]
+    return widest[0] if len(widest) == 1 else None
+
+
+def _keep(source: Path, name: str, producers: list[dict], files: dict) -> str:
+    destination = FIXTURES / name / source.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _copy(source, destination, producers, files)
+    return destination.relative_to(FIXTURES).as_posix()
+
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    main()
