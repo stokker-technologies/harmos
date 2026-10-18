@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:93ae49a924421d7117c6556234bccf5b33082eff44527bbad350fa492d508cf7
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:cb6ea4c1c6dcef433656f402337581d5f6e20b77d3f5b02ced45df4f171e19b9
 name: CI
 "on":
   push:
@@ -42,7 +42,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -77,7 +76,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -112,7 +110,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -168,7 +165,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -234,7 +230,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -303,7 +298,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -375,7 +369,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -456,7 +449,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -496,7 +488,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Cache / Registry
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -547,7 +538,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - run: mise run test:coverage
     if: github.event_name == 'schedule'

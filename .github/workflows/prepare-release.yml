@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:8ab26257d0d768f0b32621523b946dc658c8d9680b35a06296394c04b87532a9
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:e5ef175b8987e2e8c998d3fb1e6423e1e2ba23642d350da02f6635414b4047e1
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -35,7 +35,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - run: command -v cc
     - run: command -v pkg-config

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:58ed030390f8fe210acefe370e97230ae24395b6e23baed74f42ab70d2c63b71
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:09e45cd345cd0a8d6925e9768f961e1aabf86ce4566e8b4fa7c162aefc3ad9ce
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -35,7 +35,6 @@ jobs:
       with:
         install: true
         cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
         mise_dir: ${{ github.workspace }}/.cache/mise
     - name: Check Runner Group Allowlist
       run: >-
