@@ -153,8 +153,8 @@ are always available. Optional facilities are disabled by default.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `bindings-proto`. |
-| `bindings-proto` | Protobuf descriptor projection used by runtime transport. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `generate-proto`. |
+| `generate-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
@@ -170,11 +170,11 @@ use `harmos-packaging`, which depends on the domain without hosting engines.
 ```toml
 [build-dependencies]
 harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>" }
-harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["bindings-proto"] }
+harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["generate-proto"] }
 ```
 
 Generators use one entry point per format: `harmos_packaging::proto::generate`
-and `python::generate`, gated by `bindings-proto` and `bindings-python`.
+and `python::generate`, gated by `generate-proto` and `generate-python`.
 TypeScript consumers generate their bindings from the exported Protobuf files
 with the official Buf generator after the Cargo build. Protobuf output goes to
 the exact selected output directory. A producer's build script selects its current
@@ -230,7 +230,7 @@ those exact directories. Schematic bundles use package `schematic.v1` and servic
 and start their runtime transport separately; dynamic plugins appear in runtime
 reflection when their operations become ready.
 
-The packaging crate's `bindings-python` feature exposes
+The packaging crate's `generate-python` feature exposes
 `harmos_packaging::python::generate`. It emits a producer-owned `src/` Python
 package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
 contracts and descriptors. Producer build scripts export contracts normally;
@@ -692,19 +692,20 @@ mise run bench                  # Record benchmark results
 ```
 
 Local and development validation use the development profile. `mise run build`
-produces the workspace archive and stamped schematic/sandbox artifacts once;
-test layers consume that build and refuse missing or changed inputs. Separate
-`test:unit`, `test:integration`, `test:acceptance` and `test:system` tasks select
-behavioral layers. `mise run coverage` instruments the full selection separately.
-`mise run ci` runs the repository flow; nightly coverage and benchmarks remain
-outside the required development gate.
+compiles the workspace once into a nextest archive and stamps the
+schematic/sandbox artifacts under `target/fixtures/`; test layers run from that
+archive and refuse a missing or stale fixture. Separate `test:unit`,
+`test:integration`, `test:acceptance` and `test:system` tasks select behavioral
+layers, each writing its JUnit report under `target/tests/`.
+`mise run test:coverage` instruments the full selection separately. `mise run ci`
+runs the same graph as CI on the current tree; a failing lane fails the run.
 
-`dev` requires Linux checks, build, tests and exact-revision development artifact
-proof. Windows runs independently as advisory validation for `dev`, with visible
-failures and artifacts; `main` and releases require both platforms. Optimized
-distribution builds and publication belong to release-tag pipelines. Rust crates
-and product assets are the published distributions; generated Python bindings
-belong to their consuming producer package.
+CI runs the Check, Build and Validate stages on Linux and Windows, and both
+platforms are required for `dev`, `main` and releases. Pushes to `dev` add
+development packages and a publication dry run; nightly adds coverage and
+benchmarks. Optimized distribution builds and publication belong to release-tag
+pipelines. Rust crates and product assets are the published distributions;
+generated Python clients belong to their consuming producer package.
 
 Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into

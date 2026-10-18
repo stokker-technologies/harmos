@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:e86a85c39e4563c22429e02ba5f026b2ceb2be45ace15f51b3704b34201de6a8
+# Rendered by stkr project update from templates/python/test/run.py; sha256:abc0b19dfe5a59a776ff0652b092660d73d703da0a60dc46b429c9e98b645002
 # ***
 #
 # Harmos
@@ -7,47 +7,12 @@
 #
 # ***
 
-"""Run Test Lanes, Coverage And Benchmarks And Publish Tree-Bound Evidence.
-
-    python -m <package>.test.run test --category <unit|integration|acceptance|system>
-        --language <rust|python|typescript|javascript> [--project DIR]
-        [--profile dev|release] [--coverage] [-- ARGS...]
-    python -m <package>.test.run bench --category <unit|integration|system>
-        --language <rust|python> [--project DIR] [--refresh-baseline] [-- ARGS...]
-    python -m <package>.test.run coverage --language <rust|python> [--project DIR]
-        [--profile dev|release] [-- ARGS...]
-    python -m <package>.test.run verify [--category ...]
-    python -m <package>.test.run index
-    python -m <package>.test.run collect <directory> ...
-
-Rust lanes run from the nextest archive of their profile (`python -m <package>.test.archive`)
-and never compile; ARGS narrow the selection (`-p crate`, `-E filterset`) and mark the lane
-focused. Python lanes run pytest over `<project>/tests/<category>/` in the root `.venv/`;
-ARGS are appended to pytest. Script lanes run ARGS as the command (see `vitest`). Before any
-test runs, a lane checks its archive, the fixture stamp and, for acceptance and system, the
-declared host artifacts, all against the current tree hash.
-
-Acceptance and system stories get a liveness deadline of about three times their recorded
-duration within the lane maximum; durations persist in `.stkr/tests/durations.json`.
-Coverage is instrumented, covers every layer of its language at five times the deadlines and
-is the one Rust job that compiles.
-
-Benchmarks: a Rust bench target belongs to a layer by name, `<layer>` or `<layer>-<domain>`
-(declare `[[bench]] name = "integration-storage", path = "benches/storage/main.rs",
-harness = false`); Python benchmarks live in `<project>/benchmarks/<layer>/`. Criterion keeps
-its baseline named `dev` under `.stkr/benchmarks/criterion/`; runs compare against it,
-the first run saves it and `--refresh-baseline` replaces it after a dev landing. Integration
-and system rows record the peak resident memory of the benchmark process.
-
-`verify` exits nonzero unless every `test:<category>:<language>` task of `mise.toml` has a
-passed, unfocused lane for the current tree hash, and lists what is missing.
-"""
+"""Run Archived Test Lanes And Keep Native JUnit Reports Under Target."""
 
 # === Imports === #
 
 # Standard Library Imports
 import argparse
-import glob
 import json
 import math
 import platform
@@ -71,7 +36,6 @@ from . import archive, nextest, policy, pytest, report, vitest
 
 # === Constants === #
 
-MANIFEST = report.MANIFEST
 COVERAGE_VARIABLE = "STKR_COVERAGE"
 SCRATCH = Path("target/tests")
 CRITERION = report.BENCHMARKS / "criterion"
@@ -92,14 +56,14 @@ def test(
     project: str,
     profile: str,
     extra: Sequence[str],
-    archive_arguments: Sequence[str] = (),
 ) -> int:
-    """Run one lane and publish its evidence; nonzero when any story failed."""
+    """Run One Lane And Retain Its Native Report; Nonzero When Any Story Failed."""
     rules = policy.load(directory)
-    current = archive.tree(directory)
     key = f"{category}-{language}"
-    _preflight(directory, rules, category, profile, current)
-    recorded = report.load(directory / report.DURATIONS).get(key, {})
+    _preflight(directory, rules, category, profile)
+    if language == "python":
+        archive.install_wheels(directory)
+    recorded = report.load(directory / report.TESTS / f"{key}.durations.json")
     scratch = _scratch(directory, key)
     deadline = rules.deadline(category)
 
@@ -107,7 +71,7 @@ def test(
     environment = None
     cwd = directory / project
     if language == "rust":
-        path = archive.require(directory, profile, current, archive_arguments)
+        path = archive.require(directory, profile)
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
         measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=names)
@@ -139,9 +103,8 @@ def test(
         junit,
         recorded,
     )
-    lane["focused"] = bool(extra) and language not in SCRIPTS
     lane["arguments"] = list(extra)
-    return _publish(directory, rules, current, profile, key, lane, recorded)
+    return 0 if lane["outcome"] == "passed" else 1
 
 
 def coverage(
@@ -154,9 +117,8 @@ def coverage(
 ) -> int:
     """Instrumented lane over one layer, or every layer when no category is given."""
     rules = policy.load(directory)
-    current = archive.tree(directory)
     key = f"coverage-{category}-{language}" if category else f"coverage-{language}"
-    _preflight(directory, rules, category, profile, current)
+    _preflight(directory, rules, category, profile)
     scratch = _scratch(directory, key)
     categories = [category] if category else list(policy.CATEGORIES)
     deadline = max(rules.deadline(name, coverage=True) for name in categories)
@@ -202,14 +164,13 @@ def coverage(
     if not cobertura.is_file():
         raise policy.TestError(f"{key}: no coverage report was written")
     lane["kind"] = "coverage"
-    lane["focused"] = bool(extra) or category is not None
     lane["arguments"] = list(extra)
     lane["coverage"] = f"{key}.cobertura.xml"
     report.write(
         directory / report.TESTS / lane["coverage"],
         cobertura.read_text(encoding="utf-8"),
     )
-    return _publish(directory, rules, current, profile, key, lane, {})
+    return 0 if lane["outcome"] == "passed" else 1
 
 
 def bench(
@@ -224,8 +185,7 @@ def bench(
     """Measure one benchmark layer and compare it with the `dev` baseline."""
     rules = policy.load(directory)
     measure = category in ("integration", "system")
-    current = archive.tree(directory)
-    _preflight(directory, rules, category, "bench", current)
+    _preflight(directory, rules, category, "bench")
     identity = {
         "platform": [sys.platform, platform.machine(), platform.platform(), platform.processor()],
         "runner": os.environ.get("RUNNER_NAME", os.environ.get("CI_RUNNER_ID", platform.node())),
@@ -245,122 +205,15 @@ def bench(
     if not rows:
         raise policy.TestError(f"no {category} {language} benchmark produced results")
 
-    with report.locked(directory):
-        previous = report.load(directory / report.BENCHMARKS / "manifest.json")
-        same = previous.get("tree") == current and previous.get("revision") == archive.revision(directory)
-        kept = [
-            row for row in report.parse_bench(directory / report.BENCH_CSV) if same and (row.category, row.language) != (category, language)
-        ]
-        merged = sorted(
-            [*kept, *rows],
-            key=lambda row: (row.category, row.language, row.domain, row.name),
-        )
-        report.write(directory / report.BENCH_CSV, report.bench_csv(merged))
-        report.write(directory / report.BENCH_MARKDOWN, report.bench_markdown(merged))
-        lanes = previous.get("lanes", {}) if same else {}
-        lanes[f"{category}-{language}"] = {"identity": identity, "revision": archive.revision(directory), "provider": archive._provider()}
-        report.write(
-            directory / report.BENCHMARKS / "manifest.json",
-            json.dumps(
-                {"schema": 1, "tree": current, "revision": archive.revision(directory), "profile": "bench", "lanes": lanes}, indent=2
-            )
-            + "\n",
-        )
-        findings = [
-            {
-                "category": row.category,
-                "language": row.language,
-                "domain": row.domain,
-                "name": row.name,
-                "change_percent": row.change_pct,
-                "threshold_percent": rules.bench_regression_percent,
-            }
-            for row in merged
-            if row.change_pct is not None and math.isfinite(row.change_pct) and row.change_pct > rules.bench_regression_percent
-        ]
-        report.write(
-            directory / report.BENCHMARKS / "findings.json",
-            json.dumps({"schema": 1, "tree": current, "revision": archive.revision(directory), "findings": findings}, indent=2) + "\n",
-        )
-        report.write(directory / report.INDEX, report.index(directory, rules))
+    kept = [row for row in report.parse_bench(directory / report.BENCH_CSV) if (row.category, row.language) != (category, language)]
+    merged = sorted([*kept, *rows], key=lambda row: (row.category, row.language, row.domain, row.name))
+    report.write(directory / report.BENCH_CSV, report.bench_csv(merged))
+    report.write(directory / report.BENCH_MARKDOWN, report.bench_markdown(merged))
+    for row in rows:
+        if row.change_pct is not None and math.isfinite(row.change_pct) and row.change_pct > rules.bench_regression_percent:
+            print(f"benchmark regression: {row.name}: {row.change_pct:.1f}%")
     print(f"bench {category}-{language}: {len(rows)} results; see {report.BENCH_MARKDOWN}")
     return 0 if status == 0 else 1
-
-
-def missing(directory: Path, keys: Sequence[str], revision: str | None = None) -> list[str]:
-    """The lanes without passed, unfocused evidence for the current tree (and revision)."""
-    manifest = report.load(directory / MANIFEST)
-    if manifest.get("tree") != archive.tree(directory):
-        return [f"{key} (no evidence for the current tree)" for key in keys]
-    if revision is not None and manifest.get("revision") != revision:
-        return [f"{key} (evidence is not bound to {revision})" for key in keys]
-
-    absent = []
-    for key in keys:
-        lane = manifest.get("lanes", {}).get(key)
-        if lane is None:
-            absent.append(f"{key} (not run)")
-        elif lane.get("outcome") != "passed":
-            absent.append(f"{key} ({lane.get('outcome')})")
-        elif lane.get("focused") or lane.get("kind") != "test":
-            absent.append(f"{key} (focused run)")
-    return absent
-
-
-def verify(directory: Path, categories: Sequence[str]) -> int:
-    expected = [f"{category}-{language}" for category, language in policy.lanes(directory) if not categories or category in categories]
-    if not expected:
-        raise policy.TestError("mise.toml declares no matching test:<category>:<language> tasks")
-    absent = missing(directory, expected)
-    for line in absent:
-        print(f"missing: {line}")
-    if not absent:
-        print(f"verified {len(expected)} lanes for the current tree")
-    return 1 if absent else 0
-
-
-def collect(directory: Path, sources: Sequence[Path]) -> int:
-    """Aggregate lane evidence downloaded from CI jobs into one manifest for this tree."""
-    current = archive.tree(directory)
-    documents = []
-    expanded = []
-    for source in sources:
-        matched = glob.glob(str(source))
-        if not matched:
-            raise policy.TestError(f"no collected evidence matches {source}")
-        expanded.extend(Path(path) for path in matched)
-    for source in expanded:
-        manifest = report.load(source / "manifest.json")
-        if manifest.get("schema") != report.SCHEMA or manifest.get("tree") != current:
-            raise policy.TestError(f"{source}: evidence is missing or from another tree")
-        documents.append((source, manifest))
-    profiles = {manifest.get("profile") for _, manifest in documents}
-    if len(profiles) != 1:
-        raise policy.TestError("collected evidence mixes profiles")
-
-    with report.locked(directory):
-        target = directory / report.TESTS
-        lanes: dict[str, dict] = {}
-        durations = report.load(directory / report.DURATIONS)
-        for source, manifest in documents:
-            for key, lane in manifest.get("lanes", {}).items():
-                if key in lanes:
-                    raise policy.TestError(f"lane {key} was collected twice")
-                for name in (lane.get("csv"), lane.get("junit"), lane.get("coverage")):
-                    if name:
-                        shutil.copyfile(source / name, target / name)
-                lanes[key] = lane
-            durations.update(report.load(source / "durations.json"))
-        manifest = {
-            "schema": report.SCHEMA,
-            "tree": current,
-            "revision": archive.published(directory, current),
-            "profile": profiles.pop(),
-            "lanes": lanes,
-        }
-        _store(directory, manifest, durations, policy.load(directory))
-    print(f"collected {len(lanes)} lanes")
-    return 0
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
@@ -376,7 +229,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
     lane.add_argument("--category", choices=policy.CATEGORIES, required=True)
     lane.add_argument("--language", choices=policy.LANGUAGES, required=True)
     lane.add_argument("--coverage", action="store_true")
-    lane.add_argument("--archive-argument", action="append", default=[])
     bench_lane = commands.add_parser("bench", help="run one benchmark layer")
     bench_lane.add_argument("--category", choices=policy.BENCH_CATEGORIES, required=True)
     bench_lane.add_argument("--language", choices=("rust", "python"), required=True)
@@ -388,11 +240,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
         command.add_argument("--project", default=".")
     for command in (lane, measured):
         command.add_argument("--profile", choices=policy.PROFILES, default="dev")
-    verified = commands.add_parser("verify", help="check the evidence set of this tree")
-    verified.add_argument("--category", choices=policy.CATEGORIES, action="append", default=[])
-    commands.add_parser("index", help="render the evidence index again")
-    collected = commands.add_parser("collect", help="aggregate downloaded CI evidence")
-    collected.add_argument("directories", type=Path, nargs="+")
     options = parser.parse_args(values)
 
     try:
@@ -414,7 +261,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 options.project,
                 options.profile,
                 extra,
-                options.archive_argument,
             )
         if options.command == "coverage":
             return coverage(
@@ -435,18 +281,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 extra,
                 options.archive_argument,
             )
-        if options.command == "verify":
-            return verify(directory, options.category)
-        if options.command == "collect":
-            return collect(
-                directory,
-                [path if path.is_absolute() else directory / path for path in options.directories],
-            )
-        with report.locked(directory):
-            report.write(
-                directory / report.INDEX,
-                report.index(directory, policy.load(directory)),
-            )
         return 0
     except (policy.TestError, OSError, ValueError, KeyError) as error:
         print(f"test: {error}", file=sys.stderr)
@@ -461,17 +295,26 @@ def _preflight(
     rules: policy.Policy,
     category: str | None,
     profile: str,
-    current: str,
 ) -> None:
     """Refuse a stale fixture stamp or absent host artifacts before any test runs."""
     hosts = rules.hosts if category in (None, "acceptance", "system") else ()
-    archive.fixtures(directory, current, profile, hosts)
+    archive.fixtures(directory, profile, hosts)
 
 
 def _scratch(directory: Path, key: str) -> Path:
     scratch = directory / SCRATCH / key
     shutil.rmtree(scratch, ignore_errors=True)
     scratch.mkdir(parents=True)
+    categories = (
+        *policy.CATEGORIES,
+        "coverage",
+        *(f"coverage-{category}" for category in policy.CATEGORIES),
+        "bench-unit",
+        "bench-integration",
+        "bench-system",
+    )
+    keep = {f"{category}-{language}" for category in categories for language in ("rust", "python", *SCRIPTS)}
+    archive.prune(scratch.parent, keep | {key})
     return scratch
 
 
@@ -512,7 +355,12 @@ def _lane(
         print(f"{key}: {story} exceeded its liveness deadline", file=sys.stderr)
 
     report.write(directory / report.TESTS / f"{key}.junit.xml", text)
-    report.write(directory / report.TESTS / f"{key}.csv", report.lane_csv(found, deadlines))
+    durations = {}
+    for case in found:
+        if case.outcome == "passed":
+            durations.setdefault(case.suite, {})[case.name] = {"seconds": case.seconds}
+    report.dump(directory / report.TESTS / f"{key}.durations.json", durations)
+    print(f"{key}: {passed} passed, {failed} failed, {len(found) - passed - failed} skipped")
     ran = passed > 0 or failed > 0
     return {
         "category": category,
@@ -528,7 +376,6 @@ def _lane(
         "overruns": overruns,
         "seconds": round(seconds, 3),
         "started_at": int(started),
-        "csv": f"{key}.csv",
         "junit": f"{key}.junit.xml",
         "coverage": None,
         "durations": [
@@ -548,62 +395,6 @@ def _deadline(rules: policy.Policy, language: str, case: report.Case, recorded: 
         return 0
     seconds = recorded.get(case.suite, {}).get(case.name, {}).get("seconds")
     return rules.story(case.category, seconds)
-
-
-def _publish(
-    directory: Path,
-    rules: policy.Policy,
-    current: str,
-    profile: str,
-    key: str,
-    lane: dict,
-    recorded: dict,
-) -> int:
-    """Record the lane in the manifest of this tree and profile, then refresh the index."""
-    stories = lane.pop("durations")
-    with report.locked(directory):
-        manifest: dict = report.load(directory / MANIFEST)
-        if (manifest.get("schema"), manifest.get("tree"), manifest.get("profile")) != (
-            report.SCHEMA,
-            current,
-            profile,
-        ):
-            manifest = {
-                "schema": report.SCHEMA,
-                "tree": current,
-                "profile": profile,
-                "lanes": {},
-            }
-        manifest["revision"] = archive.published(directory, current)
-        manifest["lanes"][key] = lane
-
-        # Instrumented Durations Never Feed Liveness Deadlines
-        durations = report.load(directory / report.DURATIONS)
-        if lane["kind"] == "test":
-            suites = durations.setdefault(key, {})
-            for suite, name, package, seconds in stories:
-                previous = suites.get(suite, {}).get(name, {}).get("seconds")
-                suites.setdefault(suite, {})[name] = {
-                    "seconds": round(seconds, 3),
-                    "previous": previous,
-                    "package": package,
-                }
-        _store(directory, manifest, durations, rules)
-
-    print(f"{key}: {lane['outcome']}, {lane['tests']} stories, {lane['failed']} failed, {lane['seconds']:.1f} s")
-    return 0 if lane["outcome"] == "passed" else 1
-
-
-def _store(directory: Path, manifest: dict, durations: dict, rules: policy.Policy) -> None:
-    """Write the manifest, durations, merged JUnit and index; the caller holds the lock."""
-    tests = directory / report.TESTS
-    reports = [
-        (tests / lane["junit"]).read_text(encoding="utf-8") for lane in manifest["lanes"].values() if (tests / lane["junit"]).is_file()
-    ]
-    report.dump(directory / MANIFEST, manifest)
-    report.dump(directory / report.DURATIONS, durations)
-    report.write(directory / report.JUNIT, report.merge(reports))
-    report.write(directory / report.INDEX, report.index(directory, rules))
 
 
 def _execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | None) -> int:
@@ -636,15 +427,8 @@ def _bench_rust(
     archive_arguments: Sequence[str],
     identity: dict,
 ) -> tuple[list[report.Bench], int]:
-    archive_path = archive.require(directory, "bench", archive.tree(directory), archive_arguments)
-    producer = report.load(archive_path.with_name(archive.RECEIPT))
-    identity["build_inputs"] = {
-        **producer["inputs"],
-        "configuration": {name: digest for name, digest in producer["inputs"]["configuration"].items() if Path(name).is_absolute()},
-    }
-    identity["target"] = producer["target"]
-    project = Path(archive._git(directory, "rev-parse", "--show-toplevel"))
-    messages = project / producer["messages"]["path"]
+    archive_path = archive.require(directory, "bench")
+    messages = archive_path.with_name(archive.MESSAGES)
     targets = []
     for line in messages.read_text(encoding="utf-8").splitlines():
         message = json.loads(line) if line.startswith("{") else {}
@@ -652,7 +436,7 @@ def _bench_rust(
         name = target.get("name", "")
         if message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable"):
             if name == category or name.startswith(category + "-"):
-                targets.append((name, message["executable"], Path(message["manifest_path"]).parent))
+                targets.append((name, str(directory / message["executable"]), (directory / message["manifest_path"]).parent))
 
     home = directory / CRITERION
     baselines = _criterion_baselines(home, identity)
@@ -662,7 +446,6 @@ def _bench_rust(
     rows: list[report.Bench] = []
     status = 0
     for name, executable, package in targets:
-        archive.verify_outputs(producer, [Path(executable)])
         since = time.time()
         code, peak = _measured([executable, "--bench", *flags, *extra], package, environment)
         status = status or code
@@ -673,8 +456,7 @@ def _bench_rust(
                 if path.stat().st_mtime >= since:
                     report.write(
                         path.with_name("inputs.json"),
-                        json.dumps({"identity": identity, "revision": producer["revision"], "sha256": archive._digest(path)}, indent=2)
-                        + "\n",
+                        json.dumps({"identity": identity, "sha256": archive._digest(path)}, indent=2) + "\n",
                     )
     return rows, status
 
@@ -784,7 +566,6 @@ def _bench_python(
             {
                 "schema": 1,
                 "identity": identity,
-                "revision": archive.revision(directory),
                 "medians": {row.name: row.median_ns for row in rows},
             },
         )

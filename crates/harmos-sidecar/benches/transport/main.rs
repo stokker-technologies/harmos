@@ -117,8 +117,11 @@ async fn child_process_capacity() {
 }
 
 async fn child(settings: Option<Settings>) {
-    let executable =
-        Executable::at(env!("CARGO_BIN_EXE_harmos-sidecar-throughput-fixture")).expect("cargo built the absolute benchmark fixture");
+    let executable = Executable::at(
+        std::env::var_os("NEXTEST_BIN_EXE_harmos_sidecar_throughput_fixture")
+            .map_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_harmos-sidecar-throughput-fixture")), std::path::PathBuf::from),
+    )
+    .expect("cargo built the absolute benchmark fixture");
     let attached = executable.attach().await.expect("the benchmark child starts");
     let (write, read, control, _diagnostics, ending) = attached.into_parts();
     let control = control.expect("native benchmark requires its independent control channel");

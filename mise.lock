@@ -8,13 +8,25 @@ backend = "aqua:boyter/scc"
 checksum = "sha256:6e0d2a1f8d3540ba7df185477dec40bb7340f1b214bfd303147de5cad2bd7b8b"
 url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_arm64.tar.gz"
 
+[tools."aqua:boyter/scc"."platforms.linux-arm64-musl"]
+checksum = "sha256:6e0d2a1f8d3540ba7df185477dec40bb7340f1b214bfd303147de5cad2bd7b8b"
+url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_arm64.tar.gz"
+
 [tools."aqua:boyter/scc"."platforms.linux-x64"]
+checksum = "sha256:c7328436d3027f4357d3d7853f7dc3ac2bbcb4ca08f1adad91a27c593884079b"
+url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_x86_64.tar.gz"
+
+[tools."aqua:boyter/scc"."platforms.linux-x64-musl"]
 checksum = "sha256:c7328436d3027f4357d3d7853f7dc3ac2bbcb4ca08f1adad91a27c593884079b"
 url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_x86_64.tar.gz"
 
 [tools."aqua:boyter/scc"."platforms.macos-arm64"]
 checksum = "sha256:7201c7aa4aace058d43308462cba72adb18f6094c08c0741727455976d0a0747"
 url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Darwin_arm64.tar.gz"
+
+[tools."aqua:boyter/scc"."platforms.macos-x64"]
+checksum = "sha256:7f705031228add7e55edded409179a60de6b538d41f153ba2922dee95adda50d"
+url = "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Darwin_x86_64.tar.gz"
 
 [tools."aqua:boyter/scc"."platforms.windows-x64"]
 checksum = "sha256:4a433984f45ff29c94eeb3af6db5b511c58f5bf74063dccedafcbf473cb8ff31"
@@ -28,11 +40,23 @@ backend = "aqua:nextest-rs/nextest/cargo-nextest"
 checksum = "sha256:81469eb963ef883fd590e60189e77d6aba3d91b418591d3391f50fe3e9480d2b"
 url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-aarch64-unknown-linux-gnu.tar.gz"
 
+[tools."aqua:nextest-rs/nextest/cargo-nextest"."platforms.linux-arm64-musl"]
+checksum = "sha256:94676506ceaed01746d78cfe9ed124ee841b2932fd18d9d10f438a347bd9ba5e"
+url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-aarch64-unknown-linux-musl.tar.gz"
+
 [tools."aqua:nextest-rs/nextest/cargo-nextest"."platforms.linux-x64"]
 checksum = "sha256:bf92cb81450872d960ffa13857a83084d557ec0cdc141663d263bb23ef756f97"
 url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-x86_64-unknown-linux-musl.tar.gz"
 
+[tools."aqua:nextest-rs/nextest/cargo-nextest"."platforms.linux-x64-musl"]
+checksum = "sha256:bf92cb81450872d960ffa13857a83084d557ec0cdc141663d263bb23ef756f97"
+url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-x86_64-unknown-linux-musl.tar.gz"
+
 [tools."aqua:nextest-rs/nextest/cargo-nextest"."platforms.macos-arm64"]
+checksum = "sha256:6c23b7fb4ca82c571fc8dfedbab45bfa773d45918f933170c85d21cd7f4b852b"
+url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-universal-apple-darwin.tar.gz"
+
+[tools."aqua:nextest-rs/nextest/cargo-nextest"."platforms.macos-x64"]
 checksum = "sha256:6c23b7fb4ca82c571fc8dfedbab45bfa773d45918f933170c85d21cd7f4b852b"
 url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-universal-apple-darwin.tar.gz"
 
@@ -41,40 +65,100 @@ checksum = "sha256:bef17504bed9d4994cf860c122e84a90d613b92e6d89584fa9e28bd53ad42
 url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-x86_64-pc-windows-msvc.tar.gz"
 
 [[tools."aqua:rhysd/actionlint"]]
-version = "1.7.7"
+version = "1.7.12"
 backend = "aqua:rhysd/actionlint"
 
 [tools."aqua:rhysd/actionlint"."platforms.linux-arm64"]
-checksum = "sha256:401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_arm64.tar.gz"
+checksum = "sha256:325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.linux-arm64-musl"]
-checksum = "sha256:401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_arm64.tar.gz"
+checksum = "sha256:325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.linux-x64"]
-checksum = "sha256:023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
+checksum = "sha256:8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.linux-x64-musl"]
-checksum = "sha256:023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
+checksum = "sha256:8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.macos-arm64"]
-checksum = "sha256:2693315b9093aeacb4ebd91a993fea54fc215057bf0da2659056b4bc033873db"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_darwin_arm64.tar.gz"
+checksum = "sha256:aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.macos-x64"]
-checksum = "sha256:28e5de5a05fc558474f638323d736d822fff183d2d492f0aecb2b73cc44584f5"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_darwin_amd64.tar.gz"
+checksum = "sha256:5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz"
 
 [tools."aqua:rhysd/actionlint"."platforms.windows-x64"]
-checksum = "sha256:7f12f1801bca3d480d67aaf7774f4c2a6359a3ca8eebe382c95c10c9704aa731"
-url = "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_windows_amd64.zip"
+checksum = "sha256:6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip"
 
-[[tools."cargo:cargo-llvm-cov"]]
+[[tools."aqua:taiki-e/cargo-llvm-cov"]]
 version = "0.9.1"
-backend = "cargo:cargo-llvm-cov"
+backend = "aqua:taiki-e/cargo-llvm-cov"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.linux-arm64"]
+checksum = "sha256:49c0085628392a8d727c4464d91ec417c613c5015f5197cd16d5c05aa3fb5ad1"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.linux-arm64-musl"]
+checksum = "sha256:49c0085628392a8d727c4464d91ec417c613c5015f5197cd16d5c05aa3fb5ad1"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-unknown-linux-musl.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.linux-x64"]
+checksum = "sha256:3fca950394a3c49457657c158b1619cec8dfd2647ae5b48746734c0ab969a522"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.linux-x64-musl"]
+checksum = "sha256:3fca950394a3c49457657c158b1619cec8dfd2647ae5b48746734c0ab969a522"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.macos-arm64"]
+checksum = "sha256:7e821a6c90c0884f79f759f5d9be50799ade67bb82515186d922f26032ef43b8"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-apple-darwin.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.macos-x64"]
+checksum = "sha256:ddf949b82a63017441ea76aa068bdd7e2dde8055f47cd3ef736fdbbd633bc33e"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
+
+[tools."aqua:taiki-e/cargo-llvm-cov"."platforms.windows-x64"]
+checksum = "sha256:15eefd5b90fcdd4006b727c6e710d70a61aff509fcd7bb37f9c2a35c4f024948"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-pc-windows-msvc.tar.gz"
+
+[[tools.gh]]
+version = "2.102.0"
+backend = "aqua:cli/cli"
+
+[tools.gh."platforms.linux-arm64"]
+checksum = "sha256:7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_arm64.tar.gz"
+
+[tools.gh."platforms.linux-arm64-musl"]
+checksum = "sha256:7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_arm64.tar.gz"
+
+[tools.gh."platforms.linux-x64"]
+checksum = "sha256:bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz"
+
+[tools.gh."platforms.linux-x64-musl"]
+checksum = "sha256:bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz"
+
+[tools.gh."platforms.macos-arm64"]
+checksum = "sha256:da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_arm64.zip"
+
+[tools.gh."platforms.macos-x64"]
+checksum = "sha256:b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_amd64.zip"
+
+[tools.gh."platforms.windows-x64"]
+checksum = "sha256:ae64e556ecc240b200f7eba60d550e4bb60d78e860e69dd88c449405b86067f4"
+url = "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_windows_amd64.zip"
 
 [[tools.git-cliff]]
 version = "2.14.2"
@@ -108,6 +192,65 @@ url = "https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.
 checksum = "sha256:6ece2112b3f4af462190ecbea4aeb1315fff6af415629b597f84319073c31131"
 url = "https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.14.2-x86_64-pc-windows-msvc.zip"
 
+[[tools.glab]]
+version = "1.123.0"
+backend = "gitlab:gitlab-org/cli"
+
+[tools.glab."platforms.linux-arm64"]
+checksum = "sha256:1f2d0a885b28d08de341a597b2eb7204ce03d4e67b008efecab9951e4b014f0c"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_linux_arm64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_linux_arm64%2Etar%2Egz"
+
+[tools.glab."platforms.linux-arm64-musl"]
+checksum = "sha256:1f2d0a885b28d08de341a597b2eb7204ce03d4e67b008efecab9951e4b014f0c"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_linux_arm64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_linux_arm64%2Etar%2Egz"
+
+[tools.glab."platforms.linux-x64"]
+checksum = "sha256:9c9ac4c2b74ec8709dec4819a4041050f3680c6aaa18f0ed30434081f4fe9bef"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_linux_amd64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_linux_amd64%2Etar%2Egz"
+
+[tools.glab."platforms.linux-x64-musl"]
+checksum = "sha256:9c9ac4c2b74ec8709dec4819a4041050f3680c6aaa18f0ed30434081f4fe9bef"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_linux_amd64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_linux_amd64%2Etar%2Egz"
+
+[tools.glab."platforms.macos-arm64"]
+checksum = "sha256:bf776ea47d3b30410267adab9c870990be274e85f6dccccee4289f5ecf1386df"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_darwin_arm64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_darwin_arm64%2Etar%2Egz"
+
+[tools.glab."platforms.macos-x64"]
+checksum = "sha256:599593a8fb22de1b0b76d7e487efcea565624a7beffb71d93ae2c7cca2563724"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_darwin_amd64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_darwin_amd64%2Etar%2Egz"
+
+[tools.glab."platforms.windows-x64"]
+checksum = "sha256:a3dfe29f617f7d2100ae2aef73cc8ad82fbfee8392ffd99e190a4ba6b6d69d5e"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.123.0/downloads/glab_1.123.0_windows_amd64.zip"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E123%2E0/glab_1%2E123%2E0_windows_amd64%2Ezip"
+
+[[tools.minisign]]
+version = "0.12"
+backend = "aqua:jedisct1/minisign"
+
+[tools.minisign."platforms.linux-x64"]
+url = "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz"
+provenance = "minisign"
+
+[tools.minisign."platforms.linux-x64-musl"]
+url = "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz"
+provenance = "minisign"
+
+[tools.minisign."platforms.macos-arm64"]
+url = "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-macos.zip"
+provenance = "minisign"
+
+[tools.minisign."platforms.windows-x64"]
+url = "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip"
+provenance = "minisign"
+
 [[tools.python]]
 version = "3.15.0"
 backend = "core:python"
@@ -117,24 +260,24 @@ checksum = "sha256:064778ca701efc4c8366d0b235a2a0f5dbe14d921aeb2ef4f5c7b93e5a75c
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
 
 [tools.python."platforms.linux-arm64-musl"]
-checksum = "sha256:93040cac939b6702a8e29e07b14d5eefa1a3b2589697baa46c805a159c716860"
-url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.15.0+20261009-aarch64-unknown-linux-musl-install_only_stripped.tar.gz"
+checksum = "sha256:d6064f89c264cce8444e4eb8c2d5041827fe20bf0836b2042a91807ff8a9596d"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-aarch64-unknown-linux-musl-install_only_stripped.tar.gz"
 
 [tools.python."platforms.linux-x64"]
 checksum = "sha256:69740dcd9b3480b3d53760f2d3b75582adb14fa54434628dea32480ddede542a"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
 
 [tools.python."platforms.linux-x64-musl"]
-checksum = "sha256:465ec05200a3668954fb88d1ed150298b13c277b5c64c95c5866dc2901e29e85"
-url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.15.0+20261009-x86_64-unknown-linux-musl-install_only_stripped.tar.gz"
+checksum = "sha256:e33aa97230e4a72c108a82365fd3d14a28d04a8451d15d0e9bc2b0521d2fec11"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-x86_64-unknown-linux-musl-install_only_stripped.tar.gz"
 
 [tools.python."platforms.macos-arm64"]
 checksum = "sha256:b4ab2009803cef142e4ebf2ebef225f6875f83cc35caf4eefb437aa9b2b76783"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-aarch64-apple-darwin-install_only_stripped.tar.gz"
 
 [tools.python."platforms.macos-x64"]
-checksum = "sha256:76253e5619694b66e817a091bbdbf3db89bb0aff6d77a9ac7aae2ce96218ed0d"
-url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.15.0+20261009-x86_64-apple-darwin-install_only_stripped.tar.gz"
+checksum = "sha256:4760e8fb2821441c0dbc72be49a25400c6ae90be4daa7e2a49617ed09f6a2919"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.15.0+20261013-x86_64-apple-darwin-install_only_stripped.tar.gz"
 
 [tools.python."platforms.windows-x64"]
 checksum = "sha256:743d2269e74a98f7c4281dbc2e8710c171be1965693720aac818ff0157e4d965"
@@ -145,7 +288,7 @@ version = "1.99.0"
 backend = "core:rust"
 
 [tools.rust.options]
-components = "clippy,llvm-tools-preview,rust-analyzer,rustfmt"
+components = "clippy,llvm-tools-preview,rustfmt"
 profile = "minimal"
 targets = "wasm32-unknown-unknown,wasm32-wasip2"
 

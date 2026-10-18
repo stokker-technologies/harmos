@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:209ff3b83a3c385097b1db9c66c2e08b706e5aaf5040bfaf749f8000c8ff6bb1
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:3ac368c6a8e47d02eb99e81d46b1a285ade0c9d93551929e1cad9d853bcdb6c8
 # === Settings === #
 
 [settings]
@@ -9,20 +9,25 @@ lockfile = true
 [tools]
 # Languages And Runtimes
 python = "3.15.0"
-rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview" }
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal" }
 
 # Package Managers
 uv = "0.13.0"
 
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
-"cargo:cargo-llvm-cov" = "0.9.1"
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+sccache = "0.18.0"
 
 # Formatting And Linting
+"aqua:rhysd/actionlint" = "1.7.12"
 taplo = "0.10.0"
 
 # Release And Signing
+gh = "2.102.0"
 git-cliff = "2.14.2"
+glab = "1.123.0"
+minisign = "0.12"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
@@ -30,6 +35,7 @@ git-cliff = "2.14.2"
 # === Environment === #
 
 [env]
+TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 SCCACHE_STARTUP_DIR = "{{env.XDG_RUNTIME_DIR | default(value='/tmp')}}"
 
@@ -53,7 +59,7 @@ depends = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {%
 [tasks."format:python"]
 description = "Format Python"
 usage = 'flag "--check"'
-run = "uv run --locked --project tools/python ruff format{% if usage.check %} --check{% endif %}"
+run = 'uv run --locked --project tools/python ruff format "tools/python"{% if usage.check %} --check{% endif %}'
 
 [tasks."format:rust"]
 description = "Format Rust"
@@ -73,7 +79,10 @@ depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = "uv run --locked --project tools/python ruff check"
+run = [
+  'uv run --locked --project tools/python ruff check "tools/python"',
+  'uv run --locked --project tools/python ty check "tools/python"',
+]
 
 [tasks."lint:rust"]
 description = "Lint Rust"
@@ -82,12 +91,8 @@ run = "uv run --locked --project tools/python python -m project_tools.test.cache
 # === Check === #
 
 [tasks.check]
-description = "Check Every Language And Conventions"
-depends = ["check:rust", "check:python"]
-
-[tasks."check:python"]
-description = "Check Python"
-run = "uv run --locked --project tools/python ty check"
+description = "Check Rust Feature Proofs And Conventions"
+depends = ["check:rust"]
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -100,8 +105,9 @@ run = [
 
 [tasks.build]
 description = "Build Binaries, Fixtures, Wheels And The Test Archive"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}}"
+run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
 
 # === Dev === #
 
@@ -122,26 +128,26 @@ run = "cargo harmos sidecar dev"
 
 [tasks.test]
 description = "Test Every Layer"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit --profile {{usage.profile}}"]
 
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+env.CARGO_INCREMENTAL = "0"
+run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
+
 [tasks."test:unit"]
 description = "Test Unit Layer"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit:rust --profile {{usage.profile}}"]
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
+env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
-
-[tasks."test:verify"]
-description = "Verify The Evidence Of One Tree"
-run = "uv run --locked --project tools/python python -m project_tools.test.run verify"
-
-[tasks.coverage]
-description = "Measure Coverage Over Instrumented Lanes"
-run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
 
 # === Bench === #
 
@@ -168,19 +174,17 @@ run = [
   { task = "format:toml --check" },
   { task = "format:rust --check" },
   { task = "format:python --check" },
+  { task = "build --profile {{usage.profile}}" },
   { task = "check" },
   { task = "lint" },
-  { task = "build --profile {{usage.profile}}" },
   { task = "test --profile {{usage.profile}}" },
-  { task = "package --profile {{usage.profile}}" },
-  { task = "test:verify" },
 ]
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
-  { task = "coverage" },
+  { task = "test:coverage" },
 ]
 
 # === Release === #
@@ -205,7 +209,7 @@ run = [
 
 [tasks."release:publish:dry"]
 description = "Dry-Run Every Publication"
-run = "cargo publish --workspace --dry-run"
+run = "uv run --locked --project tools/python python -m project_tools.test.publish --rust"
 
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"

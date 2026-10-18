@@ -25,8 +25,8 @@ publish.workspace = true
 default = []
 sidecar = []
 guest = ["dep:wit-component"]
-bindings-proto = ["dep:heck", "dep:prost-reflect"]
-bindings-python = ["bindings-proto"]
+generate-proto = ["dep:heck", "dep:prost-reflect"]
+generate-python = ["generate-proto"]
 
 # === Dependencies === #
 
@@ -99,7 +99,7 @@ path = "tests/integration/main.rs"
 [[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
-required-features = ["bindings-proto", "bindings-python"]
+required-features = ["generate-proto", "generate-python"]
 
 # === Bench Targets === #
 

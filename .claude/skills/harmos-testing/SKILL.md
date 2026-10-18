@@ -2,11 +2,11 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:0f18ec13a2263927a3a0dc546fa30373ee5c99d3d003706f595d773711edc165 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:6df0d01d4ccc41d97acf2c1a4b913deeeba60caad299a4c147aa1ad1466946a2 -->
 
 # Harmos Testing
 
-Apply `stkr-testing` for layers, meaningful stories, deadlines and evidence. These
+Apply `stkr-testing` for layers, meaningful stories and deadlines. These
 product boundaries determine where Harmos behavior belongs.
 
 ## Story Owners
@@ -51,16 +51,19 @@ Do not claim this startup failure proves a crash after readiness.
 ## Fixture Inputs
 
 `build` owns the root nextest archive and standalone native/Wasm compilation.
-`tools/python/src/harmos_tools/build/fixtures.py` collects the original compiler
-messages and receipts, stages verified outputs under `target/fixtures/`, and
-uses the Hub's canonical producer stamp. Product selectors live in its
-`metadata`; original producers and expected hashes retain their identity.
+`tools/python/src/harmos_tools/build/fixtures.py` compiles the standalone
+selections, records the Cargo messages, metadata and byte stamps `cargo harmos`
+collection requires, stages the outputs under `target/fixtures/` and writes the
+fixture stamp. Product selectors live in its `metadata`; `files` names every
+staged artifact a lane consumes with its hash.
 
 Use `harmos-runtime/tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
-Use nextest's binary environment for package-owned fixture executables. Do not
+Resolve package-owned executables at run time through `NEXTEST_BIN_EXE_<name>`,
+falling back to the compile-time `CARGO_BIN_EXE_<name>` only under plain
+`cargo test`, so stories run from the archive on another machine. Do not
 scan a host's target directory or choose an arbitrary cached artifact. Preserve
-original build receipt bytes; the typed packaging API relocates paths while
-retaining hashes. Preflight verifies fixtures before a lane starts.
+collected build JSON bytes; the typed packaging API relocates paths while
+retaining hashes. Preflight checks the stamp before a lane starts.
 
 ## Authoring Acceptance
 

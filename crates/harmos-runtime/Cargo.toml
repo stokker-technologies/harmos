@@ -29,7 +29,7 @@ plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
   "harmos-sdk/grpc",
-  "bindings-proto",
+  "generate-proto",
   "dep:tonic-reflection",
   "dep:http-body",
   "dep:heck",
@@ -42,7 +42,7 @@ grpc = [
   "tonic/tls-ring",
 ]
 # Protobuf Descriptor Projection For The Runtime Transport.
-bindings-proto = ["dep:harmos-packaging", "harmos-packaging/bindings-proto"]
+generate-proto = ["dep:harmos-packaging", "harmos-packaging/generate-proto"]
 # Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
 signal = []
 signal-fft = ["signal", "harmos-storage/fft"]
@@ -117,7 +117,7 @@ tower-http = { workspace = true, optional = true }
 [dev-dependencies]
 harmos-sdk = { workspace = true, features = ["grpc"] }
 # Local
-harmos-packaging = { workspace = true, features = ["bindings-proto"] }
+harmos-packaging = { workspace = true, features = ["generate-proto"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
 
 # Git

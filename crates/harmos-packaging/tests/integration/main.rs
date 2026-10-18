@@ -13,10 +13,10 @@
 #[cfg(feature = "sidecar")]
 #[path = "../build/main.rs"]
 mod build;
-#[cfg(feature = "bindings-proto")]
+#[cfg(feature = "generate-proto")]
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
-#[cfg(feature = "bindings-proto")]
+#[cfg(feature = "generate-proto")]
 #[path = "../grpc/main.rs"]
 mod grpc;
 

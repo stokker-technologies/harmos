@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:f953a38dbac41e1070e5e4dafb43761fc275e3672b69d19d2104e165621c1827
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:e3cbd0941fa8c11d07e3aabde280ee41c74e5e1bbb961dbaeee051064774b74c
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -11,14 +11,17 @@ permissions:
   contents: write
 env:
   MISE_LOCKED: "1"
+  CARGO_INCREMENTAL: "0"
   MISE_DATA_DIR: ${{ github.workspace }}/.cache/mise
-  CARGO_TERM_COLOR: always
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
-  release_prepare:
-    name: Release / Prepare
+  prepare:
+    name: Publish / Prepare
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -29,15 +32,24 @@ jobs:
         path: .cache/mise/
         key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
     - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        TEMP: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       with:
         install: true
         cache: false
         mise_dir: ${{ github.workspace }}/.cache/mise
     - run: command -v cc
     - run: command -v pkg-config
+    - name: Check Runner Group Allowlist
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.test.runners
+      env:
+        GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":[[\"stokker-local-linux-x64\"]]}"
+        RELEASE_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ secrets.RUNNER_GROUP_READ_TOKEN || github.token }}
     - run: git switch -c "release/v${{ inputs.version }}"
     - run: mise run release:prepare
     - run: "git -c user.name=\"${{ github.actor }}\" -c user.email=\"${{ github.actor }}@users.noreply.github.com\" commit -am \"chore: prepare release v${{ inputs.version }}\""
     - run: git push origin "release/v${{ inputs.version }}"
-    env:
-      MISE_ENABLE_TOOLS: python,rust,uv,git-cliff

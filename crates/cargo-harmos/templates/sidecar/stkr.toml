@@ -8,6 +8,15 @@
 name = "__PRODUCT_NAME__"
 visibility = "public"
 profile = "sidecar"
+platforms = ["linux", "windows"]
+
+# === Languages === #
+
+[languages.rust]
+roots = ["src"]
+
+[languages.python]
+roots = ["tools/python"]
 
 # === Repository === #
 

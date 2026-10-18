@@ -7,6 +7,19 @@
 [project]
 name = "Harmos"
 visibility = "public"
+platforms = ["linux", "windows"]
+
+# === Languages === #
+
+[languages.rust]
+roots = ["crates", "examples"]
+targets = ["wasm32-unknown-unknown", "wasm32-wasip2"]
+exclude = ["crates/cargo-harmos/templates"]
+
+[languages.python]
+roots = ["tools/python"]
+generated = ["target/fixtures/generated/python/src"]
+exclude = ["tools/python/.venv", "tools/python/.ruff_cache"]
 
 
 # === Repository === #
@@ -17,8 +30,9 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 
 # === CI === #
 
-[ci]
-dev_advisory = ["windows"]
+# Measured Cold Windows Build With Fixtures And Unit Tests (26 Minutes); Pull Requests Never Restore A Warm Target.
+[ci.budgets]
+build = 1800
 
 [ci.runners]
 linux = ["ubuntu-24.04"]

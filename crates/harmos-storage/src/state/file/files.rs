@@ -72,16 +72,10 @@ impl Files {
         self.replace("state.jsonl", write)
     }
 
+    // Directory Flush Is A POSIX Idiom: Windows Refuses A Directory Opened As A File
+    // (`ERROR_ACCESS_DENIED`), And NTFS Makes Rename Metadata Durable Without One.
     pub(super) fn sync_directory(&self) -> Result<()> {
-        let mut options = OpenOptions::new();
-        options.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            // FILE_FLAG_BACKUP_SEMANTICS permits opening a directory handle.
-            options.custom_flags(0x02000000);
-        }
-        options.open(&self.root).map_err(io)?.sync_all().map_err(io)
+        if cfg!(unix) { File::open(&self.root).map_err(io)?.sync_all().map_err(io) } else { Ok(()) }
     }
 
     fn replace(&self, name: &str, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {

@@ -8,6 +8,15 @@
 name = "__PRODUCT_NAME__"
 visibility = "public"
 profile = "guest"
+platforms = ["linux", "windows"]
+
+# === Languages === #
+
+[languages.rust]
+roots = ["src"]
+
+[languages.python]
+roots = ["tools/python"]
 
 # === Repository === #
 

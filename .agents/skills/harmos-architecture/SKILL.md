@@ -70,8 +70,8 @@ Project contracts take precedence over generic architecture defaults. Read curre
 The `harmos` application facade composes domain declarations and host runtime
 execution. The runtime composes managed state, streams, the storage engine and authoring;
 optional facilities are `plugin`, `plugin-sidecar`, `plugin-guest`, `grpc`,
-`bindings-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
-hosting imply `plugin`; gRPC implies `bindings-proto`. TLS and Web policy belong
+`generate-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
+hosting imply `plugin`; gRPC implies `generate-proto`. TLS and Web policy belong
 to the runtime gRPC settings.
 
 Shared declarations depend on pure `harmos-domain`: schemas, messages, operation

@@ -9,25 +9,25 @@ github_attestations = false
 [tools]
 # Languages And Runtimes
 python = "3.15.0"
-rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools-preview,rust-analyzer", targets = [
-  "wasm32-unknown-unknown",
-  "wasm32-wasip2",
-] }
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
 
 # Package Managers
 uv = "0.13.0"
 
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
-"cargo:cargo-llvm-cov" = "0.9.1"
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 sccache = "0.18.0"
 
 # Formatting And Linting
-"aqua:rhysd/actionlint" = "1.7.7"
+"aqua:rhysd/actionlint" = "1.7.12"
 taplo = "0.10.0"
 
 # Release And Signing
+gh = "2.102.0"
 git-cliff = "2.14.2"
+glab = "1.123.0"
+minisign = "0.12"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
@@ -36,8 +36,8 @@ git-cliff = "2.14.2"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
-# A Fresh Checkout Has No Target Yet; Tools Fail On A Missing Temporary Directory, So Loading The Environment Creates It.
-TMPDIR = "{{config_root}}/target/tmp{{ exec(command='mkdir -p target/tmp') }}"
+# A Fresh Checkout Has No Target Yet; Loading The Environment Creates The Temporary Directory Portably.
+TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 
 # === Variables === #
 
@@ -129,6 +129,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 # Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
 
 # === Dev === #
 
@@ -142,12 +143,15 @@ depends = [
   "test:integration --profile {{usage.profile}}",
   "test:acceptance --profile {{usage.profile}}",
   "test:system --profile {{usage.profile}}",
+  "test:generated --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
@@ -155,13 +159,15 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:integration"]
 description = "Test Integration Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:integration:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:integration:rust"]
 description = "Test Integration Rust"
@@ -169,13 +175,15 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:acceptance"]
 description = "Test Acceptance Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:acceptance:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:acceptance:rust"]
 description = "Test Acceptance Rust"
@@ -183,13 +191,15 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:system"]
 description = "Test System Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:system:rust --profile {{usage.profile}}"]
+env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:system:rust"]
 description = "Test System Rust"
@@ -197,18 +207,32 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} --archive-argument=--all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:verify"]
-description = "Verify Complete Candidate Evidence"
+[tasks."test:generated"]
+description = "Test Generated Clients"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:generated:python"]
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."test:generated:python"]
+description = "Test Generated Python"
 depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run verify"
+run = [
+  "uv run --locked --no-sync --project tools/python ty check target/fixtures/generated/python/src",
+  # The Repository Lint Policy Applies To Harmos-Emitted Modules; Protoc's `_wire` Output Is Type Checked Only.
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/fixtures/generated/python/src",
+  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/fixtures/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/fixtures/generated/python/src'])]\"",
+]
+env = { CARGO_INCREMENTAL = "0" }
 
-[tasks.coverage]
-description = "Measure Instrumented Rust Coverage"
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
+env = { CARGO_INCREMENTAL = "0" }
 
 # === Bench === #
 
@@ -274,22 +298,17 @@ description = "Run The CI Flow Locally"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format --check" },
-  { task = "lint" },
-  { task = "check" },
   { task = "build --profile {{usage.profile}}" },
-  { task = "test:unit --profile {{usage.profile}}" },
-  { task = "test:integration --profile {{usage.profile}}" },
-  { task = "test:acceptance --profile {{usage.profile}}" },
-  { task = "test:system --profile {{usage.profile}}" },
-  { task = "package --profile {{usage.profile}}" },
-  { task = "test:verify" },
+  { task = "check" },
+  { task = "lint" },
+  { task = "test --profile {{usage.profile}}" },
 ]
 
 [tasks."ci:nightly"]
-description = "Run Nightly Coverage And Benchmarks"
+description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
-  { task = "coverage" },
+  { task = "test:coverage" },
   { task = "build --profile bench" },
   { task = "bench:unit --refresh-baseline" },
   { task = "bench:integration --refresh-baseline" },

@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:fb2e4e2e1e18ab858caa238e5c8e844a6e5323cbf3e5ad4c13ab9384b930cae3 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:781d30eba92bea3528375b9050ff3c119a8c391ca7e86e30b93251d47bedbff8 -->
 
 # Harmos Architecture
 
@@ -71,8 +71,8 @@ Project contracts take precedence over generic architecture defaults. Read curre
 The `harmos` application facade composes domain declarations and host runtime
 execution. The runtime composes managed state, streams, the storage engine and authoring;
 optional facilities are `plugin`, `plugin-sidecar`, `plugin-guest`, `grpc`,
-`bindings-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
-hosting imply `plugin`; gRPC implies `bindings-proto`. TLS and Web policy belong
+`generate-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
+hosting imply `plugin`; gRPC implies `generate-proto`. TLS and Web policy belong
 to the runtime gRPC settings.
 
 Shared declarations depend on pure `harmos-domain`: schemas, messages, operation
