@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:17bb994df107d647c4c901c70b26c7940cde18c4ab8fe487d51582c930776afd
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:148ff2781ed2e5b75acc32e4b422f0242dd89ad2e4f129644ab00a0f1d6f2bcd
 name: CI
 "on":
   push:
@@ -153,6 +153,7 @@ jobs:
         cache-workspace-crates: false
         cache-on-failure: false
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -161,8 +162,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - run: mise run format:rust --check
     - run: mise run lint:rust
     - run: >-
@@ -238,6 +241,7 @@ jobs:
         cache-workspace-crates: false
         cache-on-failure: false
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -246,8 +250,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - run: mise run build --profile dev
     - run: mise run test:unit --profile dev
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -324,6 +330,7 @@ jobs:
         cache-workspace-crates: false
         cache-on-failure: false
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -332,8 +339,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - run: mise run build --profile release
     - run: mise run test:unit --profile release
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -463,6 +472,7 @@ jobs:
         cache-bin: false
         save-if: "false"
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -471,8 +481,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
       run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -549,6 +561,7 @@ jobs:
         cache-bin: false
         save-if: "false"
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -557,8 +570,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
       run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -635,6 +650,7 @@ jobs:
         cache-bin: false
         save-if: "false"
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -643,8 +659,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
       run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -721,6 +739,7 @@ jobs:
         cache-bin: false
         save-if: "false"
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -729,8 +748,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - if: needs.build_dev.result != 'success' && needs.build_release.result != 'success'
       run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -815,6 +836,7 @@ jobs:
         cache-bin: false
         save-if: "false"
     - if: matrix.os == 'windows'
+      shell: pwsh
       run: |
         $before = @{}
         Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
@@ -823,8 +845,10 @@ jobs:
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
     - run: command -v cc
       if: matrix.os == 'linux'
+      shell: bash
     - run: command -v pkg-config
       if: matrix.os == 'linux'
+      shell: bash
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         pattern: >-

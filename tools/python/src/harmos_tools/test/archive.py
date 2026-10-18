@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:b21c350b246a9428f4029b738fe9e1947e6cd983fac68fd5c5d69d0859e51d78
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:f9ac74431828eae55d56f22b912abcc45de770ecdd8252ec57585c93b12dfc43
 # ***
 #
 # Harmos
@@ -20,6 +20,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -116,8 +117,7 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
 
 def binaries(directory: Path, profile: str) -> list[str]:
     path = require(directory, profile)
-    listing = path.parent / "listing"
-    listing.mkdir(parents=True, exist_ok=True)
+    listing = Path(tempfile.mkdtemp(prefix="listing-", dir=path.parent))
     command = [
         "cargo",
         "nextest",
@@ -128,13 +128,15 @@ def binaries(directory: Path, profile: str) -> list[str]:
         str(directory),
         "--extract-to",
         str(listing),
-        "--extract-overwrite",
         "--list-type",
         "binaries-only",
         "--message-format",
         "json",
     ]
-    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
+    finally:
+        shutil.rmtree(listing)
     if result.returncode:
         raise policy.TestError(f"nextest could not list test binaries: {result.stderr.strip()}")
     return sorted(
