@@ -74,7 +74,9 @@ impl Batch {
         let mut operations = 0;
         let mut encoded_bytes = 0usize;
         for entry in state.queue.iter().filter(|entry| {
-            entry.index >= first.index && state.needs_write(entry) && (domain == Domain::Recovery || entry.operation.domain() == Domain::Data)
+            entry.index >= first.index
+                && state.needs_write(entry)
+                && (domain == Domain::Recovery || entry.operation.domain() == Domain::Data)
         }) {
             if entry.index > boundary {
                 break;
