@@ -292,11 +292,17 @@ fn bindings(pool: &DescriptorPool, contracts: &[Contract], module: &str) -> Resu
     }
     let mut result = String::from(HEADER);
     result.push_str("\"\"\"Generated Operation Bindings From The Selected Producer Catalog\"\"\"\n\n# === Imports === #\n\n# Standard Library Imports\n\n# Third Party Imports\nfrom google.protobuf.message import Message\n\n# Local Imports\nfrom .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, ResponseStream as ResponseStream\n");
-    for (name, alias) in imports {
-        writeln!(result, "import {name} as {alias}").expect("String writer");
-    }
-    result.push_str("\n# Type Checking Imports\n\n# === Public Exports === #\n\n# === Constants === #\n\n# === Types === #\n\n");
     let mut stub = result.clone();
+    for (name, alias) in &imports {
+        writeln!(result, "import {name} as {alias}").expect("String writer");
+        // RPC Envelopes Exist Only At Run Time; The Stub Imports What Its Annotations Name.
+        if stub_body.contains(&format!("{alias}.")) {
+            writeln!(stub, "import {name} as {alias}").expect("String writer");
+        }
+    }
+    let sections = "\n# Type Checking Imports\n\n# === Public Exports === #\n\n# === Constants === #\n\n# === Types === #\n\n";
+    result.push_str(sections);
+    stub.push_str(sections);
     stub.push_str(&stub_body);
     result.push_str(&body);
     let footer = "# === Classes === #\n\n# === Public Functions === #\n\n# === Private Functions === #\n\n# === Entry Point === #\n";
