@@ -38,6 +38,7 @@ TARGET = ROOT / "target"
 FIXTURES = TARGET / "fixtures"
 STAMP = FIXTURES / "stamp.json"
 CAPTURES = TARGET / "captures"
+GENERATED = FIXTURES / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
@@ -84,6 +85,7 @@ def main() -> None:
     # One Capture Supplies Every Library, So The Facade Links Exactly The Builds Beside It.
     libraries = _libraries(_messages(tooling), files)
     inputs = _offline_inputs(FIXTURES / "inputs")
+    _generate_python(tool, dict(collected)["schematic-sidecar"][1], inputs / "vendor", files)
     # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
     executables = sorted(
         path.relative_to(FIXTURES).as_posix() for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR
@@ -228,6 +230,54 @@ def _offline_inputs(destination: Path) -> Path:
     # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
     subprocess.run([*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")], cwd=ROOT, check=True)
     return destination
+
+
+def _generate_python(tool: Path, build: Path, vendor: Path, files: dict) -> None:
+    """Generate The Schematic Sidecar's Python Client, Which `test:generated:python` Checks."""
+    catalogs = {
+        schema["catalog"]
+        for schema in json.loads(build.read_text(encoding="utf-8"))["schemas"]
+        if schema["producer"] == "schematic-sidecar"
+    }
+    if len(catalogs) != 1:
+        raise RuntimeError(f"expected one schematic-sidecar catalog, found {sorted(catalogs)}")
+    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
+    packages = sorted(vendor.glob(f"protoc-bin-vendored-{platform}-*"))
+    if len(packages) != 1:
+        raise RuntimeError(f"expected one vendored protoc for {platform}, found {packages}")
+    protoc = packages[0] / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
+    protoc.chmod(protoc.stat().st_mode | stat.S_IXUSR)
+    output = GENERATED / "python"
+    command = [
+        str(tool),
+        "harmos",
+        "bindings",
+        "python",
+        "--build-json",
+        str(build),
+        "--producer",
+        "schematic-sidecar",
+        "--catalog",
+        catalogs.pop(),
+        "--output",
+        str(output),
+        "--distribution",
+        "schematic-client",
+        "--module",
+        "schematic_client",
+        "--package-version",
+        "0.0.0",
+        "--description",
+        "Schematic Sidecar Client",
+        "--license",
+        "Apache-2.0",
+        "--protoc",
+        str(protoc),
+    ]
+    subprocess.run(command, cwd=ROOT, stdout=subprocess.DEVNULL, check=True)
+    for path in sorted(output.rglob("*")):
+        if path.is_file():
+            files[path.relative_to(ROOT).as_posix()] = _digest(path)
 
 
 def _stage_build(build: dict, collected: Path, package: str, files: dict) -> tuple[str, str]:

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:baa2a5dc259c76e4c0d2b5e01e1bba491ef4917b802e576a7e93a8f1f8a2d9f1
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:e2a3fb85369b17d1774f7c1d87ab13fb77fc114152f732799e0cc17c6dca363d
 # === Settings === #
 
 [settings]
@@ -54,7 +54,7 @@ depends = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {%
 [tasks."format:python"]
 description = "Format Python"
 usage = 'flag "--check"'
-run = "uv run --locked --project tools/python ruff format{% if usage.check %} --check{% endif %}"
+run = 'uv run --locked --project tools/python ruff format "tools/python"{% if usage.check %} --check{% endif %}'
 
 [tasks."format:rust"]
 description = "Format Rust"
@@ -74,7 +74,10 @@ depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = "uv run --locked --project tools/python ruff check"
+run = [
+  'uv run --locked --project tools/python ruff check "tools/python"',
+  'uv run --locked --project tools/python ty check "tools/python"',
+]
 
 [tasks."lint:rust"]
 description = "Lint Rust"
@@ -83,12 +86,8 @@ run = "uv run --locked --project tools/python python -m project_tools.test.cache
 # === Check === #
 
 [tasks.check]
-description = "Check Every Language And Conventions"
-depends = ["check:rust", "check:python"]
-
-[tasks."check:python"]
-description = "Check Python"
-run = "uv run --locked --project tools/python ty check"
+description = "Check Rust Feature Proofs And Conventions"
+depends = ["check:rust"]
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -102,7 +101,7 @@ run = [
 [tasks.build]
 description = "Build Binaries, Fixtures, Wheels And The Test Archive"
 usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}}"
+run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
 
 # === Dev === #
 
@@ -126,6 +125,10 @@ description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["test:unit --profile {{usage.profile}}"]
 
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
+
 [tasks."test:unit"]
 description = "Test Unit Layer"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -135,10 +138,6 @@ depends = ["test:unit:rust --profile {{usage.profile}}"]
 description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
-
-[tasks.coverage]
-description = "Measure Coverage Over Instrumented Lanes"
-run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust"
 
 # === Bench === #
 
@@ -175,7 +174,7 @@ run = [
 description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
-  { task = "coverage" },
+  { task = "test:coverage" },
 ]
 
 # === Release === #

@@ -142,6 +142,7 @@ depends = [
   "test:integration --profile {{usage.profile}}",
   "test:acceptance --profile {{usage.profile}}",
   "test:system --profile {{usage.profile}}",
+  "test:generated --profile {{usage.profile}}",
 ]
 
 [tasks."test:unit"]
@@ -198,6 +199,21 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
+]
+
+[tasks."test:generated"]
+description = "Test Generated Clients"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:generated:python"]
+
+[tasks."test:generated:python"]
+description = "Test Generated Python"
+depends = ["prepare:tools"]
+run = [
+  "uv run --locked --no-sync --project tools/python ty check target/fixtures/generated/python/src",
+  # The Repository Lint Policy Applies To Harmos-Emitted Modules; Protoc's `_wire` Output Is Type Checked Only.
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/fixtures/generated/python/src",
+  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/fixtures/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/fixtures/generated/python/src'])]\"",
 ]
 
 [tasks."test:coverage"]

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:34e618763acfd9e78cb447d34c442e4fd6e47700a9a162e0194d0adadfcc3590
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:93ae49a924421d7117c6556234bccf5b33082eff44527bbad350fa492d508cf7
 name: CI
 "on":
   push:
@@ -9,6 +9,8 @@ name: CI
     tags:
     - v*
   pull_request: {}
+  schedule:
+  - cron: 0 2 * * *
 permissions:
   contents: read
 concurrency:
@@ -23,7 +25,42 @@ env:
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   source:
-    name: Check / Source
+    name: Check / Config
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - name: Cache / Registry
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      with:
+        shared-key: ${{ runner.os }}-registry
+        cache-targets: false
+        cache-bin: false
+        save-if: "false"
+    - run: mise run format:toml --check
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: .cache/mise/
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
+  check_python:
+    name: Check / Python
     runs-on:
     - ubuntu-latest
     timeout-minutes: 10
@@ -50,8 +87,6 @@ jobs:
         cache-bin: false
         save-if: "false"
     - run: mise run format:python --check
-    - run: mise run format:rust --check
-    - run: mise run format:toml --check
     - run: mise run lint:python
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: steps.tools.outputs.cache-hit != 'true'
@@ -59,7 +94,7 @@ jobs:
         path: .cache/mise/
         key: ${{ steps.tools.outputs.cache-primary-key }}
     env:
-      MISE_ENABLE_TOOLS: python,rust,uv,taplo
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   check_rust:
     name: Check / Rust (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
@@ -92,6 +127,7 @@ jobs:
         save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
         cache-workspace-crates: false
         cache-on-failure: false
+    - run: mise run format:rust --check
     - run: mise run lint:rust
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
@@ -106,10 +142,13 @@ jobs:
       matrix:
         os:
         - linux
+        - windows
         include:
         - os: linux
           runner:
           - ubuntu-latest
+        - os: windows
+          runner: []
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
   build_dev:
@@ -169,10 +208,13 @@ jobs:
       matrix:
         os:
         - linux
+        - windows
         include:
         - os: linux
           runner:
           - ubuntu-latest
+        - os: windows
+          runner: []
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
   build_release:
@@ -232,14 +274,17 @@ jobs:
       matrix:
         os:
         - linux
+        - windows
         include:
         - os: linux
           runner:
           - ubuntu-latest
+        - os: windows
+          runner: []
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
-  validate_bindings:
-    name: Validate / Bindings (${{ matrix.os }})
+  validate_test_unit_rust:
+    name: Validate / Unit / Rust (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     needs:
@@ -276,9 +321,16 @@ jobs:
           matrix.os }}
         merge-multiple: true
     - run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        project_tools.test.archive --install-wheels
-    - run: mise run check:python
+        mise run test:unit:rust --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-test_unit_rust-${{ matrix.os }}
+        path: target/tests/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: steps.tools.outputs.cache-hit != 'true'
       with:
@@ -290,86 +342,25 @@ jobs:
       matrix:
         os:
         - linux
+        - windows
         include:
         - os: linux
           runner:
           - ubuntu-latest
+        - os: windows
+          runner: []
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-  package_dev:
-    name: Package / Dev (${{ matrix.os }})
+  package_rust:
+    name: Package / Rust (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     needs:
     - source
+    - check_python
     - check_rust
-    - validate_bindings
+    - validate_test_unit_rust
     - build_dev
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      id: tools
-      with:
-        path: .cache/mise/
-        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
-      with:
-        install: true
-        cache: false
-        install_dir: ${{ github.workspace }}/.cache/mise-bin
-        mise_dir: ${{ github.workspace }}/.cache/mise
-    - name: Cache / Registry
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      with:
-        shared-key: ${{ runner.os }}-registry
-        cache-targets: false
-        cache-bin: false
-        save-if: "false"
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: build-dev-${{ matrix.os }}
-        merge-multiple: true
-    - run: mise run package --profile dev
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
-      with:
-        name: package-dev-${{ matrix.os }}
-        path: |-
-          target/package/
-          target/release-assets/
-          dist/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: steps.tools.outputs.cache-hit != 'true'
-      with:
-        path: .cache/mise/
-        key: ${{ steps.tools.outputs.cache-primary-key }}
-    if: >-
-      github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release/v'))
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-        - linux
-        include:
-        - os: linux
-          runner:
-          - ubuntu-latest
-    env:
-      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-  package_release:
-    name: Package / Release (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    needs:
-    - source
-    - check_rust
-    - validate_bindings
     - build_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -395,13 +386,19 @@ jobs:
         save-if: "false"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        pattern: build-release-${{ matrix.os }}
+        pattern: >-
+          build-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{
+          matrix.os }}
         merge-multiple: true
-    - run: mise run package --profile release
+    - run: >-
+        mise run package:rust --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
-        name: package-release-${{ matrix.os }}
+        name: >-
+          package-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-rust-${{ matrix.os }}
         path: |-
           target/package/
           target/release-assets/
@@ -414,16 +411,23 @@ jobs:
       with:
         path: .cache/mise/
         key: ${{ steps.tools.outputs.cache-primary-key }}
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && (startsWith(github.ref, 'refs/tags/v') || (github.event_name ==
+      'push' && (github.ref == 'refs/heads/dev' || startsWith(github.ref,
+      'refs/heads/release/v'))))
     strategy:
       fail-fast: false
       matrix:
         os:
         - linux
+        - windows
         include:
         - os: linux
           runner:
           - ubuntu-latest
+        - os: windows
+          runner: []
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   publish_dry:
@@ -434,10 +438,11 @@ jobs:
     timeout-minutes: 30
     needs:
     - source
+    - check_python
     - check_rust
-    - validate_bindings
+    - validate_test_unit_rust
     - build_dev
-    - package_dev
+    - package_rust
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -477,7 +482,7 @@ jobs:
     - ubuntu-latest
     timeout-minutes: 30
     needs:
-    - package_release
+    - package_rust
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -523,3 +528,26 @@ jobs:
       id-token: write
     env:
       MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  validate_coverage:
+    name: Validate / Coverage
+    runs-on:
+    - self-hosted
+    - linux
+    timeout-minutes: 180
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        install_dir: ${{ github.workspace }}/.cache/mise-bin
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - run: mise run test:coverage
+    if: github.event_name == 'schedule'

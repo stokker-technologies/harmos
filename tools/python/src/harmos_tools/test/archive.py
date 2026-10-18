@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:2a054255f0417b778ec47365695532cad01da87d85c367d0b5c016b4ae252eb8
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:b21c350b246a9428f4029b738fe9e1947e6cd983fac68fd5c5d69d0859e51d78
 # ***
 #
 # Harmos
@@ -89,15 +89,26 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         raise policy.TestError("nextest archive build failed")
     require(directory, profile)
     files = []
+    messages = []
     for line in path.with_name(MESSAGES).read_text(encoding="utf-8").splitlines():
         message = json.loads(line)
         executable = message.get("executable")
+        if executable and "bench" in message.get("target", {}).get("kind", []):
+            source = Path(executable)
+            destination = directory / "target/fixtures/bench" / source.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            message["executable"] = destination.relative_to(directory).as_posix()
+            message["manifest_path"] = Path(message["manifest_path"]).relative_to(directory).as_posix()
+            files.append(message["executable"])
+        messages.append(json.dumps(message))
         if executable and message.get("target", {}).get("kind") == ["bin"] and not message.get("profile", {}).get("test"):
             source = Path(executable)
             destination = directory / "target/fixtures/bin" / source.name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
             files.append(destination.relative_to(directory).as_posix())
+    path.with_name(MESSAGES).write_text("\n".join(messages) + "\n", encoding="utf-8")
     if files:
         stamp(directory, profile, files)
     return path

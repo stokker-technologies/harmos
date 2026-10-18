@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:63d4cdeb80a22ff4bb87ffe27dfa4fa6e2f507ccbe3f718ee8c7c6f7c56e6325
+# Rendered by stkr project update from templates/python/test/run.py; sha256:ad1b020d890a510f28a9a97247493d1a0034c11c154e43719c0f043de6e295ec
 # ***
 #
 # __PRODUCT_NAME__
@@ -426,7 +426,7 @@ def _bench_rust(
         name = target.get("name", "")
         if message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable"):
             if name == category or name.startswith(category + "-"):
-                targets.append((name, message["executable"], Path(message["manifest_path"]).parent))
+                targets.append((name, str(directory / message["executable"]), (directory / message["manifest_path"]).parent))
 
     home = directory / CRITERION
     baselines = _criterion_baselines(home, identity)

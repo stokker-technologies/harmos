@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:2a7f3727fd870799fb350fb4968691d51841dc9ea9be3b9f94e391ed4966d1f7
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:58ed030390f8fe210acefe370e97230ae24395b6e23baed74f42ab70d2c63b71
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
         mise exec -- uv run --locked --project tools/python python -m
         project_tools.test.runners
       env:
-        GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":[[\"self-hosted\",\"linux\"]],\"nightly.yml\":[[\"self-hosted\",\"linux\"]]}"
+        GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":[[\"self-hosted\",\"linux\"]]}"
         RELEASE_VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ secrets.RUNNER_GROUP_READ_TOKEN || github.token }}
     - run: git switch -c "release/v${{ inputs.version }}"

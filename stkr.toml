@@ -17,6 +17,7 @@ exclude = ["crates/cargo-harmos/templates"]
 
 [languages.python]
 roots = ["tools/python"]
+generated = ["target/fixtures/generated/python/src"]
 exclude = ["tools/python/.venv", "tools/python/.ruff_cache"]
 
 

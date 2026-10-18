@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:f8cc82fa165a2fa5950c25840e03370390c3ba02351b0332f0ddc8f4e133f429
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:40d2139dde964c7a6ef0bb540b6e4096b8dd1b20908f2adc996773883ea5d5a6
 # ***
 #
 # __PRODUCT_NAME__
@@ -89,19 +89,26 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         raise policy.TestError("nextest archive build failed")
     require(directory, profile)
     files = []
+    messages = []
     for line in path.with_name(MESSAGES).read_text(encoding="utf-8").splitlines():
         message = json.loads(line)
         executable = message.get("executable")
-        if (
-            executable
-            and message.get("target", {}).get("kind") == ["bin"]
-            and not message.get("profile", {}).get("test")
-        ):
+        if executable and "bench" in message.get("target", {}).get("kind", []):
+            source = Path(executable)
+            destination = directory / "target/fixtures/bench" / source.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            message["executable"] = destination.relative_to(directory).as_posix()
+            message["manifest_path"] = Path(message["manifest_path"]).relative_to(directory).as_posix()
+            files.append(message["executable"])
+        messages.append(json.dumps(message))
+        if executable and message.get("target", {}).get("kind") == ["bin"] and not message.get("profile", {}).get("test"):
             source = Path(executable)
             destination = directory / "target/fixtures/bin" / source.name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
             files.append(destination.relative_to(directory).as_posix())
+    path.with_name(MESSAGES).write_text("\n".join(messages) + "\n", encoding="utf-8")
     if files:
         stamp(directory, profile, files)
     return path
@@ -127,28 +134,18 @@ def binaries(directory: Path, profile: str) -> list[str]:
         "--message-format",
         "json",
     ]
-    result = subprocess.run(
-        command, cwd=directory, capture_output=True, text=True, check=False
-    )
+    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
     if result.returncode:
-        raise policy.TestError(
-            f"nextest could not list test binaries: {result.stderr.strip()}"
-        )
+        raise policy.TestError(f"nextest could not list test binaries: {result.stderr.strip()}")
     return sorted(
-        {
-            entry["binary-name"]
-            for entry in json.loads(result.stdout).get("rust-binaries", {}).values()
-            if entry.get("kind") == "test"
-        }
+        {entry["binary-name"] for entry in json.loads(result.stdout).get("rust-binaries", {}).values() if entry.get("kind") == "test"}
     )
 
 
 def require(directory: Path, profile: str) -> Path:
     path = location(directory, profile)
     if not path.is_file() or path.stat().st_size == 0:
-        raise policy.TestError(
-            f"missing {profile} nextest archive; run the build task first"
-        )
+        raise policy.TestError(f"missing {profile} nextest archive; run the build task first")
     return path
 
 
@@ -171,9 +168,7 @@ def install_wheels(directory: Path) -> None:
         )
 
 
-def stamp(
-    directory: Path, profile: str, files: Sequence[str], metadata: Mapping | None = None
-) -> None:
+def stamp(directory: Path, profile: str, files: Sequence[str], metadata: Mapping | None = None) -> None:
     """Name And Hash The Built Fixtures, Without Binding Source Or Revision."""
     record = {
         "profile": profile,
@@ -234,9 +229,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
 def _inside(directory: Path, name: str) -> Path:
     path = directory / name
-    if Path(name).is_absolute() or not path.resolve().is_relative_to(
-        directory.resolve()
-    ):
+    if Path(name).is_absolute() or not path.resolve().is_relative_to(directory.resolve()):
         raise policy.TestError(f"fixture path escapes the workspace: {name}")
     return path
 

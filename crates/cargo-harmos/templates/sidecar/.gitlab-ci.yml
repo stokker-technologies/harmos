@@ -1,8 +1,9 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:6c7a9573955502dd3402e8adcf87836d788bd4e41abdbfc524ba10371d315d78
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:4156d8c3425f090871241c0ffc14b9531cdbc4cb67e3b5d5f12974eeda86d461
 stages:
 - Check
 - Build
 - Validate
+- Bench
 - Package
 - Publish
 default:
@@ -30,21 +31,19 @@ workflow:
     when: never
   - if: $CI_COMMIT_BRANCH
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-Check / Source:
+Check / Config:
   stage: Check
   tags: []
   timeout: 10 minutes
   needs: []
   script:
-  - mise run format:python --check
-  - mise run format:rust --check
   - mise run format:toml --check
-  - mise run lint:python
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: >-
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
   cache:
   - key:
@@ -63,7 +62,40 @@ Check / Source:
     - .cache/cargo/git/
     policy: pull
   variables:
-    MISE_ENABLE_TOOLS: python,rust,uv,taplo
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
+Check / Python:
+  stage: Check
+  tags: []
+  timeout: 10 minutes
+  needs: []
+  script:
+  - mise run format:python --check
+  - mise run lint:python
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
 Check / Rust (linux):
   stage: Check
   tags: []
@@ -73,6 +105,7 @@ Check / Rust (linux):
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
+  - mise run format:rust --check
   - mise run lint:rust
   - >-
     mise exec -- uv run --locked --project tools/python python -m
@@ -92,6 +125,12 @@ Check / Rust (linux):
   - if: >-
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: >-
       ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
       $CI_COMMIT_BRANCH == "main")
@@ -160,6 +199,12 @@ Build / Dev (linux):
   - if: >-
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   cache:
   - key:
       prefix: linux-tools
@@ -264,16 +309,13 @@ Build / Release (linux):
   variables:
     COMPILER_CACHE_POLICY: pull
     MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
-Validate / Bindings (linux):
+Validate / Unit / Rust (linux):
   stage: Validate
   tags: []
   timeout: 30 minutes
   needs: []
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.archive --install-wheels
-  - mise run check:python
+  - mise run test:unit:rust --profile $PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     needs:
@@ -284,6 +326,12 @@ Validate / Bindings (linux):
   - if: >-
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
+    needs:
+    - job: Build / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "schedule"
     needs:
     - job: Build / Dev (linux)
       artifacts: true
@@ -320,23 +368,38 @@ Validate / Bindings (linux):
     policy: pull
   variables:
     MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-Package / Dev (linux):
+Package / Rust (linux):
   stage: Package
   tags: []
   timeout: 30 minutes
-  needs:
-  - job: Check / Source
-    artifacts: false
-  - job: Check / Rust (linux)
-    artifacts: false
-  - job: Validate / Bindings (linux)
-    artifacts: false
-  - job: Build / Dev (linux)
-    artifacts: true
+  needs: []
   script:
-  - mise run package --profile dev
+  - mise run package:rust --profile $PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+    needs:
+    - job: Check / Config
+      artifacts: false
+    - job: Check / Rust (linux)
+      artifacts: false
+    - job: Validate / Unit / Rust (linux)
+      artifacts: false
+    - job: Build / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Check / Config
+      artifacts: false
+    - job: Check / Rust (linux)
+      artifacts: false
+    - job: Validate / Unit / Rust (linux)
+      artifacts: false
+    - job: Build / Release (linux)
+      artifacts: true
+    variables:
+      PROFILE: release
   artifacts:
     expire_in: 7 days
     paths:
@@ -361,39 +424,351 @@ Package / Dev (linux):
     policy: pull
   variables:
     MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
-Package / Release (linux):
-  stage: Package
+Check / Rust (windows):
+  stage: Check
   tags: []
   timeout: 30 minutes
-  needs:
-  - job: Check / Source
-    artifacts: false
-  - job: Check / Rust (linux)
-    artifacts: false
-  - job: Validate / Bindings (linux)
-    artifacts: false
-  - job: Build / Release (linux)
-    artifacts: true
+  needs: []
   script:
-  - mise run package --profile release
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run format:rust --check
+  - mise run lint:rust
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.cache -- cargo check --workspace --all-targets --no-default-features
   rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  artifacts:
-    expire_in: 7 days
-    paths:
-    - target/package/
-    - target/release-assets/
-    - dist/
   cache:
   - key:
-      prefix: linux-tools
+      prefix: windows-tools
       files:
       - mise.lock
     paths:
     - .cache/mise/
     policy: pull-push
   - key:
-      prefix: linux-cargo
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+Build / Dev (windows):
+  stage: Build
+  tags: []
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile dev
+  - mise run test:unit --profile dev
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/nextest/
+    - target/fixtures/
+    - target/wheels/
+    - dist/
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+Build / Release (windows):
+  stage: Build
+  tags: []
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile release
+  - mise run test:unit --profile release
+  rules:
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/nextest/
+    - target/fixtures/
+    - target/wheels/
+    - dist/
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+Validate / Unit / Rust (windows):
+  stage: Validate
+  tags: []
+  timeout: 30 minutes
+  needs: []
+  script:
+  - mise run test:unit:rust --profile $env:PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    needs:
+    - job: Build / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+    needs:
+    - job: Build / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+    needs:
+    - job: Build / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Build / Release (windows)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/
+    reports:
+      junit: target/tests/**/*.xml
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+Package / Rust (windows):
+  stage: Package
+  tags: []
+  timeout: 30 minutes
+  needs: []
+  script:
+  - mise run package:rust --profile $env:PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+    needs:
+    - job: Check / Config
+      artifacts: false
+    - job: Check / Rust (windows)
+      artifacts: false
+    - job: Validate / Unit / Rust (windows)
+      artifacts: false
+    - job: Build / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Check / Config
+      artifacts: false
+    - job: Check / Rust (windows)
+      artifacts: false
+    - job: Validate / Unit / Rust (windows)
+      artifacts: false
+    - job: Build / Release (windows)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/package/
+    - target/release-assets/
+    - dist/
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
       files:
       - Cargo.lock
     paths:
@@ -468,9 +843,9 @@ Validate / Coverage:
   timeout: 180 minutes
   needs: []
   script:
-  - mise run ci:nightly
+  - mise run test:coverage
   rules:
-  - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   cache:
   - key:
       prefix: linux-tools
@@ -488,7 +863,7 @@ Validate / Coverage:
     - .cache/cargo/git/
     policy: pull
   variables:
-    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
 Publish / Prepare:
   stage: Publish
   tags: []

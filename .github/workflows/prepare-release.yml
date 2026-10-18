@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:9ca1a385c96b5d7af4bcc5f8d7a3de3b352464302eb5d1247cef3529dbdadc11
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:8ab26257d0d768f0b32621523b946dc658c8d9680b35a06296394c04b87532a9
 name: Prepare Release
 "on":
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.test.runners
       env:
-        GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":[[\"stokker-local-linux-x64\"]],\"nightly.yml\":[[\"stokker-local-linux-x64\"]]}"
+        GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":[[\"stokker-local-linux-x64\"]]}"
         RELEASE_VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ secrets.RUNNER_GROUP_READ_TOKEN || github.token }}
     - run: git switch -c "release/v${{ inputs.version }}"
