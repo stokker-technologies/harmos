@@ -153,8 +153,8 @@ are always available. Optional facilities are disabled by default.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `bindings-proto`. |
-| `bindings-proto` | Protobuf descriptor projection used by runtime transport. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `generate-proto`. |
+| `generate-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
@@ -170,11 +170,11 @@ use `harmos-packaging`, which depends on the domain without hosting engines.
 ```toml
 [build-dependencies]
 harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>" }
-harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["bindings-proto"] }
+harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["generate-proto"] }
 ```
 
 Generators use one entry point per format: `harmos_packaging::proto::generate`
-and `python::generate`, gated by `bindings-proto` and `bindings-python`.
+and `python::generate`, gated by `generate-proto` and `generate-python`.
 TypeScript consumers generate their bindings from the exported Protobuf files
 with the official Buf generator after the Cargo build. Protobuf output goes to
 the exact selected output directory. A producer's build script selects its current
@@ -230,7 +230,7 @@ those exact directories. Schematic bundles use package `schematic.v1` and servic
 and start their runtime transport separately; dynamic plugins appear in runtime
 reflection when their operations become ready.
 
-The packaging crate's `bindings-python` feature exposes
+The packaging crate's `generate-python` feature exposes
 `harmos_packaging::python::generate`. It emits a producer-owned `src/` Python
 package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
 contracts and descriptors. Producer build scripts export contracts normally;

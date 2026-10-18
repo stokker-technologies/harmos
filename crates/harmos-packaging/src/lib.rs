@@ -18,9 +18,9 @@ pub mod config;
 mod dev;
 mod metadata;
 mod process;
-#[cfg(feature = "bindings-proto")]
+#[cfg(feature = "generate-proto")]
 pub mod proto;
-#[cfg(feature = "bindings-python")]
+#[cfg(feature = "generate-python")]
 pub mod python;
 
 /* === Re-Exports === */

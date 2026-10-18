@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:af1a8409c3bef966eb559dda72ed69c2c953cbdd302ec63e799a466d6d184792 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:a8eeec44222a321311ae766c81c17f0f92914d8cdabdf79592daf388c7d88073 -->
 
 # Harmos Authoring
 
@@ -264,7 +264,7 @@ declare operation metadata.
   values. The outer layer handles browser preflight; actual calls still pass
   through ingress authentication. Empty origins emit no CORS headers.
 - Macro expansion produces metadata only. Each producer's `build.rs` imports
-  its domain crate and `harmos-packaging` with `bindings-proto`, then calls
+  its domain crate and `harmos-packaging` with `generate-proto`, then calls
   `harmos_packaging::proto::generate(&Contracts::of::<Operations>()?, &out_dir.join("grpc/operations"))`.
   Build scripts cannot import their own not-yet-built crate.
 - Generated catalogs live under that producer's `OUT_DIR/grpc/<catalog>/`,
@@ -275,7 +275,7 @@ declare operation metadata.
   describes currently ready methods.
 - Generate consumer-owned Python bindings with
   `harmos_packaging::python::generate(python::Catalog { contracts, settings, protoc }, output)`
-  (`bindings-python`), or `cargo harmos bindings python`. TypeScript bindings come
+  (`generate-python`), or `cargo harmos bindings python`. TypeScript bindings come
   from the official Buf generator run over the exported `.proto` files.
   Select exact exported contracts and explicit distribution metadata. No generic
   Harmos Python client or internal tooling distribution is published. Ordinary

@@ -263,7 +263,7 @@ declare operation metadata.
   values. The outer layer handles browser preflight; actual calls still pass
   through ingress authentication. Empty origins emit no CORS headers.
 - Macro expansion produces metadata only. Each producer's `build.rs` imports
-  its domain crate and `harmos-packaging` with `bindings-proto`, then calls
+  its domain crate and `harmos-packaging` with `generate-proto`, then calls
   `harmos_packaging::proto::generate(&Contracts::of::<Operations>()?, &out_dir.join("grpc/operations"))`.
   Build scripts cannot import their own not-yet-built crate.
 - Generated catalogs live under that producer's `OUT_DIR/grpc/<catalog>/`,
@@ -274,7 +274,7 @@ declare operation metadata.
   describes currently ready methods.
 - Generate consumer-owned Python bindings with
   `harmos_packaging::python::generate(python::Catalog { contracts, settings, protoc }, output)`
-  (`bindings-python`), or `cargo harmos bindings python`. TypeScript bindings come
+  (`generate-python`), or `cargo harmos bindings python`. TypeScript bindings come
   from the official Buf generator run over the exported `.proto` files.
   Select exact exported contracts and explicit distribution metadata. No generic
   Harmos Python client or internal tooling distribution is published. Ordinary

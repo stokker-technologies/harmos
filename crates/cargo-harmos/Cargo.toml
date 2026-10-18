@@ -29,7 +29,7 @@ guest = ["harmos-packaging/guest", "dep:ctrlc"]
 
 [dependencies]
 # Local
-harmos-packaging = { workspace = true, features = ["bindings-python"] }
+harmos-packaging = { workspace = true, features = ["generate-python"] }
 
 # Git
 
