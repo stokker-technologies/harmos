@@ -293,9 +293,14 @@ fn dev_rebuilds(kind: &str) {
     assert_eq!(owned.len(), 2);
     assert!(owned.iter().all(|pid| *pid != 0));
     assert!(watcher.stop().success(), "cancellation is an orderly tool outcome");
+    // A Reaped Descendant's Socket Closes: Unix Reports EOF, Windows Aborts It With A Reset.
     let mut trailing = Vec::new();
-    descendant.read_to_end(&mut trailing).unwrap();
-    assert!(trailing.is_empty(), "EOF witnesses the owned descendant's exit");
+    match descendant.read_to_end(&mut trailing) {
+        Ok(_) => {}
+        Err(error) if cfg!(windows) && error.kind() == std::io::ErrorKind::ConnectionReset => {}
+        Err(error) => panic!("the owned descendant's socket did not close: {error}"),
+    }
+    assert!(trailing.is_empty(), "socket closure witnesses the owned descendant's exit");
 }
 
 fn succeeded(output: &Output) {
