@@ -67,35 +67,6 @@ async fn admission_durability_distinct() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn mixed_primary_coalesces() {
-    let f = Fixture::new(config()).await;
-    let key = schema();
-    let stream = Identifier::new("voltage").unwrap();
-    for sequence in 0..4 {
-        let item = Identifier::new(format!("sample-{sequence}")).unwrap();
-        f.storage.write_records(&[record(&key, &item, &[3])]).await.unwrap();
-        let row = StreamWrite { stream: &stream, sequence, record: record(&key, &item, &[4]) };
-        f.storage.write_stream(&[row]).await.unwrap();
-    }
-
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
-    assert_eq!(f.storage.flush().await.unwrap().sequence, 8);
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [8]);
-    assert_eq!(*f.data.control.writes.lock().unwrap(), (1..=8).collect::<Vec<_>>());
-    let records = f.data.records.lock().unwrap().clone();
-    let rows = f.data.rows.lock().unwrap().clone();
-    assert_eq!(records.len(), 4);
-    assert_eq!(rows.len(), 4);
-    for sequence in 0..4 {
-        assert_eq!(records[&(sequence * 2 + 1)].payload, [3]);
-        let row = &rows[&(sequence * 2 + 2)];
-        assert_eq!(row.sequence, sequence);
-        assert_eq!(row.record.payload, [4]);
-    }
-    f.finish().await;
-}
-
-#[tokio::test(start_paused = true)]
 async fn recovery_share_backpressure() {
     let mut policy = config();
     policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();

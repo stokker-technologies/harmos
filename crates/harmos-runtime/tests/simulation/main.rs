@@ -622,11 +622,13 @@ fn attached_fold_refused() {
 
 #[test]
 fn seed_replays_identically() {
-    let first = scripted(42);
-    let second = scripted(42);
+    for seed in [0, 1, 7, 42, 99] {
+        let first = scripted(seed);
+        let second = scripted(seed);
 
-    first.assert_same(&second);
-    assert_eq!(first.trace(), second.trace());
+        first.assert_same(&second);
+        assert_eq!(first.trace(), second.trace());
+    }
 }
 
 #[test]
