@@ -60,7 +60,7 @@ def main(arguments: list[str] | None = None) -> None:
     if not set(selectors["executables"]).issubset(selectors["artifacts"].values()):
         sys.exit("executable fixture selectors must name verified artifacts")
     if os.name != "nt":
-        for relative in selectors["executables"]:
+        for relative in [*selectors["executables"], *selectors["input_executables"]]:
             path = FIXTURES / relative
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
 

@@ -17,6 +17,7 @@ import importlib.resources
 import json
 import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -91,6 +92,11 @@ def main() -> None:
     for name in exported["exports"]:
         source = Path(name)
         _copy(source, FIXTURES / "inputs" / source.relative_to(TARGET / "dependencies"), [exported], files)
+    # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
+    inputs = FIXTURES / "inputs"
+    executables = sorted(
+        path.relative_to(FIXTURES).as_posix() for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR
+    )
     if archive.tree(ROOT) != before:
         raise RuntimeError("sources changed while fixtures were building; rebuild the complete candidate")
     archive.stamp(
@@ -107,6 +113,7 @@ def main() -> None:
             "wheels": "inputs/wheels",
             "requirements": "inputs/requirements.txt",
             "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
+            "input_executables": executables,
         },
     )
 
