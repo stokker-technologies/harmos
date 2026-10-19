@@ -77,6 +77,19 @@ def build(profile: str, scratch: Path) -> None:
     files = dict(catalog["files"])
     artifacts = {name: os.path.relpath(export / path, fixtures) for name, path in catalog["artifacts"].items()}
     builds = {name: os.path.relpath(export / path, fixtures) for name, path in catalog["builds"].items()}
+
+    # Integration Inspects Immutable Bytes Without Downloading Or Running Product Hosts.
+    inspections = {}
+    for name in ("schematic-sidecar", "schematic-guest"):
+        source = export / catalog["artifacts"][name]
+        destination = fixtures / "inspection" / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        relative = destination.relative_to(ROOT).as_posix()
+        files[relative] = _digest(destination)
+        _verify(files[relative], catalog["files"][source.relative_to(ROOT).as_posix()], f"inspection bytes differ from Product: {name}")
+        inspections[name] = destination.relative_to(fixtures).as_posix()
+
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]
     capture = _compile(sandbox, manifest.parent, profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
@@ -96,6 +109,7 @@ def build(profile: str, scratch: Path) -> None:
         sorted(files),
         {
             "artifacts": artifacts,
+            "inspections": inspections,
             "libraries": libraries,
             "builds": builds,
             "build_roots": {**catalog["build_roots"], sandbox: str(ROOT)},

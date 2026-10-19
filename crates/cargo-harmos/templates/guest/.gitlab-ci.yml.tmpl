@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:873e736a3aa588cbb269b2884d318514563c2adb894c6fe0392ca84e261fb380
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:40850485aa7bcedf983d6b50179352e3458b57f53202349b28630df9604b9ed1
 stages:
 - Check
 - Build
@@ -189,11 +189,12 @@ Build / Product / Dev (linux):
     project_tools.test.prune start
   - mise run build --profile dev
   - |-
-    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
     native="${native##*/}"
     mkdir -p target/ci
+    candidates=("target/build/dev/${native}/" "target/build/dev/any/" "target/generated/")
     outputs=()
-    for path in "target/build/dev/${native}/" "target/build/dev/any/" "target/generated/"; do
+    for path in "${candidates[@]}"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -275,15 +276,28 @@ Build / Tests / Dev (linux):
   - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
   - mise run build:tests --profile dev
   - |-
-    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
     native="${native##*/}"
     mkdir -p target/ci
+    candidates=("target/build/dev/${native}/tests")
     outputs=()
-    for path in "target/build/dev/${native}/tests" "target/build/dev/${native}/fixtures"; do
+    for path in "${candidates[@]}"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
     tar --zstd -cf "target/ci/build-tests-dev-linux.tar.zst"  -- "${outputs[@]}"
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
+    mkdir -p "target/build/dev/${native}/fixtures"
+    mkdir -p target/ci
+    candidates=("target/build/dev/${native}/fixtures")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-fixtures-dev-linux.tar.zst"  -- "${outputs[@]}"
   rules:
   - if: >-
       ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
@@ -338,6 +352,7 @@ Build / Tests / Dev (linux):
     expire_in: 7 days
     paths:
     - target/ci/build-tests-dev-linux.tar.zst
+    - target/ci/build-fixtures-dev-linux.tar.zst
   after_script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
@@ -358,11 +373,12 @@ Build / Product / Release (linux):
     project_tools.test.prune start
   - mise run build --profile release
   - |-
-    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
     native="${native##*/}"
     mkdir -p target/ci
+    candidates=("target/build/release/${native}/" "target/build/release/any/" "target/generated/")
     outputs=()
-    for path in "target/build/release/${native}/" "target/build/release/any/" "target/generated/"; do
+    for path in "${candidates[@]}"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -430,15 +446,28 @@ Build / Tests / Release (linux):
   - tar --zstd -xf "target/ci/build-product-release-linux.tar.zst"
   - mise run build:tests --profile release
   - |-
-    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
     native="${native##*/}"
     mkdir -p target/ci
+    candidates=("target/build/release/${native}/tests")
     outputs=()
-    for path in "target/build/release/${native}/tests" "target/build/release/${native}/fixtures"; do
+    for path in "${candidates[@]}"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
     tar --zstd -cf "target/ci/build-tests-release-linux.tar.zst"  -- "${outputs[@]}"
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
+    mkdir -p "target/build/release/${native}/fixtures"
+    mkdir -p target/ci
+    candidates=("target/build/release/${native}/fixtures")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-fixtures-release-linux.tar.zst"  -- "${outputs[@]}"
   rules:
   - if: >-
       ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
@@ -479,6 +508,7 @@ Build / Tests / Release (linux):
     expire_in: 7 days
     paths:
     - target/ci/build-tests-release-linux.tar.zst
+    - target/ci/build-fixtures-release-linux.tar.zst
   after_script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
@@ -495,6 +525,7 @@ Validate / Unit / Rust (linux):
   needs: []
   script:
   - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
+  - tar --zstd -xf "target/ci/build-fixtures-$PROFILE-linux.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
   - mise run test:unit:rust --profile $PROFILE
   rules:
@@ -723,10 +754,10 @@ Build / Product / Dev (windows):
     project_tools.test.prune start
   - mise run build --profile dev
   - |-
-    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @("target/build/dev/${native}/", "target/build/dev/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    [string[]]$outputs = @("target/build/dev/${native}/", "target/build/dev/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -812,12 +843,21 @@ Build / Tests / Dev (windows):
   - tar --zstd -xf "target/ci/build-product-dev-windows.tar.zst"
   - mise run build:tests --profile dev
   - |-
-    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @("target/build/dev/${native}/tests", "target/build/dev/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    [string[]]$outputs = @("target/build/dev/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force "target/build/dev/${native}/fixtures" | Out-Null
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/dev/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
   - if: >-
@@ -873,6 +913,7 @@ Build / Tests / Dev (windows):
     expire_in: 7 days
     paths:
     - target/ci/build-tests-dev-windows.tar.zst
+    - target/ci/build-fixtures-dev-windows.tar.zst
   inherit:
     default: false
   before_script:
@@ -898,10 +939,10 @@ Build / Product / Release (windows):
     project_tools.test.prune start
   - mise run build --profile release
   - |-
-    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @("target/build/release/${native}/", "target/build/release/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    [string[]]$outputs = @("target/build/release/${native}/", "target/build/release/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -973,12 +1014,21 @@ Build / Tests / Release (windows):
   - tar --zstd -xf "target/ci/build-product-release-windows.tar.zst"
   - mise run build:tests --profile release
   - |-
-    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @("target/build/release/${native}/tests", "target/build/release/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    [string[]]$outputs = @("target/build/release/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force "target/build/release/${native}/fixtures" | Out-Null
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/release/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
   - if: >-
@@ -1020,6 +1070,7 @@ Build / Tests / Release (windows):
     expire_in: 7 days
     paths:
     - target/ci/build-tests-release-windows.tar.zst
+    - target/ci/build-fixtures-release-windows.tar.zst
   inherit:
     default: false
   before_script:
@@ -1041,6 +1092,7 @@ Validate / Unit / Rust (windows):
   needs: []
   script:
   - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
+  - tar --zstd -xf "target/ci/build-fixtures-$env:PROFILE-windows.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-$env:PROFILE-windows.tar.zst"
   - mise run test:unit:rust --profile $env:PROFILE
   rules:
@@ -1262,6 +1314,7 @@ Validate / Coverage:
   script:
   - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-dev-linux.tar.zst"
+  - tar --zstd -xf "target/ci/build-fixtures-dev-linux.tar.zst"
   - mise run test:coverage --profile dev
   artifacts:
     when: always

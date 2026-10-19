@@ -67,11 +67,36 @@ step_timeout_seconds = 600
 [conventions.rust]
 exclude = ["schematic-domain"]
 
+[[conventions.testing.lanes]]
+category = "acceptance"
+language = "rust"
+hosts = [
+  "target/build/{profile}/{target}/bin/cargo-harmos{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-sidecar{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm",
+]
+
+[[conventions.testing.lanes]]
+category = "system"
+language = "rust"
+hosts = [
+  "target/build/{profile}/{target}/bin/schematic-cli{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-sidecar{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm",
+]
+
 [conventions.testing.limits]
 unit = 512
 integration = 256
 acceptance = 128
 system = 64
+
+[[conventions.testing.overrides]]
+category = "acceptance"
+language = "rust"
+select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"
+timeout_seconds = 10
+reason = "Three times the prior native compiler story measurement of 0.045s with the 10s floor"
 
 [[conventions.testing.overrides]]
 category = "system"

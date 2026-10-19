@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/run.py; sha256:98a62249139f6716ee8cdc0a96c8b14a2a8d7d0a9f3ef88b6667f3750e4c1436
+# Rendered by stkr project update from templates/python/build/run.py; sha256:3aa214ffe27709147bd82ed95a8cd91e33ce8681361f9154a00675f67704972a
 # ***
 #
 # Harmos
@@ -17,7 +17,9 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 # Third Party Imports
 # Local Imports
@@ -44,28 +46,10 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
     command = ["cargo", "build", "--locked", "--workspace", "--profile", profile, "--message-format=json-render-diagnostics"]
     with messages.open("w", encoding="utf-8") as output:
         subprocess.run(command, cwd=directory, stdout=output, check=True)
-    compiler = subprocess.run(["rustc", "-vV"], cwd=directory, capture_output=True, text=True, check=True).stdout
-    host = next(line.removeprefix("host: ") for line in compiler.splitlines() if line.startswith("host: "))
-    triple = os.environ.get("CARGO_BUILD_TARGET", host)
-
     with temporary.directory() as staging:
-        compiled_targets = set()
         for name in ("bin", "lib"):
             (staging / name).mkdir()
-        for line in messages.read_text(encoding="utf-8").splitlines():
-            event = json.loads(line)
-            if event.get("reason") != "compiler-artifact" or event.get("profile", {}).get("test"):
-                continue
-            manifest = Path(event["manifest_path"])
-            if not manifest.resolve().is_relative_to(directory.resolve()) or "target" in manifest.relative_to(directory).parts:
-                continue
-            for filename in event.get("filenames", []):
-                parent = Path(filename).parent
-                if parent.name == "deps":
-                    parent = parent.parent
-                candidate = parent.parent.name
-                if "-linux-" in candidate or "-windows-" in candidate or candidate.endswith("-apple-darwin"):
-                    compiled_targets.add(candidate)
+        for event in _artifacts(directory, messages):
             executable = event.get("executable")
             if executable and event.get("target", {}).get("kind") == ["bin"]:
                 source = Path(executable)
@@ -78,12 +62,31 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
                     shutil.copy2(source, staging / "lib" / source.name)
         for name in ("bin", "lib"):
             paths.replace(directory, staging / name, destination / name, origin=staging)
-        if len(compiled_targets) > 1:
-            raise ValueError("Product Build exported more than one Rust target")
-        actual = next(iter(compiled_targets), triple)
-        if "CARGO_BUILD_TARGET" in os.environ and actual != triple:
-            raise ValueError("Product Build target differs from CARGO_BUILD_TARGET")
-        (messages.parent / "target.txt").write_text(actual + "\n")
+    record_target(directory, messages, profile, native)
+
+
+def record_target(directory: Path, messages: Path, profile: str, native: str | None = None) -> None:
+    """Record The Actual Rust Target For Generic And Authored Product Builders."""
+    compiler = subprocess.run(["rustc", "-vV"], cwd=directory, capture_output=True, text=True, check=True).stdout
+    host = next(line.removeprefix("host: ") for line in compiler.splitlines() if line.startswith("host: "))
+    triple = os.environ.get("CARGO_BUILD_TARGET", host)
+    compiled_targets = set()
+    for event in _artifacts(directory, messages):
+        for filename in event.get("filenames", []):
+            parent = Path(filename).parent
+            if parent.name == "deps":
+                parent = parent.parent
+            candidate = parent.parent.name
+            if "-linux-" in candidate or "-windows-" in candidate or candidate.endswith("-apple-darwin"):
+                compiled_targets.add(candidate)
+    if len(compiled_targets) > 1:
+        raise ValueError("Product Build exported more than one Rust target")
+    actual = next(iter(compiled_targets), triple)
+    if "CARGO_BUILD_TARGET" in os.environ and actual != triple:
+        raise ValueError("Product Build target differs from CARGO_BUILD_TARGET")
+    destination = paths.output(directory, "build", profile, native) / "product/target.txt"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(actual + "\n")
 
 
 def main() -> None:
@@ -113,6 +116,17 @@ def main() -> None:
 
 
 # === Private Functions === #
+
+
+def _artifacts(directory: Path, messages: Path) -> Iterator[dict[str, Any]]:
+    for line in messages.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        if event.get("reason") != "compiler-artifact" or event.get("profile", {}).get("test"):
+            continue
+        manifest = Path(event["manifest_path"])
+        if manifest.resolve().is_relative_to(directory.resolve()) and "target" not in manifest.relative_to(directory).parts:
+            yield event
+
 
 # === Entry Point === #
 

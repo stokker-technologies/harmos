@@ -43,9 +43,6 @@ pub mod runtime;
 #[cfg(feature = "simulation")]
 pub mod simulation;
 
-#[cfg(feature = "signal")]
-pub mod signal;
-
 pub mod streams;
 
 pub mod services;
@@ -96,6 +93,10 @@ pub mod __private {
 pub use application::Application;
 pub use error::{BackendFailure, Error};
 pub use harmos_domain::{DefinitionId, Identified};
+
+#[cfg(feature = "signal")]
+pub use harmos_storage::signal;
+
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 

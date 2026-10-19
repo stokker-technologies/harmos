@@ -50,6 +50,13 @@ pub fn component(name: &str) -> Vec<u8> {
     std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"))
 }
 
+// Tests Own These Inert Copies; Inspecting Them Never Loads Or Executes A Plugin.
+pub fn inspection(name: &str) -> Vec<u8> {
+    let path = stamp()["metadata"]["inspections"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name} inspection"));
+    let path = directory().join(path);
+    std::fs::read(path).unwrap_or_else(|error| panic!("inspection fixture {name} is unreadable: {error}"))
+}
+
 pub fn input(name: &str) -> PathBuf {
     directory().join(stamp()["metadata"][name].as_str().unwrap_or_else(|| panic!("fixture stamp has no {name} input")))
 }

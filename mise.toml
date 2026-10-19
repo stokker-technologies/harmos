@@ -166,7 +166,6 @@ description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -182,7 +181,7 @@ description = "Test Integration Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category integration --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -198,7 +197,7 @@ description = "Test Acceptance Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -220,7 +219,7 @@ description = "Test System Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }

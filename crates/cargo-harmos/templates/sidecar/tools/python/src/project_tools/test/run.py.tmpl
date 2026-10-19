@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:80b6c36b567b5fcf8626117e820fbc9c22a5a2cd1b9a883bc5007064e39a8d22
+# Rendered by stkr project update from templates/python/test/run.py; sha256:9b3a48455a0553b4b03fd6b1a3b5a204766408a04a6f4f3e3c984590ffb8a438
 # ***
 #
 # __PRODUCT_NAME__
@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-
 """Run Archived Test Lanes And Keep Native JUnit Reports Under Target."""
 
 # === Imports === #
@@ -62,7 +61,7 @@ def test(
     """Run One Lane And Retain Its Native Report; Nonzero When Any Story Failed."""
     rules = policy.load(directory)
     key = f"{category}-{language}"
-    _preflight(directory, rules, category, profile)
+    _preflight(directory, rules, category, language, profile)
     if language == "python":
         archive.install_wheels(directory, profile)
     recorded = report.load(report.location(directory, profile, key) / "durations.json")
@@ -121,7 +120,7 @@ def coverage(
     """Instrumented lane over one layer, or every layer when no category is given."""
     rules = policy.load(directory)
     key = f"coverage-{category}-{language}" if category else f"coverage-{language}"
-    _preflight(directory, rules, category, profile)
+    _preflight(directory, rules, category, language, profile)
     with _scratch(directory, key, profile) as scratch:
         categories = [category] if category else list(policy.CATEGORIES)
         deadline = max(rules.deadline(name, coverage=True) for name in categories)
@@ -189,7 +188,7 @@ def bench(
     """Measure one benchmark layer and compare it with the `dev` baseline."""
     rules = policy.load(directory)
     measure = category in ("integration", "system")
-    _preflight(directory, rules, category, "bench")
+    _preflight(directory, rules, category, language, "bench")
     identity = {
         "platform": [
             sys.platform,
@@ -309,11 +308,21 @@ def _preflight(
     directory: Path,
     rules: policy.Policy,
     category: str | None,
+    language: str,
     profile: str,
 ) -> None:
     """Refuse a stale fixture stamp or absent host artifacts before any test runs."""
-    hosts = rules.hosts if category in (None, "acceptance", "system") else ()
-    archive.fixtures(directory, profile, hosts)
+    hosts = rules.hosts_for(category, language)
+    if profile == "bench":
+        hosts = rules.hosts if category in (None, "system") else ()
+    if language == "rust" or hosts:
+        output = paths.output(directory, "build", profile).relative_to(directory)
+        roots = [(output / part).as_posix() for part in ("tests", "fixtures")] if language == "rust" else []
+        archive.fixtures(directory, profile, hosts, roots=roots)
+    if profile != "bench" and "python" in rules.products_for(category, language):
+        wheels = [paths.output(directory, "build", profile, target) / "python" for target in (paths.target(), "any")]
+        if not any(list(root.glob("*.whl")) for root in wheels):
+            raise policy.TestError("missing declared Python Product wheels")
 
 
 @contextmanager

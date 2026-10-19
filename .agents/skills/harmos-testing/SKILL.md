@@ -62,7 +62,17 @@ bytes, builds test harnesses and compile-contract inputs, exports
 `tools/python/src/harmos_tools/build/fixtures.py` records the Cargo messages,
 metadata and byte stamps `cargo harmos` collection requires. The Tests producer
 writes `fixtures/stamp.json`: its `metadata` selects artifacts, libraries and
-offline inputs, while `files` names every stamped input with its hash.
+offline inputs, while `files` names every stamped input with its hash. Inert
+macro inventory inspection uses hash-verified copies of the two Product plugin
+artifacts under `fixtures/inspection/`; integration does not execute them or
+download Product hosts.
+
+Unit consumes the shared Rust archive. Integration consumes the archive and its
+Tests-owned fixtures. Acceptance declares the Cargo subcommand and both plugin
+Product files; system declares the Schematic CLI and both plugins. The native
+runner verifies matching selected hashes and archive inputs. Project preflight
+prepares only the selected lane's metadata and executable modes; compiler
+libraries and offline inputs belong to acceptance preparation.
 
 Use `harmos-runtime/tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
 Resolve package-owned executables at run time through `NEXTEST_BIN_EXE_<name>`,

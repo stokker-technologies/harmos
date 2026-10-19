@@ -14,6 +14,8 @@
 #[path = "../support/fixtures.rs"]
 mod fixtures;
 mod schematic;
+#[cfg(feature = "grpc")]
+mod storage;
 
 /* === Re-Exports === */
 

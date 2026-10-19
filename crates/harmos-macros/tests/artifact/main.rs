@@ -130,9 +130,9 @@ fn artifacts_embed_metadata() {
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();
 
-    // Read The Built Artifacts
-    let sidecar = fixtures::component("schematic-sidecar");
-    let guest = fixtures::component("schematic-guest");
+    // Read The Test-Owned Copies Of The Built Artifacts
+    let sidecar = fixtures::inspection("schematic-sidecar");
+    let guest = fixtures::inspection("schematic-guest");
 
     // Compare Both Declarations
     let mut declarations = Vec::new();

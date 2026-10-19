@@ -730,6 +730,10 @@ refuse a missing or stale fixture. Product and Tests outputs use matching
 `target/build/<profile>/<target>/` directories. Separate `test:unit`,
 `test:integration`, `test:acceptance` and `test:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
+Unit and integration lanes consume Tests outputs; metadata inspection uses
+stamped inert artifact copies. Acceptance and system lanes additionally select
+their declared Product hosts, and only acceptance prepares compiler libraries
+and offline authoring inputs.
 `mise run test:coverage` instruments the full selection separately. `mise run ci`
 runs the same graph as CI on the current tree; a failing lane fails the run.
 
