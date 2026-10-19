@@ -37,6 +37,11 @@ use harmos_storage::schema::graph::{Field, Kind};
 
 /* === Enums === */
 
+enum FlushGate {
+    Write,
+    Receipt,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -95,26 +100,51 @@ async fn append_kinds_coalesce() {
     f.finish().await;
 }
 
-#[tokio::test]
-async fn batch_excludes_later() {
-    let f = Fixture::new(config()).await;
-    f.data.control.block_write.store(true, Ordering::SeqCst);
-    write(&f.storage, "first").await;
-    write(&f.storage, "second").await;
-    write(&f.storage, "third").await;
-    let storage = f.storage.clone();
-    let flush = storage.flush();
-    tokio::pin!(flush);
-    tokio::select! { biased; _ = &mut flush => panic!("write is blocked"), _ = f.data.control.write_entered.notified() => {} }
-    write(&f.storage, "fourth").await;
-    write(&f.storage, "fifth").await;
-    f.data.control.block_write.store(false, Ordering::SeqCst);
-    f.data.control.write_release.notify_one();
-    assert_eq!(flush.await.unwrap().sequence, 3);
-    f.storage.flush().await.unwrap();
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![3, 2]);
-    assert_eq!(*f.data.control.flushes.lock().unwrap(), vec![3, 5]);
-    f.finish().await;
+#[tokio::test(start_paused = true)]
+async fn flush_excludes_later() {
+    let cases = [
+        (FlushGate::Write, &["first", "second", "third"][..], &["fourth", "fifth"][..], &[1, 2, 3][..], &[3, 2][..], &[3, 5][..]),
+        (FlushGate::Receipt, &["one", "two"][..], &["later"][..], &[1, 2][..], &[2, 1][..], &[2, 3][..]),
+    ];
+    for (gate, before, after, prefix, batches, receipts) in cases {
+        let f = Fixture::new(config()).await;
+        let (blocked, entered, release) = match gate {
+            FlushGate::Write => (&f.data.control.block_write, &f.data.control.write_entered, &f.data.control.write_release),
+            FlushGate::Receipt => (&f.data.control.block_flush, &f.data.control.flush_entered, &f.data.control.flush_release),
+        };
+        blocked.store(true, Ordering::SeqCst);
+        tokio::task::yield_now().await;
+        for item in before {
+            write(&f.storage, item).await;
+        }
+        let storage = f.storage.clone();
+        let flush = storage.flush();
+        tokio::pin!(flush);
+        tokio::select! {
+            biased;
+            _ = &mut flush => panic!("the backend stage is blocked"),
+            _ = entered.notified() => {}
+        }
+        for item in after {
+            write(&f.storage, item).await;
+        }
+        blocked.store(false, Ordering::SeqCst);
+        release.notify_one();
+        assert_eq!(flush.await.unwrap().sequence, receipts[0]);
+
+        // Completing A Barrier Cannot Start A Later Write.
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), prefix);
+        assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), &batches[..1]);
+        assert_eq!(f.storage.status().pending_batches, after.len());
+
+        f.storage.flush().await.unwrap();
+        assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), batches);
+        assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), receipts);
+        f.finish().await;
+    }
 }
 
 #[tokio::test]
@@ -254,33 +284,6 @@ async fn queued_writes_wait() {
     f.finish().await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn barrier_never_write() {
-    let f = Fixture::new(config()).await;
-    tokio::task::yield_now().await;
-    write(&f.storage, "one").await;
-    write(&f.storage, "two").await;
-    f.data.control.block_flush.store(true, Ordering::SeqCst);
-    let storage = f.storage.clone();
-    let flush = storage.flush();
-    tokio::pin!(flush);
-    tokio::select! {
-        _ = &mut flush => panic!("the flush is gated"),
-        _ = f.data.control.flush_entered.notified() => {}
-    }
-    write(&f.storage, "later").await;
-    f.data.control.block_flush.store(false, Ordering::SeqCst);
-    f.data.control.flush_release.notify_one();
-    assert_eq!(flush.await.unwrap().sequence, 2);
-    for _ in 0..4 {
-        tokio::task::yield_now().await;
-    }
-    assert_eq!(*f.data.control.writes.lock().unwrap(), [1, 2]);
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [2]);
-    assert_eq!(f.storage.status().pending_batches, 1);
-    f.finish().await;
-}
-
 #[tokio::test]
 async fn progress_preserves_cursor() {
     let f = Fixture::new(config()).await;
@@ -304,15 +307,18 @@ async fn progress_preserves_cursor() {
 }
 
 #[tokio::test]
-async fn atomic_batch_settles() {
+async fn atomic_batch_retries() {
     let f = Fixture::new(config()).await;
     let key = schema();
     let item = Identifier::new("group").unwrap();
     let payload = vec![7; 100];
     let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
     f.data.control.block_write.store(true, Ordering::SeqCst);
+    f.data.control.failures.store(1, Ordering::SeqCst);
     let accepted = f.storage.write_records(&records).await.unwrap();
     let admitted = f.storage.status().pending_bytes;
+
+    // A Valid Atomic Batch Retains Its Entire Reservation While The Backend Is Blocked.
     let flushing = {
         let storage = f.storage.clone();
         tokio::spawn(async move { storage.flush().await })
@@ -322,8 +328,16 @@ async fn atomic_batch_settles() {
     assert_eq!(f.storage.status().pending_bytes, admitted);
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
-    assert_eq!(flushing.await.unwrap().unwrap(), accepted);
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [8]);
+    assert!(flushing.await.unwrap().is_err());
+
+    // A Failed Attempt Leaves The Whole Batch Available At Its Original Cursor.
+    assert_eq!(f.storage.cursor_saved().sequence, 0);
+    assert_eq!(f.storage.status().pending_batches, 1);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    assert_eq!(f.storage.flush_until(&accepted).await.unwrap(), accepted);
+    assert_eq!(f.data.records.lock().unwrap().len(), 8);
+    assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), &[8, 8]);
+    assert!(f.data.control.write_sizes.lock().unwrap().iter().all(|size| *size == 8));
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
@@ -341,25 +355,6 @@ async fn item_refuses_whole() {
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);
     assert!(f.data.control.writes.lock().unwrap().is_empty());
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn whole_batch_retries() {
-    let f = Fixture::new(config()).await;
-    let key = schema();
-    let item = Identifier::new("group").unwrap();
-    let payload = vec![7; 100];
-    let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
-    let accepted = f.storage.write_records(&records).await.unwrap();
-    f.data.control.failures.store(1, Ordering::SeqCst);
-    assert!(f.storage.flush_until(&accepted).await.is_err());
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
-    assert_eq!(f.storage.status().pending_batches, 1);
-    assert_eq!(f.storage.flush_until(&accepted).await.unwrap(), accepted);
-    assert_eq!(f.data.records.lock().unwrap().len(), 8);
-    assert!(f.data.control.write_sizes.lock().unwrap().iter().all(|size| *size == 8));
-    assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
 
