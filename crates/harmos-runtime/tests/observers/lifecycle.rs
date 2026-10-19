@@ -52,6 +52,11 @@ struct Watch<const MODE: u8, const INTERVAL_MS: u64 = 5>(Arc<Resources>, bool);
 
 /* === Enums === */
 
+enum Fault {
+    Panic,
+    Refusal,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -157,6 +162,8 @@ async fn count(resources: &Resources, value: fn(&Resources) -> &AtomicUsize, min
         .expect("resources outlive the observer");
 }
 
+/* === Tests === */
+
 #[tokio::test]
 async fn readiness_follows_lifecycle() {
     let resources = Resources::new();
@@ -232,23 +239,99 @@ async fn callback_panic_cleanup() {
 }
 
 #[tokio::test]
-async fn cleanup_panic_recovery() {
-    stop_recovery::<2>(|failure| matches!(failure, ObserverError::StopPanicked)).await;
+async fn stop_retries_faults() {
+    let cases = [(activity::<Watch<2>> as fn(&Arc<Resources>) -> Activity, Fault::Panic), (activity::<Watch<7>>, Fault::Refusal)];
+    for (activate, fault) in cases {
+        let resources = Resources::new();
+        resources.initialization.add_permits(1);
+        let mut task = Observing::start(activate(&resources));
+        task.ready().await;
+        assert!(task.interrupt().await.is_none());
+        let activity = task.activity();
+        let failure = activity.stop().await.unwrap_err();
+        match fault {
+            Fault::Panic => assert!(matches!(&failure, ObserverError::StopPanicked), "{failure}"),
+            Fault::Refusal => assert!(matches!(&failure, ObserverError::StopFailed(_)), "{failure}"),
+        }
+        // The activity retains the observer for a later attempt.
+        assert!(activity.is_initialized());
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
+        assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
+        resources.cleanup.add_permits(1);
+        activity.stop().await.unwrap();
+        activity.stop().await.unwrap();
+        activity.cleanup().await.unwrap();
+        activity.cleanup().await.unwrap();
+        assert!(!activity.is_initialized());
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 2);
+        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
+    }
 }
 
 #[tokio::test]
-async fn cleanup_refusal_recovery() {
-    stop_recovery::<7>(|failure| matches!(failure, ObserverError::StopFailed(_))).await;
+async fn finalization_retries_faults() {
+    let cases = [(activity::<Watch<5>> as fn(&Arc<Resources>) -> Activity, Fault::Refusal), (activity::<Watch<6>>, Fault::Panic)];
+    for (activate, fault) in cases {
+        let resources = Resources::new();
+        resources.initialization.add_permits(1);
+        resources.cleanup.add_permits(1);
+        let mut task = Observing::start(activate(&resources));
+        task.ready().await;
+        assert!(task.interrupt().await.is_none());
+        let activity = task.activity();
+        activity.stop().await.unwrap();
+        let failure = activity.cleanup().await.unwrap_err();
+        match fault {
+            Fault::Panic => assert!(matches!(&failure, ObserverError::CleanupPanicked), "{failure}"),
+            Fault::Refusal => assert!(matches!(&failure, ObserverError::CleanupFailed(_)), "{failure}"),
+        }
+        assert!(activity.is_initialized());
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+        {
+            let mut retrying = pin!(activity.cleanup());
+            pending::parked(retrying.as_mut()).await;
+            assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
+            pending::parked(retrying.as_mut()).await;
+            assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
+            resources.finalization.add_permits(1);
+            retrying.await.unwrap();
+        }
+        activity.cleanup().await.unwrap();
+        activity.stop().await.unwrap();
+        assert!(!activity.is_initialized());
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[tokio::test]
-async fn finalization_refusal_retries() {
-    finalization_recovery::<5>(|failure| matches!(failure, ObserverError::CleanupFailed(_))).await;
-}
-
-#[tokio::test]
-async fn finalization_panic_retries() {
-    finalization_recovery::<6>(|failure| matches!(failure, ObserverError::CleanupPanicked)).await;
+async fn initialization_retries_faults() {
+    let cases = [activity::<Watch<3>> as fn(&Arc<Resources>) -> Activity, activity::<Watch<4>>];
+    for activate in cases {
+        let resources = Resources::new();
+        let mut task = Observing::start(activate(&resources));
+        // A failed initialization drops its partial owner and retries on the next
+        // cadence without stop or cleanup.
+        count(&resources, |held| &held.attempts, 2).await;
+        assert!(!task.is_ready());
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
+        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
+        resources.initialization.add_permits(1);
+        task.ready().await;
+        resources.cleanup.add_permits(1);
+        task.shutdown().await.unwrap();
+        assert!(!task.activity().is_initialized());
+        assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -321,16 +404,6 @@ async fn refused_retry_cancels() {
 }
 
 #[tokio::test]
-async fn initialization_refusal_retries() {
-    initialization_retry::<3>().await;
-}
-
-#[tokio::test]
-async fn initialization_panic_retries() {
-    initialization_retry::<4>().await;
-}
-
-#[tokio::test]
 async fn cancellation_wakes_cadence() {
     let resources = Resources::new();
     resources.initialization.add_permits(1);
@@ -347,83 +420,3 @@ async fn cancellation_wakes_cadence() {
     assert!(!task.activity().is_initialized());
     assert!(!task.is_observing());
 }
-
-async fn stop_recovery<const MODE: u8>(expected: fn(&ObserverError) -> bool) {
-    let resources = Resources::new();
-    resources.initialization.add_permits(1);
-    let mut task = Observing::start(activity::<Watch<MODE>>(&resources));
-    task.ready().await;
-    assert!(task.interrupt().await.is_none());
-    let activity = task.activity();
-    let failure = activity.stop().await.unwrap_err();
-    assert!(expected(&failure), "{failure}");
-    // The activity retains the observer for a later attempt.
-    assert!(activity.is_initialized());
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
-    resources.cleanup.add_permits(1);
-    activity.stop().await.unwrap();
-    activity.stop().await.unwrap();
-    activity.cleanup().await.unwrap();
-    activity.cleanup().await.unwrap();
-    assert!(!activity.is_initialized());
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 2);
-    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
-}
-
-async fn finalization_recovery<const MODE: u8>(expected: fn(&ObserverError) -> bool) {
-    let resources = Resources::new();
-    resources.initialization.add_permits(1);
-    resources.cleanup.add_permits(1);
-    let mut task = Observing::start(activity::<Watch<MODE>>(&resources));
-    task.ready().await;
-    assert!(task.interrupt().await.is_none());
-    let activity = task.activity();
-    activity.stop().await.unwrap();
-    let failure = activity.cleanup().await.unwrap_err();
-    assert!(expected(&failure), "{failure}");
-    assert!(activity.is_initialized());
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-    {
-        let mut retrying = pin!(activity.cleanup());
-        pending::parked(retrying.as_mut()).await;
-        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
-        pending::parked(retrying.as_mut()).await;
-        assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
-        resources.finalization.add_permits(1);
-        retrying.await.unwrap();
-    }
-    activity.cleanup().await.unwrap();
-    activity.stop().await.unwrap();
-    assert!(!activity.is_initialized());
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-}
-
-async fn initialization_retry<const MODE: u8>() {
-    let resources = Resources::new();
-    let mut task = Observing::start(activity::<Watch<MODE>>(&resources));
-    // A failed initialization drops its partial owner and retries on the next
-    // cadence without stop or cleanup.
-    count(&resources, |held| &held.attempts, 2).await;
-    assert!(!task.is_ready());
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
-    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
-    resources.initialization.add_permits(1);
-    task.ready().await;
-    resources.cleanup.add_permits(1);
-    task.shutdown().await.unwrap();
-    assert!(!task.activity().is_initialized());
-    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-}
-
-/* === Tests === */
