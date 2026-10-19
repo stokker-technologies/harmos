@@ -74,6 +74,27 @@ acceptance = 128
 system = 64
 
 [[conventions.testing.overrides]]
+category = "acceptance"
+language = "rust"
+select = "binary_id(=harmos-packaging::acceptance) & test(=proto::portable_messages_cross)"
+timeout_seconds = 10
+reason = "Three times the measured 0.056s native compiler story, with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "acceptance"
+language = "rust"
+select = "binary_id(=harmos-packaging::acceptance) & test(=proto::boxed_messages_cross)"
+timeout_seconds = 10
+reason = "Three times the measured 0.049s native compiler story, with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "acceptance"
+language = "rust"
+select = "binary_id(=harmos-packaging::acceptance) & test(=proto::exported_sources_compile)"
+timeout_seconds = 10
+reason = "Three times the measured 0.028s native compiler story, with the 10s floor"
+
+[[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::background_cleanup_retained)"
