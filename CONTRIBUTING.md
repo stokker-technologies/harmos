@@ -25,8 +25,13 @@ mise install --locked
 mise run prepare:tools
 ```
 
-Run the complete example with `mise run build`, then `target/debug/schematic-cli`. Read the relevant source-level contracts and compiled examples before changing
+Run the complete example with `mise run build`, then `target/build/dev/linux-x86_64/bin/schematic-cli` on Linux. Read the relevant source-level contracts and compiled examples before changing
 a public contract.
+
+Embedded CLI starters live under `crates/cargo-harmos/templates/` with a `.tmpl`
+filename suffix so Cargo includes them in the published tool package. The build
+removes that suffix from embedded output names. Keep the suffix when editing
+authored starters; refresh Hub-owned starter files through `stkr project update`.
 
 ## Make A Change
 

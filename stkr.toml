@@ -134,7 +134,7 @@ lock_commands = [
 [[templates.scaffolds]]
 path = "crates/cargo-harmos/templates/sidecar"
 profile = "sidecar"
-suffix = ""
+suffix = ".tmpl"
 tasks = "crates/cargo-harmos/scaffold-sidecar.tasks.toml"
 
 [templates.scaffolds.placeholders]
@@ -145,7 +145,7 @@ product = "__PRODUCT_NAME__"
 [[templates.scaffolds]]
 path = "crates/cargo-harmos/templates/guest"
 profile = "guest"
-suffix = ""
+suffix = ".tmpl"
 tasks = "crates/cargo-harmos/scaffold-guest.tasks.toml"
 
 [templates.scaffolds.placeholders]

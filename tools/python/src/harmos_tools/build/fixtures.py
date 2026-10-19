@@ -257,9 +257,7 @@ def _offline_inputs(destination: Path) -> Path:
     requirements = []
     for index, project in enumerate(projects):
         selected = destination / ("requirements.txt" if index == 0 else f"starter-{project.parents[1].name}.txt")
-        with selected.open("w", encoding="utf-8") as output:
-            export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(project)]
-            subprocess.run(export, cwd=ROOT, stdout=output, check=True)
+        _requirements(project, selected)
         requirements.append(selected)
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
     wheels = [path for path in bundled.iterdir() if path.name.startswith("pip-") and path.name.endswith(".whl")]
@@ -273,6 +271,18 @@ def _offline_inputs(destination: Path) -> Path:
     # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
     subprocess.run([*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")], cwd=ROOT, check=True)
     return destination
+
+
+def _requirements(project: Path, destination: Path) -> None:
+    """Project Native Or Suffixed Starter Metadata Without Publishing A Second Source Tree."""
+    suffix = "" if (project / "pyproject.toml").is_file() else ".tmpl"
+    environment = dict(os.environ)
+    environment.pop("UV_PROJECT_ENVIRONMENT", None)
+    with temporary.directory() as projected, destination.open("w", encoding="utf-8") as output:
+        shutil.copy2(project / f"pyproject.toml{suffix}", projected / "pyproject.toml")
+        shutil.copy2(project / f"uv.lock{suffix}", projected / "uv.lock")
+        export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(projected)]
+        subprocess.run(export, cwd=ROOT, stdout=output, check=True, env=environment)
 
 
 def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
