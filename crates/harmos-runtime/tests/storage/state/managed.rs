@@ -257,46 +257,15 @@ async fn state_stop_retries() {
 }
 
 #[tokio::test]
-async fn journal_gap_blocks() {
-    let store = Store::new();
-    let storage = store.manager(config());
-    let runtime = store.boot(&storage).await;
-    runtime.state.commit(deposit(1)).await.unwrap();
-    runtime.state.commit(deposit(2)).await.unwrap();
-    runtime.stop().await.unwrap();
-    store.recovery.entries.lock().unwrap().remove(&1);
-    let storage = store.manager(config());
-    assert!(
-        Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .managed_state(limits())
-            .runtime_with_storage(&storage)
-            .await
-            .is_err()
-    );
-    assert!(storage.status().closed);
-    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-    assert!(!store.data.control.open.load(Ordering::SeqCst));
-}
-
-#[tokio::test]
-async fn corrupt_group_blocks() {
-    let store = Store::new();
-    let storage = store.manager(config());
-    let runtime = store.boot(&storage).await;
-    runtime.state.commit(deposit(1)).await.unwrap();
-    runtime.stop().await.unwrap();
-    let original = store.recovery.entries.lock().unwrap()[&1].payload.clone();
-    for field in ["version", "position", "id", "commit"] {
-        let mut group: serde_json::Value = serde_json::from_slice(&original).unwrap();
-        match field {
-            "version" => group["version"] = 7.into(),
-            "position" => group["entries"][0]["position"] = 9.into(),
-            "id" => group["entries"][0]["id"] = "unknown.transaction".into(),
-            "commit" => group["entries"][0]["metadata"]["commit"] = serde_json::Value::Null,
-            _ => unreachable!(),
-        }
-        store.recovery.entries.lock().unwrap().get_mut(&1).unwrap().payload = serde_json::to_vec(&group).unwrap();
+async fn recovery_history_admission() {
+    {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        runtime.state.commit(deposit(1)).await.unwrap();
+        runtime.state.commit(deposit(2)).await.unwrap();
+        runtime.stop().await.unwrap();
+        let original = store.recovery.entries.lock().unwrap().remove(&1).unwrap();
         let storage = store.manager(config());
         assert!(
             Runtime::<Bank>::builder(Ledger::default(), ())
@@ -304,10 +273,88 @@ async fn corrupt_group_blocks() {
                 .managed_state(limits())
                 .runtime_with_storage(&storage)
                 .await
-                .is_err(),
-            "{field}"
+                .is_err()
         );
         assert!(storage.status().closed);
+        assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(!store.data.control.open.load(Ordering::SeqCst));
+
+        store.recovery.entries.lock().unwrap().insert(1, original);
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        assert_eq!(balance(&runtime).await, 3);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        runtime.state.commit(deposit(1)).await.unwrap();
+        runtime.stop().await.unwrap();
+        let original = store.recovery.entries.lock().unwrap()[&1].payload.clone();
+        for field in ["version", "position", "id", "commit"] {
+            let mut group: serde_json::Value = serde_json::from_slice(&original).unwrap();
+            match field {
+                "version" => group["version"] = 7.into(),
+                "position" => group["entries"][0]["position"] = 9.into(),
+                "id" => group["entries"][0]["id"] = "unknown.transaction".into(),
+                "commit" => group["entries"][0]["metadata"]["commit"] = serde_json::Value::Null,
+                _ => unreachable!(),
+            }
+            store.recovery.entries.lock().unwrap().get_mut(&1).unwrap().payload = serde_json::to_vec(&group).unwrap();
+            let storage = store.manager(config());
+            assert!(
+                Runtime::<Bank>::builder(Ledger::default(), ())
+                    .register(catalog())
+                    .managed_state(limits())
+                    .runtime_with_storage(&storage)
+                    .await
+                    .is_err(),
+                "{field}"
+            );
+            assert!(storage.status().closed);
+        }
+
+        store.recovery.entries.lock().unwrap().get_mut(&1).unwrap().payload = original;
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        assert_eq!(balance(&runtime).await, 1);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        for key in ["one", "two"] {
+            runtime.state.commit_keyed(RequestKey::new(key), deposit(1)).await.unwrap();
+        }
+        runtime.stop().await.unwrap();
+        let original = store.recovery.entries.lock().unwrap()[&2].payload.clone();
+        {
+            let mut entries = store.recovery.entries.lock().unwrap();
+            let entry = entries.get_mut(&2).unwrap();
+            let mut group: serde_json::Value = serde_json::from_slice(&entry.payload).unwrap();
+            group["entries"][0]["metadata"]["request"] = "one".into();
+            entry.payload = serde_json::to_vec(&group).unwrap();
+        }
+        let storage = store.manager(config());
+        assert!(
+            Runtime::<Bank>::builder(Ledger::default(), ())
+                .register(catalog())
+                .managed_state(limits())
+                .runtime_with_storage(&storage)
+                .await
+                .is_err()
+        );
+        assert!(storage.status().closed);
+        assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+        assert!(!store.data.control.open.load(Ordering::SeqCst));
+
+        store.recovery.entries.lock().unwrap().get_mut(&2).unwrap().payload = original;
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage).await;
+        assert_eq!(balance(&runtime).await, 2);
+        runtime.stop().await.unwrap();
     }
 }
 
@@ -524,36 +571,6 @@ async fn keyed_group_retained() {
     assert_eq!(runtime.state.applied(), receipt.frontier);
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
     runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn duplicate_key_blocks() {
-    let store = Store::new();
-    let storage = store.manager(config());
-    let runtime = store.boot(&storage).await;
-    for key in ["one", "two"] {
-        runtime.state.commit_keyed(RequestKey::new(key), deposit(1)).await.unwrap();
-    }
-    runtime.stop().await.unwrap();
-    {
-        let mut entries = store.recovery.entries.lock().unwrap();
-        let entry = entries.get_mut(&2).unwrap();
-        let mut group: serde_json::Value = serde_json::from_slice(&entry.payload).unwrap();
-        group["entries"][0]["metadata"]["request"] = "one".into();
-        entry.payload = serde_json::to_vec(&group).unwrap();
-    }
-    let storage = store.manager(config());
-    assert!(
-        Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .managed_state(limits())
-            .runtime_with_storage(&storage)
-            .await
-            .is_err()
-    );
-    assert!(storage.status().closed);
-    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-    assert!(!store.data.control.open.load(Ordering::SeqCst));
 }
 
 #[tokio::test(start_paused = true)]
