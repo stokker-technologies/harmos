@@ -114,7 +114,7 @@ use harmos_sdk::grpc::{self, DecodeInput};
 /* === Public Functions === */
 
 #[test]
-fn unknown_variant_refused() {
+fn unknown_mode_refused() {
     let remote = wire(&newer::Mode::Remote);
     refused::<known::Mode>(&remote);
     refused::<known::Preferred>(&remote);
@@ -123,10 +123,26 @@ fn unknown_variant_refused() {
     refused::<known::Boxed>(&run);
     let wrapped = wire(&newer::Wrapped::Hold(Box::new(newer::Mode::Remote)));
     refused::<known::Wrapped>(&wrapped);
+
+    // A Known Segment Cannot Mask An Unknown Selection In Either Order.
+    let manual = wire(&newer::Mode::Manual);
+    refused::<known::Mode>(&[manual.clone(), remote.clone()].concat());
+    refused::<known::Mode>(&[remote, manual.clone()].concat());
+    let automatic = wire(&newer::Mode::Automatic);
+    assert_eq!(read::<known::Mode>(&[automatic, manual].concat()), known::Mode::Manual);
+    let run = |mode| wire(&newer::Run { id: 7, mode });
+    let segmented = [run(newer::Mode::Manual), run(newer::Mode::Remote)].concat();
+    refused::<known::Run>(&segmented);
+    refused::<known::Boxed>(&segmented);
+
+    // Portable And Protobuf Decoders Both Refuse The Added Variant.
+    let remote = Message::encode_to_vec(&newer::Mode::Remote);
+    assert!(<known::Mode as Message>::decode(&remote).is_err());
+    refused::<known::Mode>(&wire(&newer::Mode::Remote));
 }
 
 #[test]
-fn absent_variant_defaults() {
+fn known_mode_defaults() {
     assert_eq!(read::<known::Mode>(&[]), known::Mode::Automatic);
     assert_eq!(read::<known::Preferred>(&[]), known::Preferred::Manual);
     let bare = wire(&newer::Bare { id: 7 });
@@ -134,10 +150,8 @@ fn absent_variant_defaults() {
     assert_eq!(run.mode, known::Mode::Automatic);
     assert_eq!(*read::<known::Boxed>(&bare).mode, run.mode);
     grpc::decoding_memory::<known::Run>(DecodeInput::new(&bare)).unwrap();
-}
 
-#[test]
-fn known_variant_decodes() {
+    // Explicit Known Modes Survive Nested, Boxed And Wrapped Fields.
     let manual = wire(&newer::Mode::Manual);
     assert_eq!(read::<known::Mode>(&manual), known::Mode::Manual);
     let run = wire(&newer::Run { id: 7, mode: newer::Mode::Manual });
@@ -145,30 +159,7 @@ fn known_variant_decodes() {
     assert_eq!(*read::<known::Boxed>(&run).mode, known::Mode::Manual);
     let wrapped = wire(&newer::Wrapped::Hold(Box::new(newer::Mode::Manual)));
     assert_eq!(read::<known::Wrapped>(&wrapped), known::Wrapped::Hold(Box::new(known::Mode::Manual)));
-}
 
-#[test]
-fn segments_keep_selection() {
-    let manual = wire(&newer::Mode::Manual);
-    let remote = wire(&newer::Mode::Remote);
-    // A Known Variant Never Masks An Unknown One In Either Order
-    refused::<known::Mode>(&[manual.clone(), remote.clone()].concat());
-    refused::<known::Mode>(&[remote, manual.clone()].concat());
-    // Declared Duplicates Keep Last-Wins Selection
-    let automatic = wire(&newer::Mode::Automatic);
-    assert_eq!(read::<known::Mode>(&[automatic, manual].concat()), known::Mode::Manual);
-    // Parent Field Occurrences Merge Before Variant Selection
-    let run = |mode| wire(&newer::Run { id: 7, mode });
-    let segmented = [run(newer::Mode::Manual), run(newer::Mode::Remote)].concat();
-    refused::<known::Run>(&segmented);
-    refused::<known::Boxed>(&segmented);
-}
-
-#[test]
-fn enum_postcard_parity() {
-    let remote = Message::encode_to_vec(&newer::Mode::Remote);
-    assert!(<known::Mode as Message>::decode(&remote).is_err());
-    refused::<known::Mode>(&wire(&newer::Mode::Remote));
     let manual = Message::encode_to_vec(&newer::Mode::Manual);
     assert_eq!(<known::Mode as Message>::decode(&manual).unwrap(), known::Mode::Manual);
 }

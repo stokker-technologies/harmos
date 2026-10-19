@@ -235,3 +235,23 @@ pub fn btree_map_memory<K, V>(entries: usize) -> usize {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::MemorySize;
+
+    #[test]
+    fn wrappers_saturate() {
+        struct Overflow;
+        impl MemorySize for Overflow {
+            fn memory_size(&self) -> usize {
+                usize::MAX
+            }
+        }
+
+        assert_eq!(Some(Overflow).memory_size(), usize::MAX);
+        assert_eq!(vec![Overflow].memory_size(), usize::MAX);
+        assert_eq!(Box::new(Overflow).memory_size(), usize::MAX);
+        assert_eq!(None::<Overflow>.memory_size(), std::mem::size_of::<Option<Overflow>>());
+    }
+}

@@ -310,19 +310,6 @@ fn sizes_count_capacity() {
 }
 
 #[test]
-fn allocation_never_small() {
-    struct Overflow;
-    impl MemorySize for Overflow {
-        fn memory_size(&self) -> usize {
-            usize::MAX
-        }
-    }
-    assert_eq!(Some(Overflow).memory_size(), usize::MAX);
-    assert_eq!(vec![Overflow].memory_size(), usize::MAX);
-    assert_eq!(None::<Overflow>.memory_size(), std::mem::size_of::<Option<Overflow>>());
-}
-
-#[test]
 fn enum_shapes_sizes() {
     use harmos_domain::schema::{Cardinality, Described};
     let choices = [

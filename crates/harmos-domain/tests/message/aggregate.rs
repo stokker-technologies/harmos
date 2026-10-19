@@ -85,7 +85,11 @@ struct Summary {
 /* === Public Functions === */
 
 #[test]
-fn protobuf_matches_derive() {
+fn aggregate_protobuf_contract() {
+    use harmos_packaging::proto::reflection::DynamicMessage;
+
+    let schema = crate::schema_descriptor(Aggregate::DEFINITION);
+    assert_eq!(schema.oneofs().count(), 1);
     for value in EVERY {
         let encoded = crate::encode(&value);
         assert_eq!(encoded, crate::encode(&twin(value)), "{value:?}");
@@ -94,11 +98,11 @@ fn protobuf_matches_derive() {
         assert!(grpc::decoding_memory::<Aggregate>(DecodeInput::new(&encoded)).unwrap() >= value.memory_size());
         let derived = grpc::decode::<twin::Aggregate>(DecodeInput::new(&encoded)).unwrap();
         assert!(derived == twin(value), "{value:?}");
+        let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
+        assert_eq!(prost::Message::encode_to_vec(&reflected), encoded);
     }
-}
 
-#[test]
-fn aggregate_protobuf_edges() {
+    // Defaults, Repeated Variants And Malformed Values Follow The Same Wire Contract.
     assert_eq!(grpc::decode::<Aggregate>(DecodeInput::new(&[])).unwrap(), Aggregate::Count);
     let wide = crate::encode(&twin::Aggregate::Percentile { rank: 256 });
     assert!(grpc::decode::<Aggregate>(DecodeInput::new(&wide)).is_err());
@@ -162,18 +166,6 @@ fn schema_matches_derive() {
     let right = Schema::from_declaration(twin::Aggregate::DEFINITION, &settings).unwrap();
     assert!(left.equivalent(left.root, &right, right.root, &settings).unwrap());
     Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
-}
-
-#[test]
-fn aggregate_reflects_oneof() {
-    use harmos_packaging::proto::reflection::DynamicMessage;
-    let schema = crate::schema_descriptor(Aggregate::DEFINITION);
-    assert_eq!(schema.oneofs().count(), 1);
-    for value in EVERY {
-        let encoded = crate::encode(&value);
-        let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
-        assert_eq!(prost::Message::encode_to_vec(&reflected), encoded);
-    }
 }
 
 /* === Private Functions === */
