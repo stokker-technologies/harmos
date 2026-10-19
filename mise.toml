@@ -342,7 +342,7 @@ run = [{ task = "release:publish:rust" }]
 
 [tasks."release:publish:dry"]
 description = "Verify Rust Registry Publication"
-run = "cargo publish --workspace --locked --dry-run"
+run = "uv run --locked --project tools/python python -m harmos_tools.test.publish --rust"
 
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
