@@ -66,6 +66,9 @@ offline inputs, while `files` names every stamped input with its hash. Inert
 macro inventory inspection uses hash-verified copies of the two Product plugin
 artifacts under `fixtures/inspection/`; integration does not execute them or
 download Product hosts.
+Guest SDK integration inspects those inert component declarations and WIT worlds;
+its sandbox inspection reuses the existing Tests-owned sandbox bytes. Stories
+that instantiate either component with Wasmtime live in the guest system target.
 
 Unit consumes the shared Rust archive. Integration consumes the archive and its
 Tests-owned fixtures. Acceptance declares the Cargo subcommand and both plugin

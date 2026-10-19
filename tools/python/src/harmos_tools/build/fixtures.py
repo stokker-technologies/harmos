@@ -96,6 +96,7 @@ def build(profile: str, scratch: Path) -> None:
     tool = export / catalog["artifacts"]["cargo-harmos"]
     built, receipt = _collect(tool, manifest, sandbox, "guest", profile, capture, scratch)
     artifacts[sandbox], builds[sandbox] = _stage_build(built, receipt, sandbox, files, fixtures)
+    inspections[sandbox] = artifacts[sandbox]
     # One Capture Supplies Every Library, So The Facade Links Exactly The Builds Beside It.
     libraries = _libraries(_messages(tooling), files, fixtures)
     inputs = _offline_inputs(fixtures / "inputs")

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:9b3a48455a0553b4b03fd6b1a3b5a204766408a04a6f4f3e3c984590ffb8a438
+# Rendered by stkr project update from templates/python/test/run.py; sha256:5a39e5a37c55b88ed7ee385cfb3b44cde6daeae4b74287f1a832c9e21ce15ba3
 # ***
 #
 # __PRODUCT_NAME__
@@ -315,7 +315,7 @@ def _preflight(
     hosts = rules.hosts_for(category, language)
     if profile == "bench":
         hosts = rules.hosts if category in (None, "system") else ()
-    if language == "rust" or hosts:
+    if (language == "rust" and (category != "unit" or profile == "bench")) or hosts:
         output = paths.output(directory, "build", profile).relative_to(directory)
         roots = [(output / part).as_posix() for part in ("tests", "fixtures")] if language == "rust" else []
         archive.fixtures(directory, profile, hosts, roots=roots)

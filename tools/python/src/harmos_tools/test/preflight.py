@@ -52,7 +52,7 @@ def main(arguments: list[str] | None = None) -> None:
         sys.exit("fixture stamp belongs to another profile or native target")
     selectors = stamp["metadata"]
     if category == "integration":
-        selected = [selectors["inspections"][name] for name in ("schematic-sidecar", "schematic-guest")]
+        selected = [selectors["inspections"][name] for name in ("schematic-sidecar", "schematic-guest", "harmos-sandbox-guest")]
     else:
         executable = "cargo-harmos" if category == "acceptance" else "schematic-cli"
         selected = [selectors["artifacts"][name] for name in (executable, "schematic-sidecar", "schematic-guest")]

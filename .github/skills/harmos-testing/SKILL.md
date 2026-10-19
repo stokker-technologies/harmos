@@ -2,7 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:d10221e3bc696af26a33fc993207567c7ce102e8ca3af2ad047578cfe5694548 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:f715205c77fba24a59c77a98a50259a39cf33a19f2ff66544cded1a510816719 -->
 
 # Harmos Testing
 
@@ -67,6 +67,9 @@ offline inputs, while `files` names every stamped input with its hash. Inert
 macro inventory inspection uses hash-verified copies of the two Product plugin
 artifacts under `fixtures/inspection/`; integration does not execute them or
 download Product hosts.
+Guest SDK integration inspects those inert component declarations and WIT worlds;
+its sandbox inspection reuses the existing Tests-owned sandbox bytes. Stories
+that instantiate either component with Wasmtime live in the guest system target.
 
 Unit consumes the shared Rust archive. Integration consumes the archive and its
 Tests-owned fixtures. Acceptance declares the Cargo subcommand and both plugin

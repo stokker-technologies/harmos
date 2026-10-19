@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:40850485aa7bcedf983d6b50179352e3458b57f53202349b28630df9604b9ed1
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:20e1085b6f1fdbbaa903c0a6769ce894ea15cc59d9178f951eaa8a95ff5bda93
 stages:
 - Check
 - Build
@@ -524,15 +524,11 @@ Validate / Unit / Rust (linux):
   timeout: 30 minutes
   needs: []
   script:
-  - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
-  - tar --zstd -xf "target/ci/build-fixtures-$PROFILE-linux.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
   - mise run test:unit:rust --profile $PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     needs:
-    - job: Build / Product / Dev (linux)
-      artifacts: true
     - job: Build / Tests / Dev (linux)
       artifacts: true
     variables:
@@ -541,24 +537,18 @@ Validate / Unit / Rust (linux):
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
     needs:
-    - job: Build / Product / Dev (linux)
-      artifacts: true
     - job: Build / Tests / Dev (linux)
       artifacts: true
     variables:
       PROFILE: dev
   - if: $CI_PIPELINE_SOURCE == "schedule"
     needs:
-    - job: Build / Product / Dev (linux)
-      artifacts: true
     - job: Build / Tests / Dev (linux)
       artifacts: true
     variables:
       PROFILE: dev
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
     needs:
-    - job: Build / Product / Release (linux)
-      artifacts: true
     - job: Build / Tests / Release (linux)
       artifacts: true
     variables:
@@ -1091,15 +1081,11 @@ Validate / Unit / Rust (windows):
   timeout: 30 minutes
   needs: []
   script:
-  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
-  - tar --zstd -xf "target/ci/build-fixtures-$env:PROFILE-windows.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-$env:PROFILE-windows.tar.zst"
   - mise run test:unit:rust --profile $env:PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     needs:
-    - job: Build / Product / Dev (windows)
-      artifacts: true
     - job: Build / Tests / Dev (windows)
       artifacts: true
     variables:
@@ -1108,24 +1094,18 @@ Validate / Unit / Rust (windows):
       $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
       /^(dev|main|release\/v.*)$/
     needs:
-    - job: Build / Product / Dev (windows)
-      artifacts: true
     - job: Build / Tests / Dev (windows)
       artifacts: true
     variables:
       PROFILE: dev
   - if: $CI_PIPELINE_SOURCE == "schedule"
     needs:
-    - job: Build / Product / Dev (windows)
-      artifacts: true
     - job: Build / Tests / Dev (windows)
       artifacts: true
     variables:
       PROFILE: dev
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
     needs:
-    - job: Build / Product / Release (windows)
-      artifacts: true
     - job: Build / Tests / Release (windows)
       artifacts: true
     variables:

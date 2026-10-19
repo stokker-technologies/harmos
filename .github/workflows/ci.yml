@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:9f090b48eba8197467538d0cd183d9b87ff167367650062c267590313ea73ce8
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:4cc2d1b106ae6d385de99bdb0fab545e6bce13244c7c79aaf3ba40caa4cf520c
 name: CI
 "on":
   push:
@@ -1053,8 +1053,6 @@ jobs:
       fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
-    - build_product_dev
-    - build_product_release
     - build_tests_dev
     - build_tests_release
     steps:
@@ -1117,23 +1115,6 @@ jobs:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: >-
-          build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
-          }}-${{ matrix.os }}
-    - name: Extract Build
-      shell: bash
-      run: >-
-        tar --zstd -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') &&
-        'release' || 'dev' }}-${{ matrix.os }}.tar.zst"
-      if: matrix.os != 'windows'
-    - name: Extract Build
-      shell: pwsh
-      run: |-
-        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{ matrix.os }}.tar.zst" --force-local --use-compress-program "zstd -d"
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      if: matrix.os == 'windows'
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: >-
           build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
           }}-${{ matrix.os }}
     - name: Extract Build
@@ -1146,23 +1127,6 @@ jobs:
       shell: pwsh
       run: |-
         & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{ matrix.os }}.tar.zst" --force-local --use-compress-program "zstd -d"
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      if: matrix.os == 'windows'
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: >-
-          build-fixtures-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
-          }}-${{ matrix.os }}
-    - name: Extract Build
-      shell: bash
-      run: >-
-        tar --zstd -xf "build-fixtures-${{ startsWith(github.ref, 'refs/tags/v') &&
-        'release' || 'dev' }}-${{ matrix.os }}.tar.zst"
-      if: matrix.os != 'windows'
-    - name: Extract Build
-      shell: pwsh
-      run: |-
-        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-fixtures-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{ matrix.os }}.tar.zst" --force-local --use-compress-program "zstd -d"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       if: matrix.os == 'windows'
     - run: >-
@@ -1198,9 +1162,8 @@ jobs:
       if: always()
     if: >-
       always() && ((startsWith(github.ref, 'refs/tags/v') &&
-      needs.build_product_release.result == 'success' && needs.build_tests_release.result == 'success') ||
-      (!startsWith(github.ref, 'refs/tags/v') && needs.build_product_dev.result ==
-      'success' && needs.build_tests_dev.result == 'success'))
+      needs.build_tests_release.result == 'success') || (!startsWith(github.ref, 'refs/tags/v') &&
+      needs.build_tests_dev.result == 'success'))
     strategy:
       fail-fast: false
       matrix:
@@ -1220,8 +1183,6 @@ jobs:
       fromJSON('{"linux":["ubuntu-24.04"],"windows":["windows-2022"]}')[matrix.os] }}
     timeout-minutes: 10
     needs:
-    - build_product_dev
-    - build_product_release
     - build_tests_dev
     - build_tests_release
     steps:
@@ -1281,23 +1242,6 @@ jobs:
     - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
       with:
         version: v0.18.0
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: >-
-          build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
-          }}-${{ matrix.os }}
-    - name: Extract Build
-      shell: bash
-      run: >-
-        tar --zstd -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') &&
-        'release' || 'dev' }}-${{ matrix.os }}.tar.zst"
-      if: matrix.os != 'windows'
-    - name: Extract Build
-      shell: pwsh
-      run: |-
-        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{ matrix.os }}.tar.zst" --force-local --use-compress-program "zstd -d"
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      if: matrix.os == 'windows'
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: >-
@@ -1365,9 +1309,8 @@ jobs:
       if: always()
     if: >-
       always() && ((startsWith(github.ref, 'refs/tags/v') &&
-      needs.build_product_release.result == 'success' && needs.build_tests_release.result == 'success') ||
-      (!startsWith(github.ref, 'refs/tags/v') && needs.build_product_dev.result ==
-      'success' && needs.build_tests_dev.result == 'success'))
+      needs.build_tests_release.result == 'success') || (!startsWith(github.ref, 'refs/tags/v') &&
+      needs.build_tests_dev.result == 'success'))
     strategy:
       fail-fast: false
       matrix:

@@ -92,6 +92,55 @@ acceptance = 128
 system = 64
 
 [[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=publication_crosses_row)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 1.495s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=registration_precedes_init)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 1.495s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=refusal_preserves_reason)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 1.535s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=shutdown_current_context)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 2.399s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=submitted_children_controls)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 2.478s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=unbound_operations_refused)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 2.591s with the 10s floor"
+
+[[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-guest::system) & test(=plugin::sdk_lifecycle_retained)"
+timeout_seconds = 10
+reason = "Three times the prior native story measurement of 1.619s with the 10s floor"
+
+[[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"

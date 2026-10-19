@@ -146,6 +146,11 @@ name = "integration"
 path = "tests/kit/main.rs"
 required-features = ["derive"]
 
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
+required-features = ["derive"]
+
 # === Bench Targets === #
 
 # === Example Targets === #
