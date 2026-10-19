@@ -14,7 +14,7 @@ description = "The guest the host harness drives through every sandbox behaviour
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
-version = "0.2.0"
+version = "0.1.0"
 publish = false
 
 # === Package Targets ===

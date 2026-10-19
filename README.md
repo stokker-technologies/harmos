@@ -246,7 +246,7 @@ cargo harmos sidecar build -p schematic-sidecar --json > build.json
 cargo harmos bindings python --build-json build.json \
   --producer schematic-sidecar --catalog operations \
   --distribution schematic-bindings --module schematic_bindings \
-  --package-version 0.2.0 --description "Schematic Operation Bindings" \
+  --package-version 0.1.0 --description "Schematic Operation Bindings" \
   --license Apache-2.0 --output generated/schematic-bindings
 python -m pip install ./generated/schematic-bindings
 ```
