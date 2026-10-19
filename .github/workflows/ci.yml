@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:26455113ecca9d8acf8e4126e41a8886685c716951ba2476a8bc8f83ed2c2642
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:1669fdd38bfc3bc9eb162629a4cbbfa6352898c3268c1e9a414f482a5bc1218e
 name: CI
 "on":
   push:
@@ -2028,7 +2028,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     environment: release
     env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_BOOTSTRAP_TOKEN }}
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_GHA_VERSION: linux
