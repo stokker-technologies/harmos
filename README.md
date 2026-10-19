@@ -454,6 +454,10 @@ committed earlier batches; callers must not blindly replay unacknowledged data.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
 and a JSONL journal, bounded by the storage batch ceiling.
+`FileBackend::with_journal_opener` accepts a caller-owned journal opener for
+controlled file access, including fault testing. The opener receives the journal
+path under the exclusive root lease and must preserve its existing bytes; it is
+also used when reopening after checkpoint replacement.
 
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.

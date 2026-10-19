@@ -22,7 +22,7 @@ use std::path::Path;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::files::Files;
+use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
 use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
@@ -65,10 +65,10 @@ struct Header {
 /* === Implementations === */
 
 impl StateLog {
-    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings) -> Result<Self> {
+    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener) -> Result<Self> {
         let entry_bytes = settings.max_entry_bytes.get();
         let checkpoint_bytes = settings.max_checkpoint_bytes.get();
-        let files = Files::open(root)?;
+        let files = Files::open(root, opener)?;
 
         // The Journal Header Identifies The Format Before Any Payload Is Decoded.
         let mut file = files.journal()?;
@@ -325,40 +325,3 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rollback_requires_reopen() {
-        let root = tempfile::tempdir().unwrap();
-        let history = history();
-        let mut journal = StateLog::open(root.path(), history.clone(), settings()).unwrap();
-        // A Read-Only Handle Forces Both Append And Rollback To Fail.
-        journal.file = File::open(root.path().join("state.jsonl")).unwrap();
-        let entry = RecoveryEntry {
-            position: RecoveryPosition { history: history.clone(), sequence: 1 },
-            required_data: crate::storage::StorageCursor { history: history.clone(), sequence: 0 },
-            payload: vec![1],
-        };
-        assert!(journal.append(std::slice::from_ref(&entry)).is_err());
-        assert!(journal.check().is_err());
-        drop(journal);
-        let mut reopened = StateLog::open(root.path(), history, settings()).unwrap();
-        assert_eq!(reopened.position().sequence, 0);
-        reopened.append(&[entry]).unwrap();
-        assert_eq!(reopened.position().sequence, 1);
-    }
-
-    fn history() -> StoreHistory {
-        StoreHistory { store: crate::Identifier::new("state.test").unwrap(), epoch: crate::Identifier::new("epoch.one").unwrap() }
-    }
-
-    fn settings() -> StorageStateSettings {
-        StorageStateSettings {
-            max_entry_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
-            max_checkpoint_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
-        }
-    }
-}

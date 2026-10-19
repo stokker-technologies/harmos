@@ -2,7 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:57a34e729c073d5219eb19880e51330e3e000b2f7417db36ef4cfd9f3c618fbe -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:b4f65ef33c6418d8f438ad7b76ecfc5c430cf21a5129875de29454ffc3ce47f9 -->
 
 # Harmos Testing
 
@@ -31,14 +31,10 @@ runtime is needed only when the story proves host composition. Runtime storage
 stories own managed journal projection, operation dispatch and host lifecycle.
 Keep source-private kernel invariants beside their production owner.
 
-The private journal regression
-`harmos-storage/src/state/file/journal.rs::tests::rollback_requires_reopen` is the
-one approved filesystem exception to pure unit tests. It replaces the private
-file handle with a read-only handle, proves failed append and rollback leave the
-journal poisoned, then reopens and writes successfully. Keep that concrete fault
-coverage inline; the exception does not permit other environment-dependent unit
-stories or change the project-wide caps. The shared checker must represent this
-exception explicitly before release readiness.
+File journal fault stories use the public `FileBackend` integration boundary.
+`with_journal_opener` supplies controlled real file access while the backend
+retains journal parsing, rollback, exclusive leasing and close/reopen ownership.
+Keep filesystem faults out of unit tests.
 
 ## Cross-Artifact Compositions
 

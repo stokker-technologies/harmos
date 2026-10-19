@@ -19,6 +19,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 // Third Party Imports
 use serde::{Serialize, de::DeserializeOwned};
 // Local Imports
@@ -31,11 +32,14 @@ use crate::{BackendFailure, Error, Result};
 
 /* === Type Aliases === */
 
+pub(super) type JournalOpener = Arc<dyn Fn(&Path) -> std::io::Result<File> + Send + Sync>;
+
 /* === Structs === */
 
 pub(super) struct Files {
     root: PathBuf,
     _lease: File,
+    opener: JournalOpener,
 }
 
 /* === Enums === */
@@ -45,15 +49,15 @@ pub(super) struct Files {
 /* === Implementations === */
 
 impl Files {
-    pub(super) fn open(root: &Path) -> Result<Self> {
+    pub(super) fn open(root: &Path, opener: JournalOpener) -> Result<Self> {
         fs::create_dir_all(root).map_err(io)?;
         let lease = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join("state.lock")).map_err(io)?;
         lease.try_lock().map_err(|error| Error::backend("lock state storage", BackendFailure::Conflict, error))?;
-        Ok(Self { root: root.to_owned(), _lease: lease })
+        Ok(Self { root: root.to_owned(), _lease: lease, opener })
     }
 
     pub(super) fn journal(&self) -> Result<File> {
-        OpenOptions::new().create(true).truncate(false).read(true).write(true).open(self.root.join("state.jsonl")).map_err(io)
+        (self.opener)(&self.root.join("state.jsonl")).map_err(io)
     }
 
     pub(super) fn snapshot<T: DeserializeOwned>(&self, maximum: usize) -> Result<Option<T>> {

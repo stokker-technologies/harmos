@@ -20,13 +20,19 @@ mod journal;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{num::NonZeroUsize, path::PathBuf, sync::Arc};
+use std::{
+    fs::{File, OpenOptions},
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 // Third Party Imports
 use tokio::sync::Mutex;
 // Local Imports
 use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageFuture, StoreHistory};
 use crate::{BackendFailure, Error, Result};
+use files::JournalOpener;
 use journal::StateLog;
 
 /* === Constants === */
@@ -43,6 +49,7 @@ pub struct FileBackend {
     root: PathBuf,
     history: StoreHistory,
     settings: StorageStateSettings,
+    opener: JournalOpener,
     journal: Arc<Mutex<Option<StateLog>>>,
 }
 
@@ -54,7 +61,21 @@ pub struct FileBackend {
 
 impl FileBackend {
     pub fn new(root: PathBuf, history: StoreHistory, settings: StorageStateSettings) -> Self {
-        Self { root, history, settings, journal: Arc::new(Mutex::new(None)) }
+        Self::with_journal_opener(root, history, settings, |path| {
+            OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)
+        })
+    }
+
+    // The Opener Must Return The Named Journal Without Truncating Existing Bytes.
+    // It Is Called Under The Exclusive Root Lease, Including After Replacement.
+    pub fn with_journal_opener(
+        root: PathBuf, history: StoreHistory, settings: StorageStateSettings,
+        opener: impl Fn(&Path) -> std::io::Result<File> + Send + Sync + 'static,
+    ) -> Self {
+        let opener = Arc::new(opener);
+        let journal = Mutex::new(None);
+        let journal = Arc::new(journal);
+        Self { root, history, settings, opener, journal }
     }
 
     async fn call<T: Send + 'static>(&self, action: impl FnOnce(&mut StateLog) -> Result<T> + Send + 'static) -> Result<T> {
@@ -81,9 +102,10 @@ impl StateBackend for FileBackend {
             let root = self.root.clone();
             let history = self.history.clone();
             let settings = self.settings;
+            let opener = Arc::clone(&self.opener);
             tokio::task::spawn_blocking(move || {
                 if owner.is_none() {
-                    *owner = Some(StateLog::open(&root, history, settings)?);
+                    *owner = Some(StateLog::open(&root, history, settings, opener)?);
                 }
                 let journal = owner.as_ref().expect("opened journal");
                 journal.check()?;
