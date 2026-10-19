@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -34,11 +35,13 @@ use crate::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Payload<A: Application> {
     pub prepared: Option<crate::state::Prepared>,
     pub id: DefinitionId,
     pub version: u32,
     pub value: Recorded<A>,
+
     // Spelled out rather than aliased: the census is the list of names an
     // author learns, and this one belongs to a field rather than beside them.
     #[allow(clippy::type_complexity)]
@@ -80,12 +83,14 @@ pub(crate) struct Consumers<A: Application> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Horizon {
     BeneathSnapshot,
 }
 
 /* === Traits === */
+
 pub trait Source<A: Application>: JournalConsumer<A> {
     fn load(&mut self) -> impl Future<Output = Result<Recovery<A>, Incompatible>> + Send;
 
@@ -107,6 +112,7 @@ pub(crate) trait Recovering<A: Application>: Attached<A> {
 }
 
 /* === Implementations === */
+
 impl<A: Application> Default for Recovery<A> {
     fn default() -> Self {
         Self { commits: Vec::new(), frontier: Position::ORIGIN, entries: Vec::new(), encoded: Vec::new() }
@@ -466,6 +472,7 @@ impl<A: Application> Consumers<A> {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn declare<A: Application>(
     catalog: &mut Dispatch<A, Payload<A>>, kind: Kind, id: DefinitionId, version: u32, decode: Decode<A>,
 ) {
@@ -476,6 +483,7 @@ pub(crate) fn declare<A: Application>(
 }
 
 /* === Private Functions === */
+
 fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
     let Payload { prepared, id, version, value, apply } = payload;
 

@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -40,6 +41,7 @@ use harmos_sdk::plugin::Attachment;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct ObserverAttachment<R, H = Supervisor> {
     resources: Arc<R>,
     declarations: Vec<harmos_domain::inventory::observers::Declaration>,
@@ -68,6 +70,7 @@ struct Running {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     pub fn new(
         instances: Vec<Instance<R, H>>, resources: Arc<R>, grants: &[harmos_domain::inventory::publications::Entry],

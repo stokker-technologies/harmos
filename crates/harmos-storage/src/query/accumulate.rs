@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{cmp::Ordering, num::NonZeroU128};
 
@@ -30,6 +31,7 @@ use crate::{Aggregate, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Folds scalar values into one aggregate with query transform semantics.
 ///
 /// Exact columns (signed, unsigned and exact fractions) keep `Sum`, `Mean` and
@@ -61,6 +63,7 @@ pub struct Scratch {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Scratch {
     /// Admit at most `slots` retained values across every accumulator using it.
     pub fn new(slots: usize) -> Self {
@@ -219,6 +222,7 @@ impl Accumulator {
 }
 
 /* === Public Functions === */
+
 // Fallible In-Place Heapsort Polls Original Cancellation During Comparisons.
 pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
     fn sift<T: Copy>(order: &mut [T], mut root: usize, end: usize, compare: &mut impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
@@ -246,6 +250,7 @@ pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Re
 }
 
 /* === Private Functions === */
+
 fn numeric_kind(kind: ScalarKind) -> bool {
     matches!(kind, ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact)
 }

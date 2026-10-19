@@ -8,12 +8,15 @@
  */
 
 /* === Modules === */
+
 mod delivery;
 
 /* === Re-Exports === */
+
 pub use delivery::{Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -29,6 +32,7 @@ use crate::schema::{self};
 use crate::{Identifier, IdentifierError};
 
 /* === Constants === */
+
 const MAX_LISTENERS: usize = 4096;
 
 /* === Macros === */
@@ -36,6 +40,7 @@ const MAX_LISTENERS: usize = 4096;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Entry {
     pub id: &'static str,
     pub source: SourceDeclaration,
@@ -61,6 +66,7 @@ struct DecodedDefinition {
 pub struct Declarations;
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Source {
@@ -77,18 +83,25 @@ pub enum SourceDeclaration {
 pub enum Error {
     #[error(transparent)]
     Identity(#[from] IdentifierError),
+
     #[error("invalid listener source: {reason}")]
     Source { reason: &'static str },
+
     #[error(transparent)]
     Schema(#[from] schema::Error),
+
     #[error(transparent)]
     Contract(#[from] ContractError),
+
     #[error("invalid listener callback: {reason}")]
     Callback { reason: &'static str },
+
     #[error("duplicate listener or callback operation `{id}`")]
     Duplicate { id: String },
+
     #[error("selected listener catalog exceeds 4096 leaves")]
     Limit,
+
     #[error("listener projection count differs from its declared leaf count")]
     Count,
 }
@@ -96,6 +109,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Source {
     pub fn id(&self) -> &str {
         match self {
@@ -212,6 +226,7 @@ impl Declarations {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn collect(
     expected: usize, project: impl FnOnce(&mut dyn FnMut(&Entry) -> Result<(), Error>) -> Result<(), Error>,
 ) -> Result<Vec<Definition>, Error> {

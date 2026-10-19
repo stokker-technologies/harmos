@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/bootstrap.py; sha256:1a60cf04f4268050352047e4daad8171fe3b662de0e43a00f2757a3786388603
+# Rendered by stkr project update from templates/python/release/bootstrap.py; sha256:da21922b96695c8eeb0fa5ad0a9cf9c03024db2143679313805b2295be0fffd1
 # ***
 #
 # __PRODUCT_NAME__
@@ -114,6 +114,9 @@ def bootstrap_stkr(directory: Path, document: dict) -> None:
     if not isinstance(project, str) or not project:
         raise policy.ToolError("ci.stkr.project_id must identify the release project")
     filename = f"stkr-{pin['version']}-{target}" + (".exe" if system == "windows" else "")
+    filename = pin.get("filenames", {}).get(target, filename)
+    if Path(filename).name != filename or "\\" in filename or ":" in filename or filename in {".", ".."}:
+        raise policy.ToolError("ci.stkr.filenames must name exact plain release assets")
     url = f"{base}/projects/{urllib.parse.quote(project, safe='')}/packages/generic/stkr/v{pin['version']}/{filename}"
     destination = policy.inside(directory, f"target/ci-tools/{target}")
     destination.mkdir(parents=True, exist_ok=True)

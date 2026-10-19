@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -22,6 +23,7 @@ use harmos_runtime::state::{Invert, Transaction, Undoable};
 use harmos_runtime::{Application, DefinitionId, state::Kind};
 
 /* === Constants === */
+
 pub(crate) const RENAME: (Kind, &str, u32) = (Kind::Transaction, "sheet.rename", 1);
 
 pub(crate) const EXPORTED: (Kind, &str, u32) = (Kind::Record, "sheet.exported", 1);
@@ -31,6 +33,7 @@ pub(crate) const EXPORTED: (Kind, &str, u32) = (Kind::Record, "sheet.exported", 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Sheet {
     pub(crate) title: String,
@@ -46,10 +49,12 @@ pub(crate) struct Rename {
 pub(crate) struct Editor;
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refusal {
     #[error("the title must not be empty")]
     Untitled,
+
     #[error("the sheet is sealed")]
     Sealed,
 }
@@ -69,6 +74,7 @@ pub(crate) enum Note {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Sheet> for Rename {
     type Error = Refusal;
 
@@ -168,6 +174,7 @@ impl harmos_runtime::state::RecordCatalog for Note {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn rename(title: &str) -> Change {
     Change::Rename(Rename { to: title.to_owned() })
 }

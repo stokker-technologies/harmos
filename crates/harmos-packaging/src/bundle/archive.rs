@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -26,9 +27,11 @@ use crate::digest;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Contents = BTreeMap<String, Range<usize>>;
 
 /* === Structs === */
+
 struct Bounded {
     bytes: Vec<u8>,
     limit: usize,
@@ -39,6 +42,7 @@ struct Bounded {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > self.limit - self.bytes.len() {
@@ -195,6 +199,7 @@ pub(super) fn staging(parent: &std::path::Path) -> io::Result<tempfile::TempDir>
 }
 
 /* === Private Functions === */
+
 fn append(builder: &mut tar::Builder<Bounded>, path: &str, bytes: &[u8], executable: bool) -> Result<(), Error> {
     let mut header = tar::Header::new_ustar();
     header.set_path(path)?;

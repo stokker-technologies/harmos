@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The mirror of synchronous initialization: an instance releases what it holds by
 // awaiting it, so a synchronous `stop` is refused where it is written.
 pub struct Resources;
@@ -37,6 +39,7 @@ pub struct Level;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos::observer(interval_ms = 100)]
 impl Level {
     async fn initialize(_resources: &Resources) -> Result<Self, String> {
@@ -53,6 +56,7 @@ impl Level {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

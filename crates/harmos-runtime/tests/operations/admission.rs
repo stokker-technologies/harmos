@@ -38,6 +38,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Hold Request Carries A Shared Notification, So It Stays In Process.
 #[harmos_runtime::operation(
     response = (),
@@ -76,6 +77,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 super::in_process!(HoldContract);
 
 impl harmos_runtime::MemorySize for HoldContract {
@@ -124,6 +126,7 @@ impl Drop for Hold {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<App> {
     Runtime::<App>::builder((), ())
         .register(Lanes::catalog())

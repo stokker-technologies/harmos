@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -46,12 +47,14 @@ use crate::query::transform::{
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn batch() -> RecordBatch {
     let schema = Arc::new(Schema::new(vec![Field::new("key", DataType::Int64, false), Field::new("row", DataType::Int64, false)]));
     RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![2, 1, 1, 2])), Arc::new(Int64Array::from(vec![0, 1, 2, 3]))]).unwrap()
 }
 
 /* === Tests === */
+
 #[test]
 fn ipc_codec_roundtrips() {
     // Native Buffers And Self-Contained Wire Values Agree.

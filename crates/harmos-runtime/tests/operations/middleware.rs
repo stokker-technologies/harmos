@@ -26,6 +26,7 @@ use harmos_runtime::operations::{CallContext, Context, Operation, OperationDecla
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
@@ -38,6 +39,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Principal(&'static str);
 #[harmos_runtime::message]
 struct Stage {
@@ -80,12 +82,14 @@ struct Policy {
 /* === Enums === */
 
 /* === Traits === */
+
 trait Sided {
     type Overlay: OperationDeclaration<Response = String>;
     type Declare: OperationDeclaration<Response = String>;
 }
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::ContextValue for Stage {
     const KEY: &'static str = "test.stage";
 }
@@ -182,6 +186,7 @@ impl Middleware for Policy {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn keyed<O>(_: &O) -> Option<harmos_runtime::operations::CacheKey> {
     Some(harmos_runtime::operations::CacheKey::new(vec![1]).unwrap())
 }

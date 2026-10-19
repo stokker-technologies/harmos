@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 pub mod net;
 pub mod symbol;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -32,6 +34,7 @@ use crate::state::{Schematic, SymbolId};
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos::transactions(state = Schematic, error = SchematicError)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Transactions {
@@ -45,6 +48,7 @@ pub enum Transactions {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transactions {
     pub fn symbol(&self) -> Option<SymbolId> {
         match self {

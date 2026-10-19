@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
@@ -50,6 +51,7 @@ use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 struct Reading {
     value: u64,
@@ -73,6 +75,7 @@ struct Third {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Objects {
     First(First),
@@ -83,6 +86,7 @@ enum Objects {
 /* === Traits === */
 
 /* === Implementations === */
+
 macro_rules! object {
     ($ty:ty, $name:literal) => {
         impl Identified for $ty {
@@ -104,6 +108,7 @@ object!(Second, "test.query.second");
 object!(Third, "test.query.third");
 
 /* === Public Functions === */
+
 #[tokio::test]
 async fn query_operation_batches() {
     // Configure Response Boundaries And Register The Actual Operation.
@@ -213,6 +218,7 @@ async fn query_operation_batches() {
 }
 
 /* === Private Functions === */
+
 #[tokio::test]
 async fn query_heterogeneous_projection() {
     let storage = StorageManager::<Objects>::new(

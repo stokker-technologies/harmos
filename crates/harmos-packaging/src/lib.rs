@@ -10,6 +10,7 @@
 // Reusable Cargo Build, Inert Inspection And Guest Componentization.
 
 /* === Modules === */
+
 mod build;
 pub mod bundle;
 #[cfg(feature = "guest")]
@@ -24,6 +25,7 @@ pub mod proto;
 pub mod python;
 
 /* === Re-Exports === */
+
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
 #[cfg(feature = "guest")]
 pub use component::componentize;
@@ -48,6 +50,7 @@ use sha2::{Digest, Sha256};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Debug, serde::Serialize)]
 pub struct Inspection {
     pub id: String,
@@ -60,28 +63,39 @@ pub struct Inspection {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("build cancelled after retaining and settling its child processes")]
     Cancelled,
+
     #[error(transparent)]
     Watch(#[from] notify::Error),
+
     #[error(transparent)]
     Bundle(#[from] bundle::Error),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
+
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
     #[error(transparent)]
     Declaration(#[from] harmos_domain::inventory::DeclarationError),
+
     #[error("invalid packaging settings: {0}")]
     Settings(String),
+
     #[error("Cargo build failed: {0}")]
     Cargo(String),
+
     #[error("guest componentization failed: {0}")]
     Component(String),
+
     #[error("built artifact changed after stamping: {0}")]
     ArtifactChanged(std::path::PathBuf),
+
     #[error("generated artifact collision: {0}")]
     Collision(String),
 }
@@ -91,6 +105,7 @@ pub enum Error {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     let bytes = std::fs::read(path)?;
     let guest = bytes.starts_with(b"\0asm");

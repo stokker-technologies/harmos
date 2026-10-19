@@ -10,6 +10,7 @@
 // Enum Variant Selection Against A Newer Twin Schema
 
 /* === Modules === */
+
 // The Deployed Schema Knows Two Modes
 mod known {
     use harmos_domain::message;
@@ -25,6 +26,7 @@ mod known {
     #[derive(Clone, Debug, Default, PartialEq)]
     pub enum Preferred {
         Automatic,
+
         #[default]
         Manual,
     }
@@ -86,6 +88,7 @@ mod newer {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt::Debug;
 // Third Party Imports
@@ -109,6 +112,7 @@ use harmos_sdk::grpc::{self, DecodeInput};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[test]
 fn unknown_variant_refused() {
     let remote = wire(&newer::Mode::Remote);
@@ -170,6 +174,7 @@ fn enum_postcard_parity() {
 }
 
 /* === Private Functions === */
+
 fn wire<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
     crate::encode(value)
 }

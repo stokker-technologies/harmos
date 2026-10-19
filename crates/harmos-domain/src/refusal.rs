@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 // Third Party Imports
@@ -22,6 +23,7 @@ use crate::failure::{Failure, Origin};
 use crate::operations;
 
 /* === Constants === */
+
 pub const RESERVED: &str = "harmos.";
 
 pub const FAILED: i64 = -32_000;
@@ -35,6 +37,7 @@ pub const UNREADABLE: i64 = -32_602;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // A host or carrier refusal: the JSON-RPC code beside the failure it carries.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +51,7 @@ pub struct Refusal {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Refusal {
     pub fn new(code: i64, message: impl fmt::Display) -> Self {
         let failure = Failure::new(operations::FailureKind::Permanent, message.to_string());
@@ -99,6 +103,7 @@ impl fmt::Display for Refusal {
 impl std::error::Error for Refusal {}
 
 /* === Public Functions === */
+
 pub const fn reserved(method: &str) -> bool {
     let method = method.as_bytes();
     let prefix = RESERVED.as_bytes();

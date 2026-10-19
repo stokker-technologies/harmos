@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<(StorageSchema, RetainedMemory)> {
         let held = Held::default();
@@ -164,3 +187,9 @@ impl<C> StorageManager<C> {
         Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None).await.map_err(Refusal::into_error)
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

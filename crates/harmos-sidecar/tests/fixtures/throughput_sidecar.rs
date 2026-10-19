@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 mod throughput_protocol;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -38,6 +40,7 @@ use throughput_protocol::TransportPlugin;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     run_plugin::<TransportPlugin>(NonZeroUsize::new(8).unwrap()).await

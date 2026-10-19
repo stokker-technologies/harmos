@@ -33,6 +33,7 @@ use harmos_runtime::operations::{Context, Host, Instance, Operation, OperationDe
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(5),
     attempt_timeout: Duration::from_secs(5),
@@ -45,6 +46,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The declaration is its own request, so `call` and `submit` infer it.
 #[harmos_runtime::message]
 #[harmos_runtime::operation(id = "fixture.hold", version = 1, response = u64, policy = POLICY)]
@@ -77,6 +79,7 @@ struct Ticker {}
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Holding {
     type Declaration = Hold;
     type Resources = Gate;
@@ -107,6 +110,7 @@ impl Operation for Holding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     let gate = Arc::new(Gate {
         started: Notify::new(),
@@ -149,6 +153,7 @@ fn hidden(error: Option<Error>) -> bool {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn host_submit_joins() {
     let (runtime, gate) = runtime().await;

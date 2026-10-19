@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -35,15 +36,18 @@ use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
 
 /* === Constants === */
+
 const CALLS: usize = 128;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Contexts = Arc<Mutex<BTreeMap<[u8; 32], Children>>>;
 type Running<A> = JoinHandle<(Owned<A>, Result<(), Error>)>;
 
 /* === Structs === */
+
 struct Called<'a> {
     future: Pin<Box<dyn Future<Output = bool> + Send + 'a>>,
     admission: bool,
@@ -93,6 +97,7 @@ struct Retired {
 }
 
 /* === Enums === */
+
 enum Command {
     Operation(WireCommand),
     Background { call: WireChildCall, submitted: tokio::time::Instant },
@@ -112,6 +117,7 @@ enum Ending {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Future for Called<'_> {
     type Output = bool;
     fn poll(mut self: Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<bool> {
@@ -483,6 +489,7 @@ impl<A: Application> Owned<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn unavailable() -> Error {
     Error::Unavailable { method: "operate".to_owned(), discarded: "the original guest store is unavailable".to_owned() }
 }

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +24,7 @@ use crate::{Identifier, MemorySize};
 /* === Constants === */
 
 /* === Macros === */
+
 crate::model::storage::codec::product!(DataBatch {
     sequence: crate::model::storage::codec::Unsigned => 1,
     destination: crate::model::storage::codec::Id => 2,
@@ -49,6 +51,7 @@ crate::model::storage::codec::variants!(WriteReceipt {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct DataBatch {
     pub sequence: u64,
@@ -70,6 +73,7 @@ pub struct WriteCompletion {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteReceipt {
     Accepted(BatchReceipt),
@@ -79,6 +83,7 @@ pub enum WriteReceipt {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -23,6 +24,7 @@ use crate::storage::{ErasedCatalog, SchemaKey, StorageManager};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
+
 const DEFINITIONS: usize = 64;
 const REGISTRY_BYTES: usize = 8 * 1024 * 1024;
 const NAME_BYTES: usize = 1024;
@@ -30,9 +32,11 @@ const NAME_BYTES: usize = 1024;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Key = (String, u32);
 
 /* === Structs === */
+
 #[derive(Debug)]
 pub struct Definition {
     owner: String,
@@ -44,6 +48,7 @@ pub struct Definition {
 pub(crate) struct Registry {
     pub(super) storage: Option<StorageManager<ErasedCatalog>>,
     state: Mutex<State>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
@@ -79,6 +84,7 @@ pub(super) struct Pending {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Definition {
     pub fn owner(&self) -> &str {
         &self.owner
@@ -266,6 +272,7 @@ impl Drop for Pending {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn limit() -> Error {
     Error::ResourceExhausted { resource: "record schema registry" }
 }

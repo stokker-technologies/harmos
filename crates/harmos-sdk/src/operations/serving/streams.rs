@@ -35,9 +35,11 @@ use crate::{MemorySize, Message};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct WireStreamLimits {
     pub input: StreamSettings,
@@ -49,8 +51,10 @@ pub struct WireStreams {
     input: Option<Arc<dyn Input>>,
     output: Option<Arc<dyn Encoder>>,
     state: Arc<watch::Sender<State>>,
+
     #[cfg(feature = "grpc")]
     input_codec: Option<super::protobuf::ItemCodec>,
+
     #[cfg(feature = "grpc")]
     output_codec: Option<super::protobuf::ItemCodec>,
 }
@@ -70,6 +74,7 @@ pub(super) struct Attempt {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Waiting,
@@ -80,6 +85,7 @@ enum Phase {
 }
 
 /* === Traits === */
+
 pub trait WireEndpoints: EndpointSet + Sized {
     fn empty() -> Option<Self> {
         None
@@ -90,19 +96,23 @@ pub trait WireEndpoints: EndpointSet + Sized {
 
 trait Input: Send + Sync {
     fn send<'a>(&'a self, payload: &'a [u8], #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>) -> Pending<'a, ()>;
+
     #[cfg(feature = "grpc")]
     fn item_type(&self) -> std::any::TypeId;
+
     fn finish(&self) -> Result<(), ServingError>;
     fn transferred(&self) -> bool;
 }
 trait Encoder: Send + Sync {
     #[cfg(feature = "grpc")]
     fn item_type(&self) -> std::any::TypeId;
+
     fn receive<'a>(&'a self, streams: &'a WireStreams, epoch: u64) -> Pending<'a, Option<Vec<u8>>>;
     fn transferred(&self) -> bool;
 }
 
 /* === Implementations === */
+
 impl WireEndpoints for () {
     fn empty() -> Option<Self> {
         Some(())
@@ -383,6 +393,7 @@ impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn encode<T: Message + 'static>(
     item: &T, #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>,
 ) -> Result<Vec<u8>, ServingError> {

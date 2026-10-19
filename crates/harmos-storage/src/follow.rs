@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -33,12 +34,15 @@ use super::{StorageCursor, StorageManager};
 use crate::{Error, Result};
 
 /* === Constants === */
+
 static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
+
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// An open subscription: saved history first, then accepted entries as they arrive.
 pub struct Follower<T: Entry> {
     inner: Arc<Inner>,
@@ -63,6 +67,7 @@ pub(super) struct Following {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Failure {
     Gap { requested: u64, available: u64 },
@@ -72,6 +77,7 @@ enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     /// Open a live subscription for one entry kind after `after`.
     pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -35,13 +36,16 @@ use crate::{Error, Message, Result, operations::Lane};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type BindCatalog = dyn Fn(&OperationManager) -> Result<()> + Send + Sync;
 
 /* === Structs === */
+
 pub(super) struct WireProjection {
     declaration: std::any::TypeId,
     contract: crate::operations::Contract,
     dispatch: Option<super::wire::Dispatch>,
+
     #[cfg(feature = "grpc")]
     grpc: Option<crate::grpc::routing::Handler>,
 }
@@ -54,8 +58,10 @@ pub(crate) struct CatalogBinding {
 pub struct Bindings<'a> {
     pub(super) operations: &'a OperationManager,
     owner: &'a str,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) scope: Option<&'a PluginScope>,
+
     pub(super) entries: Vec<Arc<Entry>>,
 }
 
@@ -72,6 +78,7 @@ pub struct PluginRegistration {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl CatalogBinding {
     pub(crate) fn operation<T>(owner: String, lane: impl Lane, resources: Arc<T::Resources>) -> Self
     where
@@ -436,6 +443,7 @@ impl Drop for PluginRegistration {
 }
 
 /* === Public Functions === */
+
 // The manager's one projection of a declaration: its wire contract, its
 // unary dispatch and, when it binds a method, its gRPC handler.
 pub(super) fn project<O: crate::operations::OperationDeclaration>() -> Result<WireProjection> {

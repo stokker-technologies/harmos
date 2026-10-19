@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl OperationManager {
     pub(in crate::operations) fn entry(&self, id: &str) -> Result<Arc<Entry>> {
         let entry = self.capture_entry(id)?;
@@ -75,3 +98,9 @@ impl OperationManager {
         Ok(entry)
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

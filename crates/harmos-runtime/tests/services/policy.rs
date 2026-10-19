@@ -36,12 +36,14 @@ use harmos_runtime::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct MutableAdapter {
     attempts: usize,
     exits: tokio::sync::mpsc::UnboundedReceiver<AdapterExit>,
 }
 
 /* === Enums === */
+
 enum AdapterExit {
     Environmental,
     Application,
@@ -50,6 +52,7 @@ enum AdapterExit {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Resident<Bank> for MutableAdapter {
     type Error = String;
 
@@ -72,6 +75,7 @@ impl Resident<Bank> for MutableAdapter {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
     runtime
         .state

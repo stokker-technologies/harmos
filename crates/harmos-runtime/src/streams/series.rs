@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::ops::Bound;
@@ -30,9 +31,11 @@ use crate::{state::At, state::Position, streams::Definition};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Served = At<Arc<dyn Any + Send + Sync>>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
     pub axis: u64,
@@ -69,6 +72,7 @@ pub(crate) struct Tier {
 }
 
 /* === Enums === */
+
 pub(crate) enum Request {
     Reader {
         stream: Definition,
@@ -112,6 +116,7 @@ pub(crate) enum Request {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Bucket {
     pub fn point(field: impl Into<String>, point: Point) -> Self {
         let mut summary = Summary::new();
@@ -212,6 +217,7 @@ impl Tier {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn earliest(held: Point, next: Point) -> Point {
     if next.axis < held.axis { next } else { held }
 }

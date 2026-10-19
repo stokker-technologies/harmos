@@ -35,6 +35,7 @@ use super::fixtures;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Watching {
     child: Option<Child>,
     reader: Option<JoinHandle<()>>,
@@ -52,6 +53,7 @@ struct Project {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Project {
     fn new(kind: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
@@ -213,6 +215,7 @@ impl Drop for Project {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[cfg(unix)]
 fn interrupt(pid: u32) {
     let _ = Command::new("kill").args(["-INT", &pid.to_string()]).status();

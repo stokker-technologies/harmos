@@ -8,17 +8,20 @@
  */
 
 /* === Modules === */
+
 mod admission;
 pub mod config;
 pub mod file;
 mod reader;
 
 /* === Re-Exports === */
+
 pub use admission::Permit;
 pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -34,11 +37,13 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryEntry {
     pub required_data: super::StorageCursor,
     pub position: RecoveryPosition,
+
     #[serde(with = "payload")]
     pub payload: Vec<u8>,
 }
@@ -48,6 +53,7 @@ pub struct RecoveryEntry {
 pub struct RecoverySnapshot {
     pub required_data: super::StorageCursor,
     pub through: RecoveryPosition,
+
     #[serde(with = "payload")]
     pub payload: Vec<u8>,
 }
@@ -61,6 +67,7 @@ pub struct RecoveryPage {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait StateBackend: Send + Sync + 'static {
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
@@ -75,6 +82,7 @@ pub trait StateBackend: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl RecoveryPage {
     pub fn check(
         &self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits,
@@ -118,6 +126,7 @@ impl RecoveryPage {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Opaque Payloads Encode As Unpadded Base64, So Every Byte Changes The Encoded Size.
 mod payload {
     use base64::Engine;

@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn builtin_grpc_roundtrip() {
     use harmos_runtime::builtin::{Cancel, InstanceState, Status};

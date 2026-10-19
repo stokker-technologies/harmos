@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -20,6 +21,7 @@
 use super::{Series, Summary};
 
 /* === Constants === */
+
 const CLOSE: f64 = 1e-9;
 
 /* === Macros === */
@@ -37,6 +39,7 @@ const CLOSE: f64 = 1e-9;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn close(found: Option<f64>, expected: f64) {
     let found = found.expect("an answer");
     assert!((found - expected).abs() <= CLOSE * expected.abs().max(1.0), "{found} is not {expected}");

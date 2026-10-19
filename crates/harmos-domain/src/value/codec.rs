@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -25,6 +26,7 @@ use crate::schema::{Cardinality, Described};
 use crate::{MessageError, btree_map_memory};
 
 /* === Constants === */
+
 pub const VALUE_DEPTH: usize = 4;
 
 // Postcard Variant Ordinals Are Part Of The Value Contract
@@ -43,6 +45,7 @@ pub(crate) const VALUE_FIELDS: &[Field] = Value4::FIELDS;
 pub(crate) const ENTRY_DEFINITION: Definition = Entry4::DEFINITION;
 
 /* === Macros === */
+
 macro_rules! shape {
     ($name:ident, $fields:expr) => {
         pub(crate) struct $name;
@@ -108,6 +111,7 @@ level!(Value4, Entry4, Array4, Object4, Value3);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Described for Value {
     const NAME: &'static str = "harmos::Value";
     const FIELDS: &'static [Field] = VALUE_FIELDS;
@@ -185,6 +189,7 @@ impl PostcardValue for Value {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
     Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }

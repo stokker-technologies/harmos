@@ -1,4 +1,4 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos-macros"
@@ -9,14 +9,14 @@ license.workspace = true
 publish.workspace = true
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
 [lib]
 proc-macro = true
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -56,13 +56,13 @@ syn = { workspace = true, default-features = true }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
 [[test]]
 name = "integration"
@@ -72,19 +72,19 @@ path = "tests/artifact/main.rs"
 name = "acceptance"
 path = "tests/acceptance/main.rs"
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::schema::{self, Described};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "DecodedContract")]
 pub struct Contract {
@@ -38,6 +40,7 @@ pub struct Contract {
     version: u32,
     codec: Codec,
     schema: Schema,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grpc: Option<super::Grpc>,
 }
@@ -47,9 +50,11 @@ pub struct Contract {
 struct DecodedContract {
     #[serde(with = "super::DecodedDefinition")]
     operation: Definition,
+
     version: u32,
     codec: Codec,
     schema: Schema,
+
     #[serde(default)]
     grpc: Option<super::Grpc>,
 }
@@ -69,6 +74,7 @@ pub struct Contracts;
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Codec {
@@ -79,14 +85,18 @@ pub enum Codec {
 pub enum ContractError {
     #[error("invalid or reserved gRPC binding name")]
     Grpc,
+
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::Error),
+
     #[error("wire operation `{id}` has a zero semantic version")]
     Version { id: String },
+
     #[error("invalid {direction} schema for wire operation `{id}`: {source}")]
     Schema {
         id: String,
         direction: &'static str,
+
         #[source]
         source: schema::Error,
     },
@@ -95,6 +105,7 @@ pub enum ContractError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl WireDeclaration {
     pub const fn of<O: OperationDeclaration>() -> Self {
         Self {
@@ -330,6 +341,7 @@ impl Contracts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
     if D::STREAMED { Some(<D::Item as Described>::DEFINITION) } else { None }
 }
@@ -346,6 +358,7 @@ fn append(
 }
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;

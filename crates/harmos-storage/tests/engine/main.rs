@@ -10,6 +10,7 @@
 // Exercise Storage Engine Without Runtime Composition
 
 /* === Modules === */
+
 #[allow(dead_code)]
 #[path = "../support/storage.rs"]
 mod backend;

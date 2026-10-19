@@ -34,6 +34,7 @@ use crate::config::BuildSettings;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Deserialize)]
 pub(super) struct Metadata {
     pub(super) packages: Vec<Package>,
@@ -76,6 +77,7 @@ pub(super) struct Inputs {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Metadata {
     pub(super) fn read(settings: &BuildSettings, cancellation: &BuildCancellation) -> Result<Self, Error> {
         let manifest = settings.manifest.canonicalize()?;
@@ -194,6 +196,7 @@ impl Inputs {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Cargo Creates A Missing Output Directory Atomically Through A Sibling Named After It Plus Six Random Characters
 fn staging_sibling(root: &Path, path: &Path) -> bool {
     let (Some(parent), Some(name)) = (root.parent(), root.file_name().and_then(|name| name.to_str())) else {

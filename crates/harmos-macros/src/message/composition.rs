@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -37,6 +38,7 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // The Authored Struct With Its Message Debug And Default Surface. Transport
 // Codecs Derive From Its Postcard Value And Described Shape Elsewhere.
 pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bool) -> Result<TokenStream, Error> {
@@ -57,6 +59,7 @@ pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bo
 }
 
 /* === Private Functions === */
+
 fn derives(item: &ItemStruct, name: &str) -> bool {
     item.attrs.iter().filter(|attr| attr.path().is_ident("derive")).any(|attr| {
         attr.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::mem::size_of;
 // Third Party Imports
@@ -22,6 +23,7 @@ use crate::Message;
 use crate::message::PostcardValue;
 
 /* === Constants === */
+
 const HEADERS: usize = size_of::<Context>() + 2 * size_of::<Vec<u8>>();
 
 /* === Macros === */
@@ -31,16 +33,21 @@ const HEADERS: usize = size_of::<Context>() + 2 * size_of::<Vec<u8>>();
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum EncodingError {
     #[error(transparent)]
     Context(#[from] ContextError),
+
     #[error("listener delivery encoding size overflows")]
     Overflow,
+
     #[error("listener delivery encoding requires {required} bytes, budget is {budget}")]
     Budget { required: usize, budget: usize },
+
     #[error("{part} encoder returned {actual} bytes, declared length is {expected}")]
     Length { part: &'static str, expected: usize, actual: usize },
+
     #[error("{part} encoder allocated capacity {actual}, declared capacity is {expected}")]
     Capacity { part: &'static str, expected: usize, actual: usize },
 }
@@ -48,7 +55,9 @@ pub enum EncodingError {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
+
 // The Envelope Of One Delivered Row, Encoded Within A Memory Budget.
 pub fn encoding_memory_bytes<R: Message>(context: Context, row: &R) -> Result<usize, EncodingError> {
     context.validate()?;
@@ -86,6 +95,7 @@ pub(super) fn envelope_len(context: Context, row_len: usize) -> Option<usize> {
 }
 
 /* === Private Functions === */
+
 fn memory_bytes(row_capacity: usize, envelope_capacity: usize) -> Result<usize, EncodingError> {
     HEADERS.checked_add(row_capacity).and_then(|size| size.checked_add(envelope_capacity)).ok_or(EncodingError::Overflow)
 }

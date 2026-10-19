@@ -31,10 +31,12 @@ use crate::Error;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Outcome = Result<(), Arc<Error>>;
 pub(crate) type Finalize<'a> = Pin<Box<dyn Future<Output = Outcome> + Send + 'a>>;
 
 /* === Structs === */
+
 pub(crate) struct Cleanup<R: Resource> {
     original: Arc<Mutex<Option<R>>>,
     joining: AsyncMutex<Join>,
@@ -46,6 +48,7 @@ pub(crate) struct Owned<R> {
 }
 
 /* === Enums === */
+
 enum Join {
     Ready,
     Running(JoinHandle<Outcome>),
@@ -53,11 +56,13 @@ enum Join {
 }
 
 /* === Traits === */
+
 pub(crate) trait Resource: Send + 'static {
     fn finalize(&mut self) -> Finalize<'_>;
 }
 
 /* === Implementations === */
+
 impl Resource for Box<dyn Resource> {
     fn finalize(&mut self) -> Finalize<'_> {
         self.as_mut().finalize()

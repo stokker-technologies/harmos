@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
@@ -30,9 +31,11 @@ use std::sync::Arc;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Projection = fn(&dyn Any) -> Option<&dyn Any>;
 
 /* === Structs === */
+
 pub struct Response<T: Send + Sync + 'static> {
     erased: ErasedResponse,
     payload: PhantomData<fn() -> T>,
@@ -51,6 +54,7 @@ pub struct ErasedResponse {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T: Send + Sync + 'static> Response<T> {
     pub fn new(value: T) -> Self {
         Self::from_owner(Arc::new(value))
@@ -167,6 +171,7 @@ impl ErasedResponse {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn project<T: Send + Sync + 'static, U: Borrow<T> + Send + Sync + 'static>(owner: &dyn Any) -> Option<&dyn Any> {
     let owner = owner.downcast_ref::<U>()?;
     Some(owner.borrow())

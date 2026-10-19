@@ -35,6 +35,7 @@ use harmos_runtime::{Error, Runtime, state::Position};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Bench {
     device: String,
     reads: AtomicUsize,
@@ -47,6 +48,7 @@ struct Read {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
         response = Reading,
@@ -78,6 +80,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Read {
     type Declaration = ReadContract;
     type Resources = Bench;

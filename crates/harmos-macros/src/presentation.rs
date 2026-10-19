@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -32,6 +33,7 @@ use syn::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 pub(crate) struct Presentation {
     label: Option<String>,
@@ -57,6 +59,7 @@ struct ObjectMember(Attribute);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Parse for Attribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let (key, span) = key(input)?;
@@ -156,6 +159,7 @@ impl Presentation {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
     let mut rows = Vec::new();
     for field in fields {
@@ -190,6 +194,7 @@ pub(crate) fn fields(fields: &mut Fields) -> Result<String, Error> {
 }
 
 /* === Private Functions === */
+
 fn key(input: ParseStream<'_>) -> syn::Result<(String, proc_macro2::Span)> {
     if input.peek(syn::LitStr) {
         let key: syn::LitStr = input.parse()?;

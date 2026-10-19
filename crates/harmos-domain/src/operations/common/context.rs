@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::{Any, TypeId, type_name};
 use std::collections::{BTreeMap, HashMap};
@@ -22,6 +23,7 @@ use std::sync::Arc;
 use crate::{Message, MessageError};
 
 /* === Constants === */
+
 pub const PORTABLE_VALUES: usize = 64;
 
 pub const PORTABLE_BYTES: usize = 64 * 1024;
@@ -31,6 +33,7 @@ pub const PORTABLE_BYTES: usize = 64 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Default)]
 pub struct CallContext {
     values: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -45,28 +48,35 @@ pub struct CallValue {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ContextError {
     #[error("call context already carries `{name}`")]
     Duplicate { name: String },
+
     #[error("call context does not carry `{name}`")]
     Missing { name: String },
+
     #[error("call context value `{key}` is invalid: {source}")]
     Decode {
         key: String,
+
         #[source]
         source: MessageError,
     },
+
     #[error("call context portable values exceed {PORTABLE_VALUES} entries or {PORTABLE_BYTES} bytes")]
     Budget,
 }
 
 /* === Traits === */
+
 pub trait ContextValue: Message + Send + Sync + 'static {
     const KEY: &'static str;
 }
 
 /* === Implementations === */
+
 impl CallContext {
     pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Result<(), ContextError> {
         let key = TypeId::of::<T>();

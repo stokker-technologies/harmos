@@ -7,41 +7,70 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
 /* === Type Aliases === */
+
 pub type Result<T> = std::result::Result<T, Error>;
 
+/* === Structs === */
+
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("operation `{operation}` failed")]
     OperationFailed {
         operation: String,
+
         #[source]
         source: std::sync::Arc<dyn std::error::Error + Send + Sync>,
     },
 
     #[error("{domain} is not ready")]
     NotReady { domain: &'static str },
+
     #[error("persistence failed: {source}")]
     Persistence {
         #[source]
         source: std::sync::Arc<Error>,
     },
+
     #[error("{domain} admission is closed")]
     Closing { domain: &'static str },
+
     #[error("{domain} `{name}` is already registered")]
     AlreadyRegistered { domain: &'static str, name: String },
+
     #[error("backend {operation} failed ({kind:?}): {source}")]
     Backend {
         operation: &'static str,
         kind: BackendFailure,
+
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
     #[error("invalid {field}: {reason}")]
     InvalidInput { field: &'static str, reason: &'static str },
+
     #[error("{resource} capacity is exhausted")]
     ResourceExhausted { resource: &'static str },
+
     #[error("retained data begins at {available}, but {requested} was requested")]
     Gap { requested: u64, available: u64 },
 
@@ -58,7 +87,10 @@ pub enum BackendFailure {
     Unsupported,
 }
 
+/* === Traits === */
+
 /* === Implementations === */
+
 impl Error {
     pub fn backend_failure(&self) -> Option<BackendFailure> {
         match self {
@@ -72,3 +104,9 @@ impl Error {
         Self::Backend { operation, kind, source: Box::new(source) }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

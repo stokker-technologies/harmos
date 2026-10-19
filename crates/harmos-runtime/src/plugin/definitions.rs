@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::Result;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginDefinitions {
     pub(super) graph: PluginGraph,
@@ -38,6 +40,7 @@ pub struct PluginDefinitions {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PluginDefinitions {
     pub fn new(definitions: impl IntoIterator<Item = PluginDefinition>, rebuilt: impl IntoIterator<Item = String>) -> Result<Self> {
         Self::new_with_providers(definitions, rebuilt, [])

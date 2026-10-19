@@ -42,6 +42,7 @@ use harmos_sdk::operations::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O> {
     host: Context,
@@ -55,6 +56,7 @@ pub struct OperationInstance<O> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Context {
     async fn child(&self, payload: Vec<u8>) -> Result<Vec<u8>, OperationRefusal> {
         super::plugin::__bindings::harmos::guest::operation_context::child(payload).await.map_err(|error| {

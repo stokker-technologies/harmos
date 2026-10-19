@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -25,6 +26,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The request half (`timeout`, `attempt_timeout`, `retries`) bounds one
 // request-scoped invocation. The resident half (`restart`) governs observers
 // and services, which run until stopped: for them `timeout` is the stop
@@ -39,6 +41,7 @@ pub struct OperationPolicy {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum RetryPolicy {
@@ -92,10 +95,13 @@ pub enum ReplaySafety {
 pub enum PolicyError {
     #[error("operation deadlines must be positive (overall {timeout:?}, attempt {attempt_timeout:?})")]
     Deadline { timeout: Duration, attempt_timeout: Duration },
+
     #[error("a retry policy needs a positive retry count; use Never for zero")]
     EmptyRetries,
+
     #[error("a restart policy needs positive credit and sustained health; use Never for zero")]
     EmptyRestarts,
+
     #[error("retry delays must be positive and ordered (initial {initial:?}, maximum {maximum:?})")]
     Backoff { initial: Duration, maximum: Duration },
 }
@@ -103,6 +109,7 @@ pub enum PolicyError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl OperationPolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
         if self.timeout.is_zero() || self.attempt_timeout.is_zero() {
@@ -201,6 +208,7 @@ impl Backoff {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Every caller bounds nanos by a representable Duration before this conversion.
 fn from_nanos(nanos: u128) -> Duration {
     Duration::new((nanos / 1_000_000_000) as u64, (nanos % 1_000_000_000) as u32)

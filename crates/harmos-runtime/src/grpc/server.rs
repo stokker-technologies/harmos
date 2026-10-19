@@ -8,9 +8,11 @@
  */
 
 /* === Modules === */
+
 mod concurrency;
 
 /* === Re-Exports === */
+
 pub use crate::config::GrpcServerSettings as Settings;
 pub use concurrency::Calls;
 
@@ -34,6 +36,7 @@ use crate::{Error, Refusal, operations::OperationManager};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type HttpFuture = Pin<Box<dyn Future<Output = http::Response<Body>> + Send>>;
 type Items<I, R> = Pin<Box<dyn Stream<Item = Result<Event<StreamItem<I>, crate::operations::Response<R>>, Status>> + Send>>;
 
@@ -46,11 +49,13 @@ struct Endpoint<O> {
 }
 
 /* === Enums === */
+
 #[derive(Clone)]
 pub enum Authority {
     TrustedHost(OperationManager),
 
     Binding(crate::operations::GrpcBinding),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(crate::operations::Caller),
 }
@@ -58,6 +63,7 @@ pub enum Authority {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Authority {
     fn contextual<T>(&self, request: &Request<T>) -> Self {
         let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
@@ -177,6 +183,7 @@ where
 }
 
 /* === Public Functions === */
+
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: OperationDeclaration,
@@ -265,6 +272,7 @@ where
 }
 
 /* === Private Functions === */
+
 fn code(error: &Error) -> tonic::Code {
     // Preserve Known Runtime Denials Through Authored Child Failures. Bound Wrapping.
     let mut error = error;

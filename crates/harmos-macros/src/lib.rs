@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod artifact;
 mod catalog;
 mod identity;
@@ -19,6 +20,7 @@ mod presentation;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -41,6 +43,7 @@ use identity::Sort;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[proc_macro_attribute]
 pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::typed::declare(attribute.into(), item.into()).into()

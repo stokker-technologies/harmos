@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::Error;
 use std::sync::{
@@ -33,6 +34,7 @@ use harmos_runtime::sidecar::{Instance, Observer, ObserverContext, ObserverError
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Counts {
     initialized: AtomicUsize,
     stopped: AtomicUsize,
@@ -55,6 +57,7 @@ struct Watch<const PANIC: bool>(Arc<Counts>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Counts {
     fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -117,6 +120,7 @@ impl<const PANIC: bool> Drop for Watch<PANIC> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn watch<const PANIC: bool>() -> Instance<Arc<Counts>, ()> {
     Instance::<Arc<Counts>, ()>::of::<Watch<PANIC>>()
 }

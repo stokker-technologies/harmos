@@ -17,6 +17,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io;
@@ -35,11 +36,13 @@ use harmos_runtime::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Member = Envelope<serde_json::Value>;
 
 type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result<()> + Send>;
 
 /* === Structs === */
+
 /// The synced frames of one copy: each frame is one JSON array holding a
 /// standalone entry or every member of one logical commit.
 #[derive(Clone, Default)]
@@ -76,6 +79,7 @@ pub struct Snapshot<A: Application> {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Wire: Application + Sized {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32);
 
@@ -87,6 +91,7 @@ pub trait Wire: Application + Sized {
 }
 
 /* === Implementations === */
+
 impl Store {
     pub fn lines(&self) -> Vec<String> {
         self.frames().lines.clone()
@@ -427,6 +432,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
 }
 
 /* === Public Functions === */
+
 /// One standalone frame, as some build stored it.
 pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_json::Value) -> String {
     let member = serde_json::json!({
@@ -449,6 +455,7 @@ pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_j
 }
 
 /* === Private Functions === */
+
 fn members(line: &str) -> Result<Vec<Member>, String> {
     let group: Vec<Member> = serde_json::from_str(line).map_err(|error| error.to_string())?;
     let Some(first) = group.first() else {

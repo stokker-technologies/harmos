@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -31,6 +32,7 @@ use harmos_sdk::plugin::{Declared, Owner, Plugin};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct PluginNative<P> {
     declaration: Declaration,
     capacity: NonZeroUsize,
@@ -42,6 +44,7 @@ pub struct PluginNative<P> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
     pub fn new(capacity: NonZeroUsize) -> std::io::Result<Self> {
         let markers = std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
@@ -128,6 +131,7 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
 }
 
 /* === Public Functions === */
+
 pub async fn run_plugin<P>(capacity: NonZeroUsize) -> std::io::Result<()>
 where
     P: Plugin<Context = Supervisor> + Declared,
@@ -159,6 +163,7 @@ where
 }
 
 /* === Private Functions === */
+
 fn opening<P>(native: &PluginNative<P>) -> std::io::Result<Opening>
 where
     P: Plugin<Context = Supervisor> + Declared,

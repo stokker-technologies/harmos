@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Declared {
     name: Ident,
     capacity: Capacity,
@@ -38,6 +40,7 @@ struct Declared {
 }
 
 /* === Enums === */
+
 enum Capacity {
     Serial,
     Concurrent(LitInt),
@@ -47,6 +50,7 @@ enum Capacity {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Declared {
     fn capacity(&self, harmos: &HarmosPath) -> TokenStream {
         match &self.capacity {
@@ -60,6 +64,7 @@ impl Declared {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item) {
         Ok(closed) => closed,
@@ -68,6 +73,7 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let harmos = harmos_path(attribute)?;
 

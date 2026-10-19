@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -40,6 +41,7 @@ use harmos_domain::model::storage::ArrowIpc;
 use harmos_domain::operations::storage::Query;
 
 /* === Constants === */
+
 // Two Protobuf Keys (Five Bytes Each) And Two Length Varints (Ten Bytes Each),
 // Less The Postcard Variant And Length Bytes They Replace.
 const PROTOBUF_FRAMING: usize = 30;
@@ -49,6 +51,7 @@ const PROTOBUF_FRAMING: usize = 30;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Delivers one schema, then bounded batches, of one admitted query.
 ///
 /// The reader owns an active query slot and a pinned snapshot until the source
@@ -77,6 +80,7 @@ pub struct QueryReader {
 }
 
 /* === Enums === */
+
 /// One native query item: the result schema first, then retained batches.
 #[derive(Clone, Debug)]
 pub enum QueryArrow {
@@ -94,6 +98,7 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl QueryArrow {
     /// The wire form of this item: its Arrow IPC message.
     pub fn output(&self) -> QueryOutput {
@@ -429,6 +434,7 @@ impl Rows {
 }
 
 /* === Public Functions === */
+
 /// Resolve the schema registered under `key` at the snapshot, charged to `held`.
 pub(crate) async fn schema_at(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
@@ -498,6 +504,7 @@ pub(crate) fn retry(bank: &MemoryBank, error: Error, rows: Option<&mut NonZeroUs
 }
 
 /* === Private Functions === */
+
 async fn scan<T: Entry>(snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows) -> Result<(Rows, usize)> {
     let (entries, bytes) = snapshot.scan::<T>(selection, page).await?;
     Ok((wrap(entries), bytes))

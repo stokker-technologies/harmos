@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::sync::Arc;
@@ -29,12 +30,14 @@ use super::executor;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Task<T> {
     stopping: watch::Sender<bool>,
     join: Mutex<Join<T>>,
 }
 
 /* === Enums === */
+
 enum Join<T> {
     Running(JoinHandle<T>),
     Settled(Result<Arc<T>, Arc<JoinError>>),
@@ -43,6 +46,7 @@ enum Join<T> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T: Send + Sync + 'static> Task<T> {
     pub(crate) fn spawn<F, W>(work: W) -> Self
     where
@@ -95,6 +99,7 @@ impl<T> Drop for Task<T> {
 }
 
 /* === Public Functions === */
+
 pub(crate) async fn settle_all<E, F>(tasks: impl IntoIterator<Item = F>) -> Result<(), E>
 where
     F: Future<Output = Result<(), E>>,

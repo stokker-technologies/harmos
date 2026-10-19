@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +30,7 @@ use crate::Identifier;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Which identities one catalog scan lists, optionally narrowed to one schema id.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentitySelection {
@@ -37,6 +39,7 @@ pub struct IdentitySelection {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IdentityKind {
@@ -56,6 +59,7 @@ pub enum StoredIdentity {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StoredIdentity {
     pub fn first(&self) -> &StorageCursor {
         match self {

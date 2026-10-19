@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Grpc {
@@ -41,6 +42,7 @@ pub struct Grpc {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Grpc {
     pub const fn new(package: &'static str, service: &'static str, method: &'static str) -> Self {
         Self { package: Cow::Borrowed(package), service: Cow::Borrowed(service), method: Cow::Borrowed(method) }
@@ -67,6 +69,7 @@ impl Grpc {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     value.len() <= 255

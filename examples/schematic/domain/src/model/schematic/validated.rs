@@ -28,6 +28,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::message]
 pub struct ValidatedSchematic {
     pub id: String,
@@ -35,6 +36,7 @@ pub struct ValidatedSchematic {
 }
 
 /* === Enums === */
+
 #[harmos_domain::catalog]
 pub enum Objects {
     Schematic(ValidatedSchematic),
@@ -43,6 +45,7 @@ pub enum Objects {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_domain::Identified for ValidatedSchematic {
     fn definition() -> (harmos_domain::DefinitionId, u32) {
         (harmos_domain::DefinitionId::new("schematic.validated"), 1)

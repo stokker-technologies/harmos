@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::config::EncodeSettings;
 
 /* === Imports === */
@@ -57,6 +58,7 @@ pub struct Transcoded;
 /* === Enums === */
 
 /* === Traits === */
+
 /// How one payload type crosses the gRPC wire under the strategy `Self`.
 pub trait Wire<T>: Send + Sync + 'static {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
@@ -70,6 +72,7 @@ pub trait Encode<W>: Send + 'static {
 }
 
 /* === Implementations === */
+
 impl EncodeSettings {
     pub(super) fn validate(&self) -> Result<(), Status> {
         if self.message_bytes.get() > u32::MAX as usize || self.buffer_bytes.get() > self.message_bytes.get() {
@@ -165,4 +168,5 @@ impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 /* === Tests === */

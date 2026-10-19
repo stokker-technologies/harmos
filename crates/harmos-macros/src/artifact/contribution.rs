@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use syn::{Error, FnArg, ImplItem, ImplItemFn, ItemImpl, ReturnType, Type};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn block(item: TokenStream, verb: &str) -> Result<ItemImpl, Error> {
     let block: ItemImpl = syn::parse2(item)?;
     if let Some((path, _)) = &block.trait_ {

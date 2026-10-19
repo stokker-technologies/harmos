@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -31,6 +32,7 @@ use schematic_domain::operations::schematic::analyze::Finding;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Analyzing;
 
 /* === Enums === */
@@ -38,6 +40,7 @@ pub(crate) struct Analyzing;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_guest::operation]
 impl Analyzing {
     async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {

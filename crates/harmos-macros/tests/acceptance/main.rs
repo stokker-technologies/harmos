@@ -10,6 +10,7 @@
 // Exercise Compiler Authoring Diagnostics
 
 /* === Modules === */
+
 #[path = "../catalog/main.rs"]
 mod catalog;
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]

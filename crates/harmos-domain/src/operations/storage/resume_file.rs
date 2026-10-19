@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(ResumeFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
@@ -43,6 +45,7 @@ crate::declare!(ResumeFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Resume A Producing File Session After Reconnection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResumeFile {
@@ -55,6 +58,7 @@ pub struct ResumeFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for ResumeFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

@@ -41,10 +41,12 @@ use crate::operations::CallContext;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Response = http::Response<Body>;
 type Shutdown = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(super) struct Inbound {
     pub(super) routes: tonic::service::Routes,
@@ -70,6 +72,7 @@ struct Observed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Service<http::Request<Body>> for Inbound {
     type Response = Response;
     type Error = Infallible;
@@ -195,6 +198,7 @@ impl http_body::Body for Observed {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn trailers(status: Status) -> http_body::Frame<bytes::Bytes> {
     let mut headers = http::HeaderMap::new();
     status.add_header(&mut headers).expect("static transport status is valid metadata");

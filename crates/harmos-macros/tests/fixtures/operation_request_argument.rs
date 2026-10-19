@@ -30,6 +30,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::message]
 #[harmos::operation(request = (), response = (), policy = (), version = 1)]
 struct Read { resource: String }
@@ -44,6 +45,7 @@ struct Read { resource: String }
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

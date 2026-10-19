@@ -29,6 +29,7 @@ use std::time::Duration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct BuildSettings {
     pub backend: BuildBackend,
@@ -55,6 +56,7 @@ pub enum BuildBackend {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BuildProfile {
@@ -66,6 +68,7 @@ pub enum BuildProfile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl BuildProfile {
     pub const fn name(self) -> &'static str {
         match self {

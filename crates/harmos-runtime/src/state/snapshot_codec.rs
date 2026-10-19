@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{self, Write};
@@ -39,6 +40,7 @@ use crate::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Snapshot<S> {
@@ -101,6 +103,7 @@ struct Bounded {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T: CatalogCodec> Serialize for Body<'_, T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         self.0.encode(serializer)
@@ -177,6 +180,7 @@ impl Write for Bounded {
 }
 
 /* === Public Functions === */
+
 pub(super) fn encode<A: Application>(
     policy: &SnapshotPolicy, state: &At<A::State>, undos: &Undos<A>, tail: &Tail<A>, receipts: &HashMap<RequestKey, Receipt>,
 ) -> Result<Vec<u8>>
@@ -267,6 +271,7 @@ where
 }
 
 /* === Private Functions === */
+
 fn transaction<A: Application>(
     value: &Prepared, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Arc<A::Transaction>, Incompatible> {
@@ -304,6 +309,7 @@ fn trim<A: Application>(tail: &mut VecDeque<Arc<Entry<Recorded<A>>>>, limit: usi
 }
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;

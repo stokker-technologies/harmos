@@ -35,6 +35,7 @@ use harmos_runtime::{Message, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Resources {
     events: Mutex<Vec<&'static str>>,
@@ -54,6 +55,7 @@ struct Text {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
         response = Text,
@@ -82,6 +84,7 @@ enum Operations {
 enum Authored {
     #[nested]
     Inner(Implementation),
+
     #[nested]
     Empty(()),
 }
@@ -94,6 +97,7 @@ enum Implementation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Read {
     type Declaration = ReadContract;
     type Resources = Resources;
@@ -157,6 +161,7 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Resources>) {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())

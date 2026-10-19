@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Id(u64);
@@ -46,6 +47,7 @@ pub struct Status {
 }
 
 /* === Enums === */
+
 // Resident phases are reserved for long-running declarations; request-scoped
 // operations never report them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,7 +82,9 @@ pub struct ParseError {
 }
 
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Id {
     pub const fn new(value: u64) -> Self {
         Self(value)

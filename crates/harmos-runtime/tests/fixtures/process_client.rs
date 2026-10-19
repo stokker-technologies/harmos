@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -31,6 +32,7 @@ use harmos_runtime::sidecar::{Refusal, Supervisor};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Client {
     resources: Arc<Witness>,
 }
@@ -44,6 +46,7 @@ struct Probing {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::lifecycle::Policy for Client {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
@@ -138,4 +141,5 @@ impl Operation for Probing {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 /* === Tests === */

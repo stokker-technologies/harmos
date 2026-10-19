@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 // Third Party Imports
@@ -26,6 +27,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Sheet;
 
 #[harmos::transaction(id = "sheet.place", version = 1, inverse = Remove)]
@@ -37,6 +39,7 @@ struct Place;
 struct Remove;
 
 /* === Enums === */
+
 #[harmos::transactions(state = Sheet)]
 enum Change {
     Place(Place),
@@ -45,6 +48,7 @@ enum Change {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos::state::Transaction<Sheet> for Place {
     type Error = Infallible;
 
@@ -80,6 +84,7 @@ impl harmos::state::Invert<Sheet> for Remove {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

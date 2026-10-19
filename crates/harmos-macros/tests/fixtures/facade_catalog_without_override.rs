@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[facade::message]
 #[facade::operation(
     id = "facade.export",
@@ -41,6 +43,7 @@
 struct Export { count: u64 }
 
 /* === Enums === */
+
 #[facade::catalog]
 enum Operations {
     Export(Export),
@@ -53,6 +56,7 @@ enum Operations {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {
     let entries = facade::__harmos::operations::Declarations::of::<Operations>().unwrap();
     assert_eq!(entries[0].id.as_str(), "facade.export");

@@ -35,6 +35,7 @@ use harmos_runtime::{Runtime, services::Fault, services::Resident, services::Ser
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct RetainedCleanup {
     gate: Option<tokio::sync::oneshot::Receiver<()>>,
     join: Option<tokio::task::JoinHandle<()>>,
@@ -46,6 +47,7 @@ struct RetainedCleanup {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug)]
 enum CleanupRequest {
     Instance,
@@ -57,6 +59,7 @@ enum CleanupRequest {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Resident<App> for RetainedCleanup {
     type Error = String;
 
@@ -93,6 +96,7 @@ impl Resident<App> for RetainedCleanup {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn stop_cleanup(
     runtime: &Runtime<App>, scope: &Arc<()>, request: CleanupRequest,
     lease: &harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,

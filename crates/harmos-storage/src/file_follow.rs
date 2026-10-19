@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -28,6 +29,7 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct FileFollower {
     manager: StorageManager<ErasedCatalog>,
     file: StagedFile,
@@ -43,6 +45,7 @@ pub struct FileFollower {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn follow_file(&self, file: &StagedFile, offset: u64) -> Result<FileFollower> {
         self.inner.primary.history().check(&file.history)?;

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 // Third Party Imports
@@ -28,10 +29,12 @@ use crate::operations::Definition;
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("the operation definitions differ from the admitted catalog")]
     Mismatch,
+
     #[error("operation inventory is invalid: {source}")]
     Invalid {
         #[source]
@@ -44,6 +47,7 @@ pub enum Error {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn validate(operations: &[Definition]) -> Result<(), Error> {
     let mut ids = BTreeSet::new();
     for operation in operations {

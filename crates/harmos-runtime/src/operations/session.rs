@@ -36,6 +36,7 @@ use harmos_domain::MemorySize;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Upload<O> = Session<O, SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>, ()>;
 pub type Download<O> = Session<O, (), SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>>;
 pub type Exchange<O> = Session<
@@ -45,6 +46,7 @@ pub type Exchange<O> = Session<
 >;
 
 /* === Structs === */
+
 #[must_use = "dropping a streaming session requests cancellation"]
 pub struct Session<O: OperationDeclaration, I = (), R = ()> {
     input: I,
@@ -82,6 +84,7 @@ struct Ends {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<O: OperationDeclaration, I, R> Session<O, I, R> {
     pub fn id(&self) -> OperationInstanceId {
         self.completion.id()
@@ -308,6 +311,7 @@ impl super::Caller {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn upload<O: crate::operations::OperationDeclaration>(
     request: O, settings: StreamSettings,
     submit: impl FnOnce(

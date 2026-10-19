@@ -35,6 +35,7 @@ use crate::signal::{Error, Result};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn fft_in_place(real: &mut [f64], imag: &mut [f64], mut check: impl FnMut() -> bool) -> Result<()> {
     let length = real.len();
     if !length.is_power_of_two() || length != imag.len() || real.iter().chain(imag.iter()).any(|value| !value.is_finite()) {

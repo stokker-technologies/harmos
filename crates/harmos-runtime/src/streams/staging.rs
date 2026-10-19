@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 // Third Party Imports
@@ -28,6 +29,7 @@ use crate::state::Position;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct StagedPublication {
     pub(super) publication: ManagedPublication,
@@ -67,6 +69,7 @@ struct Pending {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl std::fmt::Debug for Activation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("Activation").field("state", &self.state).field("leases", &self.leases().len()).finish()

@@ -10,8 +10,11 @@
 // Checksummed JSON Lines For State Persistence
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::{BufRead, Write};
 // Third Party Imports
@@ -21,15 +24,20 @@ use sha2::{Digest, Sha256};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
+
 const PREFIX: &[u8] = b"{\"value\":";
 const TRAILER: &[u8] = b",\"sha256\":\"";
 const END: &[u8] = b"\"}\n";
 // Envelope Bytes Around One Value, Newline Included.
 pub(super) const OVERHEAD: usize = PREFIX.len() + TRAILER.len() + 64 + END.len();
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 pub(super) enum Read<T> {
     End,
     Incomplete,
@@ -37,8 +45,11 @@ pub(super) enum Read<T> {
 }
 
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 /// Encodes one complete JSON envelope containing a value and its SHA-256 digest.
 /// The limit covers every byte written, including the envelope and newline.
 pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
@@ -108,6 +119,7 @@ pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usiz
 }
 
 /* === Private Functions === */
+
 fn hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -133,6 +145,7 @@ pub(super) fn invalid(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,8 +7,11 @@
  * ***
  */
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
@@ -25,9 +28,13 @@ use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 #[harmos_domain::message]
 struct Payload {
     label: Option<String>,
@@ -49,6 +56,7 @@ struct Mapped {
 }
 
 /* === Enums === */
+
 #[harmos_domain::message]
 enum Event {
     Reading(i64),
@@ -56,7 +64,9 @@ enum Event {
 }
 
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Mapped {
     async fn new<T: harmos_domain::schema::Described + Message>(settings: StorageSettings, id: &str, payloads: &[T]) -> Self {
         // Start Storage Over A Real Journal And File State Root.
@@ -118,7 +128,9 @@ impl Mapped {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn payloads() -> [Payload; 2] {
     [
         Payload { label: None, values: vec![0.0, -1.0, 2.0], event: Event::Reading(-7) },
@@ -131,6 +143,7 @@ fn compact() -> [Expansion; 1] {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn payload_maps_columns() {
     let m = Mapped::new(storage_settings(), "mapping", &payloads()).await;

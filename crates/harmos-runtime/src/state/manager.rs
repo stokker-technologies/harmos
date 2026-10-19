@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
@@ -37,6 +38,7 @@ use crate::Application;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct TrackedState<A: Application> {
     pub(crate) state: RwLock<At<A::State>>,
     pub(crate) tail: RwLock<Tail<A>>,
@@ -76,6 +78,7 @@ pub(crate) struct Feed<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> TrackedState<A> {
     pub(super) fn unavailable<E>(&self) -> Error<E> {
         if self.capture_failed.load(Ordering::Acquire) { Error::CaptureFailed } else { Error::Unavailable }
@@ -392,6 +395,7 @@ impl<A: Application> Clone for StateManager<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn preparation<E>(error: PreparationError) -> Error<E> {
     match error {
         PreparationError::CaptureFailed => Error::CaptureFailed,

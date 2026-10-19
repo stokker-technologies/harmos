@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -35,6 +36,7 @@ use harmos_domain::Aggregate;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // Answers one member of the contract vocabulary from the signal math. The
 // kernels live in the sibling `signal` module; these functions connect them to
 // core reductions and for `signal::Aggregates` alike. Empty input answers

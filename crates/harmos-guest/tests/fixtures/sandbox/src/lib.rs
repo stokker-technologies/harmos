@@ -11,11 +11,13 @@
 // String Selects A Lifecycle Mode And Request Fields Select Operation Behaviour
 
 /* === Modules === */
+
 pub mod contract;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,6 +31,7 @@ use harmos_guest::operations::{ServingError, WireTable};
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 
 /* === Constants === */
+
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
@@ -37,11 +40,13 @@ const LIFECYCLE: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 harmos_guest::export_plugin!(Sandbox, capacity = 2);
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Sandbox {
     config: String,
     check_publication_revocation: bool,
@@ -89,6 +94,7 @@ struct Counting {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl lifecycle::Policy for Sandbox {
     const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
@@ -409,6 +415,7 @@ impl Counting {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
     context.publisher::<Sandbox>().publish_on::<Echoed>(&Echoed { said: value.into() }).await
 }

@@ -51,6 +51,7 @@ pub struct GrpcMethod {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl GrpcBinding {
     pub(crate) fn with_context(&self, context: CallContext) -> Self {
         Self { operations: self.operations.with_context(context), entry: self.entry.clone() }

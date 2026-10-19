@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -20,6 +21,7 @@ use std::time::Duration;
 use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 
 /* === Constants === */
+
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
@@ -32,6 +34,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
 pub struct Step {
@@ -65,6 +68,7 @@ pub struct Probe {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub enum Readings {
     Read(Read),

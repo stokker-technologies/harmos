@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -32,6 +33,7 @@ use harmos_runtime::{Error, services::Fault, services::Service, services::Servic
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Resources {
     started: AtomicUsize,
@@ -49,6 +51,7 @@ struct Resources {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn register(manager: &OperationManager) {
     manager
         .register_service(

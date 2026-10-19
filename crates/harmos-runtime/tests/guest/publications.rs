@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::pin::Pin;
 // Third Party Imports
@@ -38,6 +39,7 @@ use harmos_runtime::Message;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn values(stream: &harmos_runtime::streams::PluginStream) -> Vec<String> {
     stream.query(..).await.unwrap().map(|row| wire::Echoed::decode(row.value.payload.as_slice()).unwrap().said).collect()
 }

@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "../support/mod.rs"]
 mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::Write;
 // Third Party Imports
@@ -29,6 +31,7 @@ use schematic_storage::streams::{JsonlStreams, read_rows};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Model;
 
 #[harmos::stream(id = "reading", window = 8)]
@@ -44,6 +47,7 @@ struct Columns {
 }
 
 /* === Enums === */
+
 #[harmos::streams]
 enum Feeds {
     Reading(Reading),
@@ -52,6 +56,7 @@ enum Feeds {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos::Application for Model {
     type State = support::Ledger;
     type Transaction = support::Change;

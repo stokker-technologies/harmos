@@ -8,53 +8,67 @@
  */
 
 /* === Modules === */
+
 #[path = "composition.rs"]
 mod composition;
+
 #[path = "../support/mod.rs"]
 mod support;
 
 #[path = "../sidecar/admission.rs"]
 mod admission;
+
 #[path = "../sidecar/consumption.rs"]
 mod consumption;
+
 #[cfg(feature = "grpc")]
 #[path = "../sidecar/grants.rs"]
 mod grants;
+
 #[path = "../sidecar/graph.rs"]
 mod graph;
+
 #[path = "../sidecar/listeners.rs"]
 mod listeners;
+
 #[path = "../sidecar/observer_demand.rs"]
 mod observer_demand;
+
 #[path = "../sidecar/observer_hosts.rs"]
 mod observer_hosts;
 pub(crate) mod operations;
+
 #[path = "../sidecar/process.rs"]
 mod process;
+
 #[path = "../sidecar/publications.rs"]
 mod publications;
+
 #[path = "../sidecar/routing.rs"]
 mod routing;
+
 #[path = "../support/witness.rs"]
 mod witness;
 
 #[path = "../sidecar/status.rs"]
 mod status;
+
 #[path = "../sidecar/visibility.rs"]
 mod visibility;
 
 /* === Re-Exports === */
-use status::service_status;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
 // Third Party Imports
-use support::{Bank, Ledger, catalog, streams};
+
 // Local Imports
 use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
@@ -63,8 +77,11 @@ use harmos_runtime::{
     Runtime, services::Service, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 use harmos_sidecar::{Attach, Refusal, Supervisor};
+use status::service_status;
+use support::{Bank, Ledger, catalog, streams};
 
 /* === Constants === */
+
 static GAUGE_DEACTIVATED: AtomicBool = AtomicBool::new(false);
 const GAUGE_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
@@ -78,6 +95,7 @@ const GAUGE_POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "meter.amplify",
@@ -310,7 +328,60 @@ struct MeterSource {
     publications: Option<Vec<harmos_sidecar::StreamDeclaration>>,
 }
 
+struct Measuring {
+    resources: Arc<GaugeResources>,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("gRPC transport error: {0}")]
+struct ProbeTransport(#[source] std::io::Error);
+
+struct Echoing {
+    _resources: Arc<GaugeResources>,
+}
+
+struct Uppercasing {
+    _resources: Arc<GaugeResources>,
+}
+
+struct StoppingSampling {
+    resources: Arc<GaugeResources>,
+}
+
+struct ReadingFactor {
+    resources: Arc<GaugeResources>,
+}
+
+struct Amplifying {
+    _resources: Arc<MeterHandler>,
+}
+
+struct Emitting {
+    _resources: Arc<MeterHandler>,
+}
+
+struct PublishingPulse {
+    _resources: Arc<MeterHandler>,
+}
+
+struct Collapsing {
+    _resources: Arc<MeterHandler>,
+}
+
+struct Finishing {
+    _resources: Arc<MeterHandler>,
+}
+
+struct BudgetedCall {
+    _resources: Arc<MeterHandler>,
+}
+
+struct Sampling {
+    resources: Arc<SampleProjection>,
+}
+
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum HostLanes {
     #[default]
@@ -336,6 +407,17 @@ enum MeterOperations {
     Collapse(Collapse),
     Finish(Finish),
     Budgeted(BudgetedRoute),
+}
+
+// A handler error shaped like a gRPC client failure: every layer repeats the
+// one beneath it, the way tonic and hyper render a reset connection.
+#[derive(Debug, thiserror::Error)]
+enum MeasureError {
+    #[error("measure refused")]
+    Refused(#[source] Refusal),
+
+    #[error("operation `gauge.probe.read` failed: {0}")]
+    Probe(#[source] ProbeTransport),
 }
 
 /* === Traits === */
@@ -413,24 +495,6 @@ impl harmos_runtime::Plugin for Gauge {
     }
 }
 
-struct Measuring {
-    resources: Arc<GaugeResources>,
-}
-
-// A handler error shaped like a gRPC client failure: every layer repeats the
-// one beneath it, the way tonic and hyper render a reset connection.
-#[derive(Debug, thiserror::Error)]
-enum MeasureError {
-    #[error("measure refused")]
-    Refused(#[source] Refusal),
-    #[error("operation `gauge.probe.read` failed: {0}")]
-    Probe(#[source] ProbeTransport),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("gRPC transport error: {0}")]
-struct ProbeTransport(#[source] std::io::Error);
-
 impl harmos_runtime::operations::Operation for Measuring {
     type Declaration = GetMeasure;
     type Resources = GaugeResources;
@@ -460,10 +524,6 @@ impl harmos_runtime::operations::Operation for Measuring {
     }
 }
 
-struct Echoing {
-    _resources: Arc<GaugeResources>,
-}
-
 impl harmos_runtime::operations::Operation for Echoing {
     type Declaration = RunEcho;
     type Resources = GaugeResources;
@@ -481,10 +541,6 @@ impl harmos_runtime::operations::Operation for Echoing {
     }
 }
 
-struct Uppercasing {
-    _resources: Arc<GaugeResources>,
-}
-
 impl harmos_runtime::operations::Operation for Uppercasing {
     type Declaration = RunUppercase;
     type Resources = GaugeResources;
@@ -500,10 +556,6 @@ impl harmos_runtime::operations::Operation for Uppercasing {
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.to_uppercase()) }.await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct StoppingSampling {
-    resources: Arc<GaugeResources>,
 }
 
 impl harmos_runtime::operations::Operation for StoppingSampling {
@@ -528,10 +580,6 @@ impl harmos_runtime::operations::Operation for StoppingSampling {
     }
 }
 
-struct ReadingFactor {
-    resources: Arc<GaugeResources>,
-}
-
 impl harmos_runtime::operations::Operation for ReadingFactor {
     type Declaration = GetFactor;
     type Resources = GaugeResources;
@@ -551,10 +599,6 @@ impl harmos_runtime::operations::Operation for ReadingFactor {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct Amplifying {
-    _resources: Arc<MeterHandler>,
 }
 
 impl harmos_runtime::operations::Operation for Amplifying {
@@ -580,10 +624,6 @@ impl harmos_runtime::operations::Operation for Amplifying {
     }
 }
 
-struct Emitting {
-    _resources: Arc<MeterHandler>,
-}
-
 impl harmos_runtime::operations::Operation for Emitting {
     type Declaration = Emit;
     type Resources = MeterHandler;
@@ -603,10 +643,6 @@ impl harmos_runtime::operations::Operation for Emitting {
     }
 }
 
-struct PublishingPulse {
-    _resources: Arc<MeterHandler>,
-}
-
 impl harmos_runtime::operations::Operation for PublishingPulse {
     type Declaration = PublishPulse;
     type Resources = MeterHandler;
@@ -624,10 +660,6 @@ impl harmos_runtime::operations::Operation for PublishingPulse {
                 .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct Collapsing {
-    _resources: Arc<MeterHandler>,
 }
 
 impl harmos_runtime::operations::Operation for Collapsing {
@@ -652,10 +684,6 @@ impl harmos_runtime::operations::Operation for Collapsing {
     }
 }
 
-struct Finishing {
-    _resources: Arc<MeterHandler>,
-}
-
 impl harmos_runtime::operations::Operation for Finishing {
     type Declaration = Finish;
     type Resources = MeterHandler;
@@ -676,10 +704,6 @@ impl harmos_runtime::operations::Operation for Finishing {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct BudgetedCall {
-    _resources: Arc<MeterHandler>,
 }
 
 impl harmos_runtime::operations::Operation for BudgetedCall {
@@ -704,10 +728,6 @@ impl harmos_runtime::operations::Operation for BudgetedCall {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct Sampling {
-    resources: Arc<SampleProjection>,
 }
 
 impl harmos_runtime::operations::Operation for Sampling {
@@ -810,6 +830,7 @@ impl Attach for MeterSource {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn meter(attachments: Arc<AtomicUsize>) -> MeterSource {
     MeterSource { source: harmos_sidecar::PluginNative::new(NonZeroUsize::new(16).unwrap()).unwrap(), attachments, publications: None }
 }
@@ -817,3 +838,5 @@ fn meter(attachments: Arc<AtomicUsize>) -> MeterSource {
 fn assembly() -> harmos_runtime::Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(streams()).register(HostLanes::catalog())
 }
+
+/* === Tests === */

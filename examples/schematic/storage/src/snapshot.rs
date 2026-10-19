@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::sync::Arc;
@@ -25,9 +26,11 @@ use harmos::{Application, state::Entry, state::Position, state::Recorded, storag
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result<()> + Send>;
 
 /* === Structs === */
+
 pub struct Snapshot<A: Application> {
     replica: A::State,
     taken: Position,
@@ -44,6 +47,7 @@ pub struct Snapshot<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> Snapshot<A> {
     pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
         Self { replica: origin, taken: at, durable: at, every: 1, since: 0, complete: at, halted: false, write: Box::new(write) }

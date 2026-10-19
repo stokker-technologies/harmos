@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::histogram::Histogram;
 
 /* === Imports === */
+
 use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
@@ -45,6 +47,7 @@ pub struct Bins {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait HistogramExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -55,6 +58,7 @@ pub trait HistogramExecution {
 }
 
 /* === Implementations === */
+
 impl HistogramExecution for Histogram {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.edges.len() < 2

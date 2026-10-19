@@ -8,20 +8,39 @@
  */
 
 /* === Modules === */
+
 mod owner;
 
 /* === Re-Exports === */
+
 pub use harmos_domain::plugin::*;
 pub use owner::{Error, Owner, Table};
 
 /* === Imports === */
-use crate::operations::{ServingError, WireTable, lifecycle};
-use serde::de::DeserializeOwned;
+
+// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+// Third Party Imports
+use serde::de::DeserializeOwned;
+
+// Local Imports
+use crate::operations::{ServingError, WireTable, lifecycle};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
 /* === Traits === */
+
 pub trait Context: Clone + Send + Sync + 'static {
     fn with_generation(&self, token: [u8; 32]) -> Self;
 }
@@ -60,6 +79,13 @@ pub trait Attachment<C>: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl Context for () {
     fn with_generation(&self, _: [u8; 32]) -> Self {}
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

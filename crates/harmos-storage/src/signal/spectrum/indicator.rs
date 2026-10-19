@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::ops::Range;
 // Third Party Imports
@@ -33,6 +34,7 @@ use std::ops::Range;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[must_use]
 pub fn band_energy(frequency: &[f64], magnitude: &[f64], low: f64, high: f64) -> f64 {
     let band = band(frequency, low, high);
@@ -153,6 +155,7 @@ pub fn occupied_bandwidth(frequency: &[f64], magnitude: &[f64], low: f64, high: 
 }
 
 /* === Private Functions === */
+
 fn band(frequency: &[f64], low: f64, high: f64) -> Range<usize> {
     let start = frequency.partition_point(|at| *at < low);
     let end = frequency.partition_point(|at| *at <= high);

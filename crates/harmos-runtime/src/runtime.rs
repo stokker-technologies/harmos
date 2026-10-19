@@ -8,13 +8,16 @@
  */
 
 /* === Modules === */
+
 mod boot;
 mod lifecycle;
 
 /* === Re-Exports === */
+
 pub use boot::{BootstrapCleanup, BootstrapStatus, Startup};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::future::Future;
@@ -41,6 +44,7 @@ use crate::{
 };
 
 /* === Constants === */
+
 const REQUESTS: usize = 64;
 
 const STOP_GRACE: Duration = Duration::from_millis(100);
@@ -50,6 +54,7 @@ const STOP_GRACE: Duration = Duration::from_millis(100);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Inspection<A: Application> {
     state: Arc<At<A::State>>,
     reads: crate::state::Reads<A>,
@@ -65,10 +70,13 @@ pub struct Runtime<A: Application> {
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
     pub operations: crate::operations::OperationManager,
+
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
+
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
+
     pub evidence: Evidence<A>,
     stopping: Mutex<Stopping<A>>,
     closing: AtomicBool,
@@ -83,10 +91,13 @@ pub struct Handle<A: Application> {
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
     pub operations: crate::operations::OperationManager,
+
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
+
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
+
     pub evidence: Evidence<A>,
     storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
 }
@@ -109,8 +120,10 @@ pub struct Builder<A: Application> {
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     services: Vec<DeclaredService<A>>,
     evidence: Option<Declaration>,
+
     #[cfg(feature = "simulation")]
     simulation: crate::simulation::Configuration<A>,
+
     #[cfg(feature = "simulation")]
     live_only: Vec<&'static str>,
 }
@@ -120,6 +133,7 @@ pub struct Builder<A: Application> {
 pub struct Incompatible {
     #[source]
     cause: Cause,
+
     cleanup: Option<boot::Cleanup>,
 }
 
@@ -151,6 +165,7 @@ pub struct StopParticipant {
 }
 
 /* === Enums === */
+
 enum Stopping<A: Application> {
     Running(Option<JoinHandle<Position>>),
     Closing {
@@ -175,26 +190,36 @@ pub enum Catalog<A: Application> {
 enum Cause {
     #[error("the stored history cannot be replayed by this build: {0}")]
     Undeclared(DecodeError),
+
     #[error("the stored history cannot be replayed by this build: {0}")]
     Unreadable(String),
+
     #[error("the stream catalog cannot be honored: {0}")]
     Dishonorable(crate::streams::Refused),
+
     #[error("the work declarations cannot be honored: {0}")]
     Work(String),
+
     #[error("the operation declarations cannot be honored: {0}")]
     Operations(#[source] crate::Error),
+
     #[error("runtime initialization failed: {0}")]
     Initialization(#[source] Box<dyn std::error::Error + Send + Sync>),
+
     #[error("{source}; bootstrap cleanup also failed: {failure}")]
     Cleanup {
         #[source]
         source: Box<Incompatible>,
+
         failure: crate::Error,
     },
+
     #[error("application storage reconciliation failed: {0}")]
     Reconciliation(String),
+
     #[error("the evidence declarations cannot be honored: {0}")]
     Kept(String),
+
     #[cfg(feature = "simulation")]
     #[error("this build cannot be simulated after attaching {0}")]
     Simulation(String),
@@ -208,11 +233,13 @@ enum Turn<A: Application> {
 }
 
 /* === Traits === */
+
 pub trait Registration<A: Application>: Clone + Send {
     fn register(self) -> Catalog<A>;
 }
 
 /* === Implementations === */
+
 impl<A, S, T> Registration<A> for harmos_domain::state::TransactionDefinitions<S, T>
 where
     A: Application<State = S, Transaction = T>,
@@ -1003,6 +1030,7 @@ impl Drop for StopParticipant {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn none<A: Application>(_change: &A::Transaction, _before: &A::State) -> Option<A::Transaction> {
     None
 }

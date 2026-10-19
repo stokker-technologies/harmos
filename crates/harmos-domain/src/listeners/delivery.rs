@@ -8,13 +8,16 @@
  */
 
 /* === Modules === */
+
 #[path = "encoding.rs"]
 mod encoding;
 
 /* === Re-Exports === */
+
 pub use encoding::{EncodingError, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -27,6 +30,7 @@ use crate::schema::{Cardinality, Described};
 use crate::{MemorySize, Message, MessageError};
 
 /* === Constants === */
+
 const CONTEXT_FIELDS: &[Field] = &[
     Field {
         name: Cow::Borrowed("record"),
@@ -43,6 +47,7 @@ const CONTEXT_FIELDS: &[Field] = &[
 ];
 
 /* === Macros === */
+
 macro_rules! context_shape {
     ($name:ident, $fields:expr) => {
         struct $name;
@@ -67,6 +72,7 @@ context_shape!(DeliveryContext, CONTEXT_FIELDS);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // One Delivered Row Of Listener `L`. Each Listener Is A Distinct Type, So Its
 // Delivery Is Its Callback Operation's Request.
 pub struct Delivery<L: Listener> {
@@ -75,6 +81,7 @@ pub struct Delivery<L: Listener> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Context {
     Record { position: Position },
@@ -85,11 +92,13 @@ pub enum Context {
 pub enum ContextError {
     #[error("a delivered record must have a positive journal position")]
     Position,
+
     #[error("a delivered stream row requires a positive logical sequence with missed < sequence")]
     Sequence,
 }
 
 /* === Traits === */
+
 // A Listener Declaration: The Row It Receives And Its Callback Operation.
 pub trait Listener: Send + Sync + 'static {
     type Row: crate::Portable;
@@ -98,6 +107,7 @@ pub trait Listener: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl Context {
     pub fn validate(self) -> Result<(), ContextError> {
         match self {
@@ -255,6 +265,7 @@ impl<L: Listener> Described for Delivery<L> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn matches(
     request: crate::schema::graph::View<'_>, row: &crate::schema::graph::Schema, settings: &crate::config::SchemaSettings,
 ) -> Result<bool, crate::schema::graph::Error> {
@@ -280,4 +291,5 @@ pub(super) fn matches(
 }
 
 /* === Private Functions === */
+
 /* === Tests === */

@@ -28,6 +28,11 @@ mise run prepare:tools
 Run the complete example with `mise run build`, then `target/build/dev/linux-x86_64/bin/schematic-cli` on Linux. Read the relevant source-level contracts and compiled examples before changing
 a public contract.
 
+Each native CI lane prepares the locked Python tooling before running commands
+with `--no-sync`; runners do not share a prepared environment. Python type checks
+run with `lint:python`. Generated-client checks type-check the complete output
+and lint Harmos-emitted modules; protoc's `_wire` modules are excluded from Ruff.
+
 Embedded CLI starters live under `crates/cargo-harmos/templates/` with a `.tmpl`
 filename suffix so Cargo includes them in the published tool package. The build
 removes that suffix from embedded output names. Keep the suffix when editing

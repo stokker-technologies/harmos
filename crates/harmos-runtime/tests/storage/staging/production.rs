@@ -42,6 +42,7 @@ use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
     harmos_runtime::storage::operations::register(

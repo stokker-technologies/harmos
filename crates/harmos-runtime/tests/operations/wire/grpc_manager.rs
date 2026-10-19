@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "grpc_network.rs"]
 mod grpc_network;
 
@@ -42,6 +43,7 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
+
 const WHO_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
@@ -60,6 +62,7 @@ const REJECTION_DETAILS: &[u8] = &[
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Principal(String);
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
@@ -145,6 +148,7 @@ struct Trace(Arc<Mutex<Vec<tonic::Code>>>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Authenticator for Sessions {
     type Principal = Principal;
     fn authenticate<'a>(&'a self, call: &'a Invocation) -> Authentication<'a, Principal> {
@@ -573,6 +577,7 @@ impl Operation for Holding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn authored_rejection() -> tonic::Status {
     let mut metadata = tonic::metadata::MetadataMap::new();
     metadata.insert("x-fixture-rejection", "absent".parse().unwrap());

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,11 +27,13 @@ use super::{PluginGeneration, PluginState};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct PluginEvents {
     pub(super) receiver: broadcast::Receiver<PluginEvent>,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginEventKind {
     DefinitionChanged,
@@ -51,6 +54,7 @@ pub enum PluginEvent {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PluginEvents {
     pub async fn next(&mut self) -> Option<PluginEvent> {
         match self.receiver.recv().await {

@@ -10,13 +10,16 @@
 // Storage Arrow Query Contract
 
 /* === Modules === */
+
 mod ipc;
 mod retention;
 
 /* === Re-Exports === */
+
 pub use super::writes::convert::encode_payloads;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 // Third Party Imports
@@ -27,13 +30,16 @@ use super::capacity::Reservation;
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
+
 pub(crate) const MAX_DEPTH: usize = 32;
 pub(crate) const MAX_FIELDS: usize = 4096;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /// An admitted reservation retained until the last Arrow allocation is released.
 /// Admission and resizing are storage-internal; consumers cannot release a live
 /// result's charge while retaining its native zero-copy arrays.
@@ -69,6 +75,7 @@ struct Retained(RetainedMemory);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl RetainedMemory {
     pub(super) fn new(owner: Arc<Mutex<Reservation>>) -> Self {
         Self { owner }
@@ -195,6 +202,7 @@ impl MemorySize for ArrowBatch {
 }
 
 /* === Public Functions === */
+
 /// Reject unsupported Arrow representations before output or decoding.
 pub fn validate_schema(schema: &Schema) -> Result<()> {
     let mut fields = 0;
@@ -213,6 +221,7 @@ pub fn decoding_memory(bytes: &[u8], batch: bool) -> Result<usize> {
 }
 
 /* === Private Functions === */
+
 fn validate_field(field: &Field, depth: usize, count: &mut usize) -> Result<()> {
     *count = count.checked_add(1).ok_or_else(|| invalid("Arrow field count overflow"))?;
     if depth > MAX_DEPTH || *count > MAX_FIELDS {

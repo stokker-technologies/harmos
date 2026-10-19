@@ -40,6 +40,7 @@ use std::path::{Path, PathBuf};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").ok_or("missing package root")?);
     let output = PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing build output")?);

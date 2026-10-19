@@ -32,6 +32,7 @@ mod support;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -50,6 +51,7 @@ use harmos_runtime::{Error, Runtime};
 use support::{Bank, Ledger, catalog};
 
 /* === Constants === */
+
 const STARTING: &[OperationPhase] = &[OperationPhase::Queued, OperationPhase::Initializing];
 
 const RUNNING: &[OperationPhase] = &[OperationPhase::Running];
@@ -61,9 +63,11 @@ const STOPPED: &[OperationPhase] = &[OperationPhase::Stopped];
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Lease = OperationInstance<Activation>;
 
 /* === Structs === */
+
 struct FinalPublication;
 
 struct ReentrantBackend(Reentrant);
@@ -102,6 +106,7 @@ struct Observing {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Mode {
     Cooperative,
@@ -113,6 +118,7 @@ enum Mode {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Control {
     fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -274,6 +280,7 @@ impl Drop for Observing {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap()
 }

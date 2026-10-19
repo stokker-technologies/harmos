@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -29,11 +30,13 @@ use crate::{Error, Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SchemaKey {
     pub id: Identifier,
     pub version: NonZeroU32,
+
     #[serde(default)]
     pub payload_encoding: PayloadEncoding,
 }
@@ -56,11 +59,13 @@ struct KeyWriter {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PayloadEncoding {
     #[default]
     ProtobufV1 = 0,
+
     PostcardV1 = 1,
 }
 
@@ -68,6 +73,7 @@ pub enum PayloadEncoding {
 pub enum ObjectRetention {
     /// Preserve every revision until the consumer durably releases its lifecycle.
     UntilReleased,
+
     Latest,
     Versions(NonZeroUsize),
 }
@@ -75,6 +81,7 @@ pub enum ObjectRetention {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl SchemaKey {
     pub fn require_postcard(&self) -> Result<()> {
         if self.payload_encoding != PayloadEncoding::PostcardV1 {
@@ -159,6 +166,7 @@ impl ObjectRetention {
 }
 
 /* === Public Functions === */
+
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {
     let mut writer = KeyWriter { value: String::new(), limit: limit.get() };
     fmt::write(&mut writer, format_args!("{key}")).map_err(|_| invalid("invalid or oversized object key"))?;

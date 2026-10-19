@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -26,6 +27,7 @@ use harmos_sidecar::transport::{Connection, Receiver, Sender};
 use harmos_sidecar::{Attach, Frame, Message, PluginNative, StreamSpec};
 
 /* === Constants === */
+
 const GENERATION: [u8; 32] = [2; 32];
 
 /* === Macros === */
@@ -33,6 +35,7 @@ const GENERATION: [u8; 32] = [2; 32];
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // One `host.publish` Call As The Host Saw It.
 #[derive(Debug, PartialEq)]
 struct Call {
@@ -49,6 +52,7 @@ struct Call {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn receive(incoming: &mut Receiver) -> Frame {
     let received = incoming.receive().await.unwrap().unwrap();
     if let Some(consumption) = received.consumption {

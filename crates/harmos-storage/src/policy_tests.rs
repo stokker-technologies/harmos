@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[allow(dead_code)]
 #[path = "../tests/support/storage.rs"]
 pub(crate) mod backend;
@@ -15,6 +16,7 @@ pub(crate) mod backend;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use backend::{Data, Recovery, history, storage_settings};
 use std::num::NonZeroUsize;
 use std::sync::Arc;

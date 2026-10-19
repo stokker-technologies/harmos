@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "file_backend.rs"]
 mod file_backend;
 #[path = "read_backend.rs"]
@@ -44,9 +45,11 @@ use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Receiver<()>);
 
 /* === Structs === */
+
 #[derive(Default)]
 pub struct Control {
     pub delete_failures: AtomicUsize,
@@ -200,6 +203,7 @@ pub struct Recovery {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Control {
     // Hold A Gated Read Inside The Backend, Recording How Many Overlap.
     async fn gate_read(&self) {
@@ -724,11 +728,13 @@ impl StateBackend for Recovery {
 }
 
 /* === Public Functions === */
+
 pub fn history() -> StoreHistory {
     StoreHistory { store: Identifier::new("test-store").unwrap(), epoch: Identifier::new("test-epoch").unwrap() }
 }
 
 /* === Private Functions === */
+
 fn failure(kind: BackendFailure) -> Error {
     Error::backend("test backend", kind, std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected failure"))
 }

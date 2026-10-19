@@ -6,7 +6,7 @@
 #
 # ***
 
-# === Package ===
+# === Package === #
 
 [package]
 name = "cargo-harmos"
@@ -23,16 +23,16 @@ pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target
 pkg-fmt = "bin"
 bin-dir = "{ bin }{ binary-ext }"
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
 [features]
 default = ["sidecar", "guest"]
 sidecar = ["harmos-packaging/sidecar", "dep:ctrlc"]
 guest = ["harmos-packaging/guest", "dep:ctrlc"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -71,27 +71,27 @@ ctrlc = { workspace = true, optional = true, features = ["termination"] }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

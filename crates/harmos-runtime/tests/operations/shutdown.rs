@@ -36,6 +36,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Trace {
     started: Notify,
@@ -53,6 +54,7 @@ struct Wait {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 enum Mode {
     Hold,
@@ -84,6 +86,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Wait {
     type Declaration = WaitContract;
     type Resources = Trace;
@@ -140,6 +143,7 @@ impl Drop for Wait {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();

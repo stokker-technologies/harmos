@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::future::Future;
@@ -31,6 +32,7 @@ use crate::{Application, state::At, state::Entry, state::Position, state::Record
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Cursor(pub u64);
 
@@ -44,6 +46,7 @@ pub struct Batch<A: Application> {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait JournalConsumer<A: Application>: Send + 'static {
     fn resume(&self) -> Position;
 
@@ -148,6 +151,7 @@ pub(crate) trait Serving<A: Application>: Recording<A> {
 }
 
 /* === Implementations === */
+
 impl<A: Application, C: JournalConsumer<A>> Attached<A> for C {
     fn resume(&self) -> Position {
         JournalConsumer::resume(self)

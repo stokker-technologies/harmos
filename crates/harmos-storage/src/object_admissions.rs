@@ -39,6 +39,7 @@ use crate::storage::MutationId;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn write_objects_once(&self, mutation: &MutationId, objects: &[ObjectValue]) -> Result<Vec<ObjectReceipt>> {
         let count = NonZeroUsize::new(objects.len()).ok_or_else(|| invalid("object batch must not be empty"))?;
@@ -69,6 +70,7 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn part(hash: &mut Sha256, bytes: &[u8]) {
     hash.update((bytes.len() as u64).to_le_bytes());
     hash.update(bytes);

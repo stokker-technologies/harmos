@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -27,6 +28,7 @@ use super::{Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read,
 use crate::Frame;
 
 /* === Constants === */
+
 const OUTGOING_DATA: usize = 8;
 const CONTROL: usize = 4;
 const EARLY_CANCELLATIONS: usize = 256;
@@ -35,6 +37,7 @@ const INCOMING_DATA: usize = WINDOW / MINIMUM + 1;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Io = (Box<dyn AsyncRead + Send + Unpin>, Box<dyn AsyncWrite + Send + Unpin>);
 type Outcome = Result<(), Arc<io::Error>>;
 type IoReader = Box<dyn AsyncRead + Send + Unpin>;
@@ -42,6 +45,7 @@ type IoWriter = Box<dyn AsyncWrite + Send + Unpin>;
 type DriverFuture = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 
 /* === Structs === */
+
 pub struct Connection {
     pub sender: Sender,
     pub receiver: Receiver,
@@ -95,6 +99,7 @@ struct State {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Connection {
     pub fn new(data: Io, control: Io) -> Self {
         let state = Arc::new(State {
@@ -258,6 +263,7 @@ impl State {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn stopped(mut receiver: watch::Receiver<bool>) {
     while !*receiver.borrow_and_update() {
         if receiver.changed().await.is_err() {

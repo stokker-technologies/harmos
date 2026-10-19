@@ -40,6 +40,7 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // The request type declares its operation: the attribute parses the metadata
 // and expands to the SDK's `declare!`, the one writer of the declaration impl.
 pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPath) -> Result<TokenStream, Error> {
@@ -117,6 +118,7 @@ pub(crate) fn structure(attribute: TokenStream, item: ItemStruct, sdk: &HarmosPa
 }
 
 /* === Private Functions === */
+
 fn grpc_binding(meta: syn::meta::ParseNestedMeta<'_>) -> Result<(syn::LitStr, syn::LitStr, syn::LitStr), Error> {
     let mut values = std::collections::BTreeMap::new();
     meta.parse_nested_meta(|field| {

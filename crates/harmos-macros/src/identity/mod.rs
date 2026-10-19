@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod batch;
 pub(crate) mod stream;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -33,6 +35,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Declaration {
     id: Option<LitStr>,
     version: LitInt,
@@ -42,6 +45,7 @@ struct Declaration {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {
     Transaction,
@@ -56,6 +60,7 @@ enum Undo {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Sort {
     pub(crate) fn kind(self, harmos: &HarmosPath) -> TokenStream {
         match self {
@@ -82,6 +87,7 @@ impl Undo {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
     match expand(attribute, &item, sort) {
         Ok(stamped) => stamped,
@@ -94,6 +100,7 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
 }
 
 /* === Private Functions === */
+
 fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
     match undo {
         Undo::Inverse(inverse) => quote! {

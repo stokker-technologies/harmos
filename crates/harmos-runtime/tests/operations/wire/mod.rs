@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[cfg(any(feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod artifact;
 mod authored;

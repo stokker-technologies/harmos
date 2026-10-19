@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,6 +40,7 @@ use crate::storage::query::transform::FieldPathExecution;
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait FilterExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -48,6 +51,7 @@ pub trait FilterExecution {
 }
 
 /* === Implementations === */
+
 impl FilterExecution for Filter {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.clauses.is_empty()
@@ -165,6 +169,7 @@ impl FilterExecution for Filter {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn compare(value: &ScalarValue, op: Compare, expected: &ScalarValue) -> Result<bool> {
     let order = value.compare(expected)?;
     Ok(match op {

@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/support/native_publications.rs"]
 mod native;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 
@@ -23,9 +25,11 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 // Local Imports
 
 /* === Constants === */
+
 const PROFILE_CALLS: u32 = 2_000;
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
@@ -43,6 +47,7 @@ criterion::criterion_main!(benches);
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // One sidecar `host.publish` child call end to end: kit encode, transport
 // frame, host admission, managed operation dispatch, staging and the answer.
 fn benchmarks(c: &mut Criterion) {

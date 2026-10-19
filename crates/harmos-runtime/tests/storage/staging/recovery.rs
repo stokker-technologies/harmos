@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -39,6 +40,7 @@ use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
 fn crash_image(source: &Fixture) -> Arc<Data> {
     let data = Data::new(source.data.history.clone());

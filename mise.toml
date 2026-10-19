@@ -31,6 +31,9 @@ glab = "1.123.0"
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
 
+# Product Tools
+"aqua:cargo-bins/cargo-binstall" = "1.26.0"
+
 # === Environment === #
 
 [env]
@@ -84,7 +87,10 @@ depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = "uv run --locked --project tools/python ruff check tools/python crates/harmos-packaging"
+run = [
+  "uv run --locked --project tools/python ruff check tools/python crates/harmos-packaging",
+  "uv run --locked --project tools/python ty check --project tools/python tools/python",
+]
 
 [tasks."lint:rust"]
 description = "Lint Rust"
@@ -97,12 +103,8 @@ run = [
 
 [tasks.check]
 description = "Check Every Language And Workflows"
-depends = ["check:rust", "check:python"]
+depends = ["check:rust"]
 run = "actionlint"
-
-[tasks."check:python"]
-description = "Check Python"
-run = "uv run --locked --project tools/python ty check --project tools/python tools/python"
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -120,9 +122,14 @@ run = [
 [tasks.build]
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
-# Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --product --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."build:bench"]
+description = "Build Benchmark Executables"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench -- --all-features"
 env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."build:tests"]
@@ -130,12 +137,6 @@ description = "Build The Shared Test Archive And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."build:bench"]
-description = "Build Benchmark Executables"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench -- --all-features"
 env = { CARGO_INCREMENTAL = "0" }
 
 # === Dev === #
@@ -202,6 +203,12 @@ run = [
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
+env = { CARGO_INCREMENTAL = "0" }
+
 [tasks."test:system"]
 description = "Test System Layer"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -229,16 +236,9 @@ description = "Test Generated Python"
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
-  # The Repository Lint Policy Applies To Harmos-Emitted Modules; Protoc's `_wire` Output Is Type Checked Only.
   "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
   "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
 ]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:coverage"]
-description = "Measure Coverage Over Instrumented Lanes"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
 env = { CARGO_INCREMENTAL = "0" }
 
 # === Bench === #
@@ -247,9 +247,9 @@ env = { CARGO_INCREMENTAL = "0" }
 description = "Bench Every Layer"
 usage = 'flag "--refresh-baseline"'
 depends = [
-  "bench:unit{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:integration{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:system{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+  "bench:unit {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:integration {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:system {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
 ]
 
 [tasks."bench:unit"]
@@ -284,6 +284,8 @@ description = "Bench System Rust"
 usage = 'flag "--refresh-baseline"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+
+# === Docs === #
 
 # === Package === #
 
@@ -338,7 +340,14 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 
 [tasks."release:publish"]
 description = "Publish A Tagged Release"
-run = [{ task = "release:publish:rust" }]
+run = [{ task = "release:publish:rust" }, { task = "release:publish:assets" }]
+
+[tasks."release:publish:assets"]
+description = "Publish Verified Release Assets"
+run = [
+  "uv run --locked --project tools/python python -m harmos_tools.release.run publish",
+  "uv run --locked --project tools/python python -m harmos_tools.release.run finalize",
+]
 
 [tasks."release:publish:dry"]
 description = "Verify Rust Registry Publication"
@@ -347,6 +356,14 @@ run = "uv run --locked --project tools/python python -m harmos_tools.test.publis
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
 run = "cargo publish --workspace --locked"
+
+[tasks."release:stage"]
+description = "Stage Native Release Assets"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run stage"
+
+[tasks."release:verify"]
+description = "Verify Published Release Assets And Opted-In Installers"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run verify"
 
 # === Housekeeping === #
 

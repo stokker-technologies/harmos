@@ -19,6 +19,7 @@ mod recovery;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -45,6 +46,7 @@ use harmos_runtime::storage::FileMetadata;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn metadata(name: &str) -> FileMetadata {
     FileMetadata {
         id: Identifier::new(name).unwrap(),

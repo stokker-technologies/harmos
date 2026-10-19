@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -39,6 +40,7 @@ use serde_json::Value;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn artifact(name: &str) -> PathBuf {
     let path = stamp()["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name}"));
     directory().join(path)
@@ -90,6 +92,7 @@ pub fn protoc() -> PathBuf {
 }
 
 /* === Private Functions === */
+
 fn directory() -> PathBuf {
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory");
     let root = manifest.ancestors().nth(2).expect("crates live two levels below the workspace");

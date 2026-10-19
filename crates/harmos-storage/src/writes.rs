@@ -8,14 +8,17 @@
  */
 
 /* === Modules === */
+
 pub mod convert;
 mod decoded;
 
 /* === Re-Exports === */
+
 pub use decoded::DecodedBatch;
 pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
@@ -31,6 +34,7 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageSchema {
     pub position: StorageCursor,
@@ -43,6 +47,7 @@ pub struct StorageSchema {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for StorageSchema {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -77,6 +82,7 @@ impl StorageSchema {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn size_error() -> Error {
     Error::InvalidInput { field: "storage schema", reason: "size overflow" }
 }

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod lanes;
 pub(crate) mod operation;
 pub(crate) mod streams;
@@ -16,6 +17,7 @@ pub(crate) mod typed;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -35,6 +37,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Closing {
     state: Option<Path>,
     error: Option<Path>,
@@ -53,6 +56,7 @@ struct Member {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
     match expand(attribute, item.clone(), sort) {
         Ok(closed) => closed,
@@ -65,6 +69,7 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<TokenStream, Error> {
     let closing = closing(attribute)?;
     let catalog: ItemEnum = syn::parse2(item)?;

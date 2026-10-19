@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::downsample::{Algorithm, Downsample};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,6 +40,7 @@ use crate::storage::query::transform::FieldPathExecution;
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait DownsampleExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -45,6 +48,7 @@ pub trait DownsampleExecution {
 }
 
 /* === Implementations === */
+
 impl DownsampleExecution for Downsample {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.max_rows == 0 {
@@ -137,6 +141,7 @@ impl DownsampleExecution for Downsample {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(in crate::query) fn number(value: &ScalarValue) -> Result<f64> {
     match value {
         ScalarValue::Float(value) => Ok(*value),

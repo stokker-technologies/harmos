@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -36,14 +37,17 @@ use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 type Seen = Vec<(bool, u32, DeliveryContext)>;
 
 /* === Structs === */
+
 // Clone Panics To Prove The Listener Borrows The Original Native Stream Row.
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
+
     #[serde(skip)]
     dropped: Arc<AtomicUsize>,
 }
@@ -97,6 +101,7 @@ struct Host {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::streams]
 enum Rows {
     Fact(Fact),
@@ -118,6 +123,7 @@ enum Lanes {
 enum Failed {
     #[error("scripted original callback failure")]
     Scripted,
+
     #[error(transparent)]
     Runtime(#[from] Error),
 }
@@ -125,6 +131,7 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
     fn definition() -> harmos_runtime::streams::Definition {
@@ -322,6 +329,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fact(value: u32) -> Fact {
     Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
 }

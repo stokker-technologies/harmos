@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{io, path::PathBuf};
 // Third Party Imports
@@ -23,17 +24,20 @@ use std::{io, path::PathBuf};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("cannot {operation} {path}: {source}")]
     Publication {
         operation: &'static str,
         path: PathBuf,
+
         #[source]
         source: io::Error,
     },
@@ -42,6 +46,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Error {
     pub(crate) fn publication(operation: &'static str, path: &std::path::Path, source: io::Error) -> Self {
         Self::Publication { operation, path: path.to_owned(), source }

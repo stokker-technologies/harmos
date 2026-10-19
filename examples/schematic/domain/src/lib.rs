@@ -8,14 +8,17 @@
  */
 
 /* === Modules === */
+
 mod error;
 pub mod model;
 pub mod operations;
 
 /* === Re-Exports === */
+
 pub use error::{Error, Result};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

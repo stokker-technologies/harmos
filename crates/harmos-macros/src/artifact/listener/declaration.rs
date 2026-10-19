@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -40,6 +41,7 @@ use crate::path::{self, HarmosPath};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let declaration: ItemStruct = syn::parse2(item)?;
     if !declaration.generics.params.is_empty() || !matches!(declaration.fields, Fields::Unit) {

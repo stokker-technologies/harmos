@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
@@ -37,6 +38,7 @@ use crate::{Application, state::At};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 struct Unsealed {
     principal: Option<PrincipalId>,
@@ -48,6 +50,7 @@ struct Unsealed {
 }
 
 /* === Enums === */
+
 pub(crate) enum Request<A: Application> {
     Commit {
         transaction: A::Transaction,
@@ -96,6 +99,7 @@ pub(crate) enum Refusal<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Direction {
     fn link(self, original: Position) -> Link {
         match self {
@@ -131,6 +135,7 @@ impl Unsealed {
 }
 
 /* === Public Functions === */
+
 pub(crate) async fn run<A: Application>(
     mut requests: mpsc::Receiver<Request<A>>, tracked: Arc<TrackedState<A>>, stored: watch::Sender<Position>, inverses: Inverting<A>,
     mut undos: Undos<A>, mut capture: Option<super::capture::Capture<A>>,
@@ -144,6 +149,7 @@ pub(crate) async fn run<A: Application>(
 }
 
 /* === Private Functions === */
+
 async fn run_admissions<A: Application>(
     requests: &mut mpsc::Receiver<Request<A>>, tracked: &Arc<TrackedState<A>>, stored: &watch::Sender<Position>, inverses: Inverting<A>,
     undos: &mut Undos<A>, capture: Option<&super::capture::Capture<A>>, receipts: &mut HashMap<RequestKey, Receipt>,

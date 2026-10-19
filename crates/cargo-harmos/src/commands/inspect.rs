@@ -28,9 +28,11 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     artifact: std::path::PathBuf,
+
     #[arg(long)]
     json: bool,
 }
@@ -42,6 +44,7 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments) -> Result<(), harmos_packaging::Error> {
     let inspected = harmos_packaging::inspect(&arguments.artifact)?;
     if arguments.json {

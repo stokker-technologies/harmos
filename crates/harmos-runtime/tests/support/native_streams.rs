@@ -8,10 +8,12 @@
  */
 
 /* === Modules === */
+
 #[path = "native_streams/plugin.rs"]
 mod plugin;
 
 /* === Re-Exports === */
+
 pub use plugin::{Acknowledged, Payload};
 
 /* === Imports === */
@@ -31,14 +33,17 @@ use harmos_runtime::{Message, Runtime, services::Service, services::ServiceStatu
 use plugin::{Progress, Receiver};
 
 /* === Constants === */
+
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Resident<T> = Supervised<Model, T, fn(&Service<Model>, Notice)>;
 type Managed<T> = harmos_runtime::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
 type Constructor<T> = fn(Resident<T>, PluginDefinition, Lanes, NonZeroUsize, NonZeroUsize) -> harmos_runtime::Result<Managed<T>>;
 
 /* === Structs === */
+
 pub struct Model;
 
 pub struct Fixture {
@@ -47,6 +52,7 @@ pub struct Fixture {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::streams]
 pub enum Streams {
     Payload(Payload),
@@ -61,6 +67,7 @@ pub enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
@@ -171,6 +178,7 @@ impl Fixture {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn notices(_: &Service<Model>, _: Notice) {}
 
 /* === Tests === */

@@ -10,12 +10,15 @@
 // Durable JSON State Backend
 
 /* === Modules === */
+
 mod files;
 mod format;
 mod journal;
 
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::{num::NonZeroUsize, path::PathBuf, sync::Arc};
 // Third Party Imports
@@ -27,9 +30,13 @@ use crate::{BackendFailure, Error, Result};
 use journal::StateLog;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /// A long-lived file resource. Scheduling, admission and evidence dependencies
 /// belong to StorageManager; this backend owns file durability and integrity.
 pub struct FileBackend {
@@ -40,8 +47,11 @@ pub struct FileBackend {
 }
 
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl FileBackend {
     pub fn new(root: PathBuf, history: StoreHistory, settings: StorageStateSettings) -> Self {
         Self { root, history, settings, journal: Arc::new(Mutex::new(None)) }
@@ -144,7 +154,9 @@ impl StateBackend for FileBackend {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn task(error: tokio::task::JoinError) -> Error {
     Error::backend("state file task", BackendFailure::Permanent, error)
 }

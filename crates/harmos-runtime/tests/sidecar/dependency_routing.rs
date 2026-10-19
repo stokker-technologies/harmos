@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 fn candidate(host: &Host, lifecycle: bool, unauthorized: bool, publishing: bool, configuration: bool) -> PluginDefinitions {
     let mut owners = vec![("provider", vec![]), ("caller", vec!["provider"])];
     if unauthorized {

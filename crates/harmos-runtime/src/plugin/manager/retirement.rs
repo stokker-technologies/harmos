@@ -32,10 +32,12 @@ use crate::supervision::dependencies;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Outcomes = Arc<Mutex<BTreeMap<String, Result<(), Arc<Error>>>>>;
 pub(super) type Notice = Arc<dyn Fn(PluginState) + Send + Sync>;
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(super) struct Owner {
     pub generation: PluginGeneration,
@@ -92,6 +94,7 @@ pub enum PluginCleanupStatus {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Resource for Driver {
     fn finalize(&mut self) -> Finalize<'_> {
         Box::pin(async move {

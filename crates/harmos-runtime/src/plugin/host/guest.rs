@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -41,6 +42,7 @@ use crate::{Application, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Guest<A: Application, C, L> {
     loaded: Option<Loaded<A>>,
     serving: Option<Serving<A>>,
@@ -64,6 +66,7 @@ struct Guest<A: Application, C, L> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> PluginHost<A> {
     pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync) -> Result<()>
     where
@@ -214,6 +217,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn failed(id: &str, source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::OperationFailed { operation: id.to_owned(), source: Arc::new(source) }
 }

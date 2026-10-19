@@ -10,6 +10,7 @@
 // Own Runtime Plugin Registration, Activation And Retained Cleanup.
 
 /* === Modules === */
+
 #[cfg(feature = "plugin-guest")]
 mod guest;
 mod progress;
@@ -17,11 +18,13 @@ mod progress;
 mod sidecar;
 
 /* === Re-Exports === */
+
 pub(crate) use progress::Driving;
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use progress::Lease;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
@@ -48,11 +51,13 @@ use crate::supervision::Task;
 use crate::{Application, Error, Result};
 
 /* === Constants === */
+
 const COMMANDS: usize = 64;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(super) type LifecycleFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 pub(super) type Driver = Box<dyn Execution>;
 pub(super) type Factory = Arc<dyn Fn() -> Result<Driver> + Send + Sync>;
@@ -62,6 +67,7 @@ type Bind = Arc<dyn Fn(&mut Bindings<'_>) -> Result<()> + Send + Sync>;
 type Snapshots = Arc<RwLock<BTreeMap<String, PluginStatus>>>;
 
 /* === Structs === */
+
 // The Runtime's Shared Plugin Registration And Lifecycle Owner.
 pub struct PluginHost<A: Application> {
     shared: Arc<Shared<A>>,
@@ -75,10 +81,13 @@ struct Shared<A: Application> {
     task: Task<std::result::Result<(), Arc<Error>>>,
     operations: OperationManager,
     cleanup: PluginCleanup,
+
     #[cfg(feature = "plugin-sidecar")]
     handles: Arc<crate::services::Handles<A>>,
+
     #[cfg(feature = "plugin-sidecar")]
     driving: Driving,
+
     application: PhantomData<fn() -> A>,
 }
 
@@ -107,6 +116,7 @@ struct Embedded {
 }
 
 /* === Enums === */
+
 enum Command {
     Reload {
         id: String,
@@ -147,6 +157,7 @@ enum Initialization {
 }
 
 /* === Traits === */
+
 pub(super) trait Execution: Send + 'static {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
@@ -158,6 +169,7 @@ pub(super) trait Execution: Send + 'static {
 }
 
 /* === Implementations === */
+
 impl<A: Application> Clone for PluginHost<A> {
     fn clone(&self) -> Self {
         Self { shared: self.shared.clone() }
@@ -503,6 +515,7 @@ impl Execution for Embedded {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn affected_dependents(registry: &Registry, id: &str) -> Result<BTreeSet<String>> {
     let mut selected = BTreeSet::from([id.to_owned()]);
     let mut pending = vec![id.to_owned()];

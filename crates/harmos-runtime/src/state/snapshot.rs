@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, poll_fn};
@@ -39,11 +40,13 @@ use crate::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Encoding<A> =
     fn(&SnapshotPolicy, &At<<A as Application>::State>, &Undos<A>, &Tail<A>, &HashMap<RequestKey, Receipt>) -> Result<Vec<u8>>;
 type Decoding<A> = fn(&[u8], &SnapshotPolicy, &Dispatch<A, Payload<A>>, usize) -> std::result::Result<Restored<A>, Incompatible>;
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct SnapshotPolicy {
     pub schema: SchemaKey,
@@ -70,6 +73,7 @@ pub(crate) struct Restored<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> Snapshots<A> {
     pub(crate) fn new(policy: SnapshotPolicy) -> Self
     where

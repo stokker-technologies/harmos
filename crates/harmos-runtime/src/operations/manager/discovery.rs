@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::{self, Write};
 use std::ops::Bound;
@@ -28,6 +29,7 @@ use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 
 /* === Constants === */
+
 const MAX_ROWS: usize = 256;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const CURSOR_BYTES: usize = MAX_BYTES;
@@ -35,9 +37,11 @@ const CURSOR_BYTES: usize = MAX_BYTES;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type ProviderEntry = (String, String, Arc<Entry>);
 
 /* === Structs === */
+
 #[derive(Serialize)]
 struct Metadata<'a> {
     owner: &'a Identifier,
@@ -58,6 +62,7 @@ struct Bounded {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
@@ -206,6 +211,7 @@ impl OperationManager {
 }
 
 /* === Public Functions === */
+
 // The Row And Byte Bounds Of One Catalog Page, Shared By Every Kind.
 pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)> {
     let rows = request.rows.unwrap_or(64);

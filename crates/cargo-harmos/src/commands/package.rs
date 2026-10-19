@@ -31,16 +31,21 @@ use harmos_packaging::{Build, BuildCancellation, Error, config::BuildBackend};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     #[arg(long, help = "A Stamped Build Receipt; Packaging Never Runs Cargo.")]
     build_json: PathBuf,
+
     #[arg(long)]
     output: PathBuf,
+
     #[arg(long, requires = "relocate_to")]
     relocate_from: Option<PathBuf>,
+
     #[arg(long, requires = "relocate_from")]
     relocate_to: Option<PathBuf>,
+
     #[arg(long)]
     json: bool,
 }
@@ -52,6 +57,7 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments, backend: BuildBackend, cancellation: &BuildCancellation) -> Result<(), Error> {
     let file = std::fs::File::open(&arguments.build_json)?;
     let mut bytes = Vec::new();

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod sealed {
     pub trait Leaf {}
     impl Leaf for super::Initialize {}
@@ -17,6 +18,7 @@ mod sealed {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -28,6 +30,7 @@ use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
+
 // The Declared Bound Of Both Actions; Each Plugin Binds Its Own `Policy`.
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
@@ -37,6 +40,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 crate::declare!(Initialize { id: "harmos.initialize", version: 1, policy: POLICY, response: () });
 
 crate::declare!(Shutdown { id: "harmos.shutdown", version: 1, policy: POLICY, response: () });
@@ -44,6 +48,7 @@ crate::declare!(Shutdown { id: "harmos.shutdown", version: 1, policy: POLICY, re
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Initialize {
     pub config_json: Vec<u8>,
@@ -69,6 +74,7 @@ struct EncodedDescriptor {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -80,17 +86,22 @@ pub enum Action {
 pub enum Error {
     #[error("invalid SDK lifecycle policy: {0}")]
     Policy(#[from] PolicyError),
+
     #[error("SDK lifecycle operations require explicit retry, never automatic replay")]
     AutomaticRetry,
+
     #[error("SDK lifecycle operations are request-scoped and never restart")]
     Resident,
+
     #[error("unsupported SDK lifecycle semantic version {0}")]
     Version(u32),
+
     #[error("invalid SDK lifecycle contract: {0}")]
     Contract(#[from] ContractError),
 }
 
 /* === Traits === */
+
 pub trait Policy: 'static {
     const INITIALIZATION_POLICY: OperationPolicy;
     const SHUTDOWN_POLICY: OperationPolicy;
@@ -101,6 +112,7 @@ pub trait SdkOperation: OperationDeclaration + sealed::Leaf {
 }
 
 /* === Implementations === */
+
 crate::message::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8> });
 crate::message::postcard_product!(Shutdown {});
 impl SdkOperation for Initialize {
@@ -190,6 +202,7 @@ impl TryFrom<EncodedDescriptor> for Descriptor {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
 
 /* === Tests === */

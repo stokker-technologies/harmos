@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -25,6 +26,7 @@ use serde_json::Value;
 use super::fixtures;
 
 /* === Constants === */
+
 const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 
 /* === Macros === */
@@ -42,6 +44,7 @@ const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Run The CLI From A Caller Directory With One Explicit Backend
 fn schematic(directory: &Path, backend: &str, plugin: &Path, advanced: bool) -> Vec<String> {
     let mut command = Command::new(fixtures::artifact("schematic-cli"));
@@ -77,6 +80,7 @@ fn walkthrough(backend: &str, plugin: PathBuf) {
 }
 
 /* === Tests === */
+
 #[test]
 fn native_walkthrough_reopens() {
     walkthrough("--sidecar", fixtures::artifact("schematic-sidecar"));

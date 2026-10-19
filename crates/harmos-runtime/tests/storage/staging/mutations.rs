@@ -41,6 +41,7 @@ use harmos_runtime::storage::{MutationId, StorageManager};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn identity(storage: &StorageManager, key: &str) -> MutationId {
     MutationId { window: storage.mutation_window().unwrap().id, key: Identifier::new(key).unwrap() }
 }

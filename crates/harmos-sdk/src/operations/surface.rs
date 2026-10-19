@@ -40,6 +40,7 @@ use crate::{Message, StreamSpec};
 /* === Enums === */
 
 /* === Traits === */
+
 // The host one authored body calls through wherever it runs. The request is
 // the operation, so `call` and `submit` infer the declaration from it.
 pub trait Host: Send + Sync + Sized {

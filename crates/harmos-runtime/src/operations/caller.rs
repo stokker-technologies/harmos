@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use std::sync::{Arc, Weak};
@@ -41,6 +42,7 @@ use crate::operations::OperationDeclaration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct Caller {
@@ -51,15 +53,20 @@ pub struct Caller {
 #[derive(Clone)]
 pub(super) struct Origin {
     pub(super) identity: Identity,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) scope: Option<PluginScope>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) callback: Option<Weak<Entry>>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) lifecycle: Option<LifecycleLoan>,
+
     // Calls made by a resident control, which may publish while it retires.
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) resident: bool,
+
     // The grant authority admission recorded for the request this origin made.
     pub(super) grants: Option<std::sync::Arc<super::manager::GrantAuthority>>,
 }
@@ -72,20 +79,26 @@ pub(super) struct LifecycleLoan {
 }
 
 /* === Enums === */
+
 #[derive(Clone)]
 pub(super) enum Source {
     Host,
+
     #[cfg(feature = "grpc")]
     External {
         source: Box<Source>,
         id: super::OperationInstanceId,
     },
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin(PluginCaller),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Binding(Weak<Entry>),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Callback(Weak<Entry>),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Lifecycle {
         binding: Weak<Entry>,
@@ -96,8 +109,10 @@ pub(super) enum Source {
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Identity {
     Host,
+
     #[cfg(feature = "grpc")]
     External(super::OperationInstanceId),
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Plugin {
         owner: Arc<str>,
@@ -108,6 +123,7 @@ pub(super) enum Identity {
 /* === Traits === */
 
 /* === Implementations === */
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl OperationManager {
     pub fn caller(&self, source: &PluginCaller) -> Result<Caller> {

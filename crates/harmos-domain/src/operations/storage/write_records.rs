@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(WriteRecords {
     scope: Optional<Id> => 1,
 });
@@ -46,6 +48,7 @@ crate::declare!(WriteRecords {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Admit Streamed Arrow Batches Of Records Into One Optional Scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteRecords {
@@ -57,6 +60,7 @@ pub struct WriteRecords {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for WriteRecords {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))

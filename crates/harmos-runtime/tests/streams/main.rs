@@ -52,6 +52,7 @@ mod colliding {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::pin::Pin;
 use std::sync::Arc;
@@ -72,6 +73,7 @@ use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Selecting;
 
 /* === Enums === */
@@ -79,6 +81,7 @@ struct Selecting;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StreamConsumer<Bank> for Selecting {
     fn resume(&self) -> Cursor {
         Cursor::ORIGIN
@@ -96,6 +99,7 @@ impl StreamConsumer<Bank> for Selecting {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }

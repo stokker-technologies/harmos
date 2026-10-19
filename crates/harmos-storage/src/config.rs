@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -24,6 +25,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 
 /* === Constants === */
+
 // Persistence Cadence And Batching Are Private Storage Algorithm Choices.
 pub(super) const FLUSH_INTERVAL: Duration = Duration::from_millis(100);
 pub(super) const MAX_BATCH_BYTES: usize = 16 * 1024 * 1024;
@@ -55,6 +57,7 @@ pub(super) const SCAN_BYTES: usize = 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageSettings {
@@ -90,6 +93,7 @@ pub struct StorageResponseSettings {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
         if self.request.max_active_queries.get() > tokio::sync::Semaphore::MAX_PERMITS

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use super::manager::{Domain, Pending};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 pub(super) struct PendingQueue {
     entries: VecDeque<Arc<Pending>>,
@@ -38,6 +40,7 @@ pub(super) struct PendingQueue {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PendingQueue {
     pub(super) fn push_back(&mut self, entry: Arc<Pending>) {
         self.bytes += entry.bytes;

@@ -39,6 +39,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Trace {
     constructed: AtomicUsize,
@@ -78,6 +79,7 @@ struct Answer {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 enum Mode {
     Complete,
@@ -113,6 +115,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Read {
     type Declaration = ReadContract;
     type Resources = Resources;
@@ -210,6 +213,7 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());

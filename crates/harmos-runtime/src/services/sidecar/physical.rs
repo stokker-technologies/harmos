@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -37,17 +38,20 @@ use crate::{Application, Result};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
+
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Outcome = std::result::Result<(), Fault<String>>;
 type Running = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 type Ending = Pin<Box<dyn Future<Output = std::result::Result<(), String>> + Send>>;
 type Owner<A, S, H> = std::marker::PhantomData<fn() -> (A, S, H)>;
 
 /* === Structs === */
+
 pub(super) struct Physical<A: Application, S, H> {
     original: Arc<Mutex<Original>>,
     marker: Owner<A, S, H>,
@@ -93,6 +97,7 @@ struct Connection<A: Application, S, H> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Signals {
     fn register(&self, waker: &Waker) {
         let mut waiting = self.waiting.lock().expect("physical wake registry is healthy");

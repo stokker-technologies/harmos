@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -30,9 +31,11 @@ use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::R
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Refusal = &'static str;
 
 /* === Structs === */
+
 struct Model;
 
 #[harmos_runtime::transaction(id = "managed.add", version = 2, irreversible, history(OldAdd))]
@@ -59,6 +62,7 @@ struct Store {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -74,6 +78,7 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::Application for Model {
     type State = i64;
     type Transaction = Transactions;
@@ -142,6 +147,7 @@ impl Store {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn limits() -> ReadLimits {
     ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(256 * 1024).unwrap() }
 }

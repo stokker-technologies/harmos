@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 // Third Party Imports
@@ -26,12 +27,15 @@ use super::{SharedOpening, exchange};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
+
 pub(super) async fn run_binary(
     opening: SharedOpening, data: crate::transport::Io, control: crate::transport::Io, stop: impl Future<Output = ()>,
 ) -> std::io::Result<()> {

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +34,7 @@ use harmos_runtime::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Gate {
     entered: Notify,
@@ -56,6 +58,7 @@ struct Probe {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Probe {
     fn new() -> Self {
         let data = Arc::new(Data::new(history()));
@@ -115,6 +118,7 @@ impl Source<Bank> for Probe {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn builder() -> Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog())
 }

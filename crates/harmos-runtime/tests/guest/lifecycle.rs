@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -36,10 +37,12 @@ use harmos_runtime::plugin::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, (), Resources>;
 pub(super) type Manager = PluginManager<Resources, (), Resources>;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Domain;
 
@@ -76,6 +79,7 @@ pub(super) struct Lifecycle<C = GuestOperations, L = super::GuestLanes> {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub(super) enum GuestOperations {
     Echo(wire::Echo),
@@ -95,6 +99,7 @@ enum ProviderOperations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Echo {
     type Declaration = wire::ProviderEcho;
     type Resources = Domain;
@@ -382,6 +387,7 @@ impl<C, L> Lifecycle<C, L> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Serves The Sandbox's Requirements From The Host When No Plugin Provides Them
 pub(super) fn serve_host(runtime: &Runtime<Bank>, lane: impl harmos_runtime::operations::Lane + Clone) {
     runtime.operations.register_wire_operation::<Publish>("publication-core", lane.clone(), Arc::new(Domain)).unwrap();

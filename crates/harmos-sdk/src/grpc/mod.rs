@@ -14,16 +14,19 @@
 // protobuf form packaging publishes, so no per-type protobuf code is generated.
 
 /* === Modules === */
+
 mod input;
 mod transcode;
 mod validator;
 
 /* === Re-Exports === */
+
 pub use input::{DecodeField, DecodeInput, DecodeScalar, DecodeValue};
 pub use prost;
 pub use validator::{PayloadError, Validator};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -48,6 +51,7 @@ use harmos_domain::{Message, MessageError};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.
 

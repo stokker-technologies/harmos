@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{
     collections::HashMap,
@@ -34,9 +35,11 @@ use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, S
 use crate::{Error, Result};
 
 /* === Constants === */
+
 const MAX_DEPTH: usize = 32;
 
 /* === Macros === */
+
 macro_rules! scalar_array {
     ($values:expr, $variant:ident, $array:ty) => {{
         let values = $values
@@ -54,7 +57,9 @@ macro_rules! scalar_array {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /* === Enums === */
+
 enum Node<'a> {
     Null,
     Scalar(Scalar<'a>),
@@ -65,7 +70,9 @@ enum Node<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
+
 // Construction Charges The Shared Storage Reservation Before Allocation.
 pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
@@ -200,6 +207,7 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
 }
 
 /* === Private Functions === */
+
 fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>, bank: &MemoryBank) -> Result<RecordBatch> {
     for row in rows {
         if row.schema != schema.key {

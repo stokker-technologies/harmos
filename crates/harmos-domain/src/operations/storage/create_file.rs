@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(CreateFile {
     mutation: Nested<MutationId> => 1,
     metadata: Nested<FileMetadata> => 2,
@@ -43,6 +45,7 @@ crate::declare!(CreateFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Open A Producing File Session For New Metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CreateFile {
@@ -55,6 +58,7 @@ pub struct CreateFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for CreateFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

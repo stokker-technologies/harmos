@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +34,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// The budget of one reloadable unit of read work. Scoped claims cover transient
 /// scratch; retained claims move bytes into their own reservations that outlive
 /// the attempt. Growth never waits; a refusal is recorded so the caller can
@@ -55,6 +57,7 @@ struct BankState {
 }
 
 /* === Enums === */
+
 /// Why an attempt could not grow: other owners hold capacity, or it can never fit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Shortfall {
@@ -65,6 +68,7 @@ pub(super) enum Shortfall {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemoryBank {
     pub(super) fn new(reservation: Reservation) -> Self {
         Self { state: Arc::new(Mutex::new(BankState { requested: reservation.bytes(), reservation, used: 0, retained: 0, refusal: None })) }

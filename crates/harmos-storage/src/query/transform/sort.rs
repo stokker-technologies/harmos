@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::sort::{Sort, SortKey};
 
 /* === Imports === */
+
 use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
@@ -38,6 +40,7 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait SortExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -45,6 +48,7 @@ pub trait SortExecution {
 }
 
 /* === Implementations === */
+
 impl SortExecution for Sort {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.keys.is_empty() || self.keys.len() > 64 {

@@ -31,6 +31,7 @@ use crate::{Error, Identifier, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub(super) struct Mutation<'a> {
     pub(super) id: &'a MutationId,
@@ -42,6 +43,7 @@ pub(super) struct Mutation<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn write_schema_once(
         &self, mutation: &MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
@@ -89,6 +91,7 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Called After Shared Schema Preflight Has Bounded The Finite Definition Table.
 pub(super) fn schema_mutation<'a>(
     id: &'a MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,

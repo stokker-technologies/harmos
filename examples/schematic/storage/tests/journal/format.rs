@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "../support/mod.rs"]
 mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -30,6 +32,7 @@ use schematic_storage::Jsonl;
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, scratch, withdraw};
 
 /* === Constants === */
+
 const GOLDEN: &str = include_str!("../fixtures/journal.v2.jsonl");
 
 const NON_CANONICAL: &str = r#"{ "kind": "Transaction", "version": 1, "position": 4, "id": "ledger.bonus", "payload": { "amount": 3 }, "metadata": { "at_us": -1000001, "correlation": 4, "principal": null, "causation": null, "request": null, "link": null } }"#;
@@ -41,6 +44,7 @@ const SYSTEM_FACTS: &str = include_str!("../fixtures/system-facts.v2.jsonl");
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Witnesses {
     seen: Arc<Mutex<Vec<(Position, JournalMetadata)>>>,
     resume: Position,
@@ -51,6 +55,7 @@ struct Witnesses {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl JournalConsumer<Bank> for Witnesses {
     fn resume(&self) -> Position {
         self.resume

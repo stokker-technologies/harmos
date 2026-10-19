@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::collections::VecDeque;
@@ -33,11 +34,13 @@ use crate::{state::At, state::Position};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Row = Arc<dyn Any + Send + Sync>;
 
 type Step = Pin<Box<dyn Future<Output = (Parts, Turn)> + Send>>;
 
 /* === Structs === */
+
 pub(crate) struct Window {
     ring: RwLock<Ring>,
     pub(super) visibility: Arc<RwLock<()>>,
@@ -85,6 +88,7 @@ struct Parts {
     doorbell: watch::Receiver<u64>,
     frontier: u64,
     closed: Arc<AtomicBool>,
+
     #[allow(dead_code, reason = "held for its drop, which releases the demand count")]
     held: Holding,
 }
@@ -99,6 +103,7 @@ struct Following<S> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Item<S> {
     Row(At<S>),
@@ -109,8 +114,10 @@ pub enum Item<S> {
 pub enum BeneathWindow {
     #[error("no series adapter serves beneath the retained window")]
     Unserved,
+
     #[error("the served history begins after position {}", floor.0)]
     Floor { floor: Position },
+
     #[error("the series adapter could not read its own history: {0}")]
     Unreadable(String),
 }
@@ -123,6 +130,7 @@ enum Turn {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Window {
     pub(crate) fn wired(capacity: usize, floor: Position, sequence: Arc<AtomicU64>, pump: watch::Sender<()>) -> Self {
         let (doorbell, _) = watch::channel(0);
@@ -540,6 +548,7 @@ impl<S: Clone + 'static> futures_core::Stream for Following<S> {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn following<S: Clone + 'static>(
     window: Arc<Window>, closed: Arc<AtomicBool>, held: Holding,
 ) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin {
@@ -560,6 +569,7 @@ pub(crate) fn following<S: Clone + 'static>(
 }
 
 /* === Private Functions === */
+
 fn reaches_beneath(start: Bound<Position>, floor: Position) -> bool {
     match start {
         Bound::Included(at) => at <= floor,

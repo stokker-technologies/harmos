@@ -15,6 +15,7 @@ mod fixtures;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -23,6 +24,7 @@ use serde_json::{Value, json};
 // Local Imports
 
 /* === Constants === */
+
 const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
@@ -44,6 +46,7 @@ const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.va
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fragments(bytes: &[u8]) -> impl Iterator<Item = Value> + '_ {
     bytes.windows(PREFIX.len()).enumerate().filter_map(move |(index, value)| {
         if value != PREFIX {

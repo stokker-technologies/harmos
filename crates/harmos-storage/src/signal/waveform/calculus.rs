@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -33,6 +34,7 @@
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[must_use]
 pub fn derivative(x: &[f64], y: &[f64]) -> Vec<f64> {
     let length = x.len().min(y.len());

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -21,6 +22,7 @@ use serde::de::DeserializeOwned;
 // Local Imports
 
 /* === Constants === */
+
 const FAMILY: &[u8] = b"\0HARMOS:ARTIFACT:\0";
 pub const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
 
@@ -51,25 +53,31 @@ pub const KINDS: [&str; 17] = [
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Deserialize)]
 struct Kinded {
     kind: String,
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
     #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
     IncompatiblePayload,
+
     #[error("artifact metadata exceeds the schema preparation memory or work budget")]
     Budget,
+
     #[error("a Harmos metadata fragment exceeds its {FRAGMENT_LIMIT}-byte bound")]
     Oversized,
+
     #[error("a Harmos metadata fragment is invalid: {source}")]
     Malformed {
         #[source]
         source: serde_json::Error,
     },
+
     #[error("a Harmos metadata fragment declares the unknown kind `{kind}`")]
     UnknownKind { kind: String },
 }
@@ -79,6 +87,7 @@ pub enum ScanError {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn fragments<F: DeserializeOwned>(artifact: &[u8], owned: &[&str]) -> Result<Vec<F>, ScanError> {
     fragments_with_settings(artifact, owned, &mut crate::config::SchemaSettings::default())
 }

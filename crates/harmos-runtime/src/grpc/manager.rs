@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::config::GrpcSettings as Settings;
 
 /* === Imports === */
@@ -40,6 +41,7 @@ use crate::{Application, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct GrpcManager {
     state: Arc<Mutex<State>>,
@@ -66,6 +68,7 @@ struct State {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl GrpcManager {
     pub(crate) fn new<A: Application>(operations: &crate::operations::OperationManager) -> Self {
         Self {

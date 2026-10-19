@@ -49,6 +49,7 @@ use harmos_runtime::storage::operations::Operations;
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 pub(crate) enum Lanes {
     #[default]
@@ -62,6 +63,7 @@ pub(crate) enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn followed(
     item: harmos_runtime::operations::StreamItem<harmos_runtime::storage::operations::Followed>,
 ) -> harmos_runtime::storage::StoredRecord {

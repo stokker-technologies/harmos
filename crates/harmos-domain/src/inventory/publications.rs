@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 // Third Party Imports
@@ -23,6 +24,7 @@ use crate::schema::declaration::{Definition, Named};
 use crate::schema::graph::Schema;
 
 /* === Constants === */
+
 const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"publications\",\"facility\":";
 const OWNER: &[u8] = b",\"owner\":";
 const STREAMS: &[u8] = b",\"streams\":[";
@@ -41,6 +43,7 @@ const METADATA_LABEL: &[u8] = b",\"label\":";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct Entry {
     pub id: &'static str,
@@ -63,8 +66,10 @@ pub struct Manifest {
 #[serde(deny_unknown_fields)]
 pub struct NamedStream {
     pub metadata: crate::Metadata,
+
     #[serde(default)]
     pub row_metadata: Vec<crate::StreamField>,
+
     pub id: String,
     pub schema: u32,
     pub window: usize,
@@ -80,35 +85,46 @@ pub struct NamedManifest {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("publication inventory differs from authored streams")]
     Mismatch,
+
     #[error("the artifact carries no complete {facility} publication inventory for `{owner}`")]
     Missing { facility: String, owner: String },
+
     #[error("the artifact carries multiple complete {facility} publication inventories for `{owner}`")]
     Duplicate { facility: String, owner: String },
+
     #[error("`{id}` is not a portable Harmos stream id")]
     InvalidId { id: String },
+
     #[error("the stream `{id}` has a zero schema ordinal")]
     ZeroSchema { id: String },
+
     #[error("the stream `{id}` has a zero window")]
     ZeroWindow { id: String },
+
     #[error(
         "the stream `{id}` is declared more than once in its publication inventory; each stream must appear exactly once in the artifact publication grant"
     )]
     DuplicateStream { id: String },
+
     #[error("stream `{id}` has invalid presentation metadata: {reason}")]
     Metadata { id: String, reason: String },
+
     #[error("stream `{id}` has an invalid field schema: {source}")]
     Fields {
         id: String,
+
         #[source]
         source: crate::schema::Error,
     },
 }
 
 /* === Traits === */
+
 pub trait StreamSpec {
     type Row;
     const ID: &'static str;
@@ -131,6 +147,7 @@ pub trait StreamSpec {
 }
 
 /* === Implementations === */
+
 impl NamedManifest {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
         let streams = self
@@ -186,6 +203,7 @@ impl Entry {
 }
 
 /* === Public Functions === */
+
 pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry; N] {
     let mut merged = [Entry { id: "", metadata_json: "", row_metadata_json: "[]", schema: 0, window: 0, row: Definition::of::<()>() }; N];
     let mut index = 0;
@@ -394,6 +412,7 @@ pub(crate) const fn same_bytes(left: &str, right: &str) -> bool {
 }
 
 /* === Private Functions === */
+
 const fn metadata_len(entry: &Entry) -> usize {
     if entry.metadata_json.is_empty() {
         METADATA_ID.len() + quoted_len(entry.id) + METADATA_LABEL.len() + quoted_len(entry.id) + 1

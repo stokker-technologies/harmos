@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(super) mod checkpoint;
 mod creation;
 mod mutations;
@@ -17,15 +18,19 @@ mod session;
 mod state;
 
 /* === Re-Exports === */
+
 pub(crate) use perform::perform;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
 // Third Party Imports
 use sha2::{Digest, Sha256};
+
 // Local Imports
 use super::manager::{ENTRY_OVERHEAD, Operation, Pending, State, Target, encoded_size};
 use super::*;
@@ -33,6 +38,7 @@ use crate::{Error, Result};
 use session::Session;
 
 /* === Constants === */
+
 static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
@@ -40,6 +46,7 @@ static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct StorageFile {
     manager: StorageManager<super::manager::ErasedCatalog>,
     id: u64,
@@ -84,6 +91,7 @@ pub(super) struct FileState {
 }
 
 /* === Enums === */
+
 enum Command {
     Create,
     Resume { expected: u64, next: u64 },
@@ -120,6 +128,11 @@ pub(super) enum FileCompleted {
 /* === Traits === */
 
 /* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<(usize, usize)> {
     let reference = encoded_size(metadata)?
         .checked_add(encoded_size(history)?)

@@ -27,9 +27,11 @@ use crate::Result;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Authentication<'a, P> = Pin<Box<dyn Future<Output = Result<P>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub struct Authenticate<A> {
     authenticator: Arc<A>,
 }
@@ -37,12 +39,14 @@ pub struct Authenticate<A> {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Authenticator: Send + Sync + 'static {
     type Principal: Send + Sync + 'static;
     fn authenticate<'a>(&'a self, call: &'a Invocation) -> Authentication<'a, Self::Principal>;
 }
 
 /* === Implementations === */
+
 impl<A: Authenticator> Authenticate<A> {
     pub fn new(authenticator: Arc<A>) -> Self {
         Self { authenticator }

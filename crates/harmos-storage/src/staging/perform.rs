@@ -7,10 +7,35 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
+/* === Public Functions === */
+
 pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) -> Result<FileCompleted> {
     match action {
         FileAction::Create { id, metadata, staging, resumable } => {
@@ -66,3 +91,5 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
 }
 
 /* === Private Functions === */
+
+/* === Tests === */

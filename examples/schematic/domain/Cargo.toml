@@ -1,4 +1,4 @@
-# === Package ===
+# === Package === #
 
 [package]
 publish = false
@@ -10,11 +10,11 @@ license.workspace = true
 # The editor's serializable domain shared with its own plugins, and nothing else.
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -50,27 +50,27 @@ serde = { workspace = true, default-features = true }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

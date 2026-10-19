@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:e172b79852aa493a051c7022ded588c9baa88088c2b649e14a0b7549994a9a31
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:ab335c13526aa2a447b17f60fcd89ea68829f87ddb08dc54f049e34d3d79896a
 # === Settings === #
 
 [settings]
@@ -165,8 +165,10 @@ depends = ["package:rust --profile {{usage.profile}}"]
 
 [tasks."package:rust"]
 description = "Package Rust"
-usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --project tools/python python -m project_tools.package.run rust --profile {{usage.profile}}"
+usage = """
+flag "--profile <profile>" default="dev"
+flag "--target <target>" default="native""""
+run = "uv run --locked --project tools/python python -m project_tools.package.run rust --profile {{usage.profile}} --target {{usage.target}}"
 
 # === CI === #
 

@@ -6,7 +6,7 @@
 #
 # ***
 
-# === Package ===
+# === Package === #
 
 [package]
 publish = false
@@ -17,14 +17,14 @@ rust-version.workspace = true
 license.workspace = true
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 # The domain crate and nothing above it: a guest compiles the editor's domain
 # with its plugins, never the host half that serves it.
@@ -65,7 +65,7 @@ serde_json = { workspace = true, default-features = true }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
 [build-dependencies]
 # Local
@@ -101,25 +101,25 @@ schematic-domain = { path = "../domain" }
 
 # Testing
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

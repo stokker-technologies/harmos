@@ -17,6 +17,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -28,6 +29,7 @@ use std::time::Duration;
 use harmos_runtime::{evidence::EvidenceError, evidence::Vault};
 
 /* === Constants === */
+
 const CEILING: usize = 1024 * 1024;
 
 const CADENCE: Duration = Duration::from_millis(250);
@@ -48,6 +50,7 @@ const QUARANTINE: &str = "quarantine";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct Directory {
     root: PathBuf,
@@ -60,6 +63,7 @@ pub struct Directory {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Directory {
     pub fn at(root: impl AsRef<Path>) -> Self {
         let root = root.as_ref().to_path_buf();
@@ -182,6 +186,7 @@ impl Vault for Directory {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn length(file: &File) -> Result<u64, EvidenceError> {
     file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)
 }

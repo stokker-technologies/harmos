@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use super::MessageError;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn add(left: usize, right: usize) -> Result<usize, MessageError> {
     left.checked_add(right).ok_or_else(|| MessageError::borrowed("decoding memory bound overflow"))
 }

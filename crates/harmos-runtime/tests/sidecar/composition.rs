@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn declared_publication_enters() {
     let mut fixture = operations::Managed::attach(

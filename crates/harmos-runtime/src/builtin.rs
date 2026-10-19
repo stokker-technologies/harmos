@@ -14,6 +14,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::operations::lifecycle::{Cancel, InstanceState, Status, Watch};
 
 /* === Imports === */
@@ -35,6 +36,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The built-in operations served so far: `host.operations.status`,
 // `host.operations.cancel` and `host.operations.watch`.
 pub struct Catalog;
@@ -55,6 +57,7 @@ pub struct Watching;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Catalog {
     pub fn register(operations: &OperationManager, owner: impl Into<String>, lane: impl Lane + Copy) -> Result<()> {
         let owner = owner.into();
@@ -143,6 +146,7 @@ impl Operation for Watching {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn unknown(id: OperationInstanceId) -> Error {
     Error::NotRegistered { domain: "operation instance", name: id.to_string() }
 }

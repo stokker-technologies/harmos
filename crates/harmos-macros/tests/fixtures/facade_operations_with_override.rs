@@ -9,6 +9,7 @@
 
 
 /* === Modules === */
+
 mod relative {
     #[facade::message(harmos_path = ::facade::__harmos)]
     pub struct WireReply { pub value: String }
@@ -19,6 +20,7 @@ mod rows { pub use facade::Reading; }
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -53,10 +55,12 @@ pub struct Echo { pub value: String }
 pub struct Guest;
 
 /* === Enums === */
+
 #[facade::catalog(harmos_path = ::facade::__harmos)]
 pub enum Operations { Echo(Echo) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
@@ -82,6 +86,7 @@ impl ProductPlugin for State {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

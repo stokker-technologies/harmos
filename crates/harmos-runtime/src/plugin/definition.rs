@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -31,6 +32,7 @@ use harmos_domain::{ConfigError, Registration, RegistrationError, artifact_subse
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct PluginDefinition {
     pub id: String,
@@ -55,6 +57,7 @@ pub struct PluginContributions {
 }
 
 /* === Enums === */
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum PluginArtifact {
     Guest {
@@ -86,19 +89,26 @@ pub enum PluginKind {
 pub enum PluginDefinitionError {
     #[error("invalid plugin {field}: {reason}")]
     Invalid { field: &'static str, reason: &'static str },
+
     #[error(transparent)]
     Configuration(#[from] ConfigError),
+
     #[error(transparent)]
     Publication(#[from] publications::Error),
+
     #[error(transparent)]
     Operations(#[from] operations::Error),
+
     #[error(transparent)]
     Listeners(#[from] harmos_domain::inventory::listeners::Error),
+
     #[error(transparent)]
     Registration(#[from] RegistrationError),
+
     #[error("registration `{namespace}` has an invalid JSON payload: {source}")]
     RegistrationPayload {
         namespace: String,
+
         #[source]
         source: ConfigError,
     },
@@ -107,6 +117,7 @@ pub enum PluginDefinitionError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl fmt::Debug for PluginDefinition {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -341,6 +352,7 @@ impl PluginDefinition {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid(field: &'static str, reason: &'static str) -> PluginDefinitionError {
     PluginDefinitionError::Invalid { field, reason }
 }

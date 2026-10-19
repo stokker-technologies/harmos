@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,12 +29,14 @@
 /* === Structs === */
 
 /* === Enums === */
+
 // `lanes` used to take no arguments at all; proving the facade override
 // reaches it too covers the highest-risk edge of this change.
 #[facade::lanes(harmos_path = ::facade::__harmos)]
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Workflow,
 }
@@ -45,6 +48,7 @@ enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {
     let _ = Lanes::catalog();
 }

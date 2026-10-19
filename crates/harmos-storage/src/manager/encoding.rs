@@ -7,8 +7,30 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -65,6 +87,7 @@ impl Write for Counter {
 }
 
 /* === Public Functions === */
+
 pub fn encoded_size<T: Serialize + ?Sized>(value: &T) -> Result<usize> {
     let mut counter = Counter(0);
     serde_json::to_writer(&mut counter, value)

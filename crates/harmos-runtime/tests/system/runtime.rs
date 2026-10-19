@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -39,6 +40,7 @@ use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Sour
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 struct Reading {
     value: i64,
@@ -53,6 +55,7 @@ struct Reading {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Every Saved Record Of One Schema As (Item, Value), Through The Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = Query {
@@ -90,6 +93,7 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn runtime_baseline_walks() {
     // Boot The Host Over A Journal On Disk

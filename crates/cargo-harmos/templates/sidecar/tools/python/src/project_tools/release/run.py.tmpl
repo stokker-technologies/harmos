@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:930bd3c21c0cd5461476fb2c6ac756ee7dc5086c8a7f171abc8ffc6a6715a3ac
+# Rendered by stkr project update from templates/python/release/run.py; sha256:568a7dd061b34fa5d5e0580297f0743f8fe7c0d5988a785ffbc2bca01b5cacb4
 # ***
 #
 # __PRODUCT_NAME__
@@ -30,6 +30,7 @@ from pathlib import Path
 # Local Imports
 # isort: split
 from ..test import archive
+from ..package import run as packages
 from . import policy, registry, screenshots, version
 
 # Type Checking Imports
@@ -162,7 +163,8 @@ def assets(directory: Path, settings: dict) -> list[dict]:
     selected = target(settings)
     value = tag_version(settings["tag"])
     result = []
-    for definition in settings.get("assets", []):
+    declared = settings.get("assets", []) + packages.packaged(directory, "release", selected)
+    for definition in declared:
         if definition.get("target") != selected:
             continue
         relative = definition["path"].format(profile="release", target=selected)
@@ -176,9 +178,6 @@ def assets(directory: Path, settings: dict) -> list[dict]:
             or any(item["name"] == name for item in result)
         ):
             raise policy.ToolError(f"invalid or duplicate release asset: {name}")
-        native_package = name.endswith(".whl")
-        if not native_package and not name.startswith(f"{settings['product']}-{value}-{selected}"):
-            raise policy.ToolError("release download must name product-version-target")
         if not source.is_file() or source.is_symlink():
             raise policy.ToolError(f"missing regular release asset: {source}")
         result.append(
@@ -442,6 +441,7 @@ def tag(directory: Path, settings: dict) -> None:
 
 def stage(directory: Path, settings: dict, folder: Path) -> None:
     registry.require_tag(directory, settings)
+    packages.verify(directory, "release", target(settings))
     selected = assets(directory, settings)
     if policy.policy(directory, "version").get("value") != tag_version(settings["tag"]):
         raise policy.ToolError("prepared package version differs from release tag")

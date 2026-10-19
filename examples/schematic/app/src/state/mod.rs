@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -29,6 +30,7 @@ use crate::error::SchematicError;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct SymbolId(pub u64);
@@ -66,6 +68,7 @@ pub struct Symbol {
 pub struct Net {
     pub name: NetName,
     pub pins: BTreeSet<PinRef>,
+
     #[serde(default)]
     pub route: Vec<Point>,
 }
@@ -77,10 +80,12 @@ pub struct Schematic {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum Rotation {
     #[default]
     Zero,
+
     Quarter,
     Half,
     ThreeQuarter,
@@ -89,6 +94,7 @@ pub enum Rotation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Point {
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }

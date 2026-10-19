@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:543ba5159a97fa2a3e06f0d58931597047226d393bff4ff3ec77594c69cc74fe
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:873e736a3aa588cbb269b2884d318514563c2adb894c6fe0392ca84e261fb380
 stages:
 - Check
 - Build
@@ -189,9 +189,11 @@ Build / Product / Dev (linux):
     project_tools.test.prune start
   - mise run build --profile dev
   - |-
+    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
     mkdir -p target/ci
     outputs=()
-    for path in target/build/dev/ target/generated/; do
+    for path in "target/build/dev/${native}/" "target/build/dev/any/" "target/generated/"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -273,9 +275,11 @@ Build / Tests / Dev (linux):
   - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
   - mise run build:tests --profile dev
   - |-
+    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
     mkdir -p target/ci
     outputs=()
-    for path in target/build/dev/*/tests target/build/dev/*/fixtures; do
+    for path in "target/build/dev/${native}/tests" "target/build/dev/${native}/fixtures"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -354,9 +358,11 @@ Build / Product / Release (linux):
     project_tools.test.prune start
   - mise run build --profile release
   - |-
+    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
     mkdir -p target/ci
     outputs=()
-    for path in target/build/release/ target/generated/; do
+    for path in "target/build/release/${native}/" "target/build/release/any/" "target/generated/"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -424,9 +430,11 @@ Build / Tests / Release (linux):
   - tar --zstd -xf "target/ci/build-product-release-linux.tar.zst"
   - mise run build:tests --profile release
   - |-
+    native="$(uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
     mkdir -p target/ci
     outputs=()
-    for path in target/build/release/*/tests target/build/release/*/fixtures; do
+    for path in "target/build/release/${native}/tests" "target/build/release/${native}/fixtures"; do
       if [ -e "$path" ]; then outputs+=("$path"); fi
     done
     [ ${#outputs[@]} -gt 0 ]
@@ -525,12 +533,13 @@ Validate / Unit / Rust (linux):
     variables:
       PROFILE: release
   artifacts:
+    name: reports-$PROFILE-linux-unit-rust
     when: always
     expire_in: 7 days
     paths:
-    - target/tests/$PROFILE/
+    - target/tests/$PROFILE/linux-*/unit-rust/
     reports:
-      junit: target/tests/$PROFILE/**/junit.xml
+      junit: target/tests/$PROFILE/linux-*/unit-rust/junit.xml
   cache:
   - key:
       prefix: linux-tools
@@ -597,10 +606,10 @@ Package / Rust (linux):
     variables:
       PROFILE: release
   artifacts:
+    name: package-$PROFILE-rust-linux-*
     expire_in: 7 days
     paths:
-    - target/package/$PROFILE/
-    - target/release-assets/
+    - target/package/$PROFILE/linux-*/rust/
   cache:
   - key:
       prefix: linux-tools
@@ -714,8 +723,10 @@ Build / Product / Dev (windows):
     project_tools.test.prune start
   - mise run build --profile dev
   - |-
+    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @('target/build/dev/', 'target/generated/') | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    $outputs = @("target/build/dev/${native}/", "target/build/dev/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -801,8 +812,10 @@ Build / Tests / Dev (windows):
   - tar --zstd -xf "target/ci/build-product-dev-windows.tar.zst"
   - mise run build:tests --profile dev
   - |-
+    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @('target/build/dev/*/tests', 'target/build/dev/*/fixtures') | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    $outputs = @("target/build/dev/${native}/tests", "target/build/dev/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -885,8 +898,10 @@ Build / Product / Release (windows):
     project_tools.test.prune start
   - mise run build --profile release
   - |-
+    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @('target/build/release/', 'target/generated/') | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    $outputs = @("target/build/release/${native}/", "target/build/release/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -958,8 +973,10 @@ Build / Tests / Release (windows):
   - tar --zstd -xf "target/ci/build-product-release-windows.tar.zst"
   - mise run build:tests --profile release
   - |-
+    $native = Split-Path -Leaf (& uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
-    $outputs = @('target/build/release/*/tests', 'target/build/release/*/fixtures') | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
+    $outputs = @("target/build/release/${native}/tests", "target/build/release/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { Resolve-Path -LiteralPath $_.FullName -Relative }
     if (!$outputs) { throw 'No build outputs found' }
     & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -1062,12 +1079,13 @@ Validate / Unit / Rust (windows):
     variables:
       PROFILE: release
   artifacts:
+    name: reports-$PROFILE-windows-unit-rust
     when: always
     expire_in: 7 days
     paths:
-    - target/tests/$PROFILE/
+    - target/tests/$PROFILE/windows-*/unit-rust/
     reports:
-      junit: target/tests/$PROFILE/**/junit.xml
+      junit: target/tests/$PROFILE/windows-*/unit-rust/junit.xml
   inherit:
     default: false
   before_script:
@@ -1139,10 +1157,10 @@ Package / Rust (windows):
     variables:
       PROFILE: release
   artifacts:
+    name: package-$PROFILE-rust-windows-*
     expire_in: 7 days
     paths:
-    - target/package/$PROFILE/
-    - target/release-assets/
+    - target/package/$PROFILE/windows-*/rust/
   inherit:
     default: false
   before_script:
@@ -1211,6 +1229,9 @@ Publish / Release:
       aud: pypi
     CRATES_IO_ID_TOKEN:
       aud: crates.io
+  dependencies:
+  - Package / Rust (linux)
+  - Package / Rust (windows)
   cache:
   - key:
       prefix: linux-tools
@@ -1242,6 +1263,11 @@ Validate / Coverage:
   - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
   - tar --zstd -xf "target/ci/build-tests-dev-linux.tar.zst"
   - mise run test:coverage --profile dev
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/dev/linux-*/coverage/
   rules:
   - if: $CI_PIPELINE_SOURCE == "schedule"
   cache:

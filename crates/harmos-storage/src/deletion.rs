@@ -33,6 +33,7 @@ use crate::{Error, Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Deletion {
     pub(super) work: Arc<DeleteWork>,
     pub(super) bytes: usize,
@@ -50,6 +51,7 @@ pub(super) struct DeleteWork {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         self.inner.primary.history().check(&file.history)?;
@@ -221,6 +223,7 @@ impl DeleteWork {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fingerprint(file: &StagedFile) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash.update(b"storage.delete_file:v1\0");

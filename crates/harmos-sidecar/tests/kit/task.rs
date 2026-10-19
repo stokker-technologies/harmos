@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -31,6 +32,7 @@ use super::observer::spawn;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Dropped(Arc<AtomicBool>);
 
 /* === Enums === */
@@ -38,6 +40,7 @@ struct Dropped(Arc<AtomicBool>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for Dropped {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);

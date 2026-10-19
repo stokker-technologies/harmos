@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn capture_survives_reload() {
     let attachments = Arc::new(AtomicUsize::new(0));

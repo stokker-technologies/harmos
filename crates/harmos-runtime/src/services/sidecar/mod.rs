@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod carrier;
 mod cleanup;
 mod configuration;
@@ -22,11 +23,13 @@ mod physical;
 mod publication;
 
 /* === Re-Exports === */
+
 pub(crate) use connection::Endpoint;
 pub(crate) use managed::RuntimeDriver;
 pub use managed::{Managed, ManagedError};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -48,6 +51,7 @@ use harmos_domain::Message;
 use harmos_sidecar::{Attach, Attached, Frame, Registration, UNKNOWN};
 
 /* === Constants === */
+
 const SETTLING: Duration = Duration::from_secs(5);
 
 const ARRIVALS: usize = 64;
@@ -55,11 +59,13 @@ const ARRIVALS: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Ingest<A> = Arc<dyn Fn(&Service<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
 
 type Delivery = Pin<Box<dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>> + Send>>;
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct DemandSource {
     keys: Arc<BTreeMap<String, tokio::sync::watch::Sender<usize>>>,
@@ -190,6 +196,7 @@ struct Exchange<'a, A: Application, H> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug)]
 pub enum Notice {
     Logged { line: String },
@@ -200,15 +207,19 @@ pub enum Notice {
 pub enum SidecarError {
     #[error("the sidecar is not running")]
     Unavailable,
+
     #[error("the sidecar did not answer inside the route's deadline")]
     Deadline,
+
     // The refusal's failure travels unchanged; this layer adds only its line.
     #[error("the sidecar refused the call ({code})")]
     Refused {
         code: i64,
+
         #[source]
         failure: harmos_domain::Failure,
     },
+
     #[error("the call left the route's contract: {0}")]
     Malformed(String),
 }
@@ -241,6 +252,7 @@ enum Absorbed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl SidecarError {
     // A refusal the host raises itself, before any plugin answered.
     pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
@@ -261,6 +273,7 @@ impl Notice {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn normalized_observers(
     mut declarations: Vec<harmos_sidecar::inventory::observers::Declaration>,
 ) -> Vec<harmos_sidecar::inventory::observers::Declaration> {

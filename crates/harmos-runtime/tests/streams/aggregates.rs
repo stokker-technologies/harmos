@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -21,6 +22,7 @@ use harmos_runtime::signal::{Aggregates, Series, Summary};
 // Local Imports
 
 /* === Constants === */
+
 const EVERY: [Aggregate; 11] = [
     Aggregate::Count,
     Aggregate::Sum,
@@ -48,6 +50,7 @@ const EVERY: [Aggregate; 11] = [
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn series_answers_all() {
     let series = Series::new(&[4.0, f64::NAN, 1.0, 3.0, 2.0]);
     let answers: Vec<Option<f64>> = EVERY.iter().map(|kind| series.aggregate(*kind)).collect();

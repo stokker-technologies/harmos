@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 
@@ -31,6 +32,7 @@ use schematic_domain::model::{Connection, Point, Snapshot};
 use schematic_domain::operations::{AnalyzeExchange, AnalyzeUpload, ListDirectories, Native, ProposeRoute};
 
 /* === Constants === */
+
 const PLUGIN: &str = "schematic-tools";
 const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 
@@ -39,6 +41,7 @@ const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Host Declares No Stream: The Sidecar Owns Its Progress Stream And The Host Only Watches It.
 struct Host;
 
@@ -53,6 +56,7 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::Application for Host {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
@@ -64,6 +68,7 @@ impl harmos_runtime::Application for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn snapshot() -> Snapshot {
     Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] }
 }

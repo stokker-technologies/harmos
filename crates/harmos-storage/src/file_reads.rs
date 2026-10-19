@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::num::NonZeroUsize;
@@ -39,6 +40,7 @@ use harmos_domain::operations::storage::ReadFile;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Streams a byte range of one finished, immutable file in response batches.
 pub struct FileReader {
     inner: Arc<Inner>,
@@ -58,6 +60,7 @@ pub struct FileReader {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     /// Open a finished file reference for reading. Producing files are refused.
     pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
@@ -178,6 +181,7 @@ impl FileReader {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn varint_bytes(mut value: u64) -> usize {
     let mut bytes = 1;
     while value >= 128 {

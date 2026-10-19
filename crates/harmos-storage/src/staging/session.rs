@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -25,6 +26,7 @@ use super::*;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Session {
     execution: crate::execution::Execution,
     pub(super) generation: u64,
@@ -38,6 +40,7 @@ pub(super) struct Session {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Session {
     pub(super) fn new(execution: crate::execution::Execution) -> Self {
         Self { execution, generation: 1, disconnected: false, deadline: None, reason: "producer abandoned" }

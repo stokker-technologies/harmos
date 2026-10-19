@@ -30,6 +30,7 @@ use crate::operations::Contract;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Method<'a> {
     pub name: &'a str,
     pub contract: &'a Contract,
@@ -42,10 +43,12 @@ pub struct GeneratedService {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum GenerateError {
     #[error(transparent)]
     Descriptor(#[from] DescriptorError),
+
     #[error("expected a named Rust path, received `{0}`")]
     Path(String),
 }
@@ -55,6 +58,7 @@ pub enum GenerateError {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn generate_server(package: &str, service: &str, harmos_path: &str, methods: &[Method<'_>]) -> Result<GeneratedService, GenerateError> {
     path(harmos_path)?;
     for method in methods {
@@ -120,6 +124,7 @@ impl {harmos_path}::grpc::__private::tonic::codegen::Service<
 }
 
 /* === Private Functions === */
+
 fn path(value: &str) -> Result<(), GenerateError> {
     let segments = value.strip_prefix("::").unwrap_or(value);
     let valid = !segments.is_empty()

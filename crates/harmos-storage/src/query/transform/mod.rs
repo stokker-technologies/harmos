@@ -10,6 +10,7 @@
 // Storage Arrow Query Contract
 
 /* === Modules === */
+
 pub mod aggregate;
 pub mod downsample;
 pub mod filter;
@@ -18,6 +19,7 @@ pub mod project;
 pub mod sort;
 
 /* === Re-Exports === */
+
 pub use aggregate::AggregateExecution;
 pub use downsample::DownsampleExecution;
 pub use filter::FilterExecution;
@@ -27,6 +29,7 @@ pub use project::ProjectExecution;
 pub use sort::SortExecution;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -52,6 +55,7 @@ use crate::{Error, Result};
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait FieldPathExecution {
     fn field(&self, schema: &Schema) -> Result<Field>;
 
@@ -146,6 +150,7 @@ impl TransformExecution for Transform {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage query transform", reason }
 }

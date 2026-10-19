@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::model::storage::query::scalar::ScalarValue;
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Filter { clauses: Repeated<Clause> => 1 });
 product!(Clause { terms: Repeated<Term> => 1 });
 product!(Term { field: Nested<FieldPath> => 1, condition: Nested<Condition> => 2, negate: Flag => 3 });
@@ -40,6 +42,7 @@ variants!(Condition {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Disjunction of conjunctions. Negation belongs to each typed term.
 #[derive(Clone, Debug)]
 pub struct Filter {
@@ -57,6 +60,7 @@ pub struct Term {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compare {
     Eq,
@@ -76,6 +80,7 @@ pub enum Condition {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Filter {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.clauses.memory_size().saturating_sub(std::mem::size_of_val(&self.clauses))

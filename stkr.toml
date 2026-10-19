@@ -73,18 +73,39 @@ integration = 256
 acceptance = 128
 system = 64
 
-
 [barrels]
 exclude = ["crates/harmos-runtime/src/prelude.rs"]
 
+
 # === Templates === #
+
+# === Catalogs === #
+
+
+[[templates.scaffolds]]
+path = "crates/cargo-harmos/templates/sidecar"
+profile = "sidecar"
+suffix = ".tmpl"
+tasks = "crates/cargo-harmos/scaffold-sidecar.tasks.toml"
+
+[templates.scaffolds.placeholders]
+package = "__PACKAGE_NAME__"
+module = "__RUST_MODULE__"
+product = "__PRODUCT_NAME__"
+
+[[templates.scaffolds]]
+path = "crates/cargo-harmos/templates/guest"
+profile = "guest"
+suffix = ".tmpl"
+tasks = "crates/cargo-harmos/scaffold-guest.tasks.toml"
+
+[templates.scaffolds.placeholders]
+package = "__PACKAGE_NAME__"
+module = "__RUST_MODULE__"
+product = "__PRODUCT_NAME__"
 
 
 # === Release === #
-
-[version]
-value = "0.1.0"
-files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
 
 [release]
 provider = "github"
@@ -94,6 +115,7 @@ tag = "v0.1.0"
 notes = "CHANGELOG.md"
 targets = ["linux-x86_64", "windows-x86_64"]
 tests = ["unit-rust", "integration-rust", "acceptance-rust", "system-rust"]
+crates_bootstrap_secret = "CRATES_BOOTSTRAP_TOKEN"
 lock_commands = [
   [
     "cargo",
@@ -119,6 +141,43 @@ lock_commands = [
   ],
 ]
 
+[version]
+value = "0.1.0"
+files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
+
+[[package.executables]]
+package = "cargo-harmos"
+command = "cargo-harmos"
+name = "cargo-harmos"
+targets = { linux-x86_64 = "x86_64-unknown-linux-gnu", windows-x86_64 = "x86_64-pc-windows-msvc" }
+release = true
+verify = ["--version"]
+installers = ["mise", "binstall"]
+
+[[package.bundles]]
+language = "rust"
+name = "schematic-{version}-{target}.zip"
+profiles = ["dev", "release"]
+targets = ["linux-x86_64"]
+release = true
+inputs = [
+  { path = "target/build/{profile}/{target}/bin/schematic-cli", destination = "schematic-cli" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar", destination = "plugins/schematic-sidecar" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
+]
+
+[[package.bundles]]
+language = "rust"
+name = "schematic-{version}-{target}.zip"
+profiles = ["dev", "release"]
+targets = ["windows-x86_64"]
+release = true
+inputs = [
+  { path = "target/build/{profile}/{target}/bin/schematic-cli.exe", destination = "schematic-cli.exe" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
+  { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
+]
+
 
 # === Documentation === #
 
@@ -126,29 +185,4 @@ lock_commands = [
 # === Screenshots === #
 
 
-# === Catalogs === #
-
-
 # === PyO3 === #
-
-[[templates.scaffolds]]
-path = "crates/cargo-harmos/templates/sidecar"
-profile = "sidecar"
-suffix = ".tmpl"
-tasks = "crates/cargo-harmos/scaffold-sidecar.tasks.toml"
-
-[templates.scaffolds.placeholders]
-package = "__PACKAGE_NAME__"
-module = "__RUST_MODULE__"
-product = "__PRODUCT_NAME__"
-
-[[templates.scaffolds]]
-path = "crates/cargo-harmos/templates/guest"
-profile = "guest"
-suffix = ".tmpl"
-tasks = "crates/cargo-harmos/scaffold-guest.tasks.toml"
-
-[templates.scaffolds.placeholders]
-package = "__PACKAGE_NAME__"
-module = "__RUST_MODULE__"
-product = "__PRODUCT_NAME__"

@@ -10,6 +10,7 @@
 // Compose Sidecar Build And Watch Commands.
 
 /* === Modules === */
+
 mod build;
 mod dev;
 
@@ -30,6 +31,7 @@ mod dev;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     #[command(subcommand)]
@@ -37,14 +39,18 @@ pub struct Arguments {
 }
 
 /* === Enums === */
+
 #[derive(clap::Subcommand)]
 enum Command {
     #[command(about = "Inspect Embedded Plugin Metadata.")]
     Inspect(super::inspect::Arguments),
+
     #[command(about = "Package Stamped Plugin Artifacts.")]
     Package(super::package::Arguments),
+
     #[command(about = "Build And Stamp Sidecar Artifacts.")]
     Build(build::Arguments),
+
     #[command(about = "Watch Sources And Dependencies And Rebuild Sidecar Artifacts.")]
     Dev(dev::Arguments),
 }
@@ -54,6 +60,7 @@ enum Command {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     match arguments.command {
         Command::Inspect(arguments) => super::inspect::run(arguments),

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
@@ -34,6 +35,7 @@ use harmos_runtime::{Builder, Error, Identifier, Runtime, services::Fault, servi
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 struct Balance {
     value: i64,
@@ -55,6 +57,7 @@ struct Gate {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Store {
     fn new() -> Self {
         Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
@@ -86,6 +89,7 @@ impl Store {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn builder() -> Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits())
 }

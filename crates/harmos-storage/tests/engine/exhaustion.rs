@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -24,15 +27,25 @@ use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 /* === Tests === */
+
 #[tokio::test]
 async fn oversized_batch_refused() {
     let directory = tempfile::tempdir().unwrap();

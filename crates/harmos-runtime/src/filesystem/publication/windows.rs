@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{
     fs::{self, File, OpenOptions},
@@ -38,6 +39,7 @@ use windows_sys::Win32::{
 use super::{ConfirmError, Staging, confirm_error, parent};
 
 /* === Constants === */
+
 const COPY_BYTES: usize = 64 * 1024;
 
 /* === Macros === */
@@ -53,6 +55,7 @@ const COPY_BYTES: usize = 64 * 1024;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn create_dir_all(path: &Path) -> io::Result<()> {
     if path.is_dir() {
         return Ok(());
@@ -161,6 +164,7 @@ pub(super) fn confirm_with_checkpoint<E>(path: &Path, checkpoint: &mut impl FnMu
 }
 
 /* === Private Functions === */
+
 fn move_file(source: &Path, destination: &Path, replace: bool) -> io::Result<()> {
     match move_file_with_checkpoint(source, destination, replace, &mut || Ok::<(), std::convert::Infallible>(())) {
         Ok(()) => Ok(()),

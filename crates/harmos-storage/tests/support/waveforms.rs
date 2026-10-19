@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::f64::consts::TAU;
 use std::num::NonZeroU32;
@@ -22,11 +25,15 @@ use harmos_storage::*;
 // Local Imports
 
 /* === Constants === */
+
 pub const AMPLITUDE: f64 = 12.0;
 pub const SAMPLES_PER_PERIOD: usize = 64;
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sample {
@@ -43,12 +50,15 @@ pub struct Experiment {
 }
 
 /* === Enums === */
+
 #[harmos_domain::catalog]
 pub enum Objects {
     Experiment(Experiment),
 }
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Identified for Experiment {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new("storage.experiment"), 1)
@@ -62,6 +72,7 @@ impl StoredObject for Experiment {
     }
 }
 /* === Public Functions === */
+
 pub fn schema() -> SchemaKey {
     SchemaKey {
         id: Identifier::new("storage.waveform").unwrap(),
@@ -118,4 +129,5 @@ pub fn binary(length: usize) -> Vec<u8> {
     (0..length).map(|index| ((index * 37 + 11) % 251) as u8).collect()
 }
 /* === Private Functions === */
+
 /* === Tests === */

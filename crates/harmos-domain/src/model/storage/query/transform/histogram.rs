@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,11 +27,13 @@ use crate::model::storage::codec::{Float, Many, Nested, product};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Histogram { field: Nested<FieldPath> => 1, edges: Many<Float> => 2 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Histogram {
     pub field: FieldPath,
@@ -42,6 +45,7 @@ pub struct Histogram {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Histogram {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

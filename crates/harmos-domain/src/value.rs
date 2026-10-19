@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod codec;
 pub(crate) mod optional_datetime {
     use super::*;
@@ -27,9 +28,11 @@ pub(crate) mod optional_datetime {
 }
 
 /* === Re-Exports === */
+
 pub use codec::VALUE_DEPTH;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{collections::BTreeMap, fmt};
 // Third Party Imports
@@ -45,6 +48,7 @@ use crate::MemorySize;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct DisplayText<'a, T>(&'a T);
 
 struct NumberText(f64);
@@ -55,6 +59,7 @@ struct DatetimeText {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug)]
 pub enum Value {
     Null,
@@ -72,8 +77,10 @@ pub enum Value {
 pub enum ValueError {
     #[error("non-finite numbers have no plain JSON representation")]
     NonFinite,
+
     #[error("JSON number cannot be represented without loss")]
     InvalidNumber,
+
     #[error("datetime cannot be formatted as RFC3339: {0}")]
     Datetime(#[from] time::error::Format),
 }
@@ -109,6 +116,7 @@ enum BorrowedRepresentation<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Value {
     fn memory_size(&self) -> usize {
         let allocation = match self {
@@ -348,6 +356,7 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn datetime_text(value: OffsetDateTime) -> Result<DatetimeText, time::error::Format> {
     // UTC RFC3339 Uses At Most 30 Bytes, Including All Nine Fractional Digits.
     let mut text = DatetimeText { bytes: [0; 30], length: 0 };

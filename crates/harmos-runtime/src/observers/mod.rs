@@ -16,12 +16,14 @@
 // sidecar's observe control.
 
 /* === Modules === */
+
 mod driver;
 
 #[cfg(feature = "plugin-sidecar")]
 mod native;
 
 /* === Re-Exports === */
+
 pub use crate::operations::resident::Staged as ObserverRegistration;
 pub use driver::ObserverActivation;
 
@@ -32,6 +34,7 @@ pub(crate) use driver::ChildSettlement;
 pub(crate) use native::Native;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -50,6 +53,7 @@ use harmos_domain::inventory::StreamDeclaration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct ObserverDefinition {
     pub id: String,
@@ -61,6 +65,7 @@ pub struct ObserverDefinition {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait ObserverBackend: Send + Sync + 'static {
     type Resources: Send + Sync + 'static;
     fn definition(&self) -> crate::Result<ObserverDefinition>;
@@ -72,6 +77,7 @@ pub trait ObserverBackend: Send + Sync + 'static {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     if definition.id.trim().is_empty() || definition.id.chars().any(char::is_control) {
         return Err(Error::InvalidInput { field: "observer identity", reason: "must be nonempty and contain no control characters" });

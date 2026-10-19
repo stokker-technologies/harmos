@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -32,8 +33,8 @@ use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
-const CAPACITY: usize = 2;
 
+const CAPACITY: usize = 2;
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
@@ -48,6 +49,7 @@ const PENDING: u64 = 0;
 const ABANDON: u64 = u64::MAX;
 
 /* === Macros === */
+
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
         #[harmos_runtime::message]
@@ -67,14 +69,17 @@ macro_rules! operation {
 }
 
 operation!(Echo, "process.echo", Private);
+
 operation!(Nested, "process.nested", Host);
 
 /* === Type Aliases === */
+
 type Source = harmos_sidecar::PluginNative<Process>;
 type Resident = Supervised<Bank, Source, fn(&Service<Bank>, Notice)>;
 type PublicationCall = harmos_runtime::sidecar::Publish<Bank, Source, fn(&Service<Bank>, Notice)>;
 
 /* === Structs === */
+
 #[harmos_runtime::stream(id = "process.receipt", window = 8)]
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -130,6 +135,7 @@ struct Fixture {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub enum Operations {
     Echo(Echo),
@@ -145,6 +151,7 @@ enum Implemented {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for Work<'_> {
     fn drop(&mut self) {
         self.marks.mark(&format!("echo-dropped-{}", self.id));
@@ -368,6 +375,7 @@ impl Fixture {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn notices(_: &Service<Bank>, _: Notice) {}
 
 fn blob(id: u64, bytes: usize) -> Blob {
@@ -533,3 +541,5 @@ async fn shutdown_sdk_publication() {
     assert!(background.publish(harmos_runtime::Message::encode_to_vec(&late), 0).is_err());
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
 }
+
+/* === Tests === */

@@ -26,6 +26,7 @@ use crate::{Identifier, MemorySize};
 /* === Constants === */
 
 /* === Macros === */
+
 crate::model::storage::codec::product!(MutationId {
     window: crate::model::storage::codec::Id => 1,
     key: crate::model::storage::codec::Id => 2,
@@ -50,6 +51,7 @@ crate::model::storage::codec::product!(StorageInfo {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MutationId {
@@ -84,6 +86,7 @@ pub struct StorageInfo {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for MutationId {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.window.memory_size() - std::mem::size_of::<Identifier>() + self.key.memory_size()

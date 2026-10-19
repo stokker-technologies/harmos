@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
@@ -36,6 +37,7 @@ use harmos_sidecar::inventory::observers::{Activation, Declaration};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct ControlContext {
     operations: OperationManager,
     scope: crate::plugin::PluginScope,
@@ -80,6 +82,7 @@ struct Closing {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Remote {
     pub(super) fn new(arrivals: mpsc::Sender<Arrival>, provider: Option<Arc<crate::supervision::instance::Instance>>) -> Arc<Self> {
         Arc::new(Self {
@@ -323,6 +326,7 @@ impl Closing {
 }
 
 /* === Public Functions === */
+
 pub(super) fn stage(
     operations: &OperationManager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
@@ -380,6 +384,7 @@ pub(super) async fn demand(
 }
 
 /* === Private Functions === */
+
 fn failure(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
     crate::Error::TaskFailed { domain: "remote observer", source: Arc::new(error) }
 }

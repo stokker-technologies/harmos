@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -29,6 +30,7 @@ use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, Retr
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
+
 const ALLOWED: &str = "fixture.remote.allowed";
 const REFUSED: &str = "fixture.remote.refused";
 const POLICY: OperationPolicy = OperationPolicy {
@@ -45,6 +47,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Runs(AtomicUsize);
 
@@ -109,6 +112,7 @@ struct LocalFetching {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Gated {
     Fetch(RemoteFetch),
@@ -117,6 +121,7 @@ enum Gated {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Seed {
     fn new(runs: &Arc<Runs>) -> Self {
         let id = NEXT_SEED.try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1)).unwrap();
@@ -237,6 +242,7 @@ impl Operation for LocalFetching {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Value 20 needs the held scope, 21 one nobody holds, 22 the held scope on
 // another operation, anything else no grant.
 fn scoped(operation: &'static str, value: u32) -> Option<Grant> {

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -28,10 +29,12 @@ use crate::operations::{Contract, Operation, ServingError, WireTable, lifecycle}
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Table<P> = Arc<Mutex<WireTable<<P as Plugin>::Context>>>;
 type Transition<P> = Pin<Box<dyn Future<Output = (P, Result<(), Error<P>>, bool)> + Send>>;
 
 /* === Structs === */
+
 pub struct Owner<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
     table: Weak<Mutex<WireTable<P::Context>>>,
@@ -85,6 +88,7 @@ struct State<P: Plugin> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Empty,
@@ -98,18 +102,25 @@ enum Phase {
 pub enum Error<P: Plugin> {
     #[error("invalid plugin configuration: {0}")]
     Configuration(#[source] Arc<crate::ConfigError>),
+
     #[error("plugin lifecycle machinery failed: {0}")]
     Plugin(#[source] Arc<P::Error>),
+
     #[error("plugin operation inventory failed: {0}")]
     Inventory(#[source] Arc<crate::inventory::operations::Error>),
+
     #[error("plugin operation table failed: {0}")]
     Serving(#[source] Arc<ServingError>),
+
     #[error("SDK generation context must be empty or exactly 32 nonzero bytes")]
     GenerationContext,
+
     #[error("plugin lifecycle state is unavailable for this phase")]
     Phase,
+
     #[error("plugin lifecycle machinery panicked")]
     Panicked,
+
     #[error("plugin lifecycle state lock is poisoned")]
     Poisoned,
 }
@@ -117,6 +128,7 @@ pub enum Error<P: Plugin> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<P: Plugin> std::fmt::Debug for Error<P> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -490,6 +502,7 @@ impl<P: Plugin> State<P> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Guard Only The Borrowed Machinery Future; The Outer Future Retains P
 async fn guarded<P: Plugin>(future: impl Future<Output = Result<(), Error<P>>>) -> Result<(), Error<P>> {
     let mut future = std::pin::pin!(future);

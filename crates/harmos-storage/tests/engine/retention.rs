@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, Objects};
 use harmos_domain::operations::storage::Query;
@@ -39,6 +40,7 @@ use std::sync::atomic::Ordering;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Journaled Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
     _directory: tempfile::TempDir,
@@ -58,6 +60,7 @@ struct Revisions {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Revisions {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
@@ -98,6 +101,7 @@ impl Revisions {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn labels<C>(
     storage: &StorageManager<C>, at: &StorageCursor, schema: &SchemaKey, versions: ObjectVersions,
 ) -> harmos_storage::Result<Vec<String>> {
@@ -123,6 +127,7 @@ async fn labels<C>(
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn reads_pin_cursor() {
     let r = Revisions::new().await;

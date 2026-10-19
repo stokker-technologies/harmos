@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::Path;
 
@@ -27,6 +28,7 @@ use serde::Deserialize;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Columns {
     pub position: Vec<u64>,
@@ -46,6 +48,7 @@ struct Witnessed {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn read(directory: &Path) -> Columns {
     let rows: Vec<Witnessed> =
         schematic_storage::streams::read_rows(directory.join("net_voltage.jsonl")).expect("the clean stop wrote the selected stream");

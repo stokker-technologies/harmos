@@ -36,6 +36,7 @@ pub(crate) use harmos_storage::*;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Fixture {
     pub(crate) storage: StorageManager,
     pub(crate) data: Arc<Data>,
@@ -49,6 +50,7 @@ struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl WorkerOwner for Task {
     fn stop(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
@@ -80,6 +82,7 @@ impl Fixture {
 }
 
 /* === Public Functions === */
+
 pub(crate) async fn start<C>(storage: &StorageManager<C>) {
     storage
         .start_with(Arc::new(()), |mut worker| {
@@ -101,6 +104,7 @@ pub(crate) fn state_settings() -> harmos_storage::state::StorageStateSettings {
 }
 
 /* === Private Functions === */
+
 pub(crate) fn config() -> StorageSettings {
     storage_settings()
 }

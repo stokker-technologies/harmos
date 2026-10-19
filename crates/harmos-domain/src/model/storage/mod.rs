@@ -11,6 +11,7 @@
 // Write Batches. The Runtime Owns Admission, Persistence And Execution.
 
 /* === Modules === */
+
 pub mod arrow;
 pub mod catalog;
 pub mod codec;
@@ -27,6 +28,7 @@ pub mod time;
 pub mod writes;
 
 /* === Re-Exports === */
+
 pub use arrow::ArrowIpc;
 pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject};
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
@@ -44,6 +46,7 @@ pub use schema_input::{SchemaInfo, SchemaInput};
 pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

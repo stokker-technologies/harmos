@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -25,6 +26,7 @@ use crate::{MemorySize, MessageError};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(FollowBoundaries {
     saved: Nested<StorageCursor> => 1,
     accepted: Nested<StorageCursor> => 2,
@@ -33,6 +35,7 @@ product!(FollowBoundaries {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Follow record entries accepted after `after` (from the start when absent).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowRecords {
@@ -47,6 +50,7 @@ pub struct FollowBoundaries {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Followed {
     Boundaries(FollowBoundaries),
@@ -56,6 +60,7 @@ pub enum Followed {
 /* === Traits === */
 
 /* === Implementations === */
+
 product!(FollowRecords {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<RecordSelection> => 2,

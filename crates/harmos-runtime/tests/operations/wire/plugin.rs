@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "plugin_activation.rs"]
 mod plugin_activation;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -39,9 +41,11 @@ use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "fixture.selected_provider",
@@ -137,6 +141,7 @@ struct Running {
 }
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -437,6 +442,7 @@ impl Running {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
     let contract = WireDeclaration::of::<Selected>().contract().unwrap();
     let owners = if first { vec!["first", "second", "client"] } else { vec!["second", "client"] };

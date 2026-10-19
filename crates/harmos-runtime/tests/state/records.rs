@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state:
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::record(id = "manager.note", version = 1)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Noted(String);
@@ -33,6 +35,7 @@ struct Noted(String);
 struct Model;
 
 /* === Enums === */
+
 #[harmos_runtime::records]
 #[derive(Clone, Debug)]
 enum Records {
@@ -42,6 +45,7 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;

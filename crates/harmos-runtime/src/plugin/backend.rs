@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +29,7 @@ use super::PluginKind;
 /* === Structs === */
 
 /* === Enums === */
+
 pub enum PluginBackend<G, S, E> {
     Guest(G),
     Sidecar(S),
@@ -37,6 +39,7 @@ pub enum PluginBackend<G, S, E> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<G, S, E> PluginBackend<G, S, E> {
     pub fn kind(&self) -> PluginKind {
         match self {

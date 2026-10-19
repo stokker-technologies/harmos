@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -30,6 +31,7 @@ use harmos_runtime::{DefinitionId, Runtime, runtime::Catalog, runtime::Incompati
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 struct Definitions(Vec<(Kind, DefinitionId, u32)>);
 
@@ -43,6 +45,7 @@ struct Replaying {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Registration<Editor> for Definitions {
     fn register(self) -> Catalog<Editor> {
         fn decode(_id: &DefinitionId, _version: u32, _bytes: &[u8]) -> Result<Option<Change>, DecodeError> {
@@ -75,11 +78,13 @@ impl Source<Editor> for Replaying {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn catalog() -> impl Registration<Editor> {
     Definitions([named(RENAME), named(EXPORTED)].into())
 }
 
 /* === Private Functions === */
+
 fn alice() -> PrincipalId {
     PrincipalId::new("alice")
 }

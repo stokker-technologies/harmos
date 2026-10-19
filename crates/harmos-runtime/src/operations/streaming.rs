@@ -10,10 +10,12 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub(super) use harmos_sdk::operations::streaming::RequestClaims;
 pub use harmos_sdk::operations::streaming::{StreamInput, StreamItem, StreamSettings};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -22,14 +24,21 @@ use crate::{Error, Result};
 use harmos_sdk::operations::streaming as portable;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 pub type StreamOutput<T> = portable::StreamOutput<T, Error>;
 pub type StreamPermit<'a, T> = portable::StreamPermit<'a, T, Error>;
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl From<portable::Error> for Error {
     fn from(error: portable::Error) -> Self {
         match error {
@@ -49,8 +58,10 @@ impl From<portable::Error> for Error {
     }
 }
 /* === Public Functions === */
+
 pub fn stream<T>(settings: StreamSettings) -> Result<(StreamOutput<T>, StreamInput<T>)> {
     portable::channel(settings)
 }
 /* === Private Functions === */
+
 /* === Tests === */

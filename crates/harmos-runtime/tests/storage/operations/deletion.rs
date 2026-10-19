@@ -42,6 +42,7 @@ use harmos_runtime::storage::{FileMetadata, MutationId, StagedFile, StorageBacke
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn metadata(id: &str) -> FileMetadata {
     FileMetadata {
         id: Identifier::new(id).unwrap(),

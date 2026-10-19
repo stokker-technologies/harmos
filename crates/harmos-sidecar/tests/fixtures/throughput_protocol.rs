@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -28,6 +29,7 @@ use harmos_sidecar::operations::{Operation, OperationPolicy, RestartPolicy, Retr
 use harmos_sidecar::{StreamSpec, Supervisor};
 
 /* === Constants === */
+
 const MAX_CASES: usize = 256;
 const SDK_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
@@ -72,6 +74,7 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
 #[harmos_sidecar::operation(
     harmos_path = ::harmos_sidecar,
@@ -147,6 +150,7 @@ pub struct Handler {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StreamSpec for Done {
     type Row = Self;
     const ID: &'static str = "bench.done";
@@ -307,6 +311,7 @@ impl Declared for TransportPlugin {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn publish(host: Supervisor, start: Start, mut closing: watch::Receiver<bool>) -> Result<(), harmos_sidecar::Refusal> {
     start.validate()?;
     let sample = Sample { payload: vec![b'x'; start.payload_bytes as usize] };

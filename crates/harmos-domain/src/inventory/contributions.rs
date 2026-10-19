@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -23,6 +24,7 @@ use super::contracts::{Encoder, valid_identity};
 use crate::PREFIX;
 
 /* === Constants === */
+
 const ENTRY_LIMIT: usize = 256;
 
 /* === Macros === */
@@ -30,6 +32,7 @@ const ENTRY_LIMIT: usize = 256;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Section {
@@ -50,28 +53,36 @@ pub struct Manifest {
 struct Decoded {
     #[serde(default)]
     kind: Option<String>,
+
     facility: String,
     owner: String,
     sections: Vec<Section>,
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("multiple contribution inventories for `{owner}`")]
     Duplicate { owner: String },
+
     #[error("contribution inventory requires a guest or sidecar facility and a valid owner")]
     Identity,
+
     #[error("contribution inventory exceeds its section budget")]
     Budget,
+
     #[error("contribution namespace `{namespace}` is invalid or repeated")]
     Namespace { namespace: String },
+
     #[error("contribution section `{namespace}` is not JSON: {source}")]
     Payload {
         namespace: String,
+
         #[source]
         source: serde_json::Error,
     },
+
     #[error("invalid contribution inventory JSON: {0}")]
     Decode(#[from] serde_json::Error),
 }
@@ -79,6 +90,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Section {
     pub const fn new(namespace: &'static str, payload: &'static str) -> Self {
         Self { namespace: Cow::Borrowed(namespace), payload: Cow::Borrowed(payload) }
@@ -110,6 +122,7 @@ impl TryFrom<Decoded> for Manifest {
 }
 
 /* === Public Functions === */
+
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<Section>, Error> {
     let mut matching = manifests.into_iter().filter(|manifest| manifest.facility == facility && manifest.owner == owner);
     let Some(manifest) = matching.next() else {
@@ -174,6 +187,7 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, sections: &[Sec
 }
 
 /* === Private Functions === */
+
 const fn encoded<const N: usize>(facility: &str, owner: &str, sections: &[Section]) -> Encoder<N> {
     assert!(valid_identity(facility, owner));
     assert!(sections.len() <= ENTRY_LIMIT, "contribution sections exceed their budget");

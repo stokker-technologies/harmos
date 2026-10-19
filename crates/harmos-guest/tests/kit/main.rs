@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod plugin;
 
 #[path = "../fixtures/sandbox/src/contract.rs"]
@@ -19,6 +20,7 @@ mod support;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::VecDeque;
 use std::sync::OnceLock;
@@ -37,6 +39,7 @@ use sandbox::{Echo, Echoed};
 /* === Constants === */
 
 /* === Macros === */
+
 wasmtime::component::bindgen!({
     path: "wit",
     world: "plugin",
@@ -46,6 +49,7 @@ wasmtime::component::bindgen!({
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Records Every Host Call A Guest Makes And Answers The Provider From A Script
 #[derive(Default)]
 struct Stub {
@@ -61,6 +65,7 @@ struct Session {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq)]
 enum Call {
     Provider { say: String },
@@ -73,6 +78,7 @@ enum Call {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos::guest::capabilities::Host for Stub {}
 
 impl harmos::guest::operation_context::Host for Stub {}
@@ -189,6 +195,7 @@ impl Session {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn initialize(guest: &[u8], stub: Stub, config: &str) -> (Stub, Result<(), String>) {
     let mut session = instantiate(guest, stub).await;
     let answered = session.initialize(config).await;

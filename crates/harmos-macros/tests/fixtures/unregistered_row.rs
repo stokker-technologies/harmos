@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +28,7 @@ use harmos::{Application, state::Never, streams::StreamManager};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct State;
 
 struct Studio;
@@ -39,6 +41,7 @@ struct OutsideTheCatalog;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Studio {
     type State = State;
     type Transaction = Never;
@@ -50,6 +53,7 @@ impl Application for Studio {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn publish(streams: &StreamManager<Studio>) {
     streams.publish(OutsideTheCatalog);
 }

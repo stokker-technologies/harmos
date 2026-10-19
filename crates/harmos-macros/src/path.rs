@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -22,6 +23,7 @@ use syn::{Error, Meta, Path};
 // Local Imports
 
 /* === Constants === */
+
 pub(crate) const KEY: &str = "harmos_path";
 
 /* === Macros === */
@@ -29,6 +31,7 @@ pub(crate) const KEY: &str = "harmos_path";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct HarmosPath(Path);
 
 /* === Enums === */
@@ -36,6 +39,7 @@ pub(crate) struct HarmosPath(Path);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
         for package in [
@@ -74,6 +78,7 @@ impl ToTokens for HarmosPath {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
     let Meta::NameValue(named) = meta else {
         return None;

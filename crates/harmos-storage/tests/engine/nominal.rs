@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -40,6 +41,7 @@ use super::waveforms::{self, Sample};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Journaled Storage Holding Durable Three-Phase Stream Samples.
 struct Nominal {
     _directory: tempfile::TempDir,
@@ -54,6 +56,7 @@ struct Nominal {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Nominal {
     async fn new() -> Self {
         // Configure And Start A Real Temporary Journal.
@@ -102,6 +105,7 @@ impl Nominal {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn project(fields: &[(&str, &str)]) -> Transform {
     Transform::Project(Project {
         fields: fields.iter().map(|(field, name)| Projection { field: (*field).into(), name: (*name).into() }).collect(),
@@ -157,6 +161,7 @@ fn rms() -> f64 {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn stream_values_roundtrip() {
     // Persisted Stream Values Match The Generator And Analytical RMS.

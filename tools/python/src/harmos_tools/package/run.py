@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:7334299eafb141d93507b507ef755aaeb10d23decb73d7d397df0fd56a07a878
+# Rendered by stkr project update from templates/python/package/run.py; sha256:2115d620b4e87005d1a5406089c7d54fd9935c88715a75059e60265222d6ceec
 # ***
 #
 # Harmos
@@ -13,13 +13,18 @@
 
 # Standard Library Imports
 import argparse
+import hashlib
+import re
+import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 
 # Third Party Imports
 # Local Imports
 from .. import temporary
 from ..build import paths
+from ..release import policy
 
 # Type Checking Imports
 
@@ -34,14 +39,208 @@ from ..build import paths
 # === Public Functions === #
 
 
+def definitions(directory: Path, profile: str, target: str) -> list[dict]:
+    """Resolve Declared Products Without Looking At Native Compiler Directories."""
+    config = policy.config(directory)
+    version = config.get("version", {}).get("value")
+    result = []
+    for item in config.get("package", {}).get("executables", []):
+        triple = item["targets"].get(target)
+        if triple is None:
+            continue
+        if not version or not re.fullmatch(r"[a-zA-Z0-9_.-]+", version):
+            raise policy.ToolError("executable packages require version.value")
+        extension = ".exe" if "-windows-" in triple else ""
+        name = f"{item['name']}-{version}-{triple}{extension}"
+        result.append({**item, "language": "rust", "output": name, "triple": triple, "binary": item["command"] + extension})
+    for item in config.get("package", {}).get("bundles", []):
+        if profile in item["profiles"] and target in item["targets"]:
+            result.append({**item, "output": item["name"].format(version=version, target=target)})
+    names = [item["output"].casefold() for item in result]
+    if len(names) != len(set(names)):
+        raise policy.ToolError("package output names collide")
+    for item in result:
+        name = item["output"]
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None or name in {".", "..", "SHA256SUMS", "release.json", "platform.json"}:
+            raise policy.ToolError("unsafe or reserved package output name")
+    return result
+
+
+def packaged(directory: Path, profile: str, target: str) -> list[dict]:
+    """Public Package Bytes Enter The Existing Release Manifest Unchanged."""
+    root = paths.output(directory, "package", profile, target)
+    result = [
+        {"target": target, "path": (root / item["language"] / item["output"]).relative_to(directory).as_posix(), "name": item["output"]}
+        for item in definitions(directory, profile, target)
+        if item["release"]
+    ]
+    settings = policy.config(directory).get("release", {})
+    if settings.get("targets", [None])[0] == target:
+        shared = paths.output(directory, "package", profile, "any")
+        result.extend(
+            {
+                "target": target,
+                "path": (shared / item["language"] / item["output"]).relative_to(directory).as_posix(),
+                "name": item["output"],
+            }
+            for item in definitions(directory, profile, "any")
+            if item["release"]
+        )
+    return result
+
+
+def regular(root: Path, relative: str) -> Path:
+    parts = relative.split("/")
+    if not relative or any(part in {"", ".", ".."} for part in parts) or "\\" in relative or ":" in relative:
+        raise policy.ToolError(f"unsafe package input: {relative}")
+    source = policy.inside(root, relative)
+    if not source.is_file() or any(path.is_symlink() for path in (source, *source.parents) if path.is_relative_to(root)):
+        raise policy.ToolError(f"missing or linked package input: {relative}")
+    return source
+
+
+def assemble(directory: Path, language: str, profile: str, target: str, staging: Path) -> None:
+    build = paths.output(directory, "build", profile, target)
+    if language in {"python", "typescript"}:
+        source = build / {"python": "python", "typescript": "web"}[language]
+        canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"
+        if (target != "any" or language == "python" and canonical) and not source.is_dir():
+            raise policy.ToolError(f"missing Product Build input: {source}")
+        for entry in source.rglob("*"):
+            if entry.is_symlink():
+                raise policy.ToolError("linked package input")
+            if not entry.is_file():
+                continue
+            relative = entry.relative_to(source)
+            original = regular(source, relative.as_posix())
+            destination = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(original, destination)
+    for item in definitions(directory, profile, target):
+        if item["language"] != language:
+            continue
+        output = staging / item["output"]
+        if "triple" in item:
+            actual = regular(build, "product/target.txt").read_text().strip()
+            if actual != item["triple"]:
+                raise policy.ToolError(f"Build Rust target {actual} differs from package target {item['triple']}")
+            source = regular(build, "bin/" + item["binary"])
+            shutil.copy2(source, output)
+            continue
+        destinations = set()
+        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+            for entry in item["inputs"]:
+                prefix = "target/build/{profile}/{target}/"
+                if not entry["path"].startswith(prefix):
+                    raise policy.ToolError("bundle inputs must come from the matching Product Build")
+                relative = entry["path"][len(prefix) :].format(profile=profile, target=target)
+                source = regular(build, relative)
+                name = entry["destination"]
+                parts = name.split("/")
+                unsafe = (
+                    not name
+                    or any(part in {"", ".", ".."} for part in parts)
+                    or "\\" in name
+                    or ":" in name
+                    or any(ord(char) < 32 for char in name)
+                )
+                overlaps = any(
+                    name.casefold() == old or name.casefold().startswith(old + "/") or old.startswith(name.casefold() + "/")
+                    for old in destinations
+                )
+                if unsafe or overlaps:
+                    raise policy.ToolError("unsafe or duplicate bundle destination")
+                destinations.add(name.casefold())
+                archive.write(source, name)
+
+
+def verify(directory: Path, profile: str, target: str, root: Path | None = None) -> None:
+    """Execute Packaged Native Bytes In An Isolated Installation Directory."""
+    for item in definitions(directory, profile, target):
+        if "triple" not in item:
+            continue
+        source = (root / item["output"]) if root else paths.output(directory, "package", profile, target) / "rust" / item["output"]
+        if not source.is_file() or source.is_symlink():
+            raise policy.ToolError("missing packaged executable")
+        with temporary.directory() as install:
+            executable = install / item["binary"]
+            shutil.copy2(source, executable)
+            subprocess.run([str(executable), *item["verify"]], cwd=install, check=True)
+
+
+def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
+    """Install From Published Assets And Prove No Source Or Third-Party Fallback."""
+    for item in definitions(directory, "release", target):
+        if not item.get("installers"):
+            continue
+        version = settings["tag"].removeprefix("v")
+        provider = settings["provider"]
+        repository = settings.get("repository") if provider == "github" else settings["project_id"]
+        for installer in item["installers"]:
+            with temporary.directory() as install:
+                if installer == "mise":
+                    tool = f"{provider}:{repository}[asset_pattern={item['output']},bin={item['binary']}]@{version}"
+                    subprocess.run(["mise", "install-into", tool, str(install)], cwd=install, check=True)
+                    matches = list(install.rglob(item["binary"]))
+                else:
+                    command = [
+                        "cargo",
+                        "binstall",
+                        item["package"],
+                        "--version",
+                        "=" + version,
+                        "--target",
+                        item["triple"],
+                        "--root",
+                        str(install),
+                        "--no-confirm",
+                        "--disable-strategies",
+                        "quick-install,compile",
+                        "--strategies",
+                        "crate-meta-data",
+                    ]
+                    subprocess.run(command, cwd=install, check=True)
+                    matches = [install / "bin" / item["binary"]]
+                if len(matches) != 1 or not matches[0].is_file():
+                    raise policy.ToolError(f"{installer} did not install the declared executable")
+                expected = hashlib.sha256((root / item["output"]).read_bytes()).digest()
+                if hashlib.sha256(matches[0].read_bytes()).digest() != expected:
+                    raise policy.ToolError(f"{installer} did not install the exact published asset")
+                subprocess.run([str(matches[0]), *item["verify"]], cwd=install, check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Assemble Existing Build Outputs")
     parser.add_argument("language", choices=("rust", "python", "typescript", "native"))
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--target")
     options = parser.parse_args()
+    if options.target == "native":
+        options.target = None
     directory = Path.cwd()
     destination = paths.output(directory, "package", options.profile, options.target)
+    target = options.target or paths.target()
+    language = "rust" if options.language == "native" else options.language
+    products = definitions(directory, options.profile, target)
+    canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"
+    if target == "any" and not any(item["language"] == language for item in products) and not (language == "python" and canonical):
+        with temporary.directory() as staging:
+            paths.replace(directory, staging, destination / language, origin=staging)
+        return
+    if any(item["language"] == language for item in products):
+        with temporary.directory() as staging:
+            assemble(directory, language, options.profile, target, staging)
+            existing = paths.output(directory, "package", options.profile, target)
+            for item in products:
+                if item["language"] != language:
+                    continue
+                foreign = [path for path in existing.glob("*/" + item["output"]) if path.parent.name != language]
+                if foreign:
+                    raise policy.ToolError("package output collides with another language")
+            paths.replace(directory, staging, destination / language, origin=staging)
+        if language == "rust":
+            verify(directory, options.profile, target)
+        return
     if options.language == "rust":
         with temporary.directory() as scratch:
             subprocess.run(

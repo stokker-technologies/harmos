@@ -8,13 +8,16 @@
  */
 
 /* === Modules === */
+
 mod error;
 mod operations;
 
 /* === Re-Exports === */
+
 pub use error::Error;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -32,6 +35,7 @@ use harmos_sidecar::operations::{OperationPolicy, ServingError, StreamSettings, 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Resources {
     analysis: tokio::sync::Semaphore,
 }
@@ -45,6 +49,7 @@ pub struct Plugin {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_domain::operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

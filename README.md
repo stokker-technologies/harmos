@@ -189,12 +189,21 @@ cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path example
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
-Install the native GitHub Release archive for your Rust target triple by
-extracting its `cargo-harmos-<version>-<target>/` directory and placing
-`cargo-harmos` (`cargo-harmos.exe` on Windows) on `PATH`. Run `cargo harmos --help`
-to check installation. Releases contain the tool, README and Apache license;
-examples and test reports are downloadable CI artifacts. Cargo registry
-publication is deferred.
+The upcoming release is configured to publish raw
+`cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
+After publication, download the matching asset, verify it against `SHA256SUMS`,
+rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
+`PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
+installation. Cargo-binstall and mise installation are verified against those
+same published bytes before release completion. Harmos crates, including the
+CLI, are configured for crates.io publication.
+
+The release also declares `schematic-<version>-<platform>.zip` demo bundles for
+`linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
+`schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
+Wasm backend. Keep its `plugins/` directory beside the executable. Package
+checks run both backends from an isolated extraction. Release downloads include
+`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use

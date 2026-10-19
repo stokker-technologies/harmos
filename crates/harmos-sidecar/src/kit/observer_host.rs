@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ use harmos_domain::{Message, StreamSpec, inventory::publications};
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait ObserverHost<R>: Send + Sync + Sized + 'static {
     fn bind(resources: Arc<R>, supervisor: Supervisor) -> Self;
 }
@@ -63,6 +65,7 @@ pub trait ObserverCaller<R: Sync, C>: Send + Sync + Sized {
 }
 
 /* === Implementations === */
+
 impl<R> ObserverHost<R> for Supervisor {
     fn bind(_: Arc<R>, supervisor: Supervisor) -> Self {
         supervisor

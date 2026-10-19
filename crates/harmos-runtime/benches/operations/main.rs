@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/support/app/minimal.rs"]
 mod app;
 
@@ -32,11 +33,13 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Constants === */
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Cancellation {
     stopped: Vec<Duration>,
     settled: Duration,
@@ -56,6 +59,7 @@ struct Dispatching {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
@@ -86,6 +90,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Dispatching {
     type Declaration = Dispatch;
     type Resources = Waiting;
@@ -127,6 +132,7 @@ impl Operation for Dispatching {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
     Runtime::<App>::builder((), ())
         .register(Lanes::catalog())

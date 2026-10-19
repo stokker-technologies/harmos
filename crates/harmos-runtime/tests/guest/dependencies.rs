@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "dependency_admission.rs"]
 mod dependency_admission;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +30,7 @@ use harmos_runtime::operations::{OperationDeclaration, OperationPolicy};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
+
 const NATIVE_CAPACITY: usize = 64;
 static NEXT_NATIVE_SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 static NATIVE_SEEDS: std::sync::Mutex<std::collections::BTreeMap<u64, std::sync::Weak<ProviderOwner>>> =
@@ -37,21 +40,15 @@ static NATIVE_SEEDS: std::sync::Mutex<std::collections::BTreeMap<u64, std::sync:
 
 /* === Type Aliases === */
 
+type NativeResident = harmos_runtime::sidecar::Supervised<
+    Bank,
+    NativeAttachment,
+    fn(&harmos_runtime::services::Service<Bank>, harmos_runtime::sidecar::Notice),
+>;
+type GuestResources = Resources;
+type DependencyBackends = harmos_runtime::plugin::PluginBackend<GuestResources, NativeResources, ProviderResources>;
+
 /* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-#[harmos_runtime::catalog]
-enum ProviderOperations {
-    Echo(ProviderEcho),
-}
 
 #[derive(Default)]
 struct ProviderOwner {
@@ -66,20 +63,110 @@ struct ProviderOwner {
     cleanup_started: tokio::sync::Notify,
     cleanup_release: tokio::sync::Notify,
 }
+
 struct Cancelled(std::sync::Arc<tokio::sync::Notify>);
-impl Drop for Cancelled {
-    fn drop(&mut self) {
-        self.0.notify_one();
-    }
+
+struct EmbeddedReading {
+    resources: std::sync::Arc<ProviderOwner>,
+    cleanup: bool,
 }
+
+#[harmos_runtime::message]
+#[harmos_runtime::operation(id = "client.forward", version = 1, response = Echoed, policy = Echo::POLICY,
+    visibility = harmos_runtime::operations::Visibility::Shared)]
+#[derive(Clone)]
+struct Forward {
+    say: String,
+}
+
+struct NativeProvider(std::sync::Arc<ProviderOwner>);
+
+struct NativeClient;
+
+struct NativeReading {
+    resources: std::sync::Arc<NativeProvider>,
+    cleanup: bool,
+}
+
+struct NativeForwarding {
+    _resources: std::sync::Arc<NativeClient>,
+}
+
+struct NativeSeed {
+    id: u64,
+}
+
+struct NativeProviderPlugin {
+    resources: std::sync::Arc<NativeProvider>,
+}
+
+struct NativeClientPlugin {
+    resources: std::sync::Arc<NativeClient>,
+}
+
+#[derive(Clone)]
+struct NativeAttachment {
+    id: String,
+    _seed: Option<std::sync::Arc<NativeSeed>>,
+}
+
+#[derive(Default)]
+struct NativeResources {
+    services: Option<harmos_runtime::operations::OperationManager>,
+    sdk: Option<harmos_runtime::operations::PluginSdkRegistration>,
+    initializing: Option<harmos_runtime::operations::EncodedInvocation>,
+    shutting_down: Option<harmos_runtime::operations::EncodedInvocation>,
+    initialized: bool,
+    shutdown_attempted: bool,
+    resident: Option<NativeResident>,
+    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
+    registration: Option<harmos_runtime::operations::PluginRegistration>,
+    registered: bool,
+}
+
+#[derive(Default)]
+struct ProviderResources {
+    endpoint: Option<harmos_runtime::plugin::PluginEndpoint>,
+    registration: Option<harmos_runtime::operations::PluginRegistration>,
+}
+
+struct DependencyHost {
+    native_seed: Option<std::sync::Arc<NativeSeed>>,
+    guest: Lifecycle,
+    operations: harmos_runtime::operations::OperationManager,
+    provider: std::sync::Arc<ProviderOwner>,
+}
+
+/* === Enums === */
+
+#[harmos_runtime::catalog]
+enum ProviderOperations {
+    Echo(ProviderEcho),
+}
+
 #[harmos_runtime::catalog]
 enum EmbeddedOperations {
     Read(EmbeddedReading),
 }
 
-struct EmbeddedReading {
-    resources: std::sync::Arc<ProviderOwner>,
-    cleanup: bool,
+#[harmos_runtime::catalog]
+enum ForwardOperations {
+    Forward(Forward),
+}
+
+#[harmos_runtime::catalog]
+enum NativeRequirements {
+    Echo(Echo),
+}
+
+/* === Traits === */
+
+/* === Implementations === */
+
+impl Drop for Cancelled {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
 }
 
 impl harmos_runtime::operations::Operation for EmbeddedReading {
@@ -106,6 +193,7 @@ impl harmos_runtime::operations::Operation for EmbeddedReading {
         self.resources.cleanup(self.cleanup).await
     }
 }
+
 impl ProviderOwner {
     async fn answer(&self, state: &ProviderEcho) -> Result<Echoed, harmos_domain::Refusal> {
         if state.say == "cancel" {
@@ -139,24 +227,7 @@ impl ProviderOwner {
         Ok(())
     }
 }
-#[harmos_runtime::message]
-#[harmos_runtime::operation(id = "client.forward", version = 1, response = Echoed, policy = Echo::POLICY,
-    visibility = harmos_runtime::operations::Visibility::Shared)]
-#[derive(Clone)]
-struct Forward {
-    say: String,
-}
 
-#[harmos_runtime::catalog]
-enum ForwardOperations {
-    Forward(Forward),
-}
-struct NativeProvider(std::sync::Arc<ProviderOwner>);
-struct NativeClient;
-struct NativeReading {
-    resources: std::sync::Arc<NativeProvider>,
-    cleanup: bool,
-}
 impl harmos_runtime::operations::Operation for NativeReading {
     type Declaration = ProviderEcho;
     type Resources = NativeProvider;
@@ -181,9 +252,7 @@ impl harmos_runtime::operations::Operation for NativeReading {
         self.resources.0.cleanup(self.cleanup).await
     }
 }
-struct NativeForwarding {
-    _resources: std::sync::Arc<NativeClient>,
-}
+
 impl harmos_runtime::operations::Operation for NativeForwarding {
     type Declaration = Forward;
     type Resources = NativeClient;
@@ -206,9 +275,7 @@ impl harmos_runtime::operations::Operation for NativeForwarding {
         result.map(::core::convert::Into::into)
     }
 }
-struct NativeSeed {
-    id: u64,
-}
+
 impl NativeSeed {
     fn new(provider: &std::sync::Arc<ProviderOwner>) -> std::io::Result<Self> {
         use std::sync::atomic::Ordering;
@@ -223,18 +290,18 @@ impl NativeSeed {
         Ok(Self { id })
     }
 }
+
 impl Drop for NativeSeed {
     fn drop(&mut self) {
         NATIVE_SEEDS.lock().unwrap().remove(&self.id);
     }
 }
-struct NativeProviderPlugin {
-    resources: std::sync::Arc<NativeProvider>,
-}
+
 impl harmos_runtime::operations::lifecycle::Policy for NativeProviderPlugin {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
+
 #[harmos_runtime::plugin(id = "provider", provides = ProviderOperations, requires = ())]
 impl harmos_runtime::Plugin for NativeProviderPlugin {
     type Context = harmos_sidecar::Supervisor;
@@ -268,17 +335,12 @@ impl harmos_runtime::Plugin for NativeProviderPlugin {
         Ok(())
     }
 }
-struct NativeClientPlugin {
-    resources: std::sync::Arc<NativeClient>,
-}
-#[harmos_runtime::catalog]
-enum NativeRequirements {
-    Echo(Echo),
-}
+
 impl harmos_runtime::operations::lifecycle::Policy for NativeClientPlugin {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
+
 #[harmos_runtime::plugin(id = "client", provides = ForwardOperations, requires = NativeRequirements)]
 impl harmos_runtime::Plugin for NativeClientPlugin {
     type Context = harmos_sidecar::Supervisor;
@@ -306,11 +368,7 @@ impl harmos_runtime::Plugin for NativeClientPlugin {
         Ok(())
     }
 }
-#[derive(Clone)]
-struct NativeAttachment {
-    id: String,
-    _seed: Option<std::sync::Arc<NativeSeed>>,
-}
+
 impl harmos_sidecar::Attach for NativeAttachment {
     type Error = std::io::Error;
     fn owner(&self) -> &str {
@@ -332,49 +390,13 @@ impl harmos_sidecar::Attach for NativeAttachment {
         if self.id == "provider" { native_provider().attach().await } else { native_client().attach().await }
     }
 }
-fn native_provider() -> harmos_sidecar::PluginNative<NativeProviderPlugin> {
-    harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap()).unwrap()
-}
-fn native_client() -> harmos_sidecar::PluginNative<NativeClientPlugin> {
-    harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap()).unwrap()
-}
-fn dependency_notice(_: &harmos_runtime::services::Service<Bank>, _: harmos_runtime::sidecar::Notice) {}
-type NativeResident = harmos_runtime::sidecar::Supervised<
-    Bank,
-    NativeAttachment,
-    fn(&harmos_runtime::services::Service<Bank>, harmos_runtime::sidecar::Notice),
->;
-#[derive(Default)]
-struct NativeResources {
-    services: Option<harmos_runtime::operations::OperationManager>,
-    sdk: Option<harmos_runtime::operations::PluginSdkRegistration>,
-    initializing: Option<harmos_runtime::operations::EncodedInvocation>,
-    shutting_down: Option<harmos_runtime::operations::EncodedInvocation>,
-    initialized: bool,
-    shutdown_attempted: bool,
-    resident: Option<NativeResident>,
-    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
-    registration: Option<harmos_runtime::operations::PluginRegistration>,
-    registered: bool,
-}
-type GuestResources = Resources;
-#[derive(Default)]
-struct ProviderResources {
-    endpoint: Option<harmos_runtime::plugin::PluginEndpoint>,
-    registration: Option<harmos_runtime::operations::PluginRegistration>,
-}
-type DependencyBackends = harmos_runtime::plugin::PluginBackend<GuestResources, NativeResources, ProviderResources>;
-struct DependencyHost {
-    native_seed: Option<std::sync::Arc<NativeSeed>>,
-    guest: Lifecycle,
-    operations: harmos_runtime::operations::OperationManager,
-    provider: std::sync::Arc<ProviderOwner>,
-}
+
 impl DependencyHost {
     fn new(runtime: &Runtime<Bank>, provider: std::sync::Arc<ProviderOwner>) -> Self {
         Self { native_seed: None, guest: Lifecycle::sandbox(runtime), operations: runtime.operations.clone(), provider }
     }
 }
+
 impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
     type Guest = GuestResources;
     type Sidecar = NativeResources;
@@ -533,6 +555,21 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
         Ok(())
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+fn native_provider() -> harmos_sidecar::PluginNative<NativeProviderPlugin> {
+    harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap()).unwrap()
+}
+
+fn native_client() -> harmos_sidecar::PluginNative<NativeClientPlugin> {
+    harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap()).unwrap()
+}
+
+fn dependency_notice(_: &harmos_runtime::services::Service<Bank>, _: harmos_runtime::sidecar::Notice) {}
+
 async fn dependency_candidate(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::plugin::PluginDefinitions {
     lifecycle.guest.candidate(configuration).await
 }
@@ -574,3 +611,5 @@ async fn native_dependency_candidate(
     }
     PluginDefinitions::new(definitions, []).unwrap()
 }
+
+/* === Tests === */

@@ -28,6 +28,7 @@ use crate::Result;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[cfg(feature = "grpc")]
 pub(crate) struct Deadline(pub(crate) tokio::time::Instant);
 
@@ -40,6 +41,7 @@ pub struct ContextMut<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> ContextMut<'a> {
     pub(crate) fn new(context: &'a mut CallContext) -> Self {
         Self { context }

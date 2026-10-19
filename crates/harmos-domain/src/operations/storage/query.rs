@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::{MemorySize, Result};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Query {
     at: Nested<StorageCursor> => 1,
     source: Nested<Source> => 2,
@@ -53,6 +55,7 @@ crate::declare!(Query {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Query {
     pub at: StorageCursor,
@@ -66,6 +69,7 @@ pub struct Query {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Query {
     pub fn validate(&self) -> Result<()> {
         self.source.validate()?;

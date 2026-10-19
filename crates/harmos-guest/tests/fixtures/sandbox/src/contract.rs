@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -24,6 +25,7 @@ use harmos_domain::StreamSpec;
 use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 
 /* === Constants === */
+
 const PROBE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
@@ -36,6 +38,7 @@ const PROBE: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
 #[harmos_domain::operation(id = "probe.echo", version = 1, response = Echoed, policy = PROBE, visibility = Visibility::Shared)]
@@ -125,6 +128,7 @@ pub struct Counts {
 }
 
 /* === Enums === */
+
 #[harmos_guest::catalog(harmos_path = ::harmos_guest)]
 pub enum Operations {
     Echo(Echo),
@@ -139,6 +143,7 @@ pub enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StreamSpec for Echoed {
     type Row = Self;
     const ID: &'static str = "progress";

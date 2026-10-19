@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +31,7 @@ use std::{future::Future, pin::Pin};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct ProjectedRecords<'a> {
     permit: &'a mut Permit,
     limits: ReadLimits,
@@ -44,6 +46,7 @@ pub(crate) struct Projection {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait RecordProjection: Send + Sync + 'static {
     fn project<'a>(
         &'a self, record: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
@@ -51,6 +54,7 @@ pub trait RecordProjection: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl<'a> ProjectedRecords<'a> {
     pub(crate) fn new(permit: &'a mut Permit, limits: ReadLimits) -> Self {
         Self { permit, limits, refused: false }
@@ -82,6 +86,7 @@ impl<'a> ProjectedRecords<'a> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn limit() -> Error {
     Error::InvalidInput { field: "record projection", reason: "capture limit exceeded" }
 }

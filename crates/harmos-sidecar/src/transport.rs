@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod connection;
 mod consumption;
 mod credit;
@@ -24,11 +25,13 @@ mod payload {
 }
 
 /* === Re-Exports === */
+
 pub use connection::{Connection, Driver, Io, Received, Receiver, Sender};
 pub use consumption::{Consumption, ReceiveCredit};
 pub use credit::{Credit, Reservation};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::sync::Arc;
@@ -39,6 +42,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::Frame;
 
 /* === Constants === */
+
 const VERSION: u8 = 3;
 const CONTROL_LIMIT: usize = 64;
 
@@ -49,6 +53,7 @@ const CONTROL_LIMIT: usize = 64;
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
     Data,
@@ -68,6 +73,7 @@ enum Body<'a> {
     Call {
         id: u64,
         method: &'a str,
+
         #[serde(borrow, with = "payload")]
         params: &'a [u8],
     },
@@ -77,11 +83,13 @@ enum Body<'a> {
     },
     Push {
         method: &'a str,
+
         #[serde(borrow, with = "payload")]
         params: &'a [u8],
     },
     Answer {
         id: u64,
+
         #[serde(borrow, with = "payload")]
         result: &'a [u8],
     },
@@ -97,6 +105,7 @@ enum Body<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Role {
     fn limit(self) -> usize {
         match self {
@@ -181,6 +190,7 @@ impl Packet {
 }
 
 /* === Public Functions === */
+
 pub async fn read<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<Packet>> {
     let Some(length) = read_length(reader, channel).await? else {
         return Ok(None);
@@ -207,6 +217,7 @@ pub async fn write<W: AsyncWrite + Unpin>(writer: &mut W, packet: &Packet) -> io
 }
 
 /* === Private Functions === */
+
 async fn read_length<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<usize>> {
     let mut header = [0; 4];
     if reader.read(&mut header[..1]).await? == 0 {

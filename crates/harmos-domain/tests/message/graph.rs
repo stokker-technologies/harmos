@@ -30,6 +30,7 @@ use harmos_domain::schema::graph::{Error, Field, Kind, Schema};
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
+
 // Complete Dokime CheckpointDocument Declaration, Source SHA-256:
 // 1395b816ab4edc53a07aac298fd73c81fdccebd56325a3095d0c2b20a029017a
 const CHECKPOINT: &str = include_str!("../fixtures/checkpoint-schema.json");
@@ -39,12 +40,15 @@ const CHECKPOINT: &str = include_str!("../fixtures/checkpoint-schema.json");
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct RecursiveDeclaration;
 
 /* === Enums === */
 
 /* === Traits === */
+
 /* === Implementations === */
+
 impl harmos_domain::schema::Described for RecursiveDeclaration {
     const NAME: &'static str = "recursive.test";
     const FIELDS: &'static [Field<Definition>] = &[Field {
@@ -61,6 +65,7 @@ impl harmos_domain::schema::Described for RecursiveDeclaration {
 }
 
 /* === Public Functions === */
+
 #[test]
 fn typed_recursive_declaration() {
     let root = RecursiveDeclaration::DEFINITION;
@@ -311,6 +316,7 @@ fn recursive_schema_validation() {
 }
 
 /* === Private Functions === */
+
 fn wire_round_trip(schema: &Schema) {
     let postcard = harmos_domain::Message::encode_to_vec(schema);
     assert_eq!(postcard.len(), harmos_domain::Message::encoded_len(schema));

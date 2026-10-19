@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -24,6 +25,7 @@ use serde_json::{Map, Value};
 use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
 
 /* === Constants === */
+
 const CHECKPOINT: &str = ".harmos-jsonl.cursor";
 
 const CHECKPOINT_TEMP: &str = ".harmos-jsonl.cursor.tmp";
@@ -39,9 +41,11 @@ const WINDOW: usize = 64 * 1024;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Encode<A> = fn(&Batch<A>) -> io::Result<Vec<Map<String, Value>>>;
 
 /* === Structs === */
+
 pub struct JsonlStreams<A: Application> {
     directory: PathBuf,
     cursor: Cursor,
@@ -62,6 +66,7 @@ struct Selection<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> JsonlStreams<A> {
     pub fn open(directory: impl AsRef<Path>) -> io::Result<Self> {
         let directory = directory.as_ref().to_owned();
@@ -177,6 +182,7 @@ impl<A: Application> Selection<A> {
 }
 
 /* === Public Functions === */
+
 pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<S>> {
     let mut rows = Vec::new();
     for line in BufReader::new(File::open(path)?).lines() {
@@ -191,6 +197,7 @@ pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<
 }
 
 /* === Private Functions === */
+
 fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
     let mut rows = Vec::new();
     for row in batch.select::<S>() {

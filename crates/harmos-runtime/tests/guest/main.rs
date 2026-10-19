@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -29,6 +30,7 @@ use schematic_domain as schematic;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::OnceLock;
 // Third Party Imports
@@ -50,6 +52,7 @@ use support::fixtures::component as load;
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum GuestLanes {
     #[default]
@@ -63,6 +66,7 @@ enum GuestLanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<Bank> {
     Runtime::builder(support::Ledger::default(), ())
         .register(GuestLanes::catalog())

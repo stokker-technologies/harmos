@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@ use serde::{Serialize, de::DeserializeOwned};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchemaSettings {
     pub preparation_bytes: std::num::NonZeroUsize,
@@ -38,10 +40,12 @@ pub struct StreamSettings {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("artifact configuration could not be encoded: {0}")]
     Encode(serde_json::Error),
+
     #[error("artifact configuration could not be decoded: {0}")]
     Decode(serde_json::Error),
 }
@@ -49,6 +53,7 @@ pub enum ConfigError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for SchemaSettings {
     fn default() -> Self {
         Self {
@@ -60,6 +65,7 @@ impl Default for SchemaSettings {
 }
 
 /* === Public Functions === */
+
 pub fn decode_config<C: DeserializeOwned>(bytes: &[u8]) -> Result<C, ConfigError> {
     serde_json::from_slice(bytes).map_err(ConfigError::Decode)
 }

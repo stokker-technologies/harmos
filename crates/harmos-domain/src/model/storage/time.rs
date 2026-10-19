@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub mod optional {
     use super::*;
 
@@ -23,6 +24,7 @@ pub mod optional {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::{Duration, SystemTime as Timestamp, UNIX_EPOCH};
 // Third Party Imports
@@ -36,11 +38,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wire {
     pub(crate) secs_since_epoch: u64,
     pub(crate) nanos_since_epoch: u32,
+
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) before_epoch: bool,
 }
@@ -50,6 +54,7 @@ pub struct Wire {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<Timestamp> for Wire {
     fn from(value: Timestamp) -> Self {
         let (duration, before_epoch) = match value.duration_since(UNIX_EPOCH) {
@@ -81,7 +86,9 @@ impl Wire {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn is_false(value: &bool) -> bool {
     !*value
 }

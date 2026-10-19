@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,9 +32,11 @@ use harmos_runtime::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Save = Box<dyn FnMut() -> io::Result<()> + Send>;
 
 /* === Structs === */
+
 // A Snapshot Is Durable Exactly As Far As Its Last Successful Save.
 struct Snapshot {
     taken: Position,
@@ -61,6 +64,7 @@ struct Watched {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Prunable {
     fn controlled(advance: bool) -> (Self, Watched) {
         Self::new(true, advance)

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -32,10 +33,12 @@ use harmos_runtime::sidecar::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Context<'a> = ObserverContext<'a, u64, Host>;
 type Identity = (&'static str, ActivationId, u64);
 
 /* === Structs === */
+
 struct Host {
     events: mpsc::Sender<Event>,
     hang: bool,
@@ -66,6 +69,7 @@ struct Observing {
 }
 
 /* === Enums === */
+
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
     Call(Identity, u64),
@@ -78,6 +82,7 @@ enum Event {
 enum Failure {
     #[error(transparent)]
     Publication(#[from] PublicationError),
+
     #[error("first tick refused")]
     Refused,
 }
@@ -85,6 +90,7 @@ enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StreamSpec for WrongVersion {
     type Row = Pulse;
     const ID: &'static str = Pulse::ID;
@@ -201,6 +207,7 @@ impl Drop for Dropped {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn identity(ctx: &Context<'_>) -> Identity {
     (ctx.observer_id(), ctx.activation_id(), ctx.tick().ordinal())
 }

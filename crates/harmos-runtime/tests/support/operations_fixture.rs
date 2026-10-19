@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 pub(crate) use std::sync::{
     Arc, Mutex,
@@ -33,6 +34,7 @@ pub(crate) use support::{Bank, Ledger, catalog};
 /* === Constants === */
 
 /* === Macros === */
+
 // In-Process Fixture Values Carry Shared Notifications, So They Never Cross A
 // Process Boundary: Their Codec Refuses And Encoding Them Is A Defect.
 macro_rules! in_process {
@@ -66,9 +68,11 @@ macro_rules! in_process {
 pub(crate) use in_process;
 
 /* === Type Aliases === */
+
 pub(crate) type Request = Compute;
 
 /* === Structs === */
+
 // Owned request/state/response deliberately implement neither Clone nor serde.
 pub(crate) struct Compute {
     pub(crate) value: usize,
@@ -117,6 +121,7 @@ pub(crate) struct ParentCall {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub(crate) enum Operations {
     Compute(Compute),
@@ -133,8 +138,10 @@ pub(crate) enum Implemented {
 pub(crate) enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
 }
@@ -143,6 +150,7 @@ pub(crate) enum Lanes {
 pub(crate) enum Failed {
     #[error("scripted failure {0:?}")]
     Scripted(FailureKind),
+
     #[error(transparent)]
     Nested(#[from] Error),
 }
@@ -150,6 +158,7 @@ pub(crate) enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+
 in_process!(Compute, Slow, Parent, Response);
 
 impl harmos_runtime::MemorySize for Compute {
@@ -338,6 +347,7 @@ impl Operation for ParentCall {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) async fn runtime() -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ())
         .operation_settings(harmos_runtime::operations::Settings {

@@ -42,6 +42,7 @@ use harmos_sdk::grpc::{self, DecodeInput};
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn callback_requires_budget() {
     let runtime = harmos_runtime::Runtime::<crate::operations::support::Bank>::builder(crate::operations::support::Ledger::default(), ())

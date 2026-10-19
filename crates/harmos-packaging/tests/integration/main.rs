@@ -10,6 +10,7 @@
 // Compose Packaging Integration Story Domains
 
 /* === Modules === */
+
 #[cfg(feature = "sidecar")]
 #[path = "../build/main.rs"]
 mod build;

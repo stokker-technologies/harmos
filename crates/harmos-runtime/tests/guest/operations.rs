@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -34,10 +35,12 @@ use harmos_runtime::operations::{ComponentError, ComponentOperation, FailureKind
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
 }
@@ -45,9 +48,11 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn pending_settings() -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec("shutdown-pending").unwrap(),

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::sync::{
@@ -36,6 +37,7 @@ use crate::{Error, Identifier, Message, operations::Lane};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Component {
     endpoint: Arc<Endpoint>,
 }
@@ -68,6 +70,7 @@ struct SdkBinding {
 }
 
 /* === Enums === */
+
 enum Phase {
     Initialize,
     Attempt,
@@ -78,23 +81,32 @@ enum Phase {
 pub enum ComponentError {
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
+
     #[error("the selected guest generation is unavailable")]
     Unavailable,
+
     #[error("guest attempt context entropy is unavailable")]
     Entropy(#[from] getrandom::Error),
+
     #[error("operation `{operation}` differs from the selected guest catalog")]
     Catalog { operation: &'static str },
+
     #[error(transparent)]
     Declaration(#[from] harmos_domain::Error),
+
     #[error("guest operation transport failed")]
     Transport(#[from] GuestError),
+
     #[error("guest operation response codec failed")]
     Payload(#[from] crate::MessageError),
+
     // The guest refused the request while preparing it.
     #[error(transparent)]
     Preparation(harmos_domain::Failure),
+
     #[error("guest operation request is not granted")]
     Unauthorized(#[source] crate::Error),
+
     // The guest handler failed; its failure crosses unchanged.
     #[error(transparent)]
     Remote(harmos_domain::Failure),
@@ -103,6 +115,7 @@ pub enum ComponentError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ComponentError {
     pub(crate) fn classification(&self) -> FailureKind {
         classify(self)
@@ -445,6 +458,7 @@ impl Operation for SdkOperation {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn register<O>(bindings: &mut super::Bindings<'_>, lane: &'static str, component: Arc<Component>) -> crate::Result<()>
 where
     O: crate::operations::OperationDeclaration,

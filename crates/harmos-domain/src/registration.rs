@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::identity::artifact_subset;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Registration {
     pub namespace: String,
@@ -39,17 +41,22 @@ pub struct Registrar {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum RegistrationError {
     #[error("`{namespace}` is not a portable registration namespace")]
     InvalidNamespace { namespace: String },
+
     #[error("registration `{namespace}` has a zero schema ordinal")]
     ZeroSchema { namespace: String },
+
     #[error("registration namespace `{namespace}` was declared more than once")]
     DuplicateNamespace { namespace: String },
+
     #[error("registration `{namespace}` could not be encoded: {source}")]
     Encode {
         namespace: String,
+
         #[source]
         source: serde_json::Error,
     },
@@ -58,6 +65,7 @@ pub enum RegistrationError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Registrar {
     pub fn new() -> Self {
         Self::default()

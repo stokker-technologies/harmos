@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 pub(crate) use std::sync::Arc;
@@ -35,6 +36,7 @@ pub(crate) use support::{Bank, Ledger, catalog};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Fixture {
     pub(crate) runtime: Runtime<Bank>,
     pub(crate) storage: StorageManager,
@@ -47,6 +49,7 @@ pub(crate) struct Fixture {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
         let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
@@ -70,6 +73,7 @@ impl Fixture {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSettings {
     harmos_runtime::storage::state::StorageStateSettings {
         max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
@@ -78,6 +82,7 @@ pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSe
 }
 
 /* === Private Functions === */
+
 pub(crate) fn config() -> StorageSettings {
     storage_settings()
 }

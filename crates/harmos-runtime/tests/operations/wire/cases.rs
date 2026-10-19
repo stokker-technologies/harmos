@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, atomic::Ordering};
 use std::time::Duration;
@@ -26,6 +27,7 @@ use harmos_runtime::operations::{
 use harmos_runtime::{Error, Message, Refusal};
 
 /* === Constants === */
+
 const ECHO_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
@@ -50,6 +52,7 @@ const SHORT_CODEC_POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 thread_local! {
     static DECODE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
 }
@@ -121,6 +124,7 @@ macro_rules! scripted_codec {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "fixture.echo",
@@ -211,6 +215,7 @@ pub(super) struct State {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub(super) enum Leaves {
     Echo(Echo),
@@ -229,6 +234,7 @@ pub(super) enum Group {
 pub(super) enum Operations {
     #[nested]
     Empty(()),
+
     #[nested]
     Group(Group),
 }
@@ -251,6 +257,7 @@ pub(super) enum ImplementedGroup {
 pub(super) enum Implemented {
     #[nested]
     Empty(()),
+
     #[nested]
     Group(ImplementedGroup),
 }
@@ -275,6 +282,7 @@ enum ImplementedSerial {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<String> for Text {
     fn from(value: String) -> Self {
         Self { value }

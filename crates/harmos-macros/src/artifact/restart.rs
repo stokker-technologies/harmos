@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +31,7 @@ use super::set_once;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub(super) struct Policy {
     pub(super) credit: u32,
@@ -43,11 +45,13 @@ pub(super) struct Policy {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Policy {
     pub(super) const NEVER: Self = Self { credit: 0, sustained_health_ms: 30_000, backoff_base_ms: 250, backoff_cap_ms: 10_000 };
 }
 
 /* === Public Functions === */
+
 pub(super) fn parse(listed: &syn::MetaList) -> Result<Policy, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(listed.tokens.clone())?;
     let mut credit = None;

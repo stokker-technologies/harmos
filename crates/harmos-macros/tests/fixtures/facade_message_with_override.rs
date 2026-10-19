@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ extern crate facade as serde;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[facade::stream(id = "batched", window = 8, batch(samples = 3, gaps = "report"), harmos_path = ::facade::__harmos)]
 #[derive(facade::Serialize, facade::Deserialize)]
 #[serde(crate = "facade")]
@@ -49,14 +51,17 @@ struct Stateless;
 struct Publisher;
 
 /* === Enums === */
+
 #[facade::message(harmos_path = ::facade::__harmos)]
 enum Outcome { Pending, Ready { sample: Sample }, Failed(String) }
 
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
+
 impl facade::__harmos::operations::lifecycle::Policy for Publisher {
     const INITIALIZATION_POLICY: facade::__harmos::operations::OperationPolicy = facade::__harmos::operations::OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
@@ -85,6 +90,7 @@ impl Stateless {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() { let _ = Outcome::default(); let _ = Portable::default(); let _ = Sample::default(); assert_eq!(<Reading as facade::__harmos::streams::Batched>::SAMPLES, 3); }
 
 /* === Tests === */

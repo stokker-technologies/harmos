@@ -7,16 +7,32 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
+
+// Third Party Imports
 use tokio::time::Instant;
 
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
 /* === Type Aliases === */
+
 pub type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
+
 /// The bounded wait elapsed before the future completed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Elapsed;
@@ -27,7 +43,12 @@ pub struct Execution {
     sleep: fn(Duration) -> Sleep,
 }
 
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl Execution {
     pub const fn new(now: fn() -> Instant, sleep: fn(Duration) -> Sleep) -> Self {
         Self { now, sleep }
@@ -42,8 +63,15 @@ impl Execution {
         tokio::select! { biased; result = future => Ok(result), () = self.sleep(duration) => Err(Elapsed) }
     }
 }
+
 impl Default for Execution {
     fn default() -> Self {
         Self::new(Instant::now, |duration| Box::pin(tokio::time::sleep(duration)))
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

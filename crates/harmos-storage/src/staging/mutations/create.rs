@@ -33,6 +33,7 @@ use super::*;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn create_file_once(&self, mutation: &MutationId, metadata: &FileMetadata) -> Result<FileProducer> {
         let mut hash = Sha256::new();

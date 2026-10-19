@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::path::PathBuf;
@@ -27,9 +28,11 @@ use super::EvidenceError;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Answering<'a, T> = Pin<Box<dyn Future<Output = Result<T, EvidenceError>> + Send + 'a>>;
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Excerpt {
     pub requested: u64,
@@ -41,6 +44,7 @@ pub struct Excerpt {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Vault: Send + Sync + 'static {
     fn ceiling(&self) -> usize;
 
@@ -90,6 +94,7 @@ pub(crate) trait Keeping: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl Excerpt {
     pub fn next(&self) -> u64 {
         self.offset + self.bytes.len() as u64

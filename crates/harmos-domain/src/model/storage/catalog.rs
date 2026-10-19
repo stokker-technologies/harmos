@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -22,6 +23,7 @@ use crate::model::storage::{ObjectRetention, ObjectValue, SchemaKey, check_lengt
 use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
 
 /* === Constants === */
+
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
 
@@ -54,6 +56,7 @@ struct KeyMatch<'a> {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait StoredObject: Identified + schema::Described + crate::Message + MemorySize + 'static {
     type Key: fmt::Display + ?Sized;
 
@@ -269,6 +272,7 @@ pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey)
 }
 
 /* === Private Functions === */
+
 fn decode<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T> {
     check_length(value.payload.len(), max_payload_bytes)?;
     check_length(value.item.as_str().len(), max_payload_bytes)?;

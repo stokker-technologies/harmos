@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,6 +39,7 @@ use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, S
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn identity() -> Identity {
     Identity {
         name: "cargo_plugin".into(),

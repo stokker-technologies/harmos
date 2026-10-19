@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@ use harmos_guest::operations::{WireAnswer, WireCommand, lifecycle::Initialize};
 /* === Constants === */
 
 /* === Macros === */
+
 wasmtime::component::bindgen!({
     path: "wit",
     world: "plugin",
@@ -38,6 +40,7 @@ wasmtime::component::bindgen!({
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Mirrors The Schematic Contract's Route Messages; Field Names Fix The Wire Tags
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, Debug, PartialEq)]
@@ -69,6 +72,7 @@ struct Session {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Session {
     async fn phase(&mut self, command: WireCommand) -> WireAnswer {
         let payload = command.encode().unwrap();

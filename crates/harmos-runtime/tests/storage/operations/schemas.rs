@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -28,14 +31,23 @@ use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
 use super::{Fixture, Lanes, config};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn schema(name: &str) -> SchemaInput {
     SchemaInput::new(
         SchemaKey {
@@ -79,6 +91,7 @@ async fn setup() -> Fixture {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn schema_registry_roundtrip() {
     let f = setup().await;

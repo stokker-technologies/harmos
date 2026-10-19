@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
@@ -23,14 +26,23 @@ use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 // Start Journaled Storage With One Active Query And One Pending Write Batch.
 async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
     let mut settings = storage_settings();
@@ -44,6 +56,7 @@ async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn dropped_write_retained() {
     let directory = tempfile::tempdir().unwrap();

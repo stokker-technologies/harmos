@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
         StorageCursor { history: self.inner.primary.history().clone(), sequence }
@@ -31,3 +54,9 @@ impl<C> StorageManager<C> {
         Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None).await.map_err(Refusal::into_error)
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

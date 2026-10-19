@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -31,6 +32,7 @@ use super::{FileReference, ObjectEntry, ObjectPoint, StorageCursor, StorageManag
 use crate::{Error, Result};
 
 /* === Constants === */
+
 static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
@@ -38,6 +40,7 @@ static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// An admitted read's pinned backend image. The worker opens it in order with
 /// object pruning and releases it after this guard drops; closing storage
 /// revokes it so later reads fail instead of observing a released image.
@@ -55,6 +58,7 @@ pub(super) struct SnapshotState {
 }
 
 /* === Enums === */
+
 pub(super) enum SnapshotAction {
     Open(u64, StorageCursor),
     Release(u64, BackendSnapshot),
@@ -63,6 +67,7 @@ pub(super) enum SnapshotAction {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     /// Pin the saved image at `at`. History must be durable and not yet pruned.
     pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
@@ -244,6 +249,7 @@ impl State {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "read snapshot", reason }
 }

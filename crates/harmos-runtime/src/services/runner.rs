@@ -16,6 +16,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::future::Future;
@@ -37,9 +38,11 @@ use crate::{Application, Error, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Created<A> = Result<Option<Box<dyn ErasedResident<A>>>>;
 
 /* === Structs === */
+
 // A service whose resident each activation creates from shared resources.
 pub(crate) struct Typed<A: Application, R, F> {
     definition: ServiceDefinition,
@@ -75,6 +78,7 @@ pub(super) struct Cleanup<A: Application> {
 /* === Enums === */
 
 /* === Traits === */
+
 pub(super) trait ErasedResident<A: Application>: Send {
     fn bind_lifecycle(&mut self, lifecycle: Arc<Instance>, report: Report);
 
@@ -89,6 +93,7 @@ trait Create<A: Application>: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl<A, R, F, T> Typed<A, R, F>
 where
     A: Application,
@@ -306,6 +311,7 @@ impl<A: Application> Settlement for Cleanup<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
     let Start { resources, lifecycle, stopping, report, operations } = start;
     let cleanup =

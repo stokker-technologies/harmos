@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,9 +28,11 @@ use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Watched = (Arc<AtomicU64>, Arc<std::sync::Mutex<Vec<Position>>>);
 
 /* === Structs === */
+
 pub(crate) struct Mirror {
     checkpoint: Arc<AtomicU64>,
     seen: Arc<std::sync::Mutex<Vec<Position>>>,
@@ -41,6 +44,7 @@ pub(crate) struct Mirror {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Mirror {
     pub(crate) fn new() -> (Self, Watched) {
         let checkpoint = Arc::new(AtomicU64::new(0));

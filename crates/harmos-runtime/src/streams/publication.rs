@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -21,6 +22,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use super::{PublicationRow, StreamPublicationError};
 
 /* === Constants === */
+
 const RETAINED_BYTES: usize = 64 * 1024 * 1024;
 const RETAINED_ROWS: usize = 65_536;
 
@@ -32,6 +34,7 @@ const OWNER_BYTES: usize = 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct ManagedPublication(Arc<Owned>);
 
@@ -61,6 +64,7 @@ pub(super) struct Pool {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Pool {
     pub(super) fn new() -> Self {
         Self { bytes: Arc::new(Semaphore::new(RETAINED_BYTES)), rows: Arc::new(Semaphore::new(RETAINED_ROWS)), admission: Mutex::new(()) }
@@ -156,6 +160,7 @@ impl ManagedPublication {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn row_value<S: 'static>(row: &dyn Any) -> Option<&S> {
     row.downcast_ref::<S>().or_else(|| {
         let managed = row.downcast_ref::<ManagedPublication>()?;

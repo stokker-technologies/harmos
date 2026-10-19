@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -31,6 +32,7 @@ use crate::proto::Artifacts;
 use harmos_domain::operations::Contract;
 
 /* === Constants === */
+
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_OUTPUT_FILES: usize = 16_384;
 const HEADER: &str = "# ***\n#\n# Harmos\n#\n# SPDX-License-Identifier: Apache-2.0\n#\n# ***\n\n";
@@ -50,6 +52,7 @@ const HEADER: &str = "# ***\n#\n# Harmos\n#\n# SPDX-License-Identifier: Apache-2
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(super) fn export(
     artifacts: &Artifacts, contracts: &[Contract], settings: &Settings, output: &Path, protoc: &Path,
 ) -> Result<PathBuf, Error> {

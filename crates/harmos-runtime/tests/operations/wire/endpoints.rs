@@ -36,6 +36,7 @@ use harmos_runtime::operations::{
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
+
 const DECLARATION_NAME: &str = concat!(module_path!(), "::Declaration");
 const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
     { harmos_runtime::schema::declaration::encoded_len(DECLARATION_NAME, <Consume as harmos_runtime::schema::Described>::FIELDS) },
@@ -44,9 +45,11 @@ const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Endpoints = (StreamInput<u32>, StreamOutput<u32>);
 
 /* === Structs === */
+
 // One Forwarding Declaration Per Shape: The Request Says Whether To Consume Input.
 struct Declaration<const N: u8> {
     consume: bool,
@@ -82,12 +85,14 @@ struct Parent<const CHARGED: bool>;
 /* === Enums === */
 
 /* === Traits === */
+
 trait Shape {
     type Input: harmos_runtime::operations::Direction;
     type Output: harmos_runtime::operations::Direction;
 }
 
 /* === Implementations === */
+
 crate::operations::in_process!(ParentDeclaration);
 
 impl harmos_runtime::MemorySize for ParentDeclaration {
@@ -278,6 +283,7 @@ impl<const N: u8> Drop for Forward<N> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
     stream(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4).unwrap() }).unwrap()
 }

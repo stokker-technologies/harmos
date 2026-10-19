@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 pub mod guest;
 pub mod sidecar;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::Path;
 
@@ -31,6 +33,7 @@ use crate::app::{Runtime, SchematicEditor};
 /* === Structs === */
 
 /* === Enums === */
+
 pub enum Plugin {
     Guest { manager: harmos::plugin::PluginHost<SchematicEditor> },
     Sidecar { manager: harmos::plugin::PluginHost<SchematicEditor> },
@@ -39,6 +42,7 @@ pub enum Plugin {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Plugin {
     pub async fn guest(runtime: &Runtime, path: &Path) -> harmos::Result<Self> {
         let bytes = std::fs::read(path).map_err(guest::failure)?;

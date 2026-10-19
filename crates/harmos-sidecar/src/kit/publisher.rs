@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use harmos_domain::{Message, StreamSpec, plugin::Declared};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Publisher<P> {
     supervisor: Supervisor,
     _plugin: PhantomData<fn() -> P>,
@@ -44,10 +46,12 @@ pub struct Batch<S: StreamSpec> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
     #[error(transparent)]
     Publication(#[from] PublicationError),
+
     #[error(transparent)]
     Call(#[from] CallError),
 }
@@ -55,6 +59,7 @@ pub enum PublishError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {
         match error {

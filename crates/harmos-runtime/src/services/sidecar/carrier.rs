@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::io;
@@ -31,6 +32,7 @@ use harmos_sidecar::{Frame, transport};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct DrivenEnd {
     sender: transport::Sender,
     task: Option<JoinHandle<io::Result<()>>>,
@@ -39,6 +41,7 @@ struct DrivenEnd {
 }
 
 /* === Enums === */
+
 pub(super) enum Connecting {
     Unavailable,
     Binary(transport::Sender, transport::Receiver),
@@ -50,6 +53,7 @@ pub(super) struct Receiver(transport::Receiver);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Connecting {
     pub fn new(data: transport::Io, control: Option<transport::Io>, ending: Option<Ending>) -> (Self, Option<Ending>) {
         let Some(control) = control else {

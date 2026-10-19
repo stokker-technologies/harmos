@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 
@@ -39,6 +40,7 @@ use schematic_storage::{Jsonl, JsonlStreams};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn recordings(assembly: Builder<SchematicEditor>, config: &Settings) -> Result<Builder<SchematicEditor>, io::Error> {
     let recordings = JsonlStreams::<SchematicEditor>::open(config.recordings())?;
     let recordings = recordings.select::<NetVoltage>();
@@ -54,4 +56,5 @@ pub fn attach(
 }
 
 /* === Private Functions === */
+
 /* === Tests === */

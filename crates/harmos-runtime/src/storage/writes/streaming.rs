@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::VecDeque;
 // Third Party Imports
@@ -28,7 +29,9 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 pub(crate) enum WriteKind {
     Streams,
@@ -39,9 +42,11 @@ pub(crate) enum WriteKind {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) async fn exchange<C>(
     storage: &StorageManager<C>, ctx: &Context<'_>, scope: Option<&crate::Identifier>,
     endpoints: &mut (StreamInput<DataBatch>, StreamOutput<WriteReceipt>), kind: WriteKind, operation: &'static str,

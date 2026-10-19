@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 // Third Party Imports
@@ -25,9 +26,11 @@ use harmos_runtime::sidecar::{ActivationId, Instance, ObserverContext, ObserverE
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type ObservedIdentity = (&'static str, ActivationId, u64);
 
 /* === Structs === */
+
 #[derive(Clone)]
 struct Resources {
     events: mpsc::UnboundedSender<Event>,
@@ -50,6 +53,7 @@ struct Watch(Resources);
 struct Callback(Resources);
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Behavior {
     FailFirst,
@@ -69,6 +73,7 @@ enum Event {
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_runtime::observer(id = "execution.watch", interval_ms = 5)]
 impl Watch {
     async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
@@ -152,6 +157,7 @@ impl NeverStarts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn declaration() -> Instance<Resources, Host> {
     Instance::<Resources, Host>::of::<Watch>().with_context(|host| host.token)
 }

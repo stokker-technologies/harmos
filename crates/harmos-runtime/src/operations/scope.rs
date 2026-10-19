@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -31,6 +32,7 @@ use crate::supervision::instance::{Instance, Phase, Status};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct Scope<'a> {
     core: &'a ScopeCore,
@@ -58,6 +60,7 @@ pub(crate) struct Child {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> Scope<'a> {
     pub(crate) fn over(core: &'a ScopeCore) -> Self {
         Self { core }

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
@@ -28,6 +29,7 @@ use harmos_domain::inventory::publications;
 use harmos_domain::{StreamDeclaration, artifact_subset};
 
 /* === Constants === */
+
 const MAX_PUBLICATION_BYTES: usize = 1024 * 1024;
 const MAX_WINDOW_ROWS: usize = 65_536;
 
@@ -36,10 +38,12 @@ const MAX_WINDOW_ROWS: usize = 65_536;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PublicationRow {
     pub payload: Vec<u8>,
     pub published_unix_micros: Option<i64>,
+
     #[serde(default)]
     pub context: Option<String>,
 }
@@ -61,24 +65,33 @@ pub struct PublicationLease {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum StreamAdmissionError {
     #[error("`{0}` is not a portable plugin owner identity")]
     Owner(String),
+
     #[error(transparent)]
     Declaration(#[from] publications::Error),
+
     #[error("stream `{0}` is already owned by a live publication lease")]
     Occupied(String),
+
     #[error("stream `{0}` changes an admitted schema or retention contract without a new version")]
     Changed(String),
+
     #[error("stream `{0}` collides with a native catalog definition")]
     Native(String),
+
     #[error("a plugin stream window exceeds the 65536 row limit")]
     WindowLimit,
+
     #[error("stream bindings differ from the admitted plugin inventory")]
     Inventory,
+
     #[error("the stream facility has stopped")]
     Closed,
+
     #[error(transparent)]
     Schema(#[from] crate::schema::Error),
 }
@@ -87,18 +100,25 @@ pub enum StreamAdmissionError {
 pub enum StreamPublicationError {
     #[error("the publication lease is no longer active")]
     Revoked,
+
     #[error("a plugin publication exceeds the 1 MiB row limit")]
     Oversized,
+
     #[error("the shared plugin publication byte or slot capacity is full")]
     Capacity,
+
     #[error("the publication sequence is invalid or exhausted")]
     Sequence,
+
     #[error("a batched row is stamped earlier than the row before it")]
     Stamp,
+
     #[error("the stream window is full of rows its ingest has not taken in")]
     Backlog,
+
     #[error("the plugin activation has not committed")]
     NotReady,
+
     #[error(transparent)]
     Payload(#[from] crate::schema::PayloadError),
 }
@@ -106,6 +126,7 @@ pub enum StreamPublicationError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> StreamManager<A> {
     pub async fn admit(&self, owner: &str, declaration: StreamDeclaration) -> Result<PublicationLease, StreamAdmissionError> {
         Ok(self.admit_all(owner, [declaration]).await?.remove(0))
@@ -522,6 +543,7 @@ impl Wired {
 }
 
 /* === Public Functions === */
+
 pub(super) fn publication_definitions(
     owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
 ) -> Result<Vec<Definition>, StreamAdmissionError> {

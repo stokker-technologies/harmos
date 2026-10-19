@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 // Third Party Imports
@@ -28,6 +29,7 @@ use support::journal::{Journal, Snapshot, Store, frame};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Saved {
     at: Position,
     state: Ledger,

@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 use schematic_domain as schematic;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -26,6 +28,7 @@ use schematic::operations::Operations;
 use schematic::operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
+
 const PLUGIN: &str = "schematic-tools";
 
 /* === Macros === */
@@ -35,6 +38,7 @@ const PLUGIN: &str = "schematic-tools";
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
@@ -48,6 +52,7 @@ enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn route() -> propose::ProposeRoute {
     propose::ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }
 }

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod host;
 
 mod backend;
@@ -21,6 +22,7 @@ mod scope;
 mod status;
 
 /* === Re-Exports === */
+
 pub use backend::PluginBackend;
 pub use definition::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitionError, PluginKind};
 pub use definitions::PluginDefinitions;
@@ -42,6 +44,7 @@ pub use scope::PluginScope;
 pub use status::{PluginFailureClass, PluginGeneration, PluginState, PluginStatus};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 // Third Party Imports
@@ -56,6 +59,7 @@ use reload::ReloadImpact;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginGraph {
     ordered: Vec<PluginDefinition>,
@@ -71,32 +75,44 @@ pub struct OperationProvider {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("plugin `{artifact}` has an invalid definition: {source}")]
     Definition {
         artifact: String,
+
         #[source]
         source: Box<PluginDefinitionError>,
     },
+
     #[error("operation `{id}` is declared by both `{first}` and `{second}`")]
     OperationConflict { id: String, first: String, second: String },
+
     #[error("plugin `{artifact}` requires incompatible wire operation `{operation}` from `{provider}`: {reason}")]
     IncompatibleOperation { artifact: String, operation: String, provider: String, reason: &'static str },
+
     #[error("plugin `{artifact}` has multiple compatible providers for operation `{operation}`")]
     AmbiguousOperation { artifact: String, operation: String },
+
     #[error("provider selection for `{artifact}` operation `{operation}` is invalid: {reason}")]
     ProviderSelection { artifact: String, operation: String, reason: &'static str },
+
     #[error("stream `{id}` is declared by both `{first}` and `{second}`")]
     StreamConflict { id: String, first: String, second: String },
+
     #[error("artifact `{id}` is registered more than once")]
     Duplicate { id: String },
+
     #[error("cannot reload unknown artifact `{id}`")]
     Unknown { id: String },
+
     #[error("artifact `{artifact}` requires missing artifact `{dependency}`")]
     Missing { artifact: String, dependency: String },
+
     #[error("artifact `{artifact}` requires `{dependency}` {required}, but {found} is registered")]
     Incompatible { artifact: String, dependency: String, required: VersionReq, found: Version },
+
     #[error("artifact dependency cycle reaches `{artifact}`")]
     Cycle { artifact: String },
 }
@@ -104,6 +120,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PluginGraph {
     pub fn resolve(artifacts: impl IntoIterator<Item = PluginDefinition>) -> Result<Self, Error> {
         Self::resolve_with_providers(artifacts, [])

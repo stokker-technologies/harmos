@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::stream(id = "waveform", window = 0)]
 struct Waveform;
 
@@ -38,6 +40,7 @@ struct Waveform;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

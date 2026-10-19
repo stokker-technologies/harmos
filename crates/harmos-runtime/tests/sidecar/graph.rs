@@ -21,6 +21,7 @@ mod client;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -46,6 +47,7 @@ use harmos_sidecar::attach::{End, Ending};
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! forwarded {
     ($self:ident, $method:ident) => {
         match &$self.source {
@@ -57,9 +59,11 @@ macro_rules! forwarded {
 }
 
 /* === Type Aliases === */
+
 type Wait = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Gate {
     attached: AtomicUsize,
@@ -107,6 +111,7 @@ struct Fixture {
 }
 
 /* === Enums === */
+
 #[derive(Clone)]
 enum Source {
     Provider(harmos_sidecar::PluginNative<provider::Provider>),
@@ -117,6 +122,7 @@ enum Source {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::lifecycle::Policy for Independent {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
@@ -341,6 +347,7 @@ impl Fixture {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn notices(_: &Service<Bank>, _: Notice) {}
 
 #[tokio::test]

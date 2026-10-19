@@ -10,8 +10,11 @@
 // State File Ownership And Durable Replacement
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Write};
@@ -23,17 +26,24 @@ use super::format::{self, Read, corrupt, io};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 pub(super) struct Files {
     root: PathBuf,
     _lease: File,
 }
 
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Files {
     pub(super) fn open(root: &Path) -> Result<Self> {
         fs::create_dir_all(root).map_err(io)?;
@@ -93,5 +103,7 @@ impl Files {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 /* === Tests === */

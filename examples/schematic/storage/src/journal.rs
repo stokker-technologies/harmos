@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod wire {
     use std::fs::File;
     use std::io::{self, BufRead, BufReader, Write};
@@ -176,6 +177,7 @@ mod wire {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
@@ -192,6 +194,7 @@ use harmos::{
 };
 
 /* === Constants === */
+
 const SCHEMA: u32 = 3;
 const LEGACY_SCHEMA: u32 = 2;
 const MAX_HEADER_BYTES: usize = 4096;
@@ -202,6 +205,7 @@ const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Jsonl<A: Wire> {
     log: Arc<Mutex<Log>>,
     batch: usize,
@@ -226,6 +230,7 @@ struct Group<'a> {
     group: u32,
     first: u64,
     frontier: u64,
+
     #[serde(borrow)]
     entries: &'a serde_json::value::RawValue,
 }
@@ -248,6 +253,7 @@ struct Log {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Wire: Application + Sized {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32);
 
@@ -259,6 +265,7 @@ pub trait Wire: Application + Sized {
 }
 
 /* === Implementations === */
+
 impl<A: Wire> Jsonl<A> {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
@@ -841,6 +848,7 @@ impl Log {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn is_group(line: &str) -> bool {
     #[derive(Deserialize)]
     struct Discriminator {

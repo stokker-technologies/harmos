@@ -28,6 +28,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::message]
 #[harmos_domain::operation(
     id = "schematic.analyze_upload", version = 1,

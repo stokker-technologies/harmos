@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -39,6 +40,7 @@ use harmos_runtime::guest::{Error, Host};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[tokio::test]
 async fn host_resource_settings() {
     let runtime = runtime().await;

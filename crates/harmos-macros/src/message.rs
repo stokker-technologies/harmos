@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod composition;
 mod enumeration;
 mod postcard;
@@ -15,6 +16,7 @@ mod postcard;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 // Third Party Imports
@@ -39,6 +41,7 @@ use crate::path::{self, HarmosPath};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attributes: TokenStream, item: TokenStream) -> TokenStream {
     expand(attributes, item).unwrap_or_else(Error::into_compile_error)
 }
@@ -138,6 +141,7 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
 }
 
 /* === Private Functions === */
+
 fn described(name: &syn::Ident, fields: TokenStream, extra: TokenStream, harmos: &HarmosPath) -> TokenStream {
     quote! {
         impl #harmos::schema::Described for #name {
@@ -307,6 +311,7 @@ fn common(ty: &Type) -> bool {
 }
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;

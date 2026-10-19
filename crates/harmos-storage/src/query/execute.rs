@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use crate::storage::query::transform::AggregateExecution;
 use crate::storage::query::transform::HistogramExecution;
 use crate::storage::query::transform::TransformExecution;
@@ -34,6 +35,7 @@ use crate::storage::memory::MemoryBank;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
+
 const MAX_TRANSFORMS: usize = 64;
 
 /* === Macros === */
@@ -41,6 +43,7 @@ const MAX_TRANSFORMS: usize = 64;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// A validated transform chain with its output schema fixed before any rows.
 ///
 /// Leading Filter/Project run page by page. The first other transform is the
@@ -60,6 +63,7 @@ pub(super) struct Plan {
 }
 
 /* === Enums === */
+
 enum Stage {
     Stream,
     Aggregate(Option<Groups>),
@@ -70,6 +74,7 @@ enum Stage {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Plan {
     pub(super) fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
         crate::storage::arrow::validate_schema(&input)?;
@@ -245,6 +250,7 @@ impl Plan {
 }
 
 /* === Public Functions === */
+
 /// Conservative working memory for one transform over `input`: input/output
 /// coexistence, scalar keys, ordering scratch and nested owner metadata.
 pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usize> {
@@ -260,6 +266,7 @@ pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usiz
 }
 
 /* === Private Functions === */
+
 // Run Transforms In Order, Retaining Each Output Under The Attempt Bank.
 fn apply(
     transforms: &[Transform], mut current: RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,

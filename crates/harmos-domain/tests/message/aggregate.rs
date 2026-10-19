@@ -10,6 +10,7 @@
 // The Hand-Written Aggregate Message Against Its Derived Twin
 
 /* === Modules === */
+
 // The Shape `#[harmos::message]` Derives For The Same Vocabulary
 mod twin {
     use harmos_domain::message;
@@ -32,6 +33,7 @@ mod twin {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -44,6 +46,7 @@ use harmos_domain::{Aggregate, MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
+
 const EVERY: [Aggregate; 11] = [
     Aggregate::Count,
     Aggregate::Sum,
@@ -63,6 +66,7 @@ const EVERY: [Aggregate; 11] = [
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Aggregate Reaches Every Field Cardinality Of A Derived Message
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
@@ -79,6 +83,7 @@ struct Summary {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[test]
 fn protobuf_matches_derive() {
     for value in EVERY {
@@ -180,6 +185,7 @@ fn aggregate_reflects_oneof() {
 }
 
 /* === Private Functions === */
+
 fn twin(value: Aggregate) -> twin::Aggregate {
     match value {
         Aggregate::Count => twin::Aggregate::Count,

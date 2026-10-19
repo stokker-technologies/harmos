@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +30,7 @@
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Application: Send + Sync + 'static {
     type State: Send + Sync + 'static;
 

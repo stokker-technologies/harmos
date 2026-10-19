@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
 
@@ -15,10 +16,18 @@ mod native;
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
 /* === Constants === */
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
+
 criterion::criterion_main!(benches);
 
 /* === Type Aliases === */
@@ -34,6 +43,7 @@ criterion::criterion_main!(benches);
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let mut consumers = c.benchmark_group("streams/native_consumer");

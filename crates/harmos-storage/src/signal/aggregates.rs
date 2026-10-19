@@ -7,7 +7,12 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +32,7 @@ use crate::{Aggregate, aggregate};
 /* === Enums === */
 
 /* === Traits === */
+
 // One member of the contract vocabulary, answered from a `Series` (every
 // member) or a `Summary` (the mergeable members; median and percentiles are
 // `None`, since no constant-size state can answer them).
@@ -35,6 +41,7 @@ pub trait Aggregates {
 }
 
 /* === Implementations === */
+
 impl Aggregates for Series<'_> {
     fn aggregate(&self, kind: Aggregate) -> Option<f64> {
         aggregate::of_series(self, kind)

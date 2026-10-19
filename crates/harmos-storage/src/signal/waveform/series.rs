@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 
@@ -27,6 +28,7 @@ use super::Summary;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // A finished run of values answered exactly: everything `Summary` answers,
 // plus the order statistics that need every value at once. Non-finite values
 // are skipped on construction, so a slice that is already finite is borrowed
@@ -42,6 +44,7 @@ pub struct Series<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> Series<'a> {
     #[must_use]
     pub fn new(values: &'a [f64]) -> Self {
@@ -183,6 +186,7 @@ impl FromIterator<f64> for Series<'static> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn finite(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
     values.into_iter().filter(|value| value.is_finite()).collect()
 }

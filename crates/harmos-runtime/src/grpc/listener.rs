@@ -43,14 +43,17 @@ use crate::services::{Fault, Resident, Service, ServiceDefinition};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
+
 const SERVICE: &str = "harmos.grpc";
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub(super) struct Resources {
     settings: Settings,
     routes: tonic::service::Routes,
@@ -96,6 +99,7 @@ struct Connection {
 /* === Enums === */
 
 /* === Traits === */
+
 pub(super) trait Host: Send + Sync {
     fn attach(&self, resources: Arc<Resources>) -> Pending<'_, (u64, SocketAddr)>;
     fn detach(&self, generation: u64) -> Pending<'_, ()>;
@@ -107,6 +111,7 @@ pub(super) trait Host: Send + Sync {
 }
 
 /* === Implementations === */
+
 impl Resources {
     pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
         Self { settings, routes, middleware: middleware.into(), stopping: watch::channel(false).0, address: Mutex::new(None) }
@@ -421,6 +426,7 @@ impl AsyncWrite for Connection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed { domain: "gRPC listener", source: Arc::new(source) }
 }

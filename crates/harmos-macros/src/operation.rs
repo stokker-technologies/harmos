@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 use proc_macro2::TokenStream;
@@ -37,11 +38,13 @@ use crate::path::{self, HarmosPath};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     expand(attribute, item).unwrap_or_else(Error::into_compile_error)
 }
 
 /* === Private Functions === */
+
 fn arguments(input: syn::parse::ParseStream<'_>) -> Result<Punctuated<Meta, Token![,]>, Error> {
     input.parse_terminated(argument, Token![,])
 }

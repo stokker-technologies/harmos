@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
     pub async fn start_with(&self, owner: Arc<()>, spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>) -> Result<()> {
@@ -123,3 +146,9 @@ impl<C> StorageManager<C> {
         self.inner.state.lock().unwrap().status.clone()
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

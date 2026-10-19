@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::HashMap;
 use std::future::Future;
@@ -32,6 +33,7 @@ use crate::{Application, state::Entry, state::Position, state::PreparationError,
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug)]
 pub struct CaptureLimits {
     pub pending_bytes: u32,
@@ -69,6 +71,7 @@ struct Failure {
 }
 
 /* === Enums === */
+
 pub(crate) enum Declaration<A: Application> {
     Callback(CallbackDeclaration<A>),
     Managed {
@@ -101,11 +104,13 @@ pub(crate) enum Permit {
 pub enum CaptureError {
     #[error("required journal capture failed")]
     Failed,
+
     #[error("capture limits must be positive and group bytes must fit pending bytes")]
     InvalidLimits,
 }
 
 /* === Traits === */
+
 pub trait JournalCapture<A: Application>: Send + 'static {
     fn capture(
         &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,
@@ -119,6 +124,7 @@ pub(crate) trait Capturing<A: Application>: Send {
 }
 
 /* === Implementations === */
+
 impl<A: Application, C: JournalCapture<A>> Capturing<A> for C {
     fn capture(
         &mut self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position,

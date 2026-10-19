@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 mod collection;
 
 // Native Guest Hosting; Portable Authoring Lives In harmos-guest.
 pub(crate) mod host;
 
 /* === Re-Exports === */
+
 pub use harmos_guest::operations;
 
 pub use harmos_guest::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
@@ -27,6 +29,7 @@ pub use collection::{registrations, validate};
 pub use host::{Error, Host, Loaded, Registered, Serving};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,10 +26,12 @@ use crate::Identified;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 /// Record members a transaction contributes, each with its optional system fact.
 pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Prepared {
@@ -45,21 +48,27 @@ pub struct Records {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PreparationError {
     #[error("required journal capture failed")]
     CaptureFailed,
+
     #[error("a commit member could not be encoded")]
     Encoding,
+
     #[error("the commit exceeds its record or payload limit")]
     Limit,
+
     #[error("an emitted record is not a current member of the frozen runtime catalog")]
     Membership,
+
     #[error("a record has an invalid or reserved source identity")]
     Identity,
 }
 
 /* === Traits === */
+
 pub trait Record: Identified + Serialize {}
 
 pub trait RecordProjection<R> {
@@ -76,6 +85,7 @@ pub trait RecordCatalog: CatalogCodec + Sized {
 }
 
 /* === Implementations === */
+
 impl<R> RecordProjection<R> for R {
     fn project(&self) -> Option<&R> {
         Some(self)

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[allow(dead_code, reason = "the codec bench uses only the shared payload declarations")]
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
@@ -16,10 +17,18 @@ mod native;
 
 /* === Imports === */
 
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
 /* === Constants === */
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
+
 criterion::criterion_main!(benches);
 
 /* === Type Aliases === */
@@ -35,6 +44,7 @@ criterion::criterion_main!(benches);
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn benchmarks(c: &mut criterion::Criterion) {
     use harmos_runtime::Message;
     let mut codec = c.benchmark_group("streams/native_codec");

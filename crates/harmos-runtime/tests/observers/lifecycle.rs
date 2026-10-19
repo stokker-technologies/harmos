@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::pin::pin;
 use std::sync::{
@@ -32,6 +33,7 @@ use harmos_runtime::sidecar::{Activity, Instance, Observer, ObserverContext, Obs
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Resources {
     initialization: Semaphore,
     cleanup: Semaphore,
@@ -53,6 +55,7 @@ struct Watch<const MODE: u8, const INTERVAL_MS: u64 = 5>(Arc<Resources>, bool);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Resources {
     fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -140,6 +143,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Drop for Watch<MODE, INTERVAL_MS> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn activity<S: Observer<(), Resources = Arc<Resources>>>(resources: &Arc<Resources>) -> Activity {
     Instance::<Arc<Resources>, ()>::of::<S>().activate(Arc::new(resources.clone()), ()).unwrap()
 }

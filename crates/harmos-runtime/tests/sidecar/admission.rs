@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Mutex;
 
@@ -25,6 +26,7 @@ use crate::sidecar::witness::Witness;
 use harmos_runtime::sidecar::{Registrar, Registration, RegistrationError};
 
 /* === Constants === */
+
 const NAME: &str = "admission-fixture";
 
 // `register` Takes No Configuration, So The Story's Witness Is Reached Here.
@@ -43,9 +45,11 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Source = harmos_sidecar::PluginNative<Program>;
 
 /* === Structs === */
+
 // Witnesses Registration And Initialization Separately.
 struct Program {
     marks: Arc<Witness>,
@@ -56,6 +60,7 @@ struct Program {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::lifecycle::Policy for Program {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
@@ -120,6 +125,7 @@ impl harmos_runtime::Plugin for Program {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn current() -> Arc<Witness> {
     CURRENT.lock().expect("the current witness is never poisoned").clone().expect("an admission story installs its witness")
 }

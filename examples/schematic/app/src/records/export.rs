@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 
@@ -27,6 +28,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::record(id = "export.completed", version = 1)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ExportCompleted {
@@ -35,6 +37,7 @@ pub struct ExportCompleted {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExportFormat {
     Svg,
@@ -44,6 +47,7 @@ pub enum ExportFormat {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl fmt::Display for ExportFormat {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {

@@ -9,6 +9,7 @@
 
 #![allow(dead_code)]
 /* === Modules === */
+
 mod app;
 pub mod fixtures;
 mod feeds {
@@ -76,6 +77,7 @@ mod feeds {
 }
 
 /* === Re-Exports === */
+
 #[allow(unused_imports, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub use self::{
     app::{booted, runtime, runtime_from, streaming},
@@ -83,6 +85,7 @@ pub use self::{
 };
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::fmt;
@@ -99,6 +102,7 @@ use harmos_runtime::{
 };
 
 /* === Constants === */
+
 pub const HOUSE: Account = Account(0);
 
 pub const VAULT: Account = Account(1);
@@ -118,9 +122,11 @@ pub const NOTED: (Kind, &str, u32) = (Kind::Record, "ledger.noted", 1);
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Stored = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Account(pub u8);
 
@@ -174,6 +180,7 @@ pub struct Ancient {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -184,6 +191,7 @@ pub enum Refusal {
 pub enum Failed {
     #[error("{0}")]
     Attempt(String),
+
     #[error(transparent)]
     Refused(#[from] harmos_runtime::Refusal),
 }
@@ -204,6 +212,7 @@ pub enum Fact {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Ledger {
     pub fn balance(&self, account: Account) -> i64 {
         self.balances.get(&account).copied().unwrap_or_default()
@@ -537,6 +546,7 @@ impl harmos_runtime::state::RecordCatalog for Fact {
 impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
 
 /* === Public Functions === */
+
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(
         [DEPOSIT, DEPOSIT_V1, WITHDRAW, FREEZE, EXPLODE, NOTED].map(|(kind, id, version)| (kind, DefinitionId::new(id), version)).into(),
@@ -605,6 +615,7 @@ pub async fn quietly<T>(act: impl Future<Output = T>) -> T {
 }
 
 /* === Private Functions === */
+
 fn inverses(change: &Change, ledger: &Ledger) -> Option<Change> {
     match change {
         Change::Deposit(change) => Some(change.invert(ledger).into()),

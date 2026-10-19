@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ use super::{Packet, Role, invalid};
 use crate::Frame;
 
 /* === Constants === */
+
 pub(super) const WINDOW: usize = 2 * (Frame::LIMIT + 4);
 pub(super) const MINIMUM: usize = 4096;
 
@@ -30,6 +32,7 @@ pub(super) const MINIMUM: usize = 4096;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Credit {
     permits: Arc<Semaphore>,
     ledger: Mutex<Ledger>,
@@ -53,6 +56,7 @@ pub struct Reservation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Credit {
     pub fn new() -> Arc<Self> {
         Self::with_window(WINDOW)

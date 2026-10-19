@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -26,6 +27,7 @@ use tokio::sync::watch;
 // Local Imports
 
 /* === Constants === */
+
 static NEXT: AtomicUsize = AtomicUsize::new(1);
 
 static LEDGERS: Mutex<BTreeMap<String, Weak<Witness>>> = Mutex::new(BTreeMap::new());
@@ -35,6 +37,7 @@ static LEDGERS: Mutex<BTreeMap<String, Weak<Witness>>> = Mutex::new(BTreeMap::ne
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // One Story's Event Ledger, Reachable By Key From A Plugin's Serialized Configuration.
 pub struct Witness {
     key: String,
@@ -46,6 +49,7 @@ pub struct Witness {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Witness {
     pub fn open() -> Arc<Self> {
         let key = format!("witness-{}", NEXT.fetch_add(1, Ordering::SeqCst));

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,6 +28,7 @@ use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, Retr
 use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
     attempt_timeout: Duration::from_secs(30),
@@ -39,6 +41,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::stream(id = "consumption.payload", window = 16)]
 #[harmos_runtime::message]
 #[derive(Clone, Serialize, Deserialize)]
@@ -93,6 +96,7 @@ struct Reporting {
 pub struct Listener;
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub enum Callbacks {
     Consume(Delivery<Listener>),
@@ -107,6 +111,7 @@ pub enum Listeners {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::lifecycle::Policy for Receiver {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;

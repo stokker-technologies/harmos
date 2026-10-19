@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -34,9 +35,11 @@ use crate::{Application, state::Position, storage::Cursor};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(super) type Windows = HashMap<Arc<str>, HashMap<u32, Arc<Wired>>>;
 
 /* === Structs === */
+
 pub(crate) struct Delivery {
     pub(crate) rows: Vec<(Cursor, Definition, Position, Row)>,
     pub(crate) reaches: Cursor,
@@ -49,6 +52,7 @@ pub(crate) struct Wired {
     pub(crate) window: Arc<Window>,
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) staged: Option<super::registration::Staged>,
 }
@@ -61,22 +65,27 @@ pub(crate) struct Table {
     pub(super) visibility: Arc<RwLock<()>>,
     pub(super) publications: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refused {
     #[error("two stream definitions share the id \"{0}\"")]
     SharedId(Arc<str>),
+
     #[error("the stream \"{0}\" declares a window of zero rows")]
     EmptyWindow(Arc<str>),
+
     #[error("a stream consumer selected the undeclared stream \"{0}\"")]
     UndeclaredSelection(Arc<str>),
 }
 
 /* === Traits === */
+
 pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
 
@@ -104,6 +113,7 @@ pub trait Stream<A: Application>: Clone + Send + Sync + Serialize + DeserializeO
 }
 
 /* === Implementations === */
+
 impl<A, S> Stream<A> for S
 where
     A: Application,
@@ -284,6 +294,7 @@ impl Wired {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
     let wires = wires.into_iter();
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

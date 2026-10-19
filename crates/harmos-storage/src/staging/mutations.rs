@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod append;
 mod create;
 mod end;
@@ -33,12 +34,14 @@ use crate::storage::{FileProducer, MutationId, MutationValue};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Mutation {
     pub(super) id: MutationId,
     pub(super) kind: Kind,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
     Create,
@@ -51,6 +54,7 @@ pub(super) enum Kind {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn resume_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProducer> {
         self.inner.primary.history().check(&token.history)?;
@@ -153,6 +157,7 @@ impl MemorySize for Mutation {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fingerprint(domain: &str, session: &FileSession) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash_part(&mut hash, domain.as_bytes());

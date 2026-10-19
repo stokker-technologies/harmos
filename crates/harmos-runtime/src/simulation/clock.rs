@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,6 +28,7 @@ use std::time::Duration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(crate) struct Clock {
     elapsed_ms: Arc<AtomicU64>,
@@ -37,6 +39,7 @@ pub(crate) struct Clock {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Clock {
     pub(crate) fn new() -> Self {
         Self { elapsed_ms: Arc::new(AtomicU64::new(0)) }

@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn catalog_mismatch_refused() {
     for change in 0..8 {

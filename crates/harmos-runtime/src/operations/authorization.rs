@@ -10,9 +10,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::inventory::contracts::Required;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +30,7 @@ use crate::{Identifier, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Borrow Original Live Provider Metadata; This Is Not Another Catalog.
 pub struct Provider<'a> {
     pub owner: &'a Identifier,
@@ -38,6 +41,7 @@ pub struct Provider<'a> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug)]
 pub enum Authorization {
     Full(Contract),
@@ -45,6 +49,7 @@ pub enum Authorization {
 }
 
 /* === Traits === */
+
 // Synchronous, Bounded And Nonblocking. No Request Probing Or Role Inference.
 // None Denies Access; Both Selections Must Match The Original Contract.
 pub trait Authorizer: Send + Sync + 'static {

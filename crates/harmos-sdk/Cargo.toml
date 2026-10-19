@@ -1,4 +1,4 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos-sdk"
@@ -12,9 +12,9 @@ publish.workspace = true
 # off writes the implementations by hand and links no proc-macro chain at all.
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
 [features]
 default = ["derive"]
@@ -22,47 +22,98 @@ derive = ["harmos-domain/derive"]
 grpc = ["dep:prost"]
 streaming = ["dep:tokio"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
 
+# Git
+
 # Error Handling
 thiserror = { workspace = true, default-features = true }
 
+# Logging
+
+# Utilities
+
 # Serialization
-serde = { workspace = true, default-features = true }
-serde_json = { workspace = true, default-features = true }
 postcard = { workspace = true }
 prost = { workspace = true, default-features = true, optional = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
 
 # Async
 tokio = { workspace = true, optional = true }
 
-# === Build Dependencies ===
+# Networking
 
-# === Dev Dependencies ===
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
 
 [dev-dependencies]
+# Local
 
-# === Target Dependencies ===
+# Git
 
-# === Test Targets ===
+# Error Handling
 
-# === Bench Targets ===
+# Logging
 
-# === Example Targets ===
+# Utilities
 
-# === Workspace Lints ===
+# Serialization
 
-# === Lints ===
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

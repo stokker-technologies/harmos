@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 
@@ -19,13 +22,21 @@ use harmos_storage::*;
 // Local Imports
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 pub fn storage_settings() -> StorageSettings {
     StorageSettings {
         budget: StorageBudget { read_memory_bytes: nz(16 * 1024 * 1024) },
@@ -39,6 +50,7 @@ pub fn storage_settings() -> StorageSettings {
     }
 }
 /* === Private Functions === */
+
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }

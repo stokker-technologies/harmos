@@ -30,6 +30,7 @@ mod support;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -49,9 +50,11 @@ use support::{Bank, Ledger, catalog};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Ping;
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
         response = u64,
@@ -75,6 +78,7 @@ enum Operations {
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
 }
@@ -82,6 +86,7 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Ping {
     type Declaration = PingContract;
     type Resources = ();
@@ -104,6 +109,7 @@ impl Operation for Ping {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
         BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot>,

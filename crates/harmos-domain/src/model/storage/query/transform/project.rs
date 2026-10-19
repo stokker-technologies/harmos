@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,12 +27,14 @@ use crate::model::storage::codec::{Nested, Repeated, Text, product};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Project { fields: Repeated<Projection> => 1 });
 product!(Projection { field: Nested<FieldPath> => 1, name: Text => 2 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Project {
     pub fields: Vec<Projection>,
@@ -47,6 +50,7 @@ pub struct Projection {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Project {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.fields.memory_size().saturating_sub(std::mem::size_of_val(&self.fields))

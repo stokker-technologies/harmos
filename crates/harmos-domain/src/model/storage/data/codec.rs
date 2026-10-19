@@ -25,6 +25,7 @@ use crate::model::storage::{SchemaKey, StorageCursor};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(SchemaKey { id: Id => 1, version: Version => 2, payload_encoding: Encoding => 3 });
 product!(RecordInput {
     schema: Nested<SchemaKey> => 1,
@@ -57,6 +58,7 @@ product!(StoredRow<Vec<u8>> {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Encoding;
 
 /* === Enums === */
@@ -64,6 +66,7 @@ struct Encoding;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl crate::model::storage::codec::Value for Encoding {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Encoding));
     type Native = crate::model::storage::PayloadEncoding;
@@ -88,6 +91,7 @@ impl crate::model::storage::codec::Value for Encoding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn encoding(value: u64) -> Result<crate::model::storage::PayloadEncoding, crate::MessageError> {
     match value {
         0 => Ok(crate::model::storage::PayloadEncoding::ProtobufV1),

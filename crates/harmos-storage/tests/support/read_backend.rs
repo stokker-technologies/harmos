@@ -35,6 +35,7 @@ use super::*;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: ObjectCatalog> Data<C> {
     pub(super) fn fixture_open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {

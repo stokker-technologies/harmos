@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, Measure};
 
 /* === Imports === */
+
 use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
@@ -35,6 +37,7 @@ use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Incremental aggregate state: groups in key order with their accumulators.
 pub struct Groups {
     plan: Aggregate,
@@ -52,6 +55,7 @@ struct Group {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait AggregateExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -62,6 +66,7 @@ pub trait AggregateExecution {
 }
 
 /* === Implementations === */
+
 impl AggregateExecution for Aggregate {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.groups.len() > 64 || self.measures.is_empty() || self.measures.len() > 64 {
@@ -240,6 +245,7 @@ impl Groups {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
     keys.iter()
         .map(MemorySize::memory_size)

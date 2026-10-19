@@ -1,4 +1,4 @@
-# === Package ===
+# === Package === #
 
 [package]
 publish = false
@@ -8,11 +8,11 @@ rust-version.workspace = true
 license.workspace = true
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -50,34 +50,60 @@ serde_json = { workspace = true, default-features = true, features = ["raw_value
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
 [dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
 # Filesystem
 tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
 
 # Async
 tokio = { workspace = true, default-features = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 
-# === Target Dependencies ===
+# Networking
 
-# === Test Targets ===
+# Storage
 
-# === Bench Targets ===
+# UI
 
-# === Example Targets ===
+# Testing
 
-# === Workspace Lints ===
+# === Target Dependencies === #
 
-# === Lints ===
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

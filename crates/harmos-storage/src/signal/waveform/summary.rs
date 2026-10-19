@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The streaming, mergeable reduction: count, sum, extremes, mean and spread
 // kept in constant space, so partial summaries of disjoint runs merge into the
 // summary of their union. Non-finite values are skipped, the same values
@@ -44,6 +46,7 @@ pub struct Summary {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for Summary {
     fn default() -> Self {
         Self { count: 0, sum: 0.0, mean: 0.0, lowest: f64::INFINITY, highest: f64::NEG_INFINITY, deviations: 0.0 }

@@ -10,9 +10,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use prost_reflect::{DynamicMessage, MessageDescriptor, ReflectMessage, Value};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -31,6 +33,7 @@ use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, graph};
 
 /* === Constants === */
+
 const RESERVED_FIELDS: &[&str] = &[
     "ByteSize",
     "Clear",
@@ -63,12 +66,15 @@ const RESERVED_FIELDS: &[&str] = &[
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid protobuf package name")]
     Package,
+
     #[error(transparent)]
     Schema(#[from] harmos_domain::schema::Error),
+
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
 }
@@ -78,6 +84,7 @@ pub enum Error {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn descriptor_schema(schema: &graph::Schema, package: &str, settings: &SchemaSettings) -> Result<MessageDescriptor, Error> {
     descriptor_root(schema, schema.root, package, settings)
 }
@@ -140,6 +147,7 @@ pub fn descriptor_root(schema: &graph::Schema, root: usize, package: &str, setti
 }
 
 /* === Private Functions === */
+
 fn descriptor_memory_bytes(schema: &graph::Schema, package: &str) -> Result<usize, graph::Error> {
     // Account For The Input Protos, Pool Copies, Names And Lookup Tables Before Export.
     let mut bytes = 4usize

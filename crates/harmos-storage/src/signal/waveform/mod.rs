@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod calculus;
 mod edge;
 mod reduce;
@@ -16,6 +17,7 @@ mod series;
 mod summary;
 
 /* === Re-Exports === */
+
 pub use calculus::{derivative, integral};
 pub use edge::{Edge, crossing, edges};
 pub use reduce::{above_floor, decimate, extrema, lttb, lttb_log};
@@ -24,6 +26,7 @@ pub use series::Series;
 pub use summary::Summary;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -30,9 +31,11 @@ use harmos_runtime::{Error, Refusal};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Request = Finish;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "aa.finish",
@@ -79,6 +82,7 @@ struct ParentOwner(Arc<Counters>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<Finish> for Parent {
     fn from(request: Finish) -> Self {
         Self { keyed: request.keyed, fail_attempt: request.fail_attempt }
@@ -172,6 +176,7 @@ impl Drop for State {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn request() -> Request {
     Request { keyed: false, fail_attempt: false }
 }

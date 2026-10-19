@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::ffi::OsStr;
 use std::fs;
@@ -39,6 +40,7 @@ use crate::fixtures;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str) -> Output {
     Command::new(rustc)
         .arg("--edition=2024")

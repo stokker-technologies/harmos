@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::{Application, Runtime, state::Never};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Collection;
 
 struct Cleanup {
@@ -39,6 +41,7 @@ struct Cleanup {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Collection {
     type State = ();
     type Transaction = Never;
@@ -61,6 +64,7 @@ impl Drop for Cleanup {
 }
 
 /* === Public Functions === */
+
 // Validate a guest's catalog registrations, sorted by namespace: at most 256
 // distinct artifact namespaces with nonzero schemas, 16 MiB in total.
 pub fn validate(mut entries: Vec<Registration>) -> Result<Vec<Registration>, Error> {
@@ -109,6 +113,7 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
 }
 
 /* === Private Functions === */
+
 fn invalid(message: &str) -> Error {
     Error::Guest { message: message.to_owned() }
 }

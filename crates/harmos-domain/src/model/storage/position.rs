@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 pub mod codec;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +29,7 @@ use crate::{Error, Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoreHistory {
@@ -53,6 +56,7 @@ pub struct RecoveryPosition {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for StoreHistory {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

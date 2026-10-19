@@ -8,15 +8,18 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod allocation;
 pub mod postcard;
 
 /* === Re-Exports === */
+
 // Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
 pub(crate) use allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
 pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -27,6 +30,7 @@ use std::collections::BTreeMap;
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! inline_memory {
     ($($ty:ty),* $(,)?) => {$ (
         impl MemorySize for $ty {
@@ -73,6 +77,7 @@ pub(crate) use postcard_product;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("invalid message: {0}")]
 pub struct MessageError(Cow<'static, str>);
@@ -80,6 +85,7 @@ pub struct MessageError(Cow<'static, str>);
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Message: Sized + Send + Sync {
     fn encode_to_vec(&self) -> Vec<u8>;
     fn encode_into(&self, bytes: &mut Vec<u8>) {
@@ -107,6 +113,7 @@ pub trait Storable: Message + MemorySize {
 }
 
 /* === Implementations === */
+
 impl<T> Portable for T where T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {}
 
 impl<T: PostcardValue> Message for T {
@@ -213,6 +220,7 @@ impl MessageError {
 }
 
 /* === Public Functions === */
+
 pub fn btree_map_memory<K, V>(entries: usize) -> usize {
     let alignment = std::mem::align_of::<K>().max(std::mem::align_of::<V>()).max(std::mem::align_of::<usize>());
     let node = std::mem::size_of::<K>()

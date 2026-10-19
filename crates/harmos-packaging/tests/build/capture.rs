@@ -29,6 +29,7 @@ use harmos_packaging::config::{BuildBackend, BuildProfile, BuildSettings};
 use harmos_packaging::{Build, Error};
 
 /* === Constants === */
+
 const PRODUCER: &str = "path+file:///plugin#schematic-sidecar@0.1.0";
 
 /* === Macros === */
@@ -36,6 +37,7 @@ const PRODUCER: &str = "path+file:///plugin#schematic-sidecar@0.1.0";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Captured {
     messages: String,
     metadata: String,
@@ -48,6 +50,7 @@ struct Captured {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Captured {
     fn new(messages: &[Value], selected: BTreeMap<String, String>) -> Self {
         let artifacts = messages
@@ -107,6 +110,7 @@ impl Captured {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }

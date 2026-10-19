@@ -36,6 +36,7 @@ use harmos_runtime::{Runtime, services::Fault, services::Resident, services::Ser
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Trace {
     factories: AtomicUsize,
     attempts: AtomicUsize,
@@ -51,6 +52,7 @@ struct Trace {
 struct Worker(Arc<Trace>);
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Mode {
     Complete,
@@ -60,6 +62,7 @@ enum Mode {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Resident<App> for Worker {
     type Error = std::io::Error;
 
@@ -98,6 +101,7 @@ impl Drop for Worker {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn trace(mode: Mode, block_cleanup: bool, fail_cleanup: bool) -> Arc<Trace> {
     Arc::new(Trace {
         factories: AtomicUsize::new(0),

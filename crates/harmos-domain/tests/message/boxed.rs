@@ -10,6 +10,7 @@
 // Boxed Message Fields Against Their Plain Twins
 
 /* === Modules === */
+
 // Plain Nested Messages Own The Reference Wire Shape
 mod plain {
     use super::Leaf;
@@ -55,6 +56,7 @@ mod heap {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt::Debug;
 // Third Party Imports
@@ -73,6 +75,7 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leaf {
@@ -86,6 +89,7 @@ pub struct Leaf {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<heap::Holder> for plain::Holder {
     fn from(value: heap::Holder) -> Self {
         Self { row: *value.row, count: value.count }
@@ -103,6 +107,7 @@ impl From<heap::Choice> for plain::Choice {
 }
 
 /* === Public Functions === */
+
 #[test]
 fn boxed_descriptors_match() {
     descriptors::<plain::Holder, heap::Holder>();
@@ -211,6 +216,7 @@ fn boxed_sizes_saturate() {
 }
 
 /* === Private Functions === */
+
 fn holders() -> (plain::Holder, heap::Holder) {
     let row = Leaf { value: 7, payload: vec![1, 2, 255], label: "first".into() };
     let boxed = heap::Holder { row: Box::new(row.clone()), count: 3 };

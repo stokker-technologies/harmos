@@ -28,24 +28,33 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct BuildArguments {
     #[arg(long, default_value = "Cargo.toml")]
     manifest_path: std::path::PathBuf,
+
     #[arg(short = 'p', long = "package")]
     packages: Vec<String>,
+
     #[arg(long)]
     target: Option<String>,
+
     #[arg(long)]
     target_dir: Option<std::path::PathBuf>,
+
     #[arg(long, default_value = "dev")]
     profile: harmos_packaging::config::BuildProfile,
+
     #[arg(long)]
     timings: bool,
+
     #[arg(long, value_delimiter = ',')]
     features: Vec<String>,
+
     #[arg(long)]
     no_default_features: bool,
+
     #[arg(long)]
     pub json: bool,
 }
@@ -54,8 +63,10 @@ pub struct BuildArguments {
 pub struct CollectionArguments {
     #[arg(long, requires_all = ["metadata_json", "archive_json"])]
     from_cargo_json: Option<std::path::PathBuf>,
+
     #[arg(long, requires = "from_cargo_json")]
     metadata_json: Option<std::path::PathBuf>,
+
     #[arg(long, requires = "from_cargo_json")]
     archive_json: Option<std::path::PathBuf>,
 }
@@ -65,6 +76,7 @@ pub struct CollectionArguments {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl BuildArguments {
     pub fn settings(self, backend: harmos_packaging::config::BuildBackend) -> harmos_packaging::config::BuildSettings {
         harmos_packaging::config::BuildSettings {

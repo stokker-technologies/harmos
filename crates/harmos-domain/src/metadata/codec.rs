@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -28,6 +29,7 @@ use crate::value::codec::{
 };
 
 /* === Constants === */
+
 const IDENTIFIER_FIELDS: &[Field] =
     &[Field { name: Cow::Borrowed("value"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required }];
 
@@ -52,6 +54,7 @@ const METADATA_FIELDS: &[Field] = &[
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Described for Identifier {
     const NAME: &'static str = "harmos::Identifier";
     const FIELDS: &'static [Field] = IDENTIFIER_FIELDS;
@@ -130,6 +133,7 @@ impl PostcardValue for Metadata {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
     Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }

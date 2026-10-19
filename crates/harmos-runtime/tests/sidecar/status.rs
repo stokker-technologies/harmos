@@ -39,6 +39,7 @@ use super::*;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Await The Resident Status Change The Story Names; The Lane Deadline Ends A Hang.
 pub(super) async fn service_status(
     mut services: tokio::sync::watch::Receiver<

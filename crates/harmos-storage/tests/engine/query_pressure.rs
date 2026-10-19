@@ -37,6 +37,7 @@ use harmos_storage::query::{QueryArrow, QueryReader, RecordSelection, RowSlice, 
 use harmos_storage::*;
 
 /* === Constants === */
+
 const CONTENTION_BUDGET: usize = 4 * 1024 * 1024;
 const CONTENTION_PERIODS: usize = 13;
 const FITTING_PERIODS: usize = 6;

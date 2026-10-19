@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/support/mod.rs"]
 mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -25,6 +27,7 @@ use harmos_runtime::state::Transaction;
 use support::{Change, HOUSE, Ledger, deposit, runtime_from};
 
 /* === Constants === */
+
 const WORDS: usize = 131_072;
 
 const COMMITS: usize = 200;
@@ -32,6 +35,7 @@ const COMMITS: usize = 200;
 const READERS: usize = 4;
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
@@ -49,6 +53,7 @@ criterion::criterion_main!(benches);
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn in_place_writer_against_deleted_clone_and_publish_path() {
     let state = WORDS * size_of::<u64>();
     println!("\nRUNTIME-AC006 — {state} byte state, {COMMITS} commits\n");

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@ use syn::{Error, Expr, Fields, Ident, Item, LitInt, LitStr, Meta, Path, Token, T
 use crate::path::{self, HarmosPath};
 
 /* === Constants === */
+
 const DEPTH: usize = 4;
 
 /* === Macros === */
@@ -32,6 +34,7 @@ const DEPTH: usize = 4;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Declaration {
     id: Option<LitStr>,
     presentation: crate::presentation::Presentation,
@@ -56,6 +59,7 @@ struct Tuple {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
         Ok(stamped) => stamped,
@@ -68,6 +72,7 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
     let mut declared = declaration(attribute)?;
     let mut parsed: Item = syn::parse2(item.clone())?;

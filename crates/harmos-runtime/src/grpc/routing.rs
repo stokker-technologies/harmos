@@ -32,9 +32,11 @@ use super::server;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(super) struct Router {
     operations: crate::operations::OperationManager,
@@ -47,6 +49,7 @@ pub(super) struct Router {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Router {
     pub(super) fn new(operations: crate::operations::OperationManager, settings: server::Settings) -> Result<Self, tonic::Status> {
         settings.validate()?;
@@ -87,6 +90,7 @@ where
 }
 
 /* === Public Functions === */
+
 // The gRPC handler of one declaration, selected by the directions it streams.
 pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
     use crate::operations::Direction;

@@ -34,6 +34,7 @@ use crate::{Aggregate, Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactNumber {
@@ -43,6 +44,7 @@ pub struct ExactNumber {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ScalarValue {
     Missing,
@@ -80,6 +82,7 @@ pub enum Agg {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ExactNumber {
     pub fn new(negative: bool, numerator: u128, denominator: NonZeroU128) -> Self {
         let factor = gcd(numerator, denominator.get());
@@ -258,6 +261,7 @@ variants!(ScalarValue {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage reduce", reason }
 }

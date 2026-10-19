@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -21,9 +24,13 @@ use harmos_runtime::storage::*;
 use super::{Model, State, backend};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 pub struct Fixture {
     pub settings: StorageSettings,
     _directory: tempfile::TempDir,
@@ -32,8 +39,11 @@ pub struct Fixture {
     pub data: Arc<backend::Data>,
 }
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Fixture {
     pub async fn new(concurrency: usize) -> Self {
         let directory = tempfile::tempdir().unwrap();
@@ -62,5 +72,7 @@ impl Fixture {
     }
 }
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 /* === Tests === */

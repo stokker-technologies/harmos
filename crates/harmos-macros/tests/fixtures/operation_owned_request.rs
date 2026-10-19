@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use std::time::Duration;
 use harmos::operations::{Context, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
@@ -34,6 +36,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Read;
 
 /* === Enums === */
@@ -41,6 +44,7 @@ struct Read;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos::operation]
 impl Read {
     async fn initialize(_: Arc<()>, _: Context<'_>) -> Self { Self }
@@ -52,6 +56,7 @@ impl Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

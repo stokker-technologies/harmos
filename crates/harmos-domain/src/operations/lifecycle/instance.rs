@@ -23,6 +23,7 @@ use crate::operations::instance::{self, Id, Outcome, Phase};
 use crate::operations::{OperationPolicy, Visibility};
 
 /* === Constants === */
+
 // A watch lasts until its instance settles or the caller cancels it.
 const WATCH_POLICY: OperationPolicy = OperationPolicy {
     timeout: crate::operations::UNBOUNDED,
@@ -31,6 +32,7 @@ const WATCH_POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 crate::declare!(Status {
     id: "host.operations.status",
     version: 1,
@@ -71,6 +73,7 @@ crate::declare!(Watch {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Status {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }

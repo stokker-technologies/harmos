@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -45,9 +46,11 @@ use harmos_runtime::{Error, Identifier, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
 
 /* === Structs === */
+
 struct Host {
     operations: OperationManager,
     callers: BTreeMap<String, PluginCaller>,
@@ -58,6 +61,7 @@ struct Host {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PluginLifecycle for Host {
     type Guest = ();
     type Sidecar = ();
@@ -97,6 +101,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn required<O>(grants: Vec<Grant>) -> Required
 where
     O: OperationDeclaration,

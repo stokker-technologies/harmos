@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -33,6 +34,7 @@ use wit_component::ComponentEncoder;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
     ComponentEncoder::default()
         .module(module)

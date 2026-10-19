@@ -14,13 +14,16 @@
 // activation; whoever runs the activation owns its lifecycle.
 
 /* === Modules === */
+
 mod attachment;
 
 /* === Re-Exports === */
+
 pub use attachment::ObserverAttachment;
 pub use harmos_domain::inventory::observers::{Activation, DemandKey};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::future::Future;
@@ -41,6 +44,7 @@ use harmos_domain::inventory::publications;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
 type Open<R, H> = fn(Arc<R>, H, Option<ContextFactory<H>>, Identity) -> Result<Activity, ObserverError>;
 type Step<'a> = Pin<Box<dyn Future<Output = Result<(), ObserverError>> + Send + 'a>>;
@@ -92,27 +96,36 @@ struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ObserverError {
     #[error("the observer host or context factory panicked")]
     BindingPanicked,
+
     #[error("the observer activation identity could not be drawn: {0}")]
     Identity(#[source] std::io::Error),
+
     #[error("the observer callback panicked")]
     CallbackPanicked,
+
     #[error("the observer tick ordinal is exhausted")]
     TickExhausted,
+
     #[error("the observer refused to stop: {0}")]
     StopFailed(#[source] Arc<dyn std::error::Error + Send + Sync>),
+
     #[error("the observer panicked while stopping")]
     StopPanicked,
+
     #[error("the observer refused to clean up: {0}")]
     CleanupFailed(#[source] Arc<dyn std::error::Error + Send + Sync>),
+
     #[error("the observer panicked while cleaning up")]
     CleanupPanicked,
 }
 
 /* === Traits === */
+
 trait Body: Send {
     fn observe<'a>(&'a mut self, ready: &'a (dyn Fn() + Send + Sync)) -> Step<'a>;
     fn stop(&mut self) -> Step<'_>;
@@ -151,6 +164,7 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 }
 
 /* === Implementations === */
+
 impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Declarations<R, H> {
     type Entry = fn() -> Instance<R, H>;
 }
@@ -466,6 +480,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn validate_outputs<R, H>(instances: &[Instance<R, H>], grants: &[publications::Entry]) -> Result<(), String> {
     for output in instances.iter().flat_map(|instance| instance.entry.streams) {
         if !grants
@@ -479,6 +494,7 @@ pub(super) fn validate_outputs<R, H>(instances: &[Instance<R, H>], grants: &[pub
 }
 
 /* === Private Functions === */
+
 async fn guarded<E: std::error::Error + Send + Sync + 'static>(
     work: impl Future<Output = Result<(), E>>, refused: fn(Arc<dyn std::error::Error + Send + Sync>) -> ObserverError,
     panicked: ObserverError,

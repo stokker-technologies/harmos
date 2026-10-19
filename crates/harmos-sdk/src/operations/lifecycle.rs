@@ -7,10 +7,36 @@
  * ***
  */
 
+/* === Modules === */
+
 /* === Re-Exports === */
+
 pub use harmos_domain::operations::lifecycle::*;
 
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
 /* === Public Functions === */
+
 // Bind A Plugin's Two Lifecycle Handlers Under Its Own Lifecycle Policy.
 pub fn bind<P, I, S, C>(
     table: &mut crate::operations::WireTable<C>, resources: std::sync::Arc<I::Resources>,
@@ -26,3 +52,7 @@ where
     table.bind_owned_lifecycle::<I>(std::sync::Arc::clone(&resources), initialize)?;
     table.bind_owned_lifecycle::<S>(resources, shutdown)
 }
+
+/* === Private Functions === */
+
+/* === Tests === */

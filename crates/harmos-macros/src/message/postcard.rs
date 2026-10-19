@@ -38,6 +38,7 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
     if let Item::Struct(item) = item {
         let name = &item.ident;

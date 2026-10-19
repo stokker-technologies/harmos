@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::io::Write;
@@ -34,6 +35,7 @@ use schematic_storage::{Jsonl, Sidecar};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Debug, Deserialize, Serialize)]
 struct Artifact {
     generation: u64,
@@ -54,6 +56,7 @@ pub struct Document {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Document {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self { origin: Schematic::default(), generation: 1, position: Position::ORIGIN, journal: journal_of(path.as_ref()) }
@@ -106,6 +109,7 @@ impl Document {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn journal_of(path: &Path) -> PathBuf {
     path.with_extension("jsonl")
 }

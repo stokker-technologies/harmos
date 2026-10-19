@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt;
@@ -27,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::operations;
 
 /* === Constants === */
+
 const LINK_LIMIT: usize = 4 * 1024;
 
 const CHAIN_LIMIT: usize = 16;
@@ -40,6 +42,7 @@ const VERSION: u8 = 1;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Boxed so every error enum that carries a failure stays one pointer wide.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -81,6 +84,7 @@ pub struct Diagnostics {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Origin {
@@ -92,8 +96,10 @@ pub enum Origin {
 pub enum CodecError {
     #[error("failure encoding version is unsupported")]
     Version,
+
     #[error("failure encoding has trailing bytes")]
     Trailing,
+
     #[error("failure encoding is malformed")]
     Encoding(#[source] postcard::Error),
 }
@@ -101,6 +107,7 @@ pub enum CodecError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Failure {
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
         Self(Box::new(Record { code, cause: cause.into(), context: Context::default(), diagnostics: None }))
@@ -246,6 +253,7 @@ impl Diagnostics {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<Item = &'a (dyn std::error::Error + 'static)> {
     std::iter::successors(Some(error), |error| error.source())
 }

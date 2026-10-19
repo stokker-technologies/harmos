@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/transport/capacity.rs"]
 mod capacity;
 
@@ -17,6 +18,7 @@ mod protocol;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
@@ -33,6 +35,7 @@ use harmos_sidecar::{Publication, StreamSpec};
 use protocol::{Done, Echo, Sample, Start, TransportPlugin};
 
 /* === Constants === */
+
 const LATENCY_SAMPLES: u64 = 200;
 const BATCH_ROWS: u32 = 100;
 const CASES: [Case; 4] = [
@@ -43,14 +46,17 @@ const CASES: [Case; 4] = [
 ];
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
 
 criterion::criterion_main!(benches);
 
 /* === Type Aliases === */
+
 type Sender = transport::Sender;
 
 /* === Structs === */
+
 struct Receiver(transport::Receiver);
 #[derive(Default)]
 struct Reception {
@@ -59,9 +65,11 @@ struct Reception {
 }
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Receiver {
     async fn receive(&mut self) -> std::io::Result<Option<Frame>> {
         let Some(received) = self.0.receive().await? else {
@@ -91,6 +99,7 @@ impl Reception {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn in_memory_transport_profile() {
     fn io(stream: tokio::io::DuplexStream) -> transport::Io {
         let (read, write) = split(stream);

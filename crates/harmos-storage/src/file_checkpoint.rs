@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileCheckpoint {
@@ -43,6 +45,7 @@ pub struct FileCheckpoint {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl FileCheckpoint {
     pub(super) fn new(metadata: FileMetadata, session: FileSession, length: u64, hash: &Sha256) -> Self {
         Self { metadata, session, length, hash_format: 1, hash_state: hash.serialize().to_vec() }
@@ -87,6 +90,7 @@ impl MemorySize for FileCheckpoint {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid() -> Error {
     Error::InvalidInput { field: "file checkpoint", reason: "invalid metadata, generation or hash state" }
 }

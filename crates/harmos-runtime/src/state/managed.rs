@@ -29,6 +29,7 @@ use crate::Application;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct ManagedState<A: Application> {
     tracked: Arc<TrackedState<A>>,
 }
@@ -38,6 +39,7 @@ pub struct ManagedState<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> ManagedState<A> {
     pub(super) fn new(tracked: Arc<TrackedState<A>>) -> Self {
         Self { tracked }

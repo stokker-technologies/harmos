@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::Cursor;
 use std::sync::Arc;
@@ -42,6 +43,7 @@ use crate::Result;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn encode(schema: &Schema, batch: Option<&RecordBatch>) -> Result<Vec<u8>> {
     let options = IpcWriteOptions::default();
     let mut encoded = Vec::new();
@@ -157,6 +159,7 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
 }
 
 /* === Private Functions === */
+
 fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize, bound: &mut usize) -> Result<()> {
     *fields = fields.checked_add(1).ok_or_else(|| invalid("IPC field count overflow"))?;
     if depth > MAX_DEPTH || *fields > MAX_FIELDS || field.dictionary().is_some() {

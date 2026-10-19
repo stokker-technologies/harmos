@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,13 +29,16 @@ use clap::Parser;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Parser)]
 #[command(version, about = "Run The Schematic Editor Walkthrough")]
 struct Args {
     #[arg(long, conflicts_with = "sidecar", num_args = 0..=1)]
     guest: Option<Option<PathBuf>>,
+
     #[arg(long)]
     sidecar: Option<PathBuf>,
+
     #[arg(long)]
     advanced: bool,
 }
@@ -48,6 +52,7 @@ struct Args {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = Args::parse();

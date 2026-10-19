@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -37,6 +38,7 @@ use crate::{Error, Message, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Erased Lifecycle Request Forwarded To A Guest As Its Original Bytes.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub(super) struct Encoded(pub(super) Vec<u8>);
@@ -53,6 +55,7 @@ pub struct PluginSdkRegistration {
 /* === Traits === */
 
 /* === Implementations === */
+
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl crate::Message for Encoded {
     fn encode_to_vec(&self) -> Vec<u8> {

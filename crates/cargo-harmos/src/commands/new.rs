@@ -10,6 +10,7 @@
 // Copy A Complete Starter With An Explicit Harmos Dependency Source.
 
 /* === Modules === */
+
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/templates.rs"));
 }
@@ -33,6 +34,7 @@ use harmos_packaging::Error;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     #[command(subcommand)]
@@ -42,17 +44,21 @@ pub struct Arguments {
 #[derive(clap::Args)]
 struct Project {
     destination: PathBuf,
+
     #[arg(long, conflicts_with = "harmos_path", required_unless_present = "harmos_path")]
     harmos_rev: Option<String>,
+
     #[arg(long, conflicts_with = "harmos_rev", required_unless_present = "harmos_rev")]
     harmos_path: Option<PathBuf>,
 }
 
 /* === Enums === */
+
 #[derive(clap::Subcommand)]
 enum Command {
     #[command(about = "Create A Native Sidecar Plugin.")]
     Sidecar(Project),
+
     #[command(about = "Create A Sandboxed Guest Plugin.")]
     Guest(Project),
 }
@@ -62,6 +68,7 @@ enum Command {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments) -> Result<(), Error> {
     let (project, kind, files) = match arguments.command {
         Command::Sidecar(project) => (project, "sidecar", embedded::SIDECAR),
@@ -154,6 +161,7 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
 }
 
 /* === Private Functions === */
+
 // Rebind Only The Rendered Body Digest After Final Substitution.
 fn finalize_marker(text: &str) -> String {
     let text = text.replace("\r\n", "\n");

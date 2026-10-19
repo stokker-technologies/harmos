@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -28,6 +29,7 @@ use crate::config::SchemaSettings;
 use crate::inventory::{digits, number, quoted, quoted_len, write};
 
 /* === Constants === */
+
 const HEADER: &[u8] = b"{\"kind\":\"schema\",\"name\":";
 const FIELDS: &[u8] = b",\"fields\":[";
 const NAME: &[u8] = b"{\"name\":";
@@ -39,15 +41,19 @@ const CARDINALITY: &[u8] = b"},\"cardinality\":";
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Field<R = Definition> = graph::Field<R>;
 pub type Kind<R = Definition> = graph::Kind<R>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct Definition {
     pub name: &'static str,
+
     /// The variant an absent oneof selects, or `None` when one is required.
     pub default_variant: Option<usize>,
+
     pub identity: fn() -> TypeId,
     pub fields: fn() -> &'static [Field<Definition>],
     pub marker: fn() -> &'static [u8],
@@ -74,6 +80,7 @@ struct Plan {
 }
 
 /* === Enums === */
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
@@ -83,6 +90,7 @@ enum Fragment {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PartialEq for Definition {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && (self.identity)() == (other.identity)()
@@ -263,6 +271,7 @@ impl Plan {
 }
 
 /* === Public Functions === */
+
 pub fn markers(root: Definition, settings: &SchemaSettings) -> Result<Vec<&'static [u8]>, Error> {
     markers_many([root], settings)
 }
@@ -356,6 +365,7 @@ pub const fn encode_buffer<const N: usize>(name: &str, fields: &[Field<Definitio
 }
 
 /* === Private Functions === */
+
 fn fields<T: super::Described + ?Sized>() -> &'static [Field<Definition>] {
     T::FIELDS
 }

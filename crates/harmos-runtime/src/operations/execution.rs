@@ -38,10 +38,12 @@ use crate::{Error, Refusal, Result, state::Position};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(super) type Attempt<'a, O> = Pin<Box<dyn Future<Output = Result<O>> + Send + 'a>>;
 type Completed<O> = Box<dyn Fn(&O) + Send>;
 
 /* === Structs === */
+
 pub(crate) struct Prepared<O> {
     pub(super) body: Box<dyn Body<O>>,
     pub(super) policy: OperationPolicy,
@@ -66,6 +68,7 @@ struct Budget {
 }
 
 /* === Enums === */
+
 enum Stage<O> {
     Completed(Result<O>),
     Cancelled,
@@ -73,6 +76,7 @@ enum Stage<O> {
 }
 
 /* === Traits === */
+
 pub(super) trait Body<O>: Send {
     fn transferred(&self) -> bool {
         false
@@ -99,6 +103,7 @@ pub(super) trait Body<O>: Send {
 }
 
 /* === Implementations === */
+
 impl Budget {
     fn remaining(&self) -> Duration {
         self.timeout.saturating_sub(executor::now().saturating_duration_since(self.submitted))
@@ -116,6 +121,7 @@ impl<O> Prepared<O> {
 }
 
 /* === Public Functions === */
+
 pub(super) async fn execute<O: Send + 'static>(
     instances: Arc<Instances>, mut prepared: Prepared<O>, execution: Execution, cause: Option<Position>,
 ) -> Result<O> {
@@ -191,6 +197,7 @@ pub(super) async fn execute<O: Send + 'static>(
 }
 
 /* === Private Functions === */
+
 async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
     if *cancelled.borrow() {
         return Err(Refusal::Cancelled.into());

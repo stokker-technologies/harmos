@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -23,6 +24,7 @@ use std::time::Duration;
 use harmos::{evidence::EvidenceError, evidence::Vault};
 
 /* === Constants === */
+
 const CEILING: usize = 1024 * 1024;
 
 const CADENCE: Duration = Duration::from_millis(250);
@@ -44,6 +46,7 @@ const QUARANTINE: &str = "quarantine";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct EvidenceDirectory {
     root: PathBuf,
@@ -56,6 +59,7 @@ pub struct EvidenceDirectory {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl EvidenceDirectory {
     pub fn at(root: impl AsRef<Path>) -> io::Result<Self> {
         let root = root.as_ref().to_path_buf();
@@ -228,6 +232,7 @@ impl Vault for EvidenceDirectory {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn window(path: &Path, offset: u64, limit: usize) -> Result<(Vec<u8>, u64), EvidenceError> {
     let mut file = File::open(path).map_err(EvidenceError::unreadable)?;
     let length = file.metadata().map(|held| held.len()).map_err(EvidenceError::unreadable)?;

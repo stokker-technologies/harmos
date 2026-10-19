@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod cleanup;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) mod dependencies;
@@ -19,11 +20,13 @@ mod listeners;
 mod task;
 
 /* === Re-Exports === */
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) use listeners::{Delivery as ListenerDelivery, Listener};
 pub(crate) use task::{Task, settle_all};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -41,12 +44,14 @@ use tokio::task::{JoinError, JoinHandle};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) struct Backoff;
 
 struct Attempt<T>(JoinHandle<T>);
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Failure {
     Panicked,
@@ -56,6 +61,7 @@ pub(crate) enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
+
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Backoff {
     pub(crate) fn duration(attempt: usize, base: Duration, cap: Duration) -> Duration {
@@ -83,6 +89,7 @@ impl<T> Drop for Attempt<T> {
 }
 
 /* === Public Functions === */
+
 pub(crate) async fn attempt<F>(future: F, mut stopping: watch::Receiver<bool>, stop_timeout: Duration) -> Result<F::Output, Failure>
 where
     F: Future + Send,

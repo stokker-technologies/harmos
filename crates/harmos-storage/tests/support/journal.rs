@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -23,9 +26,13 @@ use sha2::{Digest, Sha256};
 use super::*;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 pub(super) struct Journal {
     root: PathBuf,
     lock: Mutex<u64>,
@@ -35,13 +42,16 @@ pub(super) struct Journal {
 struct Commit {
     #[serde(default)]
     pruned: Vec<u64>,
+
     #[serde(default)]
     release: Option<Release>,
+
     through: StorageCursor,
     entries: Vec<Entry>,
 }
 
 /* === Enums === */
+
 #[derive(Serialize, Deserialize)]
 enum Entry {
     Schema { position: StorageCursor, key: SchemaKey, root: usize, definitions: Vec<Vec<harmos_domain::schema::graph::Field>> },
@@ -52,7 +62,9 @@ enum Entry {
 }
 
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Journal {
     #[allow(dead_code, reason = "Shared fixture: only journal-backed story binaries restore persisted data")]
     pub(super) fn new(root: &Path) -> Result<Self> {
@@ -247,7 +259,9 @@ impl Journal {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn hex(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

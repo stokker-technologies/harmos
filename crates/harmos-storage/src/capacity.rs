@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -34,6 +35,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// Bytes held by one logical owner, such as a query or subscription, across all
 /// of its reservations, including results still retained by its consumer.
 #[derive(Clone, Default)]
@@ -69,10 +71,12 @@ struct Waiting {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Pool {
     /// The shared read budget: query, file and subscription work plus retained results.
     Read,
+
     /// Write-side scratch inside the pending write budget.
     Write,
 }
@@ -82,13 +86,17 @@ pub(super) enum Pool {
 pub(super) enum Refusal {
     /// The owner's held bytes plus the request can never fit the configured pool.
     Exceeded(Pool),
+
     /// Other owners currently hold the capacity; waiting may succeed.
     Busy,
+
     /// Waiting would complete a certain cycle: no waiting holder, the caller
     /// included, could grow even if every other owner released everything.
     Cycle,
+
     /// The caller's deadline elapsed while waiting.
     Elapsed,
+
     /// Storage cannot admit work at all (closing, stopped or failed).
     Failed(Error),
 }
@@ -103,6 +111,7 @@ pub(super) enum Attempt<T> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Held {
     pub(super) fn bytes(&self) -> usize {
         self.0.load(Ordering::SeqCst)
@@ -425,6 +434,7 @@ impl Inner {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(super) fn admitting(state: &State, pool: Pool) -> Result<()> {
     if state.status.closing {
         return Err(Error::Closing { domain: "storage" });

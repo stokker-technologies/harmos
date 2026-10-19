@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -26,11 +27,13 @@ use crate::MemorySize;
 /* === Constants === */
 
 /* === Macros === */
+
 product!(ArrowIpc { ipc: Bytes => 1 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArrowIpc {
     ipc: Vec<u8>,
@@ -41,6 +44,7 @@ pub struct ArrowIpc {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ArrowIpc {
     pub fn new(ipc: Vec<u8>) -> Self {
         Self { ipc }

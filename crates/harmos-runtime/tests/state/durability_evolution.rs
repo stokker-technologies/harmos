@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 // Third Party Imports
@@ -26,9 +27,11 @@ use support::journal::{Journal, Store, frame};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Held = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
 
 /* === Structs === */
+
 struct Kept {
     entries: Held,
     resume: Position,
@@ -39,6 +42,7 @@ struct Kept {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Kept {
     fn new() -> (Self, Held) {
         let entries: Held = Arc::new(Mutex::new(Vec::new()));

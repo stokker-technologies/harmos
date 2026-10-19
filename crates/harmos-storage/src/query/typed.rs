@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -44,6 +45,7 @@ use harmos_domain::model::storage::object_key;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 /// A typed read of one object type's saved revisions.
 pub struct ObjectRead<'a, T: StoredObject> {
     pub at: StorageCursor,
@@ -91,6 +93,7 @@ struct Pages<E: Entry> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: ObjectCatalog> StorageManager<C> {
     /// Read saved revisions of `T`, latest or complete, decoded from their
     /// stored bytes without Arrow payload expansion.
@@ -289,6 +292,7 @@ impl<E: Entry> Pages<E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn decoding<T: Message>(payload: &[u8]) -> Result<usize> {
     T::decoding_memory(payload).map_err(|error| Error::backend("preflight payload", BackendFailure::Corrupt, error))
 }

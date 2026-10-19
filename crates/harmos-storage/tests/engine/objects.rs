@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use crate::backend::storage_settings;
 // Standard Library Imports
 use std::num::NonZeroUsize;
@@ -31,6 +32,7 @@ use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageMan
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::message]
 #[derive(Clone, PartialEq)]
 struct Document {
@@ -63,6 +65,7 @@ struct Counter {
 }
 
 /* === Enums === */
+
 #[harmos_domain::catalog]
 enum NumericObjects {
     Counter(Counter),
@@ -94,6 +97,7 @@ enum Invalid {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Identified for Document {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new("app.document"), 2)
@@ -172,6 +176,7 @@ impl StoredObject for Counter {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn limit() -> NonZeroUsize {
     NonZeroUsize::new(4096).unwrap()
 }

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Member {
     definition: Type,
 }
@@ -42,6 +44,7 @@ struct Member {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item.clone()) {
         Ok(closed) => closed,
@@ -54,6 +57,7 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let harmos = harmos_path(attribute)?;
 

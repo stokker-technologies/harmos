@@ -87,6 +87,7 @@ mod other {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -97,6 +98,7 @@ use harmos_runtime::{DefinitionId, Runtime, state::Kind, state::Position, state:
 use support::journal::{Journal, Store, Wire};
 
 /* === Constants === */
+
 const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "Paid", "Took", "Put", "Remark"];
 
 /* === Macros === */

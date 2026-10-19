@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 // Third Party Imports
@@ -28,16 +29,20 @@ use crate::{MessageError, Portable};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Decode = fn(&[u8], &mut dyn Any) -> Result<(), MessageError>;
 type Encode = fn(&dyn Any) -> Result<Vec<u8>, MessageError>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub(super) struct Codec {
     pub(super) decode: Decode,
     pub(super) encode: Encode,
+
     #[cfg(feature = "streaming")]
     pub(super) input: Option<ItemCodec>,
+
     #[cfg(feature = "streaming")]
     pub(super) output: Option<ItemCodec>,
 }
@@ -57,6 +62,7 @@ pub(super) struct ItemCodec {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Codec {
     // The One Protobuf Projection Of A Declaration: Request, Response And The
     // Item Codec Of Each Direction It Streams.
@@ -75,6 +81,7 @@ impl Codec {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[cfg(feature = "streaming")]
 fn direction<D: Direction>() -> Option<ItemCodec> {
     D::STREAMED.then(item::<D::Item>)

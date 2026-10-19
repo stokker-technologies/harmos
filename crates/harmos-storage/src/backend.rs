@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -36,9 +37,11 @@ use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub struct StorageBackends {
     pub primary: Arc<dyn StorageBackend>,
     pub state: Arc<dyn super::state::StateBackend>,
@@ -69,6 +72,7 @@ pub struct ReadLimits {
 /* === Enums === */
 
 /* === Traits === */
+
 /// The physical store behind a `StorageManager`.
 ///
 /// Scans return entries strictly ascending by storage position within
@@ -116,6 +120,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn release_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()>;
+
     /// Reclaim released revisions through `through`; `true` when nothing remains.
     fn prune_objects<'a>(&'a self, through: &'a StorageCursor, max_entries: NonZeroUsize) -> StorageFuture<'a, bool>;
 
@@ -166,6 +171,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn save_mutations<'a>(&'a self, _receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         unsupported("storage mutations")
     }
+
     /// The unexpired receipts with the latest expiry that fit `limits`; older
     /// receipts beyond the bound are omitted, as the in-memory ledger evicts them.
     fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
@@ -186,6 +192,7 @@ pub trait StorageBackend: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl ReadLimits {
     pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
         if rows > self.rows.get() || bytes > self.bytes.get() {
@@ -198,6 +205,7 @@ impl ReadLimits {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
     Box::pin(async move { Err(Error::InvalidInput { field, reason: "backend does not support this capability" }) })
 }

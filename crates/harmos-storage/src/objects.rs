@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -34,6 +35,7 @@ use harmos_domain::model::storage::object_key;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct ObjectGroup<'a, C> {
     manager: &'a StorageManager<C>,
     first: u64,
@@ -46,9 +48,11 @@ pub struct ObjectGroup<'a, C> {
 }
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: ObjectCatalog> ObjectGroup<'_, C> {
     pub fn remaining_bytes(&self) -> usize {
         self.allowance - self.used
@@ -287,6 +291,7 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(super) fn invalid(reason: &'static str) -> crate::Error {
     harmos_domain::model::storage::invalid(reason).into()
 }

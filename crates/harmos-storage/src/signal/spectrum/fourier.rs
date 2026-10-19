@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +28,7 @@ use super::{Band, Spectrum, Taper};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Welch {
     pub resolution: f64,
@@ -45,6 +47,7 @@ pub struct Estimate {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for Welch {
     fn default() -> Self {
         Self { resolution: 100.0, overlap: 0.5, taper: Taper::Hann }
@@ -112,6 +115,7 @@ impl Welch {
 }
 
 /* === Public Functions === */
+
 #[must_use]
 #[tracing::instrument(level = "trace", skip_all, fields(samples = samples.len(), rate))]
 pub fn transform(samples: &[f64], rate: f64, taper: Taper) -> Spectrum {

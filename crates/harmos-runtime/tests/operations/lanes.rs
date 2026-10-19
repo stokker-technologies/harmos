@@ -16,6 +16,7 @@ mod hygiene {
     pub enum Lanes {
         #[default]
         Open,
+
         #[lane(concurrent(2))]
         Probe,
     }
@@ -47,6 +48,7 @@ use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Gauge {
     active: AtomicUsize,
     maximum: AtomicUsize,
@@ -58,14 +60,18 @@ struct Gauge {
 struct Measure(Arc<Gauge>);
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Serial,
+
     #[lane(concurrent(2))]
     Concurrent,
+
     #[lane(unbounded)]
     Unbounded,
 }
@@ -92,6 +98,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Measure {
     type Declaration = MeasureContract;
     type Resources = Gauge;
@@ -123,6 +130,7 @@ impl Operation for Measure {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
     let (entered, mut receiver) = mpsc::channel(count);
     let gauge = Arc::new(Gauge {

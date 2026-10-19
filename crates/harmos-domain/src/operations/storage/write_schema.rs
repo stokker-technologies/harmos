@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(WriteSchema {
     mutation: Nested<MutationId> => 1,
     schema: Nested<SchemaInput> => 2,
@@ -43,6 +45,7 @@ crate::declare!(WriteSchema {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Register One Payload Schema, Exactly Once Per Mutation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteSchema {
@@ -55,6 +58,7 @@ pub struct WriteSchema {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for WriteSchema {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

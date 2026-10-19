@@ -13,6 +13,7 @@
 #![allow(clippy::duplicate_mod, reason = "domains retain their own support namespaces under one binary")]
 
 /* === Modules === */
+
 #[path = "../application/main.rs"]
 mod application;
 #[path = "../evidence/main.rs"]
