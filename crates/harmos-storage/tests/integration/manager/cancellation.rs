@@ -51,7 +51,7 @@ async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
     let data = Arc::new(Data::<()>::journaled(directory, history()).unwrap());
     let storage: StorageManager =
         StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
-    crate::fixture::start(&storage).await;
+    super::fixture::start(&storage).await;
     (data, storage)
 }
 
@@ -77,7 +77,7 @@ async fn dropped_write_retained() {
     assert_eq!(storage.cursor_saved().sequence, 0);
     let batch = [record(&second)];
     let mut waiting = Box::pin(storage.write_records(&batch));
-    assert!(crate::pending(waiting.as_mut()).await);
+    assert!(super::pending(waiting.as_mut()).await);
     drop(waiting);
     // Dropping The Future Must Not Retract The Already Accepted Batch.
     assert_eq!(storage.cursor_accepted(), accepted);
@@ -104,7 +104,7 @@ async fn cancelled_query_releases() {
     };
     let first_reader = storage.query(query()).await.unwrap();
     let mut waiting = Box::pin(storage.query(query()));
-    assert!(crate::pending(waiting.as_mut()).await);
+    assert!(super::pending(waiting.as_mut()).await);
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();

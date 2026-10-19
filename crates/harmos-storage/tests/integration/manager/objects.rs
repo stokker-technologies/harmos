@@ -13,7 +13,7 @@
 
 /* === Imports === */
 
-use crate::backend::storage_settings;
+use super::backend::storage_settings;
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use crate::backend::{Data, Recovery, history};
+use super::backend::{Data, Recovery, history};
 use harmos_domain::{DefinitionId, Identified, Identifier, Message};
 use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject};
 
@@ -191,7 +191,7 @@ async fn numeric_keys_roundtrip() {
     let storage =
         StorageManager::<NumericObjects>::new(StorageBackends { primary, state: Arc::new(Recovery::new(history())) }, storage_settings())
             .unwrap();
-    crate::fixture::start(&storage).await;
+    super::fixture::start(&storage).await;
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
     storage.flush_until(&admitted.position).await.unwrap();

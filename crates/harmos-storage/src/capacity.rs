@@ -455,7 +455,7 @@ pub(super) fn admitting(state: &State, pool: Pool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy_tests::backend::{Data, Recovery, history, storage_settings};
+    use crate::test_backend::{Data, Recovery, history, storage_settings};
     use std::num::NonZeroUsize;
 
     #[test]

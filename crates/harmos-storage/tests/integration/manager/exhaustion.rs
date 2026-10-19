@@ -54,7 +54,7 @@ async fn oversized_batch_refused() {
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
     let storage: StorageManager =
         StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
-    crate::fixture::start(&storage).await;
+    super::fixture::start(&storage).await;
 
     // An Impossible Batch Is Refused Before Ownership Or Cursor Advancement.
     let schema = waveforms::schema();

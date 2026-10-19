@@ -132,7 +132,7 @@ async fn receipt_releases_covered() {
     {
         let earlier = f.storage.flush_until(&first);
         tokio::pin!(earlier);
-        assert!(crate::pending(earlier.as_mut()).await, "backend write is still blocked");
+        assert!(super::pending(earlier.as_mut()).await, "backend write is still blocked");
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();
         assert_eq!(earlier.await.unwrap(), second);

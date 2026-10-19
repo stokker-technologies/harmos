@@ -117,8 +117,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 # === Test Targets === #
 
 [[test]]
-name = "integration-engine"
-path = "tests/engine/main.rs"
+name = "integration"
+path = "tests/integration/main.rs"
 
 # === Bench Targets === #
 

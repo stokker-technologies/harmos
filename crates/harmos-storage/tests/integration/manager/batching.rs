@@ -159,7 +159,7 @@ async fn pressure_preserves_flush() {
     write(&f.storage, "two").await;
     let blocked = write(&storage, "three");
     tokio::pin!(blocked);
-    assert!(crate::pending(blocked.as_mut()).await, "queue is full");
+    assert!(super::pending(blocked.as_mut()).await, "queue is full");
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
     let (saved, admitted) = tokio::join!(flush, blocked);

@@ -136,3 +136,50 @@ impl StorageSettings {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+    use std::num::NonZeroUsize;
+
+    fn settings() -> StorageSettings {
+        StorageSettings {
+            budget: StorageBudget { read_memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            request: StorageRequestSettings {
+                max_pending_queries: NonZeroUsize::new(64).unwrap(),
+                max_active_queries: NonZeroUsize::new(4).unwrap(),
+                max_pending_write_batches: NonZeroUsize::new(256).unwrap(),
+                max_pending_write_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
+            response: StorageResponseSettings {
+                batch_rows: NonZeroUsize::new(64).unwrap(),
+                batch_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+            },
+        }
+    }
+
+    #[test]
+    fn response_fits_budget() {
+        let mut settings = settings();
+        settings.validate().unwrap();
+
+        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() + 1).unwrap();
+        assert!(settings.validate().is_err());
+        settings.response.batch_bytes = settings.budget.read_memory_bytes;
+        assert!(settings.validate().is_err());
+
+        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
+        settings.validate().unwrap();
+    }
+
+    #[test]
+    fn query_counts_bounded() {
+        let mut settings = settings();
+        settings.request.max_active_queries = NonZeroUsize::new(tokio::sync::Semaphore::MAX_PERMITS + 1).unwrap();
+        assert!(settings.validate().is_err());
+
+        settings.request.max_active_queries = NonZeroUsize::MIN;
+        settings.request.max_pending_queries = NonZeroUsize::MIN;
+        settings.validate().unwrap();
+    }
+}

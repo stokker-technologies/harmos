@@ -103,4 +103,6 @@ use crate as storage;
 /* === Tests === */
 
 #[cfg(test)]
-mod policy_tests;
+#[allow(dead_code, reason = "capacity invariants use the shared in-memory storage backends")]
+#[path = "../tests/support/storage.rs"]
+mod test_backend;
