@@ -69,6 +69,13 @@ def main() -> None:
         expected = selectors["files"][source.relative_to(ROOT).as_posix()]
         _copy(source, destination / source.name, expected)
         assets[source.name] = _asset(destination / source.name, expected)
+    for name in ("schematic-sidecar", "schematic-guest"):
+        source = export / selectors["artifacts"][name]
+        packaged = destination / "plugins" / source.name
+        expected = selectors["files"][source.relative_to(ROOT).as_posix()]
+        _copy(source, packaged, expected)
+        assets[packaged.relative_to(destination).as_posix()] = _asset(packaged, expected)
+
     tool = export / selectors["artifacts"]["cargo-harmos"]
     for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
         receipt = export / selectors["builds"][name]
@@ -102,6 +109,7 @@ def main() -> None:
 
 
 def _copy(source: Path, destination: Path, expected: str) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     _asset(destination, expected)
 

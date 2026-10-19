@@ -6,10 +6,11 @@ and reopens the result.
 
 | Backend | Command | Reach |
 |---|---|---|
-| Native Sidecar | `target/debug/schematic-cli` | Shared analysis and routing, plus native directory access |
-| Sandboxed Guest | `target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm` | The same analysis and routing, with no filesystem access |
+| Native Sidecar | `target/build/dev/linux-x86_64/bin/schematic-cli` | Shared analysis and routing, plus native directory access |
+| Sandboxed Guest | `target/build/dev/linux-x86_64/bin/schematic-cli --guest` | The same analysis and routing, with no filesystem access |
 
 Run `mise run build` first; it builds the example once beside the workspace.
+On Windows, use `windows-x86_64` and the `.exe` suffix for native executables.
 
 The portable contract, host app, CLI, guest, and sidecar have separate crates under
 `schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed

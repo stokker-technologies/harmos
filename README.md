@@ -101,7 +101,7 @@ mise trust
 mise install --locked
 mise run prepare:tools
 mise run build
-target/debug/schematic-cli
+target/build/dev/linux-x86_64/bin/schematic-cli
 ```
 
 Install [mise](https://mise.jdx.dev) first. The walkthrough runs in the terminal
@@ -126,8 +126,8 @@ and propose a route, apply the proposal as a host transaction, undo/redo, and
 save/reopen the document.
 
 ```sh
-target/debug/schematic-cli
-target/debug/schematic-cli --guest target/wasm32-unknown-unknown/debug/schematic_guest.component.wasm
+target/build/dev/linux-x86_64/bin/schematic-cli
+target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
 `mise run build` builds the workspace and the example's CLI, sidecar and guest

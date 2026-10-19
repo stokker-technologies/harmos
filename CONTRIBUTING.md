@@ -54,8 +54,10 @@ Finish the combined source cutover before validation, then use the repository fl
 mise run ci
 ```
 
-`mise run build` creates the workspace archive and stamps native/Wasm inputs in
-`target/fixtures/stamp.json`. Ordinary test lanes consume those exact development
+`mise run build` exports packageable products and generated clients.
+`mise run build:tests` creates the shared workspace archive and stamps native/Wasm
+inputs in `target/build/dev/<target>/fixtures/stamp.json`.
+Ordinary test lanes consume those exact development
 artifacts and never rebuild fixtures. Their preflight refuses missing, stale or
 changed inputs. Narrow authoring acceptance executes the compiler only when
 compilation or dev/rebuild is the product behavior being tested, using the
@@ -66,7 +68,7 @@ the pull request instead of weakening the gate.
 
 ## Benchmarks
 
-Run `mise run bench` for the Rust benchmark suites, or choose `bench:unit`,
+Run `mise run build:bench` followed by `mise run bench` for the Rust benchmark suites, or choose `bench:unit`,
 `bench:integration` or `bench:system`. Pure codec work, managed runtime/storage
 behavior and executable transport have separate owners. Fixture activation and
 shutdown stay outside timed calls; report the payload, batching, carrier, profile,

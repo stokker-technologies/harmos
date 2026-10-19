@@ -136,7 +136,11 @@ def product(profile: str, scratch: Path) -> None:
         backend = "sidecar" if package == "schematic-sidecar" else "guest"
         built, receipt = _collect(tool, SCHEMATIC, package, backend, profile, capture, scratch)
         artifact, staged = _stage_build(built, receipt, package, files, examples)
-        artifacts[package] = f"product/examples/{artifact}"
+        source = examples / artifact
+        filename = source.name if package == "schematic-sidecar" else "schematic-guest.wasm"
+        destination = export / "bin/plugins" / filename
+        _copy(source, destination, files)
+        artifacts[package] = destination.relative_to(export).as_posix()
         builds[package] = f"product/examples/{staged}"
 
     metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT))
@@ -282,6 +286,7 @@ def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None
         raise RuntimeError(f"expected one schematic-sidecar catalog, found {sorted(catalogs)}")
     protoc.chmod(protoc.stat().st_mode | stat.S_IXUSR)
     output = GENERATED / "python"
+    shutil.rmtree(output, ignore_errors=True)
     command = [
         str(tool),
         "harmos",
