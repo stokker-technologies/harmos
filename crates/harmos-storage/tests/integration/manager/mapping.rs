@@ -71,15 +71,11 @@ impl Mapped {
     async fn new<T: harmos_domain::schema::Described + Message>(settings: StorageSettings, id: &str, payloads: &[T]) -> Self {
         // Start Storage Over A Real Journal And File State Root.
         let directory = tempfile::tempdir().unwrap();
-        let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-        let storage: StorageManager = StorageManager::new(
-            StorageBackends {
-                primary: data,
-                state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
-            },
-            settings,
-        )
-        .unwrap();
+        let data = Data::<()>::journaled(directory.path(), history()).unwrap();
+        let state_root = directory.path().join("state");
+        let state = harmos_storage::state::file::FileBackend::new(state_root, history(), state_settings());
+        let backends = StorageBackends { primary: Arc::new(data), state: Arc::new(state) };
+        let storage = StorageManager::new(backends, settings).unwrap();
         super::fixture::start(&storage).await;
 
         // Declare The Schema And Save One Record Per Payload.
@@ -108,12 +104,16 @@ impl Mapped {
     }
 
     fn query(&self, item: Option<&str>) -> Query {
+        let item = item.map(|item| {
+            let identifier = Identifier::new(item);
+            identifier.unwrap()
+        });
         Query {
             at: self.at.clone(),
             source: Source::Records(RecordSelection {
                 schema: self.schema.clone(),
                 scope: None,
-                item: item.map(|item| Identifier::new(item).unwrap()),
+                item,
                 source_start: None,
                 source_end: None,
             }),
@@ -145,10 +145,10 @@ fn compact() -> [Expansion; 1] {
 /* === Tests === */
 
 #[tokio::test]
-async fn payload_maps_columns() {
+async fn selection_preserves_schema() {
     let m = Mapped::new(storage_settings(), "mapping", &payloads()).await;
     let mut reader = m.storage.query(m.query(None)).await.unwrap();
-    let Some(QueryArrow::Schema(_)) = reader.next().await.unwrap() else {
+    let Some(QueryArrow::Schema(announced)) = reader.next().await.unwrap() else {
         panic!("schema first");
     };
     let Some(QueryArrow::Batch(batch)) = reader.next().await.unwrap() else {
@@ -169,21 +169,13 @@ async fn payload_maps_columns() {
     assert!(event.column(2).is_null(0));
     assert!(!event.column(2).is_null(1));
     drop(batch);
-    drop(reader);
-    m.finish().await;
-}
-
-#[tokio::test]
-async fn empty_selection_announces() {
-    let m = Mapped::new(storage_settings(), "mapping", &payloads()).await;
-    let mut reader = m.storage.query(m.query(None)).await.unwrap();
-    let Some(QueryArrow::Schema(announced)) = reader.next().await.unwrap() else {
-        panic!("schema first");
-    };
+    assert!(reader.next().await.unwrap().is_none());
+    assert_eq!(reader.completion().unwrap().rows, 2);
     drop(reader);
 
     // A Selection Without Rows Announces The Same Schema And Completes Empty.
-    let mut empty = m.storage.query(m.query(Some("absent"))).await.unwrap();
+    let query = m.query(Some("absent"));
+    let mut empty = m.storage.query(query).await.unwrap();
     let Some(QueryArrow::Schema(empty_schema)) = empty.next().await.unwrap() else {
         panic!("empty schema");
     };
@@ -202,9 +194,11 @@ async fn admitted_queries_progress() {
     let m = Mapped::new(storage_settings(), "mapping", &payloads()).await;
     let mut readers = Vec::new();
     for _ in 0..4 {
-        readers.push(m.storage.query(m.query(None)).await.unwrap());
+        let query = m.query(None);
+        let reader = m.storage.query(query).await.unwrap();
+        readers.push(reader);
     }
-    let results = futures_util::future::join_all(readers.iter_mut().map(|reader| async move {
+    let queries = readers.iter_mut().map(|reader| async move {
         let mut rows = 0;
         while let Some(output) = reader.next().await.unwrap() {
             if let QueryArrow::Batch(batch) = output {
@@ -213,8 +207,8 @@ async fn admitted_queries_progress() {
         }
         assert_eq!(reader.completion().unwrap().rows, 2);
         rows
-    }))
-    .await;
+    });
+    let results = futures_util::future::join_all(queries).await;
     assert_eq!(results, [2, 2, 2, 2]);
     drop(readers);
     m.finish().await;
@@ -228,7 +222,8 @@ async fn expansion_exceeds_budget() {
     let payload = compact();
     assert!(Message::encode_to_vec(&payload[0]).len() < 16 * 1024);
     let m = Mapped::new(settings.clone(), "expansion", &payload).await;
-    let mut reader = m.storage.query(m.query(Some("row-0"))).await.unwrap();
+    let query = m.query(Some("row-0"));
+    let mut reader = m.storage.query(query).await.unwrap();
     assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     let failure = reader.next().await.unwrap_err();
     assert!(
@@ -240,7 +235,8 @@ async fn expansion_exceeds_budget() {
     drop(reader);
 
     // Refusal Leaves Admission Usable And Does Not Publish A Partial Batch.
-    let mut empty = m.storage.query(m.query(Some("absent"))).await.unwrap();
+    let query = m.query(Some("absent"));
+    let mut empty = m.storage.query(query).await.unwrap();
     assert!(matches!(empty.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     assert!(empty.next().await.unwrap().is_none());
     assert_eq!(empty.completion().unwrap().rows, 0);
@@ -253,7 +249,8 @@ async fn conversion_grows_reservation() {
     // Conversion Can Grow Beyond Its Initial Reservation Within The Shared Budget.
     let settings = storage_settings();
     let m = Mapped::new(settings.clone(), "expansion", &compact()).await;
-    let mut reader = m.storage.query(m.query(Some("row-0"))).await.unwrap();
+    let query = m.query(Some("row-0"));
+    let mut reader = m.storage.query(query).await.unwrap();
     assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     let Some(QueryArrow::Batch(batch)) = reader.next().await.unwrap() else {
         panic!("expanded data batch");

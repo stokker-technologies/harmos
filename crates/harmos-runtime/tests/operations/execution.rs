@@ -263,39 +263,54 @@ async fn must_match_declarations() {
 }
 
 #[tokio::test]
-async fn builder_binds_catalog() {
-    let owner = Arc::new(Owner { bias: 20, ..Owner::default() });
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .operations::<Implemented, _>("app", Lanes::Serial, Arc::clone(&owner))
-        .runtime()
-        .await
-        .unwrap();
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(runtime.operations.call(request()).await.unwrap().value, 27);
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn duplicate_catalog_refused() {
-    let owner = Arc::new(Owner::default());
-    let result = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .operations::<Implemented, _>("first", Lanes::Open, Arc::clone(&owner))
-        .operations::<Implemented, _>("first", Lanes::Open, Arc::clone(&owner))
-        .runtime()
-        .await;
-    let error = result.err().expect("duplicate catalogs refuse boot");
-    let cause = std::error::Error::source(&error).unwrap();
-    let source = std::error::Error::source(cause).unwrap();
-    assert!(matches!(source.downcast_ref::<Error>(), Some(Error::AlreadyRegistered { .. })));
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(Arc::strong_count(&owner), 1);
+async fn catalog_boot_atomic() {
+    {
+        let owner = Arc::new(Owner::default());
+        let result = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .register(Lanes::catalog())
+            .operations::<Implemented, _>("first", Lanes::Open, Arc::clone(&owner))
+            .operations::<Implemented, _>("first", Lanes::Open, Arc::clone(&owner))
+            .runtime()
+            .await;
+        let error = result.err().expect("duplicate catalogs refuse boot");
+        let cause = std::error::Error::source(&error).unwrap();
+        let source = std::error::Error::source(cause).unwrap();
+        assert!(matches!(source.downcast_ref::<Error>(), Some(Error::AlreadyRegistered { .. })));
+        assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+        assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+        assert_eq!(Arc::strong_count(&owner), 1);
+    }
+    {
+        let owner = Arc::new(Owner::default());
+        let result = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .operations::<Implemented, _>("app", Lanes::Serial, Arc::clone(&owner))
+            .runtime()
+            .await;
+        let error = result.err().expect("undeclared lane refuses boot");
+        let cause = std::error::Error::source(&error).unwrap();
+        let source = std::error::Error::source(cause).unwrap();
+        assert!(matches!(source.downcast_ref::<Error>(), Some(Error::NotRegistered { domain: "operation lane", .. })));
+        assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+        assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+        assert_eq!(Arc::strong_count(&owner), 1);
+    }
+    {
+        let owner = Arc::new(Owner { bias: 20, ..Owner::default() });
+        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .register(Lanes::catalog())
+            .operations::<Implemented, _>("app", Lanes::Serial, Arc::clone(&owner))
+            .runtime()
+            .await
+            .unwrap();
+        assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+        assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+        assert_eq!(runtime.operations.call(request()).await.unwrap().value, 27);
+        assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -342,23 +357,6 @@ async fn providers_route_explicitly() {
     assert!(second_result.ptr_eq(&surviving));
     assert_eq!(second.runs.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn undeclared_lane_refused() {
-    let owner = Arc::new(Owner::default());
-    let result = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .operations::<Implemented, _>("app", Lanes::Serial, Arc::clone(&owner))
-        .runtime()
-        .await;
-    let error = result.err().expect("undeclared lane refuses boot");
-    let cause = std::error::Error::source(&error).unwrap();
-    let source = std::error::Error::source(cause).unwrap();
-    assert!(matches!(source.downcast_ref::<Error>(), Some(Error::NotRegistered { domain: "operation lane", .. })));
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(Arc::strong_count(&owner), 1);
 }
 
 #[cfg(feature = "simulation")]
