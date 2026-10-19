@@ -44,81 +44,81 @@ use harmos_sdk::grpc::{self, DecodeInput};
 /* === Tests === */
 
 #[tokio::test]
-async fn callback_requires_budget() {
-    let runtime = harmos_runtime::Runtime::<crate::operations::support::Bank>::builder(crate::operations::support::Ledger::default(), ())
-        .register(crate::operations::support::catalog())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    let mut manager = PluginManager::new(candidate()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
-    let target: harmos_runtime::operations::PluginCallback =
-        runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
-    let encoded = AtomicBool::new(false);
-    let refused = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-        encoded.store(true, Ordering::SeqCst);
-        Ok(Text::from("value").encode_to_vec())
-    });
-    assert!(matches!(refused, Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
-    assert!(!encoded.load(Ordering::SeqCst));
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
+async fn callbacks_guard_admission() {
+    {
+        let runtime =
+            harmos_runtime::Runtime::<crate::operations::support::Bank>::builder(crate::operations::support::Ledger::default(), ())
+                .register(crate::operations::support::catalog())
+                .register(Lanes::catalog())
+                .runtime()
+                .await
+                .unwrap();
+        let mut manager = PluginManager::new(candidate()).unwrap();
+        let mut host = host(runtime.operations.clone());
+        manager.initialize(&mut host).await.unwrap();
+        let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
+        let target: harmos_runtime::operations::PluginCallback =
+            runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
+        let encoded = AtomicBool::new(false);
+        let refused = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+            encoded.store(true, Ordering::SeqCst);
+            Ok(Text::from("value").encode_to_vec())
+        });
+        assert!(matches!(refused, Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
+        assert!(!encoded.load(Ordering::SeqCst));
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
+    {
+        let runtime = super::super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+        let mut manager = PluginManager::new(candidate()).unwrap();
+        let mut host = host(runtime.operations.clone());
+        manager.initialize(&mut host).await.unwrap();
+        let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
+        let target = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
+        assert!(matches!(
+            target.submit_with(NonZeroUsize::new(64).unwrap(), |_| panic!("fixture encoder panicked")),
+            Err(Error::OperationPanicked { .. })
+        ));
+        let charge = NonZeroUsize::new(64).unwrap();
+        let recovering = target.submit_with(charge, |_| {
+            let request = Text::from("released");
+            Ok(request.encode_to_vec())
+        });
+        let bytes = recovering.unwrap().await.unwrap();
+        assert_eq!(String::decode(&bytes).unwrap(), "released:1");
+        assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 1);
+        drop(bytes);
 
-#[tokio::test]
-async fn callback_contract_generation() {
-    let runtime = super::super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
-    let mut manager = PluginManager::new(candidate()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
-    let target = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
-    let mut changed = WireDeclaration::of::<super::super::cases::Echo>();
-    changed.version = 2;
-    assert!(matches!(
-        runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &changed.contract().unwrap()),
-        Err(Error::InvalidInput { field: "callback contract", .. })
-    ));
-    let mut definitions: Vec<_> = candidate().definitions().cloned().collect();
-    definitions[0].configuration = br#"{"generation":2}"#.to_vec();
-    manager.reload(PluginDefinitions::new(definitions, []).unwrap(), &mut host).await.unwrap();
-    let encoded = AtomicBool::new(false);
-    assert!(
-        target
-            .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-                encoded.store(true, Ordering::SeqCst);
-                Ok(Text::from("stale").encode_to_vec())
-            })
-            .is_err()
-    );
-    assert!(!encoded.load(Ordering::SeqCst));
-    let replacement = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
-    let bytes = replacement.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("live").encode_to_vec())).unwrap().await.unwrap();
-    assert_eq!(String::decode(&bytes).unwrap(), "live:1");
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
+        let mut changed = WireDeclaration::of::<super::super::cases::Echo>();
+        changed.version = 2;
+        assert!(matches!(
+            runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &changed.contract().unwrap()),
+            Err(Error::InvalidInput { field: "callback contract", .. })
+        ));
+        let mut definitions: Vec<_> = candidate().definitions().cloned().collect();
+        definitions[0].configuration = br#"{"generation":2}"#.to_vec();
+        manager.reload(PluginDefinitions::new(definitions, []).unwrap(), &mut host).await.unwrap();
 
-#[tokio::test]
-async fn encoder_panic_releases() {
-    let runtime = super::super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
-    let mut manager = PluginManager::new(candidate()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
-    let target = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
-    assert!(matches!(
-        target.submit_with(NonZeroUsize::new(64).unwrap(), |_| panic!("fixture encoder panicked")),
-        Err(Error::OperationPanicked { .. })
-    ));
-    let bytes = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("released").encode_to_vec())).unwrap().await.unwrap();
-    assert_eq!(String::decode(&bytes).unwrap(), "released:1");
-    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 1);
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+        let encoded = AtomicBool::new(false);
+        let refused = target.submit_with(charge, |_| {
+            encoded.store(true, Ordering::SeqCst);
+            let request = Text::from("stale");
+            Ok(request.encode_to_vec())
+        });
+        assert!(refused.is_err());
+        assert!(!encoded.load(Ordering::SeqCst));
+
+        let replacement = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
+        let submitted = replacement.submit_with(charge, |_| {
+            let request = Text::from("live");
+            Ok(request.encode_to_vec())
+        });
+        let bytes = submitted.unwrap().await.unwrap();
+        assert_eq!(String::decode(&bytes).unwrap(), "live:1");
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -403,7 +403,7 @@ async fn encoded_calls_authorized() {
 }
 
 #[tokio::test]
-async fn staging_refuses_metadata() {
+async fn activation_refuses_incomplete() {
     for change in 0..3 {
         let runtime = runtime().await;
         let mut definition = candidate().definitions().next().unwrap().clone();
@@ -427,10 +427,7 @@ async fn staging_refuses_metadata() {
         manager.shutdown(&mut host).await.unwrap();
         runtime.stop().await.unwrap();
     }
-}
 
-#[tokio::test]
-async fn commit_requires_operation() {
     for missing in 0..3 {
         let runtime = runtime().await;
         let mut manager = PluginManager::new(candidate()).unwrap();
