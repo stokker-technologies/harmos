@@ -265,3 +265,40 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
 // A zero rank is the proto3 default and stays off the wire.
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::Aggregate;
+
+    const EVERY: [Aggregate; 11] = [
+        Aggregate::Count,
+        Aggregate::Sum,
+        Aggregate::Mean,
+        Aggregate::Median,
+        Aggregate::Min,
+        Aggregate::Max,
+        Aggregate::Rms,
+        Aggregate::Std,
+        Aggregate::Percentile(0),
+        Aggregate::Percentile(25),
+        Aggregate::Percentile(100),
+    ];
+
+    #[test]
+    fn wire_names() {
+        for kind in EVERY {
+            assert_eq!(Aggregate::parse(&kind.name()), Some(kind));
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(serde_json::from_str::<Aggregate>(&json).unwrap(), kind);
+        }
+        assert_eq!(serde_json::to_string(&Aggregate::Count).unwrap(), "\"count\"");
+        assert_eq!(serde_json::to_string(&Aggregate::Rms).unwrap(), "\"rms\"");
+        assert_eq!(serde_json::to_string(&Aggregate::Percentile(95)).unwrap(), "{\"percentile\":95}");
+        assert_eq!(Aggregate::Percentile(95).name(), "p95");
+        assert_eq!(Aggregate::parse("p95"), Some(Aggregate::Percentile(95)));
+        for refused in ["p101", "p", "p+5", "variance"] {
+            assert_eq!(Aggregate::parse(refused), None, "{refused}");
+        }
+        assert!(!Aggregate::Percentile(101).answerable());
+    }
+}

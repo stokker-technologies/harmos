@@ -127,14 +127,6 @@ fn postcard_matches_serde() {
 }
 
 #[test]
-fn aggregate_json_unchanged() {
-    assert_eq!(serde_json::to_string(&Aggregate::Count).unwrap(), "\"count\"");
-    assert_eq!(serde_json::to_string(&Aggregate::Percentile(95)).unwrap(), "{\"percentile\":95}");
-    assert_eq!(Aggregate::Percentile(95).name(), "p95");
-    assert_eq!(Aggregate::parse("p95"), Some(Aggregate::Percentile(95)));
-}
-
-#[test]
 fn aggregate_message_field() {
     let value = Summary { aggregate: Aggregate::Percentile(95), optional: Some(Aggregate::Rms), aggregates: EVERY.to_vec() };
     let encoded = crate::encode(&value);

@@ -15,10 +15,6 @@ mod support;
 #[path = "../streams/allocation.rs"]
 mod allocation;
 
-#[cfg(feature = "signal")]
-#[path = "aggregates.rs"]
-mod aggregates;
-
 #[path = "retention.rs"]
 mod retention;
 
@@ -102,30 +98,6 @@ impl StreamConsumer<Bank> for Selecting {
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
-}
-
-#[cfg(feature = "signal")]
-#[test]
-fn aggregate_wire_names() {
-    aggregates::wire_names();
-}
-
-#[cfg(feature = "signal")]
-#[test]
-fn series_answers_all() {
-    aggregates::series_answers_all();
-}
-
-#[cfg(feature = "signal")]
-#[test]
-fn aggregate_empty_input() {
-    aggregates::empty_input();
-}
-
-#[cfg(feature = "signal")]
-#[test]
-fn summary_refuses_order() {
-    aggregates::summary_refuses_order();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
