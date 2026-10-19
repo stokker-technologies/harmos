@@ -138,8 +138,8 @@ pub(super) struct GrantAuthority {
     // A cross-owner plugin caller and its declared requirement for this operation.
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
-    // The grants an external caller's authorizer selected for this operation.
-    external: Option<harmos_domain::inventory::contracts::Required>,
+    // External Authority Never Replaces A Plugin Caller's Own Requirement.
+    external: Option<crate::operations::authorization::Authorization>,
 }
 
 struct Cached {

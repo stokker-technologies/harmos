@@ -110,8 +110,8 @@ impl OperationManager {
             let Some(contract) = &entry.contract else {
                 continue;
             };
-            let required = match self.required_external(&entry, &origin) {
-                Ok(required) => required,
+            let authorization = match self.authorize_external(&entry, &origin) {
+                Ok(authorization) => authorization,
                 Err(Error::OperationUnauthorized { .. } | Error::PermissionDenied) => continue,
                 Err(error) => return Err(error),
             };
@@ -135,7 +135,11 @@ impl OperationManager {
                     state.grpc.get(&binding.path()).is_some_and(|registered| registered.as_ptr() == Arc::as_ptr(&entry))
                 });
             drop(state);
-            let grants: &[Grant] = required.as_ref().map_or(&[], |selected| selected.grants.as_slice());
+            let required = match &authorization {
+                Some(crate::operations::authorization::Authorization::Restricted(required)) => Some(required),
+                _ => None,
+            };
+            let grants: &[Grant] = required.map_or(&[], |selected| selected.grants.as_slice());
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             let grants = origin
                 .scope
@@ -143,7 +147,7 @@ impl OperationManager {
                 .and_then(|caller| caller.requirement(&entry.definition.id))
                 .map_or(grants, |required| required.grants.as_slice());
             let selected_grants;
-            let grants = if let Some(required) = &required {
+            let grants = if let Some(required) = required {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                 let plugin_required = origin.scope.as_ref().and_then(|caller| caller.requirement(&entry.definition.id));
                 #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
