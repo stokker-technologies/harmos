@@ -211,6 +211,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);
         assert!(provider.generation.value() > 0);
+        assert!(!provider.plugin, "host registration cannot impersonate a plugin provider");
         let Some(principal) = context.get::<Principal>() else {
             return Ok(None);
         };

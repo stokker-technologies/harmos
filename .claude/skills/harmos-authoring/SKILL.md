@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:a57ee05a256899518423c242b00c266d756e9671aa2eb0689cf8464cc1288ac5 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:44ec93bb9406820394bcaedc279857d06b17fd375f79e9c46e6b73acf96a04a0 -->
 
 # Harmos Authoring
 
@@ -235,6 +235,8 @@ declare operation metadata.
   `Authorization::Full(Contract)` for full control of the original operation;
   `None` denies. Both validate the live provider contract. Full control retains
   same-operation grant identity and the caller plugin's independent requirements;
+  `Provider.plugin` projects the original registration's plugin scope, including
+  false in builds without plugin support; owner names cannot mint that provenance.
   it never fabricates wildcard scopes. The same selection filters discovery
   and actual request grants. Principal roles and explicit entitlement remain
   application-owned. Registration rejects a second owner and freezes at first

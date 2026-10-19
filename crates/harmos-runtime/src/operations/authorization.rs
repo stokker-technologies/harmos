@@ -31,6 +31,7 @@ use crate::{Identifier, Result};
 // Borrow Original Live Provider Metadata; This Is Not Another Catalog.
 pub struct Provider<'a> {
     pub owner: &'a Identifier,
+    pub plugin: bool,
     pub generation: OperationGeneration,
     pub definition: &'a Definition,
     pub contract: &'a Contract,

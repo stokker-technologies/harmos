@@ -315,7 +315,9 @@ manager before external calls. Its `authorize` method selects
 Full control still refuses a grant naming a different operation and cannot
 override a calling plugin's own capability requirements. Trusted `CallContext`
 and live provider metadata drive the same selection for discovery and actual
-requests. Discovery lists finite selected grants without inventing wildcards;
+requests. `Provider.plugin` reports whether the original registration belongs
+to a plugin scope; an arbitrary host owner name cannot establish that provenance.
+Discovery lists finite selected grants without inventing wildcards;
 invocation always checks the actual request. Application policy owns entitlements.
 Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants

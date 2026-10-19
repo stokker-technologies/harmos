@@ -234,6 +234,8 @@ declare operation metadata.
   `Authorization::Full(Contract)` for full control of the original operation;
   `None` denies. Both validate the live provider contract. Full control retains
   same-operation grant identity and the caller plugin's independent requirements;
+  `Provider.plugin` projects the original registration's plugin scope, including
+  false in builds without plugin support; owner names cannot mint that provenance.
   it never fabricates wildcard scopes. The same selection filters discovery
   and actual request grants. Principal roles and explicit entitlement remain
   application-owned. Registration rejects a second owner and freezes at first

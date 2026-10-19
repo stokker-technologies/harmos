@@ -69,11 +69,16 @@ impl OperationManager {
                 operation: entry.id().to_owned(),
             };
             let contract = entry.contract.as_ref().ok_or_else(denied)?;
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            let plugin = entry.plugin.is_some();
+            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            let plugin = false;
             let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 authorizer.authorize(
                     self.call_context(),
                     crate::operations::authorization::Provider {
                         owner: &entry.owner,
+                        plugin,
                         generation: entry.generation,
                         definition: &entry.definition,
                         contract,

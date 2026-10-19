@@ -152,6 +152,7 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
         use harmos_runtime::operations::authorization::{Authorization, Required};
+        assert_eq!(provider.plugin, provider.owner.as_str() == "gated", "provenance comes from the original plugin scope");
         let grants = match context.get::<Principal>().map(|principal| principal.0) {
             Some("full") => return Ok(Some(Authorization::Full(provider.contract.clone()))),
             Some("holder") => vec![Grant::of(provider.contract.operation().id.as_str().to_owned(), ALLOWED)],
