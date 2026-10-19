@@ -55,79 +55,71 @@ fn whole(file: &harmos_storage::FileReference) -> harmos_domain::operations::sto
     harmos_domain::operations::storage::ReadFile { file: file.clone(), range: harmos_storage::ByteRange { offset: 0, limit: None } }
 }
 
-#[tokio::test]
-async fn file_chunks_bounded() {
-    let mut policy = config();
-    policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
-    let f = Fixture::new(policy).await;
-    let bytes: Vec<_> = (0..8192).map(|n| (n % 251) as u8).collect();
-    let reference = f.storage.write_file(metadata("large", &bytes), &bytes).await.unwrap();
-    assert!(f.data.control.chunk_sizes.lock().unwrap().iter().all(|n| *n <= 31));
-    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-    let mut actual = Vec::new();
-    while let Some(batch) = reader.next().await.unwrap() {
-        assert!(batch.bytes.len() <= 31);
-        actual.extend_from_slice(&batch.bytes);
-    }
-    assert_eq!(actual, bytes);
-    drop(reader);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn file_awaits_flush() {
-    let f = Fixture::new(config()).await;
-    let bytes = b"unsaved bytes";
-    let reference = f.storage.write_file(metadata("unsaved", bytes), bytes).await.unwrap();
-    assert_eq!(f.storage.status().saved.sequence, 0);
-    let mut durable = f
-        .storage
-        .query(harmos_domain::operations::storage::Query {
-            at: f.storage.cursor_saved(),
-            source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
-            transforms: Vec::new(),
-            slice: harmos_storage::query::RowSlice::default(),
-        })
-        .await
-        .unwrap();
-    assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
-    assert!(durable.next().await.unwrap().is_none());
-    f.storage.flush().await.unwrap();
-    assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);
-    drop(durable);
-    f.finish().await;
-}
-
 #[tokio::test(start_paused = true)]
-async fn chunk_retries_offset() {
-    let f = Fixture::new(config()).await;
-    f.data.control.chunk_failures.store(1, Ordering::SeqCst);
-    let bytes = b"one chunk";
-    let reference = f.storage.write_file(metadata("retry", bytes), bytes).await.unwrap();
-    assert_eq!(f.data.control.chunk_offsets.lock().unwrap().as_slice(), &[0, 0]);
-    assert_eq!(reference.length, bytes.len() as u64);
-    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes, bytes);
-    drop(reader);
-    f.finish().await;
-}
+async fn file_roundtrip_recovers() {
+    let large = (0..8192).map(|n| (n % 251) as u8).collect::<Vec<_>>();
+    let cases =
+        [("large", large), ("unsaved", b"unsaved bytes".to_vec()), ("retry", b"one chunk".to_vec()), ("finish", b"finished once".to_vec())];
+    for (id, bytes) in cases {
+        let mut policy = config();
+        policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+        let f = Fixture::new(policy).await;
+        let mut file = f.storage.create_file(metadata(id, &bytes)).await.unwrap();
+        f.data.control.chunk_failures.store(1, Ordering::SeqCst);
+        file.write_all(&bytes).await.unwrap();
+        let offsets = f.data.control.chunk_offsets.lock().unwrap().clone();
+        assert_eq!(&offsets[..2], &[0, 0]);
+        if bytes.len() <= 31 {
+            assert_eq!(offsets, [0, 0]);
+        }
+        assert!(f.data.control.chunk_sizes.lock().unwrap().iter().all(|n| *n <= 31));
 
-#[tokio::test]
-async fn finish_retries_position() {
-    let f = Fixture::new(config()).await;
-    let bytes = b"finished once";
-    let mut file = f.storage.create_file(metadata("finish", bytes)).await.unwrap();
-    file.write_all(bytes).await.unwrap();
-    // An Uncertain Publication Is Retried At The Same Position.
-    f.data.control.finish_failures.store(1, Ordering::SeqCst);
-    let reference = file.finish().await.unwrap();
-    assert_eq!(reference.position.sequence, 1);
-    assert!(f.data.control.finish_positions.lock().unwrap().iter().all(|position| *position == 1));
-    assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-    assert!(f.data.files.lock().unwrap().is_empty());
-    file.abort().await.unwrap();
-    assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-    f.finish().await;
+        // An Uncertain Publication Reuses Its Position Without Duplicating The Blob.
+        f.data.control.finish_failures.store(1, Ordering::SeqCst);
+        let reference = file.finish().await.unwrap();
+        assert_eq!(reference.position.sequence, 1);
+        assert_eq!(reference.length, bytes.len() as u64);
+        assert!(f.data.control.finish_positions.lock().unwrap().iter().all(|position| *position == 1));
+        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
+        assert!(f.data.files.lock().unwrap().is_empty());
+        file.abort().await.unwrap();
+        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
+
+        // Bounded Reads Reconstruct The Exact Published Bytes.
+        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+        let first = reader.next().await.unwrap().unwrap();
+        assert!(first.bytes.len() <= 31);
+        assert_eq!(first.bytes, bytes[..first.bytes.len()]);
+        if bytes.len() <= 31 {
+            assert_eq!(first.bytes, bytes);
+        }
+        let mut actual = first.bytes;
+        while let Some(batch) = reader.next().await.unwrap() {
+            assert!(batch.bytes.len() <= 31);
+            actual.extend_from_slice(&batch.bytes);
+        }
+        assert_eq!(actual, bytes);
+        drop(reader);
+
+        // Logical Publication Remains Separate From Durable Query Visibility.
+        assert_eq!(f.storage.status().saved.sequence, 0);
+        let mut durable = f
+            .storage
+            .query(harmos_domain::operations::storage::Query {
+                at: f.storage.cursor_saved(),
+                source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
+                transforms: Vec::new(),
+                slice: harmos_storage::query::RowSlice::default(),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
+        assert!(durable.next().await.unwrap().is_none());
+        f.storage.flush().await.unwrap();
+        assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);
+        drop(durable);
+        f.finish().await;
+    }
 }
 
 #[tokio::test]

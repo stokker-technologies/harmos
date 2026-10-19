@@ -59,7 +59,7 @@ async fn foreign_cursor_refused() {
 }
 
 #[tokio::test]
-async fn earlier_cursor_excludes() {
+async fn flush_preserves_batches() {
     let f = Fixture::new(config()).await;
     let first = write(&f.storage, "first").await;
     let second = write(&f.storage, "second").await;
@@ -70,20 +70,17 @@ async fn earlier_cursor_excludes() {
     assert_eq!(f.storage.flush_until(&first).await.unwrap(), first);
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
     assert_eq!(f.storage.flush().await.unwrap(), second);
-    f.finish().await;
-}
 
-#[tokio::test]
-async fn group_flushes_whole() {
-    let f = Fixture::new(config()).await;
+    // An Interior Cursor Flushes Its Entire Atomic Batch, Keeping Later Work Queued.
     let key = schema();
     let item = Identifier::new("item").unwrap();
     let records = [record(&key, &item, b"one"); 3];
     let end = f.storage.write_records(&records).await.unwrap();
     let later = write(&f.storage, "later").await;
-    let middle = StorageCursor { sequence: 2, ..end.clone() };
+    let middle = StorageCursor { sequence: 4, ..end.clone() };
     assert_eq!(f.storage.flush_until(&middle).await.unwrap(), end);
-    assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 2, 3]);
+    assert_eq!(end.sequence, 5);
+    assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 2, 3, 4, 5]);
     assert_eq!(f.storage.cursor_accepted(), later);
     assert_eq!(f.storage.status().pending_batches, 1);
     f.finish().await;
