@@ -17,7 +17,7 @@ mod tests {
     use harmos_domain::plugin::Grant;
 
     #[test]
-    fn external_full_control_preserves_plugin_grants() {
+    fn plugin_grants_preserved() {
         let contract = WireDeclaration::of::<Catalog>().contract().unwrap();
         let allowed = Grant::of("host.catalog", "allowed");
         let refused = Grant::of("host.catalog", "refused");

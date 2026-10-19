@@ -219,7 +219,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn inputs_exclude_generated_outputs_before_explicit_files() {
+    fn generated_inputs_excluded() {
         let root = PathBuf::from("workspace");
         let output = root.join("generated");
         let inputs = Inputs {
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn inputs_ignore_atomic_output_creation() {
+    fn atomic_outputs_ignored() {
         let root = PathBuf::from("project");
         let inputs = Inputs {
             roots: BTreeSet::from([root.clone()]),

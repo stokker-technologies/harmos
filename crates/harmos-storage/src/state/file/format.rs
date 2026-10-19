@@ -151,7 +151,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn complete_corruption_is_not_an_incomplete_tail() {
+    fn complete_corruption_refused() {
         let mut bytes = Vec::new();
         write(&mut bytes, &vec![1u8, 2, 3], 128).unwrap();
         let mut input = bytes.as_slice();
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_size_covers_the_whole_record() {
+    fn record_size_validated() {
         let line = encode(&"abc", usize::MAX).unwrap();
         assert_eq!(encode(&"abc", line.len()).unwrap(), line);
 

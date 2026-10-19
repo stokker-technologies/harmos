@@ -380,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn sdk_contract_metadata_roundtrips() {
+    fn sdk_metadata_roundtrip() {
         for original in sdk_contracts() {
             let encoded = serde_json::to_vec(&original).unwrap();
             let decoded: Contract = serde_json::from_slice(&encoded).unwrap();
@@ -389,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn sdk_contract_metadata_rejects_forgery() {
+    fn sdk_metadata_forgery() {
         let delay = std::time::Duration::from_secs(1);
         let backoff = Backoff::Fixed { delay, jitter: Jitter::None };
         for original in sdk_contracts() {
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn sdk_metadata_does_not_admit_authored_reserved_operations() {
+    fn reserved_operations_refused() {
         use crate::inventory::contracts::{Manifest, validate};
         for contract in sdk_contracts() {
             assert!(contract.operation().validate().is_err());

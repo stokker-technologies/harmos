@@ -296,7 +296,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fixed_bytes_preserve_length_prefix_and_reject_wrong_width() {
+    fn fixed_bytes_format() {
         let digest = [7_u8; 32];
         let mut bytes = Vec::new();
         digest.write(&mut bytes);

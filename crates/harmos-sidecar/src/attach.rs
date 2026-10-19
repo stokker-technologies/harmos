@@ -442,7 +442,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_retains_explicit_configuration_without_spawning() {
+    fn command_configuration_preserved() {
         let arguments = [OsString::from("--plugin")];
         let directory = Path::new("work");
         let environment = [

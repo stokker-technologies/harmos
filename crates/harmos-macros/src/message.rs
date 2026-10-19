@@ -318,7 +318,7 @@ mod tests {
     use proc_macro2::{Delimiter, Group};
 
     #[test]
-    fn forwarded_field_types_preserve_message_shape_rules() {
+    fn forwarded_field_shapes() {
         let supported = Group::new(Delimiter::None, quote!(Option<i64>));
         let supported = TokenStream::from(proc_macro2::TokenTree::Group(supported));
         let expanded = expand(quote!(), quote!(struct Row { value: #supported }));

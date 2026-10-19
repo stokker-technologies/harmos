@@ -331,7 +331,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn failed_rollback_requires_reopen() {
+    fn rollback_requires_reopen() {
         let root = tempfile::tempdir().unwrap();
         let history = history();
         let mut journal = StateLog::open(root.path(), history.clone(), settings()).unwrap();

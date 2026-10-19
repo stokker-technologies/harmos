@@ -323,14 +323,14 @@ mod tests {
     }
 
     #[test]
-    fn limit_refusal_names_limit() {
+    fn limit_refusal_named() {
         let mut out = Bounded { bytes: Vec::new(), limit: 4 };
         let error = encoding_failure(serde_json::to_writer(&mut out, "longer than four").unwrap_err());
         assert!(matches!(error, Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" }));
     }
 
     #[test]
-    fn serialization_failure_keeps_cause() {
+    fn serialization_cause_preserved() {
         let mut out = Bounded { bytes: Vec::new(), limit: 1 << 20 };
         let error = encoding_failure(serde_json::to_writer(&mut out, &Refusing).unwrap_err());
         assert!(matches!(&error, Error::TaskFailed { domain: "state snapshot encoding", .. }), "{error:?}");

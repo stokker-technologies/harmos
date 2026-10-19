@@ -459,7 +459,7 @@ mod tests {
     use std::num::NonZeroUsize;
 
     #[test]
-    fn admitted_grower_is_not_counted_in_a_later_cycle_decision() {
+    fn cycle_decision_accounting() {
         let mut settings = storage_settings();
         settings.budget.read_memory_bytes = NonZeroUsize::new(100).unwrap();
         settings.response.batch_bytes = NonZeroUsize::new(40).unwrap();
