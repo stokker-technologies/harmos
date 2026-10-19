@@ -289,14 +289,8 @@ harness = false
 required-features = ["plugin-sidecar"]
 
 [[bench]]
-name = "unit-codecs"
-path = "benches/codecs/main.rs"
-harness = false
-required-features = ["plugin-sidecar"]
-
-[[bench]]
-name = "system-transport"
-path = "benches/transport/main.rs"
+name = "system-sidecar"
+path = "benches/sidecar/system.rs"
 harness = false
 required-features = ["plugin-sidecar"]
 

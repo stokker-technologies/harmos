@@ -7,8 +7,7 @@
  * ***
  */
 
-// Walk The Built Interfaces A Developer Runs: The Schematic CLI, The Cargo
-// Tool And The Generated Python Package.
+// Inspect Built Plugin Metadata Through The Cargo Subcommand.
 
 /* === Modules === */
 

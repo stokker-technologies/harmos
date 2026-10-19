@@ -9,11 +9,11 @@
 
 /* === Modules === */
 
-#[path = "staging/mutations.rs"]
+#[path = "manager/mutations.rs"]
 mod mutations;
-#[path = "staging/production.rs"]
+#[path = "manager/production.rs"]
 mod production;
-#[path = "staging/recovery.rs"]
+#[path = "manager/recovery.rs"]
 mod recovery;
 
 /* === Re-Exports === */

@@ -30,6 +30,15 @@ runtime is needed only when the story proves host composition. Runtime storage
 stories own managed journal projection, operation dispatch and host lifecycle.
 Keep source-private kernel invariants beside their production owner.
 
+The private journal regression
+`harmos-storage/src/state/file/journal.rs::tests::rollback_requires_reopen` is the
+one approved filesystem exception to pure unit tests. It replaces the private
+file handle with a read-only handle, proves failed append and rollback leave the
+journal poisoned, then reopens and writes successfully. Keep that concrete fault
+coverage inline; the exception does not permit other environment-dependent unit
+stories or change the project-wide caps. The shared checker must represent this
+exception explicitly before release readiness.
+
 ## Cross-Artifact Compositions
 
 `harmos-runtime/tests/system/main.rs` composes the host baseline, schematic guest

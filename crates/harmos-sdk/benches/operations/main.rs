@@ -7,11 +7,9 @@
  * ***
  */
 
-/* === Modules === */
+// Message And SDK Envelope Codec Workloads
 
-#[allow(dead_code, reason = "the codec bench uses only the shared payload declarations")]
-#[path = "../../tests/support/native_streams.rs"]
-mod native;
+/* === Modules === */
 
 /* === Re-Exports === */
 
@@ -35,6 +33,13 @@ criterion::criterion_main!(benches);
 
 /* === Structs === */
 
+#[harmos_sdk::message(harmos_path = ::harmos_sdk)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct Payload {
+    sequence: u64,
+    bytes: Vec<u8>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -46,11 +51,11 @@ criterion::criterion_main!(benches);
 /* === Private Functions === */
 
 fn benchmarks(c: &mut criterion::Criterion) {
-    use harmos_runtime::Message;
+    use harmos_sdk::Message;
     let mut codec = c.benchmark_group("streams/native_codec");
     codec.sample_size(20);
     for size in [64 * 1024, 1024 * 1024] {
-        let row = native::Payload { sequence: 1, bytes: (0..size).map(|index| (index % 251) as u8).collect() };
+        let row = Payload { sequence: 1, bytes: (0..size).map(|index| (index % 251) as u8).collect() };
         let payload = row.encode_to_vec();
         let command = harmos_sdk::operations::WireCommand::Prepare {
             invocation: u64::MAX,
@@ -64,7 +69,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
             b.iter(|| std::hint::black_box(row).encode_to_vec());
         });
         codec.bench_with_input(criterion::BenchmarkId::new("postcard_decode", size), &payload, |b, payload| {
-            b.iter(|| native::Payload::decode(std::hint::black_box(payload)).unwrap());
+            b.iter(|| Payload::decode(std::hint::black_box(payload)).unwrap());
         });
         codec.bench_with_input(criterion::BenchmarkId::new("envelope_encode", size), &command, |b, command| {
             b.iter(|| std::hint::black_box(command).encode().unwrap());

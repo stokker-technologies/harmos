@@ -74,6 +74,13 @@ acceptance = 128
 system = 64
 
 [[conventions.testing.overrides]]
+category = "system"
+language = "rust"
+select = "binary_id(=harmos-runtime::system) & test(=schematic::cli_backends_reopen)"
+timeout_seconds = 14
+reason = "Three times the prior nominal/parity CLI measurements totaling 4.643s"
+
+[[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-packaging::acceptance) & test(=proto::portable_messages_cross)"

@@ -96,12 +96,19 @@ tokio = { workspace = true, optional = true }
 # UI
 
 # Testing
+criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies === #
 
 # === Test Targets === #
 
 # === Bench Targets === #
+
+[[bench]]
+name = "unit-operations"
+path = "benches/operations/main.rs"
+harness = false
+required-features = ["derive"]
 
 # === Example Targets === #
 

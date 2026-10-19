@@ -1140,6 +1140,7 @@ dependencies = [
 name = "harmos-sdk"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "harmos-domain",
  "postcard",
  "prost",

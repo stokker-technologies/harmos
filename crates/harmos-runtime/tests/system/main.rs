@@ -20,6 +20,7 @@ mod guest;
 #[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod guest_contract;
 mod runtime;
+mod schematic;
 #[cfg(feature = "plugin-sidecar")]
 mod sidecar;
 #[path = "../support/mod.rs"]
