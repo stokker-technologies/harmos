@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:b6e225bdc710bd62bf97839d0dfa74fc5211a8a0e2fd31da78213bd294b9de7e
+# Rendered by stkr project update from templates/python/release/run.py; sha256:65fa63f84d56991739bea3d77e22ebc1b2afda5c84bff6df8022246b4b5ce732
 # ***
 #
 # Harmos
@@ -12,6 +12,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import base64
 import hashlib
 import json
 import os
@@ -57,23 +58,14 @@ LOCKS = (
 def inputs(directory: Path) -> dict:
     """Identify Committed Source And Locked Native Resolved Inputs Across Promotions."""
 
-    def output(command: list[str]) -> str:
-        return subprocess.run(
-            command,
-            cwd=directory,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=True,
-        ).stdout
-
-    tree = output(["git", "rev-parse", "HEAD^{tree}"]).strip()
-    if output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip():
+    tree = policy.execute(directory, ["git", "rev-parse", "HEAD^{tree}"], capture=True).strip()
+    if policy.execute(directory, ["git", "status", "--porcelain", "--untracked-files=normal"], capture=True).strip():
         tree = None
     graph = []
     overrides = []
     if (directory / "Cargo.toml").is_file():
-        metadata = json.loads(output(["cargo", "metadata", "--locked", "--offline", "--format-version", "1"]))
+        resolved = policy.execute(directory, ["cargo", "metadata", "--locked", "--format-version", "1"], capture=True)
+        metadata = json.loads(resolved)
         identities = {}
         for package in metadata["packages"]:
             source = package["source"]
@@ -173,7 +165,8 @@ def assets(directory: Path, settings: dict) -> list[dict]:
     for definition in settings.get("assets", []):
         if definition.get("target") != selected:
             continue
-        source = policy.inside(directory, definition["path"])
+        relative = definition["path"].format(profile="release", target=selected)
+        source = policy.inside(directory, relative)
         name = definition.get("name", source.name).format(product=settings["product"], version=value, target=selected)
         if (
             Path(name).name != name
@@ -191,7 +184,7 @@ def assets(directory: Path, settings: dict) -> list[dict]:
         result.append(
             {
                 "name": name,
-                "path": definition["path"],
+                "path": relative,
                 "target": selected,
                 "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                 "size": source.stat().st_size,
@@ -296,6 +289,57 @@ def prepare(directory: Path, settings: dict) -> None:
     if policy.policy(directory, "screenshots").get("scenes"):
         screenshots.capture(directory)
     print(f"Prepared v{planned}; review and commit before building the candidate")
+
+
+def author(directory: Path, settings: dict) -> None:
+    """Commit Prepared GitHub Source With A Verified Signature And Dispatch Candidate CI."""
+    if settings["provider"] != "github" or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        raise policy.ToolError("author requires the native GitHub prepare workflow")
+    planned = os.environ.get("RELEASE_VERSION", "")
+    tag_version("v" + planned)
+    branch = "release/v" + planned
+    if policy.execute(directory, ["git", "branch", "--show-current"], capture=True).strip() != branch:
+        raise policy.ToolError("author requires the matching stabilization branch")
+    expected = archive.revision(directory)
+    if not expected or expected != os.environ.get("GITHUB_SHA") or os.environ.get("GITHUB_REF") != "refs/heads/dev":
+        raise policy.ToolError("prepare must start at the dispatched dev revision")
+    if settings.get("tag") != "v" + planned or policy.policy(directory, "version").get("value") != planned:
+        raise policy.ToolError("prepared version differs from the requested candidate")
+    version.run(directory, "check")
+    policy.execute(directory, ["git", "add", "--all"])
+    changed = policy.execute(directory, ["git", "diff", "--cached", "--name-only", "-z", "--no-renames"], capture=True)
+    additions = []
+    deletions = []
+    for relative in filter(None, changed.split("\0")):
+        source = policy.inside(directory, relative)
+        if source.is_symlink():
+            raise policy.ToolError("prepared source cannot introduce symlinks")
+        if source.is_file():
+            additions.append({"path": relative, "contents": base64.b64encode(source.read_bytes()).decode("ascii")})
+        else:
+            deletions.append({"path": relative})
+    if not additions and not deletions:
+        raise policy.ToolError("prepare produced no candidate changes")
+    registry.request(settings, "git/refs", "POST", json.dumps({"ref": "refs/heads/" + branch, "sha": expected}).encode())
+    payload = {
+        "query": "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid signature { isValid } } } }",
+        "variables": {
+            "input": {
+                "branch": {"repositoryNameWithOwner": settings["repository"], "branchName": branch},
+                "expectedHeadOid": expected,
+                "message": {"headline": "chore: prepare release v" + planned},
+                "fileChanges": {"additions": additions, "deletions": deletions},
+            }
+        },
+    }
+    response = json.loads(registry.request(settings, "", "POST", json.dumps(payload).encode(), graphql=True) or b"{}")
+    commit = (response.get("data") or {}).get("createCommitOnBranch") or {}
+    commit = commit.get("commit") or {}
+    if response.get("errors") or not commit.get("oid") or not (commit.get("signature") or {}).get("isValid"):
+        raise policy.ToolError("GitHub did not confirm a signed candidate; inspect the preserved release branch")
+    # GITHUB_TOKEN Pushes Do Not Trigger CI; Explicit Dispatch Does.
+    registry.request(settings, "actions/workflows/ci.yml/dispatches", "POST", json.dumps({"ref": branch}).encode())
+    print(f"Prepared signed candidate {commit['oid']} on {branch}; native CI dispatched")
 
 
 def candidate(directory: Path, settings: dict) -> None:
@@ -547,6 +591,9 @@ def run(directory: Path, verb: str) -> None:
     if verb == "prepare":
         prepare(directory, settings)
         return
+    if verb == "author":
+        author(directory, settings)
+        return
     tag_version(settings["tag"])
     if verb == "tag":
         tag(directory, settings)
@@ -636,6 +683,7 @@ if __name__ == "__main__":
             [
                 "guard",
                 "prepare",
+                "author",
                 "candidate",
                 "tag",
                 "stage",

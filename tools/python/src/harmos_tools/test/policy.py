@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:42eb7a7c36444fba6ad857fc72599f47a931903bad2c632a719628baedcea662
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:7fdb58233d313d56e24b566a1812dd0a2aef8a43e89c97c48bf72a2ce368bfae
 # ***
 #
 # Harmos
@@ -13,8 +13,8 @@ Keys, all optional:
 
     [conventions.testing]
     limits = { unit = 512, integration = 256, acceptance = 128, system = 64 }
-    deadlines = { unit = 10, integration = 120, acceptance = 600, system = 900 }
-    hosts = ["dist/build/{profile}/app"]
+    deadlines = { unit = 10, integration = 120, acceptance = 900, system = 900 }
+    hosts = ["target/build/{profile}/{target}/bin/app{exe}"]
     bench_regression_percent = 20
 
     [[conventions.testing.overrides]]
@@ -24,7 +24,9 @@ Keys, all optional:
     timeout_seconds = 300
     reason = "Streams a full capture"
 
-Limits are project-wide story counts per layer; exceeding one is a curation finding in the
+Limits are story counts per layer, enforced by Hub's source inventory. TypeScript and
+JavaScript workspace packages each have their own scope; other tests share the project scope.
+Exceeding one is a curation finding in the
 index, never a failure. Deadlines are the per-story maximum of a lane in seconds. An override
 replaces the deadline of the stories it selects: for Rust `select` is a nextest filterset, for
 the other languages a glob over `<file>::<story>`. Hosts are artifacts acceptance and system
@@ -60,7 +62,7 @@ BENCH_CATEGORIES = ("unit", "integration", "system")
 LANGUAGES = ("rust", "python", "typescript", "javascript")
 PROFILES = ("dev", "release")
 LIMITS = {"unit": 512, "integration": 256, "acceptance": 128, "system": 64}
-DEADLINES = {"unit": 10, "integration": 120, "acceptance": 600, "system": 900}
+DEADLINES = {"unit": 10, "integration": 120, "acceptance": 900, "system": 900}
 
 # Liveness Guard: About Three Recorded Durations, Never Below Ten Seconds.
 MEASURED_FACTOR = 3

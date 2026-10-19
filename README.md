@@ -127,7 +127,7 @@ save/reopen the document.
 
 ```sh
 target/debug/schematic-cli
-target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
+target/debug/schematic-cli --guest target/wasm32-unknown-unknown/debug/schematic_guest.component.wasm
 ```
 
 `mise run build` builds the workspace and the example's CLI, sidecar and guest
@@ -685,29 +685,35 @@ The consuming application owns authentication, connections, metadata and cancell
 Use the setup commands in [Quick Start](#quick-start), then choose a task:
 
 ```sh
-mise run build                  # Build the workspace and the example once
+mise run build                  # Build packageable products and generated clients
+mise run build:tests            # Build the shared test archive and fixtures
 mise run check                  # Run repository checks
 mise run test                   # Run the test suite
+mise run build:bench            # Build benchmark executables
 mise run bench                  # Record benchmark results
 ```
 
 Local and development validation use the development profile. `mise run build`
-compiles the workspace once into a nextest archive and stamps the
-schematic/sandbox artifacts under `target/fixtures/`; test layers run from that
-archive and refuse a missing or stale fixture. Separate `test:unit`,
+exports shipping binaries and generated clients. `mise run build:tests` compiles
+one shared nextest archive and stamps the schematic/sandbox fixtures under
+`target/build/dev/<target>/fixtures/`; test layers run from that archive and
+refuse a missing or stale fixture. Product and Tests outputs use matching
+`target/build/<profile>/<target>/` directories. Separate `test:unit`,
 `test:integration`, `test:acceptance` and `test:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
 `mise run test:coverage` instruments the full selection separately. `mise run ci`
 runs the same graph as CI on the current tree; a failing lane fails the run.
 
 CI runs the Check, Build and Validate stages on Linux and Windows, and both
-platforms are required for `dev`, `main` and releases. Pushes to `dev` add
-development packages and a publication dry run; nightly adds coverage and
+platforms are required for `dev`, `main` and releases. Pull requests and pushes
+to `dev` verify development packages and dry publication; packages consume
+Product outputs under `target/package/<profile>/<target>/`. Nightly adds coverage and
 benchmarks. Optimized distribution builds and publication belong to release-tag
-pipelines. Rust crates and product assets are the published distributions;
-generated Python clients belong to their consuming producer package.
+pipelines. Rust crates publish to crates.io; CI packages retain the native CLI
+and example plugin bundles. Generated Python clients belong to their consuming
+producer package.
 
-Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
+Task PRs squash into `dev`. Stable `release/v<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into
 `dev`. Harmos currently enables the release-branch route into `main`; a published-tag
 hotfix needs its explicit release context before enabling that route.

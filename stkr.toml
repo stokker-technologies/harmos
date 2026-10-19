@@ -18,7 +18,7 @@ exclude = ["crates/cargo-harmos/templates"]
 
 [languages.python]
 roots = ["tools/python"]
-generated = ["target/fixtures/generated/python/src"]
+generated = ["target/generated/python/src"]
 exclude = ["tools/python/.venv", "tools/python/.ruff_cache"]
 
 
@@ -81,6 +81,43 @@ exclude = ["crates/harmos-runtime/src/prelude.rs"]
 
 
 # === Release === #
+
+[version]
+value = "0.2.0"
+files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
+
+[release]
+provider = "github"
+repository = "stokker-technologies/harmos"
+product = "harmos"
+tag = "v0.2.0"
+notes = "CHANGELOG.md"
+targets = ["linux-x86_64", "windows-x86_64"]
+tests = ["unit-rust", "integration-rust", "acceptance-rust", "system-rust"]
+lock_commands = [
+  [
+    "cargo",
+    "update",
+    "--workspace",
+    "--offline",
+  ],
+  [
+    "cargo",
+    "update",
+    "--manifest-path",
+    "examples/schematic/Cargo.toml",
+    "--workspace",
+    "--offline",
+  ],
+  [
+    "cargo",
+    "update",
+    "--manifest-path",
+    "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
+    "--workspace",
+    "--offline",
+  ],
+]
 
 
 # === Documentation === #

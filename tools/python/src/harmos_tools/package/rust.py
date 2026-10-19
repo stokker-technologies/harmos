@@ -17,14 +17,15 @@ import hashlib
 import json
 import shutil
 import subprocess
-import tomllib
+import sys
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
-from ..build.fixtures import FIXTURES, ROOT, STAMP
-from ..test import preflight
+from ..build.fixtures import ROOT
+from ..build import paths
+from . import run
 
 # Type Checking Imports
 
@@ -44,42 +45,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     profile = parser.parse_args().profile
-    preflight.main(["--profile", profile])
-    stamp = json.loads(STAMP.read_text(encoding="utf-8"))
-    selectors = stamp["metadata"]
-    destination = ROOT / "dist" / profile
+    export = paths.output(ROOT, "build", profile)
+    examples = export / "product/examples"
+    catalog_path = examples / "catalog.json"
+    selectors = json.loads(catalog_path.read_text(encoding="utf-8"))
+    for relative, expected in selectors["files"].items():
+        _asset(ROOT / relative, expected)
+    destination = paths.output(ROOT, "package", profile)
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
 
     # Cargo Packages Source Without Compiling The Candidate.
-    workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-    version = workspace["workspace"]["package"]["version"]
-    crates = []
-    for manifest in sorted((ROOT / "crates").glob("*/Cargo.toml")):
-        package = tomllib.loads(manifest.read_text())["package"]
-        if package.get("publish") is False:
-            continue
-        selected = package.get("version", version)
-        selected = version if isinstance(selected, dict) else selected
-        output = ROOT / "target/package" / f"{package['name']}-{selected}.crate"
-        output.unlink(missing_ok=True)
-        crates.append(output)
-    subprocess.run(["cargo", "package", "--workspace", "--locked", "--no-verify"], cwd=ROOT, check=True)
-    assets = {}
-    for source in crates:
-        expected = _digest(source)
-        _copy(source, destination / source.name, expected)
-        assets[source.name] = _asset(destination / source.name, expected)
+    subprocess.run(
+        [sys.executable, "-m", run.__name__, "rust", "--profile", profile],
+        cwd=ROOT,
+        check=True,
+    )
+    assets = {f"rust/{source.name}": _asset(source, _digest(source)) for source in (destination / "rust").glob("*.crate")}
 
-    # Distribute The Exact Native Tools The Lanes Tested.
+    # Distribute The Exact Product Bytes.
     for name in ("cargo-harmos", "schematic-cli"):
-        source = FIXTURES / selectors["artifacts"][name]
-        expected = stamp["files"][source.relative_to(ROOT).as_posix()]
+        source = export / selectors["artifacts"][name]
+        expected = selectors["files"][source.relative_to(ROOT).as_posix()]
         _copy(source, destination / source.name, expected)
         assets[source.name] = _asset(destination / source.name, expected)
-    tool = FIXTURES / selectors["artifacts"]["cargo-harmos"]
+    tool = export / selectors["artifacts"]["cargo-harmos"]
     for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
-        receipt = FIXTURES / selectors["builds"][name]
+        receipt = export / selectors["builds"][name]
         result = destination / f"{name}.json"
         command = [
             str(tool),
@@ -91,7 +83,7 @@ def main() -> None:
             "--relocate-from",
             selectors["build_roots"][name],
             "--relocate-to",
-            str(FIXTURES / "builds" / name),
+            str(examples / "builds" / name),
             "--output",
             str(destination),
             "--json",

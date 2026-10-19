@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/report.py; sha256:258de7a98dbd119d04a23aa54bb2e8400c9fee1aa655a8151a1dc6cb521216af
+# Rendered by stkr project update from templates/python/test/report.py; sha256:f631cf4a35f3362d4e9bbc6fc545a80ea75996127f940e00bf14248a547803e3
 # ***
 #
 # __PRODUCT_NAME__
@@ -27,6 +27,7 @@ from xml.etree import ElementTree
 
 # Local Imports
 from . import policy
+from ..build import paths
 
 # Type Checking Imports
 
@@ -92,6 +93,19 @@ class Bench:
 
 
 # === Public Functions === #
+
+
+def location(directory: Path, profile: str, key: str) -> Path:
+    parts = key.split("-")
+    if parts[-1] not in policy.LANGUAGES:
+        raise policy.TestError("unknown report language")
+    if parts[0] == "coverage" and len(parts) in (2, 3):
+        if len(parts) == 3 and parts[1] not in policy.CATEGORIES:
+            raise policy.TestError("unknown coverage layer")
+        return paths.output(directory, "tests", profile).joinpath("coverage", parts[-1], *parts[1:-1])
+    if len(parts) != 2 or parts[0] not in policy.CATEGORIES:
+        raise policy.TestError("unknown report layer")
+    return paths.output(directory, "tests", profile) / key
 
 
 def cases(text: str, category: str, language: str, package: str) -> list[Case]:

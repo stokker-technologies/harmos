@@ -27,7 +27,6 @@ taplo = "0.10.0"
 gh = "2.102.0"
 git-cliff = "2.14.2"
 glab = "1.123.0"
-minisign = "0.12"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
@@ -36,8 +35,6 @@ minisign = "0.12"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
-# A Fresh Checkout Has No Target Yet; Loading The Environment Creates The Temporary Directory Portably.
-TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 
 # === Variables === #
 
@@ -47,10 +44,7 @@ TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = P
 
 [tasks."prepare:tools"]
 description = "Prepare Locked Repository Tools"
-run = [
-  "python -c \"from pathlib import Path; Path('target/tmp').mkdir(parents=True, exist_ok=True)\"",
-  "uv sync --locked --project tools/python --all-groups",
-]
+run = ["uv sync --locked --project tools/python --all-groups"]
 
 # === Format === #
 
@@ -124,11 +118,24 @@ run = [
 # === Build === #
 
 [tasks.build]
-description = "Build Binaries, Fixtures And The Test Archive"
+description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
 # Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
 depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --product --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."build:tests"]
+description = "Build The Shared Test Archive And Fixtures"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."build:bench"]
+description = "Build Benchmark Executables"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench -- --all-features"
 env = { CARGO_INCREMENTAL = "0" }
 
 # === Dev === #
@@ -221,10 +228,10 @@ env = { CARGO_INCREMENTAL = "0" }
 description = "Test Generated Python"
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python ty check target/fixtures/generated/python/src",
+  "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
   # The Repository Lint Policy Applies To Harmos-Emitted Modules; Protoc's `_wire` Output Is Type Checked Only.
-  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/fixtures/generated/python/src",
-  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/fixtures/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/fixtures/generated/python/src'])]\"",
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
@@ -299,17 +306,21 @@ usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format --check" },
   { task = "build --profile {{usage.profile}}" },
+  { task = "build:tests --profile {{usage.profile}}" },
   { task = "check" },
   { task = "lint" },
   { task = "test --profile {{usage.profile}}" },
+  { task = "package --profile {{usage.profile}}" },
+  { task = "release:publish:dry" },
 ]
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
+  { task = "build:tests" },
   { task = "test:coverage" },
-  { task = "build --profile bench" },
+  { task = "build:bench" },
   { task = "bench:unit --refresh-baseline" },
   { task = "bench:integration --refresh-baseline" },
   { task = "bench:system --refresh-baseline" },

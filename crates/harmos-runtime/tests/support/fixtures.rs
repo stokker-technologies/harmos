@@ -92,7 +92,10 @@ pub fn protoc() -> PathBuf {
 /* === Private Functions === */
 fn directory() -> PathBuf {
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory");
-    manifest.ancestors().nth(2).expect("crates live two levels below the workspace").join("target/fixtures")
+    let root = manifest.ancestors().nth(2).expect("crates live two levels below the workspace");
+    let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
+    let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    root.join("target/build").join(profile).join(target).join("fixtures")
 }
 
 fn stamp() -> &'static Value {

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:6d912106ed288fdba8287c3a5dd3594a3d727170be8dd6e5ba5f56eb22e9f153
+# Rendered by stkr project update from templates/python/test/run.py; sha256:80b6c36b567b5fcf8626117e820fbc9c22a5a2cd1b9a883bc5007064e39a8d22
 # ***
 #
 # __PRODUCT_NAME__
@@ -15,20 +15,23 @@
 import argparse
 import json
 import math
-import platform
 import os
+import platform
 import shutil
 import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
 from . import archive, nextest, policy, pytest, report, vitest
+from .. import temporary
+from ..build import paths
 
 # Type Checking Imports
 
@@ -37,7 +40,6 @@ from . import archive, nextest, policy, pytest, report, vitest
 # === Constants === #
 
 COVERAGE_VARIABLE = "STKR_COVERAGE"
-SCRATCH = Path("target/tests")
 CRITERION = report.BENCHMARKS / "criterion"
 BASELINE = "dev"
 SCRIPTS = ("typescript", "javascript")
@@ -62,49 +64,50 @@ def test(
     key = f"{category}-{language}"
     _preflight(directory, rules, category, profile)
     if language == "python":
-        archive.install_wheels(directory)
-    recorded = report.load(directory / report.TESTS / f"{key}.durations.json")
-    scratch = _scratch(directory, key)
-    deadline = rules.deadline(category)
+        archive.install_wheels(directory, profile)
+    recorded = report.load(report.location(directory, profile, key) / "durations.json")
+    with _scratch(directory, key, profile) as scratch:
+        deadline = rules.deadline(category)
 
-    # Native Command
-    environment = None
-    cwd = directory / project
-    if language == "rust":
-        path = archive.require(directory, profile)
-        names = archive.binaries(directory, profile)
-        expression, rest = nextest.selection(category, extra, names)
-        measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=names)
-        configuration = scratch / "nextest.toml"
-        store = (scratch / "store").relative_to(directory).as_posix()
-        configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
-        junit = scratch / "store" / nextest.PROFILE / "junit.xml"
-        command = nextest.run(path, directory, configuration, scratch / "extract", expression, rest)
-        cwd = directory
-    elif language == "python":
-        junit = scratch / "junit.xml"
-        command = pytest.run(cwd, f"tests/{category}", deadline, junit, extra)
-        environment = pytest.environment(directory)
-    else:
-        junit = scratch / "junit.xml"
-        command = vitest.run(extra, junit, deadline)
+        # Native Command
+        environment = None
+        cwd = directory / project
+        if language == "rust":
+            path = archive.require(directory, profile)
+            binaries = archive.binaries(directory, profile)
+            names = sorted(set(binaries.values()))
+            expression, rest = nextest.selection(category, extra, names)
+            measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=binaries)
+            configuration = scratch / "nextest.toml"
+            store = str(scratch / "store")
+            configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
+            junit = scratch / "store" / nextest.PROFILE / "junit.xml"
+            command = nextest.run(path, directory, configuration, scratch / "extract", expression, rest)
+            cwd = directory
+        elif language == "python":
+            junit = scratch / "junit.xml"
+            command = pytest.run(cwd, f"tests/{category}", deadline, junit, extra)
+            environment = pytest.environment(directory)
+        else:
+            junit = scratch / "junit.xml"
+            command = vitest.run(extra, junit, deadline)
 
-    lane = _lane(
-        directory,
-        rules,
-        key,
-        category,
-        language,
-        project,
-        profile,
-        command,
-        cwd,
-        environment,
-        junit,
-        recorded,
-    )
-    lane["arguments"] = list(extra)
-    return 0 if lane["outcome"] == "passed" else 1
+        lane = _lane(
+            directory,
+            rules,
+            key,
+            category,
+            language,
+            project,
+            profile,
+            command,
+            cwd,
+            environment,
+            junit,
+            recorded,
+        )
+        lane["arguments"] = list(extra)
+        return 0 if lane["outcome"] == "passed" else 1
 
 
 def coverage(
@@ -119,58 +122,59 @@ def coverage(
     rules = policy.load(directory)
     key = f"coverage-{category}-{language}" if category else f"coverage-{language}"
     _preflight(directory, rules, category, profile)
-    scratch = _scratch(directory, key)
-    categories = [category] if category else list(policy.CATEGORIES)
-    deadline = max(rules.deadline(name, coverage=True) for name in categories)
-    cobertura = scratch / "coverage.xml"
-    environment = dict(os.environ, **{COVERAGE_VARIABLE: "1"})
+    with _scratch(directory, key, profile) as scratch:
+        categories = [category] if category else list(policy.CATEGORIES)
+        deadline = max(rules.deadline(name, coverage=True) for name in categories)
+        cobertura = scratch / "coverage.xml"
+        environment = dict(os.environ, **{COVERAGE_VARIABLE: "1"})
 
-    # Instrumented Run
-    if language == "rust":
-        names = archive.binaries(directory, profile)
-        expression, rest = nextest.selection(category, extra, names)
-        measured = nextest.overrides(rules, category, {}, coverage=True, binaries=names)
-        configuration = scratch / "nextest.toml"
-        store = (scratch / "store").relative_to(directory).as_posix()
-        configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
-        junit = scratch / "store" / nextest.PROFILE / "junit.xml"
-        command = nextest.coverage(profile, configuration, expression, rest)
-        cwd = directory
-    elif language == "python":
-        cwd = directory / project
-        junit = scratch / "junit.xml"
-        suite = f"tests/{category}" if category else "tests"
-        command = pytest.run(cwd, suite, deadline, junit, [*extra, *pytest.coverage(cwd, cobertura)])
-        environment = {**pytest.environment(directory), COVERAGE_VARIABLE: "1"}
-    else:
-        raise policy.TestError("coverage is measured for rust and python")
+        # Instrumented Run
+        if language == "rust":
+            binaries = archive.binaries(directory, profile)
+            names = sorted(set(binaries.values()))
+            expression, rest = nextest.selection(category, extra, names)
+            measured = nextest.overrides(rules, category, {}, coverage=True, binaries=binaries)
+            configuration = scratch / "nextest.toml"
+            store = str(scratch / "store")
+            configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
+            junit = scratch / "store" / nextest.PROFILE / "junit.xml"
+            command = nextest.coverage(profile, configuration, expression, rest)
+            cwd = directory
+        elif language == "python":
+            cwd = directory / project
+            junit = scratch / "junit.xml"
+            suite = f"tests/{category}" if category else "tests"
+            command = pytest.run(cwd, suite, deadline, junit, [*extra, *pytest.coverage(cwd, cobertura)])
+            environment = {**pytest.environment(directory), COVERAGE_VARIABLE: "1"}
+        else:
+            raise policy.TestError("coverage is measured for rust and python")
 
-    lane = _lane(
-        directory,
-        rules,
-        key,
-        category or "coverage",
-        language,
-        project,
-        profile,
-        command,
-        cwd,
-        environment,
-        junit,
-        {},
-    )
-    if language == "rust" and _execute(nextest.report(profile, cobertura), directory, environment) != 0:
-        lane["outcome"] = "failed"
-    if not cobertura.is_file():
-        raise policy.TestError(f"{key}: no coverage report was written")
-    lane["kind"] = "coverage"
-    lane["arguments"] = list(extra)
-    lane["coverage"] = f"{key}.cobertura.xml"
-    report.write(
-        directory / report.TESTS / lane["coverage"],
-        cobertura.read_text(encoding="utf-8"),
-    )
-    return 0 if lane["outcome"] == "passed" else 1
+        lane = _lane(
+            directory,
+            rules,
+            key,
+            category or "coverage",
+            language,
+            project,
+            profile,
+            command,
+            cwd,
+            environment,
+            junit,
+            {},
+        )
+        if language == "rust" and _execute(nextest.report(profile, cobertura), directory, environment) != 0:
+            lane["outcome"] = "failed"
+        if not cobertura.is_file():
+            raise policy.TestError(f"{key}: no coverage report was written")
+        lane["kind"] = "coverage"
+        lane["arguments"] = list(extra)
+        lane["coverage"] = (report.location(directory, profile, key) / "coverage.xml").relative_to(directory).as_posix()
+        report.write(
+            report.location(directory, profile, key) / "coverage.xml",
+            cobertura.read_text(encoding="utf-8"),
+        )
+        return 0 if lane["outcome"] == "passed" else 1
 
 
 def bench(
@@ -187,7 +191,12 @@ def bench(
     measure = category in ("integration", "system")
     _preflight(directory, rules, category, "bench")
     identity = {
-        "platform": [sys.platform, platform.machine(), platform.platform(), platform.processor()],
+        "platform": [
+            sys.platform,
+            platform.machine(),
+            platform.platform(),
+            platform.processor(),
+        ],
         "runner": os.environ.get("RUNNER_NAME", os.environ.get("CI_RUNNER_ID", platform.node())),
         "profile": "bench",
         "metric": "median-nanoseconds",
@@ -198,7 +207,10 @@ def bench(
         identity["rustc"] = archive._toolchain(directory)
         rows, status = _bench_rust(directory, category, refresh, measure, extra, archive_arguments, identity)
     elif language == "python":
-        identity["python"] = {"version": sys.version, "executable": archive._digest(Path(sys.executable))}
+        identity["python"] = {
+            "version": sys.version,
+            "executable": archive._digest(Path(sys.executable)),
+        }
         rows, status = _bench_python(directory, category, project, refresh, measure, extra, identity)
     else:
         raise policy.TestError("benchmarks run for rust and python")
@@ -206,7 +218,10 @@ def bench(
         raise policy.TestError(f"no {category} {language} benchmark produced results")
 
     kept = [row for row in report.parse_bench(directory / report.BENCH_CSV) if (row.category, row.language) != (category, language)]
-    merged = sorted([*kept, *rows], key=lambda row: (row.category, row.language, row.domain, row.name))
+    merged = sorted(
+        [*kept, *rows],
+        key=lambda row: (row.category, row.language, row.domain, row.name),
+    )
     report.write(directory / report.BENCH_CSV, report.bench_csv(merged))
     report.write(directory / report.BENCH_MARKDOWN, report.bench_markdown(merged))
     for row in rows:
@@ -301,21 +316,15 @@ def _preflight(
     archive.fixtures(directory, profile, hosts)
 
 
-def _scratch(directory: Path, key: str) -> Path:
-    scratch = directory / SCRATCH / key
-    shutil.rmtree(scratch, ignore_errors=True)
-    scratch.mkdir(parents=True)
-    categories = (
-        *policy.CATEGORIES,
-        "coverage",
-        *(f"coverage-{category}" for category in policy.CATEGORIES),
-        "bench-unit",
-        "bench-integration",
-        "bench-system",
-    )
-    keep = {f"{category}-{language}" for category in categories for language in ("rust", "python", *SCRIPTS)}
-    archive.prune(scratch.parent, keep | {key})
-    return scratch
+@contextmanager
+def _scratch(directory: Path, key: str, profile: str) -> Generator[Path]:
+    if not key.startswith("bench-"):
+        output = report.location(directory, profile, key)
+        if output.is_symlink() or not output.resolve().is_relative_to(directory.resolve()):
+            raise policy.TestError("lane output escapes the repository")
+        shutil.rmtree(output, ignore_errors=True)
+    with temporary.directory() as scratch:
+        yield scratch
 
 
 def _lane(
@@ -354,12 +363,13 @@ def _lane(
     for story in overruns:
         print(f"{key}: {story} exceeded its liveness deadline", file=sys.stderr)
 
-    report.write(directory / report.TESTS / f"{key}.junit.xml", text)
+    destination = report.location(directory, profile, key)
+    report.write(destination / "junit.xml", text)
     durations = {}
     for case in found:
         if case.outcome == "passed":
             durations.setdefault(case.suite, {})[case.name] = {"seconds": case.seconds}
-    report.dump(directory / report.TESTS / f"{key}.durations.json", durations)
+    report.dump(destination / "durations.json", durations)
     print(f"{key}: {passed} passed, {failed} failed, {len(found) - passed - failed} skipped")
     ran = passed > 0 or failed > 0
     return {
@@ -376,7 +386,7 @@ def _lane(
         "overruns": overruns,
         "seconds": round(seconds, 3),
         "started_at": int(started),
-        "junit": f"{key}.junit.xml",
+        "junit": (destination / "junit.xml").relative_to(directory).as_posix(),
         "coverage": None,
         "durations": [
             (case.suite, case.name, case.package, case.seconds)
@@ -427,8 +437,10 @@ def _bench_rust(
     archive_arguments: Sequence[str],
     identity: dict,
 ) -> tuple[list[report.Bench], int]:
-    archive_path = archive.require(directory, "bench")
-    messages = archive_path.with_name(archive.MESSAGES)
+    messages = paths.output(directory, "build", "bench") / "bench/compiler.json"
+    if not messages.is_file():
+        raise policy.TestError("missing benchmark compiler metadata; run build:bench first")
+    archive.fixtures(directory, "bench", [messages.relative_to(directory).as_posix()])
     targets = []
     for line in messages.read_text(encoding="utf-8").splitlines():
         message = json.loads(line) if line.startswith("{") else {}
@@ -436,7 +448,13 @@ def _bench_rust(
         name = target.get("name", "")
         if message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable"):
             if name == category or name.startswith(category + "-"):
-                targets.append((name, str(directory / message["executable"]), (directory / message["manifest_path"]).parent))
+                targets.append(
+                    (
+                        name,
+                        str(directory / message["executable"]),
+                        (directory / message["manifest_path"]).parent,
+                    )
+                )
 
     home = directory / CRITERION
     baselines = _criterion_baselines(home, identity)
@@ -456,7 +474,11 @@ def _bench_rust(
                 if path.stat().st_mtime >= since:
                     report.write(
                         path.with_name("inputs.json"),
-                        json.dumps({"identity": identity, "sha256": archive._digest(path)}, indent=2) + "\n",
+                        json.dumps(
+                            {"identity": identity, "sha256": archive._digest(path)},
+                            indent=2,
+                        )
+                        + "\n",
                     )
     return rows, status
 
@@ -520,56 +542,60 @@ def _bench_python(
     extra: Sequence[str],
     identity: dict,
 ) -> tuple[list[report.Bench], int]:
-    scratch = _scratch(directory, f"bench-{category}-python")
-    output = scratch / "benchmarks.json"
-    cwd = directory / project
-    status, peak = _measured(pytest.bench(cwd, category, output, extra), cwd, pytest.environment(directory))
-    if not output.is_file():
-        raise policy.TestError("pytest-benchmark wrote no results")
+    with _scratch(directory, f"bench-{category}-python", "bench") as scratch:
+        output = scratch / "benchmarks.json"
+        cwd = directory / project
+        status, peak = _measured(
+            pytest.bench(cwd, category, output, extra),
+            cwd,
+            pytest.environment(directory),
+        )
+        if not output.is_file():
+            raise policy.TestError("pytest-benchmark wrote no results")
 
-    # The Baseline Is This Runner's Own Record Of Medians
-    stored = directory / report.BENCHMARKS / f"python-{category}-{BASELINE}.json"
-    try:
-        baseline = report.load(stored)
-    except (OSError, ValueError):
-        baseline = {}
-    baselines = baseline.get("medians", {}) if isinstance(baseline, dict) and baseline.get("identity") == identity else {}
-    baselines = baselines if isinstance(baselines, dict) else {}
-    baselines = {
-        name: median
-        for name, median in baselines.items()
-        if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0
-    }
-    rows = []
-    for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
-        stats = entry["stats"]
-        data = [value * 1e9 for value in stats.get("data", [])]
-        name = entry.get("fullname", entry["name"])
-        rows.append(
-            report.Bench(
-                category,
-                "python",
-                entry.get("group") or Path(name.partition("::")[0]).stem,
-                name,
-                stats.get("rounds", len(data)),
-                stats["median"] * 1e9,
-                stats["mean"] * 1e9,
-                _percentile(data, 0.95),
-                stats.get("stddev", 0) * 1e9,
-                peak if measure else None,
-                baselines.get(name),
+        # The Baseline Is This Runner's Own Record Of Medians
+        stored = directory / report.BENCHMARKS / f"python-{category}-{BASELINE}.json"
+        try:
+            baseline = report.load(stored)
+        except (OSError, ValueError):
+            baseline = {}
+        baselines = baseline.get("medians", {}) if isinstance(baseline, dict) and baseline.get("identity") == identity else {}
+        baselines = baselines if isinstance(baselines, dict) else {}
+        baselines = {
+            name: median
+            for name, median in baselines.items()
+            if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0
+        }
+        rows = []
+        for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
+            stats = entry["stats"]
+            data = [value * 1e9 for value in stats.get("data", [])]
+            name = entry.get("fullname", entry["name"])
+            rows.append(
+                report.Bench(
+                    category,
+                    "python",
+                    entry.get("group") or Path(name.partition("::")[0]).stem,
+                    name,
+                    stats.get("rounds", len(data)),
+                    stats["median"] * 1e9,
+                    stats["mean"] * 1e9,
+                    _percentile(data, 0.95),
+                    stats.get("stddev", 0) * 1e9,
+                    peak if measure else None,
+                    baselines.get(name),
+                )
             )
-        )
-    if refresh or not baselines:
-        report.dump(
-            stored,
-            {
-                "schema": 1,
-                "identity": identity,
-                "medians": {row.name: row.median_ns for row in rows},
-            },
-        )
-    return rows, status
+        if refresh or not baselines:
+            report.dump(
+                stored,
+                {
+                    "schema": 1,
+                    "identity": identity,
+                    "medians": {row.name: row.median_ns for row in rows},
+                },
+            )
+        return rows, status
 
 
 def _percentile(values: Sequence[float], quantile: float) -> float | None:
