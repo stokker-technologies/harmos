@@ -18,9 +18,6 @@
 mod application;
 #[path = "../evidence/main.rs"]
 mod evidence;
-#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
-#[path = "../guest/main.rs"]
-mod guest;
 #[path = "../observers/main.rs"]
 mod observers;
 #[path = "../operations/main.rs"]

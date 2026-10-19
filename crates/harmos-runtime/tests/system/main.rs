@@ -17,6 +17,8 @@ mod backend;
 mod fixture;
 #[cfg(feature = "plugin-guest")]
 mod guest;
+#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
+mod guest_contract;
 mod runtime;
 #[cfg(feature = "plugin-sidecar")]
 mod sidecar;

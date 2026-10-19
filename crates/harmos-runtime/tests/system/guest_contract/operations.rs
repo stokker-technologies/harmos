@@ -22,7 +22,7 @@ use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
 use super::sandbox::{Counts, Read, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::schematic::operations::schematic::{analyze, propose, validate};
-use super::{GuestLanes, corner, route, runtime, sandbox};
+use super::{GuestLanes, corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
 use harmos_runtime::operations::{ComponentError, ComponentOperation, FailureKind, OperationDeclaration};
 
@@ -268,7 +268,7 @@ async fn exact_live_bindings() {
 #[tokio::test]
 async fn children_retire_authority() {
     for serial in [false, true] {
-        let runtime = harmos_runtime::Runtime::<crate::guest::support::Bank>::builder(crate::guest::support::Ledger::default(), ())
+        let runtime = harmos_runtime::Runtime::<support::Bank>::builder(support::Ledger::default(), ())
             .operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
