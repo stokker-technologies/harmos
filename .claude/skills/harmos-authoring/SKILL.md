@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:a8eeec44222a321311ae766c81c17f0f92914d8cdabdf79592daf388c7d88073 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:a57ee05a256899518423c242b00c266d756e9671aa2eb0689cf8464cc1288ac5 -->
 
 # Harmos Authoring
 
@@ -230,8 +230,12 @@ declare operation metadata.
 
 - Register one `operations::authorization::Authorizer` through
   `OperationManager::register_authorizer` before external exposure. Its bounded,
-  nonblocking `required(&CallContext, Provider)` callback selects a compatible
-  canonical `Required` or denies with `None`; the same selection filters discovery
+  nonblocking `authorize(&CallContext, Provider)` callback selects
+  `Authorization::Restricted(Required)` for exact scopes or
+  `Authorization::Full(Contract)` for full control of the original operation;
+  `None` denies. Both validate the live provider contract. Full control retains
+  same-operation grant identity and the caller plugin's independent requirements;
+  it never fabricates wildcard scopes. The same selection filters discovery
   and actual request grants. Principal roles and explicit entitlement remain
   application-owned. Registration rejects a second owner and freezes at first
   external admission/catalog access; earlier internal boot calls remain valid.
@@ -241,6 +245,14 @@ declare operation metadata.
   their behavior. All gRPC adapters use a private external origin, inherited by
   children/retries with a distinct per-ingress cache identity; they are not
   trusted internal host calls. Portable metadata cannot mint that authority.
+
+- Several `grpc().attach(settings)` calls can share the same configured services,
+  middleware and operation registry. Each Attached handle owns its listener's
+  transport, connection/call admission and settlement. Drop cancels only that
+  attachment; detach waits for it. Runtime shutdown closes all attachments.
+  Read addresses from each handle; the manager's singular `local_addr()` returns
+  None with zero or multiple active listeners. Register shared middleware/services
+  before attachment; any active listener freezes that configuration.
 
 - Dynamic Rust clients use `grpc::dynamic::Operation::new(&contract, message_bytes)`
   for a discovered canonical contract. Its `request` and `input` methods accept

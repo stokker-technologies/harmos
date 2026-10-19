@@ -52,7 +52,6 @@ pub struct Attached {
     host: Arc<dyn listener::Host>,
     generation: u64,
     address: SocketAddr,
-    detached: bool,
 }
 
 struct State {
@@ -141,7 +140,7 @@ impl GrpcManager {
             Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone()))
         };
         let (generation, address) = self.host.attach(resources).await?;
-        Ok(Attached { host: self.host.clone(), generation, address, detached: false })
+        Ok(Attached { host: self.host.clone(), generation, address })
     }
 
     pub fn methods(&self) -> Vec<crate::operations::GrpcMethod> {
@@ -168,17 +167,14 @@ impl Attached {
         self.address
     }
 
-    pub async fn detach(mut self) -> Result<()> {
-        self.detached = true;
+    pub async fn detach(self) -> Result<()> {
         self.host.detach(self.generation).await
     }
 }
 
 impl Drop for Attached {
     fn drop(&mut self) {
-        if !self.detached {
-            self.host.cancel(self.generation);
-        }
+        self.host.cancel(self.generation);
     }
 }
 

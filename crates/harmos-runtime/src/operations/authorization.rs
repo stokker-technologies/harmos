@@ -37,12 +37,17 @@ pub struct Provider<'a> {
 }
 
 /* === Enums === */
+#[derive(Clone, Debug)]
+pub enum Authorization {
+    Full(Contract),
+    Restricted(Required),
+}
 
 /* === Traits === */
 // Synchronous, Bounded And Nonblocking. No Request Probing Or Role Inference.
-// None Denies Access; A Selected Requirement Must Match The Original Contract.
+// None Denies Access; Both Selections Must Match The Original Contract.
 pub trait Authorizer: Send + Sync + 'static {
-    fn required(&self, context: &CallContext, provider: Provider<'_>) -> Result<Option<Required>>;
+    fn authorize(&self, context: &CallContext, provider: Provider<'_>) -> Result<Option<Authorization>>;
 }
 
 /* === Implementations === */

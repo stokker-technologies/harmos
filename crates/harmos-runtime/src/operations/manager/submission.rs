@@ -89,8 +89,8 @@ impl OperationManager {
         }
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
-        let required = self.required_external(&entry, &origin)?;
-        let authority = entry.grant_authority(&origin, required);
+        let authorization = self.authorize_external(&entry, &origin)?;
+        let authority = entry.grant_authority(&origin, authorization);
         authority.admit(O::grant(&request.value).as_ref())?;
         // Encoded bindings carry the authority to the provider's prepared grant.
         let origin = Origin { grants: Some(Arc::new(authority)), ..origin };

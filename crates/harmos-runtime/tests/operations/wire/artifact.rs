@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-#[cfg(feature = "plugin-guest")]
 mod facade {
     pub use harmos_runtime as __harmos;
 }

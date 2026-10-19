@@ -119,7 +119,7 @@ impl Entry {
     }
 
     pub(super) fn grant_authority(
-        &self, _origin: &Origin, external: Option<harmos_domain::inventory::contracts::Required>,
+        &self, _origin: &Origin, external: Option<crate::operations::authorization::Authorization>,
     ) -> GrantAuthority {
         GrantAuthority {
             owner: self.owner.to_string(),

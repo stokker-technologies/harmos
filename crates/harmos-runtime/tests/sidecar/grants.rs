@@ -140,6 +140,7 @@ impl Authenticator for Bearers {
             match call.metadata().get("authorization").and_then(|value| value.to_str().ok()) {
                 Some("Bearer holder") => Ok(Principal("holder")),
                 Some("Bearer lacking") => Ok(Principal("lacking")),
+                Some("Bearer full") => Ok(Principal("full")),
                 _ => Err(harmos_runtime::Error::Unauthenticated),
             }
         })
@@ -147,15 +148,17 @@ impl Authenticator for Bearers {
 }
 
 impl harmos_runtime::operations::authorization::Authorizer for Holdings {
-    fn required(
+    fn authorize(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
-    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Required>> {
+    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
+        use harmos_runtime::operations::authorization::{Authorization, Required};
         let grants = match context.get::<Principal>().map(|principal| principal.0) {
+            Some("full") => return Ok(Some(Authorization::Full(provider.contract.clone()))),
             Some("holder") => vec![Grant::of(provider.contract.operation().id.as_str().to_owned(), ALLOWED)],
             Some("lacking") => vec![],
             _ => return Ok(None),
         };
-        Ok(Some(harmos_runtime::operations::authorization::Required { contract: provider.contract.clone(), grants }))
+        Ok(Some(Authorization::Restricted(Required { contract: provider.contract.clone(), grants })))
     }
 }
 
@@ -273,6 +276,10 @@ async fn enforced(channel: &tonic::transport::Channel, path: &'static str, runs:
     // carry over to a grant the request resolves on another operation.
     denied(fetch(channel.clone(), "Bearer holder", path, 22).await);
     assert_eq!(runs.0.load(Ordering::SeqCst), 2, "refusals never run");
+    assert_eq!(fetch(channel.clone(), "Bearer full", path, 20).await.unwrap(), 21);
+    assert_eq!(fetch(channel.clone(), "Bearer full", path, 21).await.unwrap(), 22);
+    denied(fetch(channel.clone(), "Bearer full", path, 22).await);
+    assert_eq!(runs.0.load(Ordering::SeqCst), 4, "full control still refuses a foreign-operation grant");
 }
 
 #[tokio::test]

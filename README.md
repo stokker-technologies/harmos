@@ -308,9 +308,15 @@ request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 
 Register one `operations::authorization::Authorizer` with the original operation
-manager before external calls. It selects a compatible canonical `Required` from
-trusted `CallContext` and live provider metadata; discovery and actual request
-grants use the same selection. Application policy owns roles and entitlements.
+manager before external calls. Its `authorize` method selects
+`Authorization::Restricted(Required)` for exact grants or
+`Authorization::Full(Contract)` for all scopes on that original operation;
+`None` denies access. Both selections validate the live provider contract.
+Full control still refuses a grant naming a different operation and cannot
+override a calling plugin's own capability requirements. Trusted `CallContext`
+and live provider metadata drive the same selection for discovery and actual
+requests. Discovery lists finite selected grants without inventing wildcards;
+invocation always checks the actual request. Application policy owns entitlements.
 Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants
 retain their authenticated context and separate cache identity. Existing
@@ -326,6 +332,14 @@ and closes its connections gracefully; connections that cannot drain, such as
 unread streams, are aborted after half of `shutdown_timeout`. The application
 runtime stays available for a new attachment. Accepted sockets
 use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
+
+Several `grpc().attach(settings)` calls may serve the same operation registry
+concurrently, each with independent TLS, connection/call limits and shutdown.
+Retain each `Attached` handle and use its `local_addr()`; dropping or detaching
+it ends only that listener. Runtime shutdown ends every attachment. The manager's
+singular `local_addr()` returns an address only when exactly one listener is
+active. Register shared services and middleware before attachment; they remain
+frozen while any listener is active.
 
 Storage is configured by three explicit groups, with no defaults:
 

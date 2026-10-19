@@ -31,11 +31,42 @@ impl GrantAuthority {
         {
             return Err(denied(caller));
         }
-        if let Some(required) = &self.external
+        if let Some(crate::operations::authorization::Authorization::Restricted(required)) = &self.external
             && grant.is_some_and(|grant| !required.grants(grant))
         {
             return Err(denied("external"));
         }
         Ok(())
+    }
+}
+
+/* === Tests === */
+#[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+mod tests {
+    use super::*;
+    use crate::operations::authorization::{Authorization, Required};
+    use crate::operations::{WireDeclaration, host::Catalog};
+    use harmos_domain::plugin::Grant;
+
+    #[test]
+    fn external_full_control_preserves_plugin_grants() {
+        let contract = WireDeclaration::of::<Catalog>().contract().unwrap();
+        let allowed = Grant::of("host.catalog", "allowed");
+        let refused = Grant::of("host.catalog", "refused");
+        let foreign = Grant::of("other.operation", "allowed");
+        let mut authority = GrantAuthority {
+            owner: "host".into(),
+            operation: "host.catalog".into(),
+            plugin: Some(("caller".into(), Some(Required { contract: contract.clone(), grants: vec![allowed.clone()] }))),
+            external: Some(Authorization::Full(contract)),
+        };
+
+        authority.admit(Some(&allowed)).unwrap();
+        assert!(matches!(authority.admit(Some(&refused)), Err(Error::OperationUnauthorized { caller, .. }) if caller == "caller"));
+        assert!(matches!(authority.admit(Some(&foreign)), Err(Error::PermissionDenied)));
+
+        authority.plugin = None;
+        authority.admit(Some(&refused)).unwrap();
+        assert!(matches!(authority.admit(Some(&foreign)), Err(Error::PermissionDenied)));
     }
 }
