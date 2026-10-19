@@ -47,6 +47,12 @@ struct Captured {
 
 /* === Enums === */
 
+enum ReceiptSurface {
+    Messages,
+    Metadata,
+    Profile,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -153,59 +159,60 @@ fn test_harnesses_excluded() {
 }
 
 #[test]
-fn incomplete_stream_refused() {
+fn completion_refuses_invalid() {
     let (_directory, path) = fixture();
-    assert!(matches!(collect(&[artifact(&path, false)], selected()), Err(Error::Cargo(_))));
+    let streams = [
+        ("incomplete", vec![artifact(&path, false)]),
+        ("failed", vec![artifact(&path, false), json!({"reason": "build-finished", "success": false})]),
+        (
+            "post-completion",
+            vec![json!({"reason": "build-finished", "success": true}), json!({"reason": "build-finished", "success": true})],
+        ),
+    ];
+    for (name, stream) in streams {
+        assert!(matches!(collect(&stream, selected()), Err(Error::Cargo(_))), "{name}");
+    }
 }
 
 #[test]
-fn failed_build_refused() {
+fn selection_refuses_conflicts() {
+    {
+        let (_directory, path) = fixture();
+        let mut packages = selected();
+        packages.insert("path+file:///missing#other@0.1.0".into(), "other".into());
+        assert!(matches!(
+            collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], packages),
+            Err(Error::Settings(_))
+        ));
+    }
+    {
+        let (directory, path) = fixture();
+        let second = directory.path().join("debug/different-sidecar");
+        std::fs::write(&second, b"another emitted output").unwrap();
+        let stream = [artifact(&path, false), artifact(&second, false), json!({"reason": "build-finished", "success": true})];
+        assert!(matches!(collect(&stream, selected()), Err(Error::Settings(_))));
+    }
+    {
+        let mut capture = Captured::new(&[], selected());
+        capture.settings.target = Some("wasm32-unknown-unknown".into());
+        capture.receipt["target"] = json!("wasm32-unknown-unknown");
+        let result = capture.collect();
+        assert!(matches!(result, Err(Error::Settings(_))));
+    }
+}
+
+#[test]
+fn snapshot_guards_bytes() {
     let (_directory, path) = fixture();
-    assert!(matches!(
-        collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": false})], selected()),
-        Err(Error::Cargo(_))
-    ));
-}
+    let original = std::fs::read(&path).unwrap();
+    let messages = [artifact(&path, false), json!({"reason": "build-finished", "success": true})];
+    let collection = Captured::new(&messages, selected());
+    let packaging = Captured::new(&messages, selected());
+    std::fs::write(&path, b"not the producer output").unwrap();
+    assert!(matches!(collection.collect(), Err(Error::ArtifactChanged(changed)) if changed == path));
 
-#[test]
-fn missing_producer_refused() {
-    let (_directory, path) = fixture();
-    let mut packages = selected();
-    packages.insert("path+file:///missing#other@0.1.0".into(), "other".into());
-    assert!(matches!(
-        collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], packages),
-        Err(Error::Settings(_))
-    ));
-}
-
-#[test]
-fn ambiguous_outputs_refused() {
-    let (directory, path) = fixture();
-    let second = directory.path().join("debug/different-sidecar");
-    std::fs::write(&second, b"another emitted output").unwrap();
-    let stream = [artifact(&path, false), artifact(&second, false), json!({"reason": "build-finished", "success": true})];
-    assert!(matches!(collect(&stream, selected()), Err(Error::Settings(_))));
-}
-
-#[test]
-fn mismatched_target_refused() {
-    let mut capture = Captured::new(&[], selected());
-    capture.settings.target = Some("wasm32-unknown-unknown".into());
-    capture.receipt["target"] = json!("wasm32-unknown-unknown");
-    let result = capture.collect();
-    assert!(matches!(result, Err(Error::Settings(_))));
-}
-
-#[test]
-fn post_completion_refused() {
-    let stream = [json!({"reason": "build-finished", "success": true}), json!({"reason": "build-finished", "success": true})];
-    assert!(matches!(collect(&stream, selected()), Err(Error::Cargo(_))));
-}
-
-#[test]
-fn packaging_checks_bytes() {
-    let (_directory, path) = fixture();
-    let build = collect(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected()).unwrap();
+    std::fs::write(&path, original).unwrap();
+    let build = packaging.collect().unwrap();
     std::fs::write(&path, b"replaced after the build").unwrap();
     let output = tempfile::tempdir().unwrap();
     assert!(matches!(harmos_packaging::package(&build, output.path()), Err(Error::ArtifactChanged(changed)) if changed == path));
@@ -213,35 +220,17 @@ fn packaging_checks_bytes() {
 }
 
 #[test]
-fn collection_checks_bytes() {
-    let (_directory, path) = fixture();
-    let capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
-    std::fs::write(&path, b"not the producer output").unwrap();
-    assert!(matches!(capture.collect(), Err(Error::ArtifactChanged(changed)) if changed == path));
-}
-
-#[test]
-fn collection_checks_messages() {
-    let (_directory, path) = fixture();
-    let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
-    capture.messages.push(' ');
-    assert!(matches!(capture.collect(), Err(Error::Settings(_))));
-}
-
-#[test]
-fn collection_checks_metadata() {
-    let (_directory, path) = fixture();
-    let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
-    capture.metadata.push(' ');
-    assert!(matches!(capture.collect(), Err(Error::Settings(_))));
-}
-
-#[test]
-fn profile_relabel_refused() {
-    let (_directory, path) = fixture();
-    let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
-    capture.settings.profile = BuildProfile::Release;
-    assert!(matches!(capture.collect(), Err(Error::Settings(_))));
+fn receipt_refuses_tampering() {
+    for surface in [ReceiptSurface::Messages, ReceiptSurface::Metadata, ReceiptSurface::Profile] {
+        let (_directory, path) = fixture();
+        let mut capture = Captured::new(&[artifact(&path, false), json!({"reason": "build-finished", "success": true})], selected());
+        match surface {
+            ReceiptSurface::Messages => capture.messages.push(' '),
+            ReceiptSurface::Metadata => capture.metadata.push(' '),
+            ReceiptSurface::Profile => capture.settings.profile = BuildProfile::Release,
+        }
+        assert!(matches!(capture.collect(), Err(Error::Settings(_))));
+    }
 }
 
 #[test]
