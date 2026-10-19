@@ -181,56 +181,88 @@ fn request() -> Request {
     Request { keyed: false, fail_attempt: false }
 }
 
+fn causes(error: &(dyn std::error::Error + 'static)) -> String {
+    let chain = std::iter::successors(Some(error), |error| error.source());
+    let messages = chain.map(ToString::to_string).collect::<Vec<_>>();
+    messages.join(": ")
+}
+
 /* === Tests === */
 
 #[tokio::test]
-async fn cleanup_failure_retains() {
-    let runtime = runtime().await;
-    let counters = Arc::new(Counters::default());
-    counters.fail.store(true, Ordering::SeqCst);
-    let owner = Owner(Arc::clone(&counters));
-    let owner = Arc::new(owner);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-    let failed_request = Request { fail_attempt: true, ..request() };
-    let first = runtime.operations.submit(failed_request).unwrap();
+async fn cleanup_preserves_outcome() {
+    let cases = [
+        (request(), Lanes::Open, OperationOutcome::Succeeded),
+        (Request { fail_attempt: true, ..request() }, Lanes::Serial, OperationOutcome::Failed),
+    ];
+    for (request, lane, expected) in cases {
+        let runtime = runtime().await;
+        let counters = Arc::new(Counters::default());
+        counters.fail.store(true, Ordering::SeqCst);
+        let owner = Arc::new(Owner(Arc::clone(&counters)));
+        runtime.operations.register_operation::<Finishing>("app", lane, owner).unwrap();
+        let mut instance = runtime.operations.submit(request).unwrap();
+        let id = instance.id();
+        let generation = instance.generation();
 
-    let error = first.await.unwrap_err();
+        let error = (&mut instance).await.unwrap_err();
+        let Error::OperationFinalization { outcome, source, .. } = error else {
+            panic!("must retain the attempt outcome and cleanup cause");
+        };
+        let cleanup_cause = causes(source.as_ref());
+        assert!(cleanup_cause.contains("cleanup cause"), "{cleanup_cause}");
+        if expected == OperationOutcome::Failed {
+            let attempt_cause = causes(outcome.as_ref().expect("failed attempt retains its cause").as_ref());
+            assert!(attempt_cause.contains("attempt cause"), "{attempt_cause}");
+        }
+        let failed = instance.status();
+        assert_eq!(failed.phase(), OperationPhase::Finalizing);
+        assert_eq!(failed.outcome(), Some(expected));
+        assert!(failed.cleanup_pending());
+        assert!(failed.settled_at().is_none());
+        let retained = failed.cleanup_failure().unwrap();
+        assert!(matches!(retained.as_ref(), Error::OperationFinalization { .. }));
+        if expected == OperationOutcome::Failed {
+            let Error::OperationFinalization { outcome: Some(outcome), .. } = retained.as_ref() else {
+                panic!("status must retain the original failed attempt");
+            };
+            let attempt_cause = causes(outcome.as_ref());
+            assert!(attempt_cause.contains("attempt cause"), "{attempt_cause}");
+        }
+        assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-    let Error::OperationFinalization { outcome: Some(outcome), source, .. } = error else {
-        panic!("must retain both attempt and cleanup causes");
-    };
-    let outcome = std::iter::successors(Some(&*outcome as &(dyn std::error::Error + 'static)), |error| error.source())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ");
-    assert!(outcome.contains("attempt cause"), "{outcome}");
-    let source = std::iter::successors(Some(&*source as &(dyn std::error::Error + 'static)), |error| error.source())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ");
-    assert!(source.contains("cleanup cause"), "{source}");
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+        // Cancelling A Waiter Or Invocation Does Not Cancel Physical Cleanup.
+        counters.fail.store(false, Ordering::SeqCst);
+        counters.block.store(true, Ordering::SeqCst);
+        assert!(instance.settle().now_or_never().is_none());
+        while counters.finished.load(Ordering::SeqCst) < 2 {
+            counters.entering.notified().await;
+        }
+        assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+        instance.cancel();
+        let pending = instance.status();
+        assert_eq!(pending.phase(), OperationPhase::Finalizing);
+        assert_eq!(pending.outcome(), Some(expected));
+        assert!(pending.cancellation_requested());
+        assert!(pending.cleanup_pending());
+        assert!(pending.settled_at().is_none());
+        assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-    counters.fail.store(false, Ordering::SeqCst);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn unregister_refuses_failing() {
-    let runtime = runtime().await;
-    let counters = Arc::new(Counters::default());
-    counters.fail.store(true, Ordering::SeqCst);
-    let owner = Arc::new(Owner(Arc::clone(&counters)));
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-    let invocation = runtime.operations.submit(request()).unwrap();
-    assert!(invocation.await.is_err());
-
-    // A retried cleanup that fails again refuses the unregister and keeps the state.
-    assert!(runtime.operations.unregister(Finish::ID).await.is_err());
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-
-    counters.fail.store(false, Ordering::SeqCst);
-    runtime.stop().await.unwrap();
+        counters.release.notify_one();
+        instance.settle().await.unwrap();
+        let settled = instance.status();
+        assert_eq!(instance.id(), id);
+        assert_eq!(instance.generation(), generation);
+        assert_eq!(settled.phase(), OperationPhase::Settled);
+        assert_eq!(settled.outcome(), Some(expected));
+        assert!(!settled.cleanup_pending());
+        assert!(settled.cleanup_failure().is_none());
+        assert!(settled.settled_at().is_some());
+        assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+        assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+        assert_eq!(failed.phase(), OperationPhase::Finalizing, "snapshots remain independent");
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -288,6 +320,11 @@ async fn unregister_retries_cleanup() {
     runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
     let invocation = runtime.operations.submit(request()).unwrap();
     assert!(invocation.await.is_err());
+
+    // Failed Retry Refuses Unregister Without Dropping Retained State.
+    assert!(runtime.operations.unregister(Finish::ID).await.is_err());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+
     counters.fail.store(false, Ordering::SeqCst);
     counters.block.store(true, Ordering::SeqCst);
     {
@@ -297,17 +334,17 @@ async fn unregister_retries_cleanup() {
             biased;
             result = &mut waiting => panic!("retry is blocked: {result:?}"),
             _ = async {
-                while counters.finished.load(Ordering::SeqCst) < 2 {
+                while counters.finished.load(Ordering::SeqCst) < 3 {
                     counters.entering.notified().await;
                 }
             } => {},
         }
-        assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+        assert_eq!(counters.finished.load(Ordering::SeqCst), 3);
     }
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
     counters.release.notify_one();
     runtime.operations.unregister(Finish::ID).await.unwrap();
-    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+    assert_eq!(counters.finished.load(Ordering::SeqCst), 3);
     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
@@ -481,41 +518,6 @@ async fn unpolled_startup_cleanup() {
 }
 
 #[tokio::test]
-async fn outcome_snapshot_finalizing() {
-    let runtime = runtime().await;
-    let counters = Arc::new(Counters::default());
-    counters.fail.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let mut instance = runtime.operations.submit(Request { fail_attempt: true, ..request() }).unwrap();
-    let id = instance.id();
-    let generation = instance.generation();
-    assert!(matches!((&mut instance).await, Err(Error::OperationFinalization { .. })));
-    let failed = instance.status();
-    assert_eq!(failed.phase(), OperationPhase::Finalizing);
-    assert_eq!(failed.outcome(), Some(OperationOutcome::Failed));
-    assert!(failed.cleanup_pending());
-    assert!(failed.settled_at().is_none());
-    assert!(matches!(failed.cleanup_failure().unwrap().as_ref(),
-        Error::OperationFinalization { outcome: Some(outcome), .. }
-        if std::iter::successors(Some(&**outcome as &(dyn std::error::Error + 'static)), |error| error.source()).map(ToString::to_string).collect::<Vec<_>>().join(": ").contains("attempt cause")));
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-
-    counters.fail.store(false, Ordering::SeqCst);
-    instance.settle().await.unwrap();
-    let settled = instance.status();
-    assert_eq!(instance.id(), id);
-    assert_eq!(instance.generation(), generation);
-    assert_eq!(settled.phase(), OperationPhase::Settled);
-    assert_eq!(settled.outcome(), Some(OperationOutcome::Failed));
-    assert!(!settled.cleanup_pending());
-    assert!(settled.cleanup_failure().is_none());
-    assert!(settled.settled_at().is_some());
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-    assert_eq!(failed.phase(), OperationPhase::Finalizing, "snapshots remain independent");
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
 async fn reregister_renews_generation() {
     let runtime = runtime().await;
     let counters = Arc::new(Counters::default());
@@ -536,39 +538,6 @@ async fn reregister_renews_generation() {
     assert_ne!(replacement.generation(), generation);
     assert_ne!(replacement.id(), id);
     assert_eq!(*replacement.join().await.unwrap(), 42);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn settle_awaits_cleanup() {
-    let runtime = runtime().await;
-    let counters = Arc::new(Counters::default());
-    counters.fail.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Open, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let mut instance = runtime.operations.submit(request()).unwrap();
-    assert!(matches!((&mut instance).await, Err(Error::OperationFinalization { .. })));
-    assert_eq!(instance.status().outcome(), Some(OperationOutcome::Succeeded));
-    counters.fail.store(false, Ordering::SeqCst);
-    counters.block.store(true, Ordering::SeqCst);
-    assert!(instance.settle().now_or_never().is_none());
-    while counters.finished.load(Ordering::SeqCst) < 2 {
-        counters.entering.notified().await;
-    }
-    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-    instance.cancel();
-    let pending = instance.status();
-    assert_eq!(pending.phase(), OperationPhase::Finalizing);
-    assert_eq!(pending.outcome(), Some(OperationOutcome::Succeeded));
-    assert!(pending.cancellation_requested());
-    assert!(pending.cleanup_pending());
-    assert!(pending.settled_at().is_none());
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-    counters.release.notify_one();
-    instance.settle().await.unwrap();
-    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    assert_eq!(instance.status().outcome(), Some(OperationOutcome::Succeeded));
     runtime.stop().await.unwrap();
 }
 
