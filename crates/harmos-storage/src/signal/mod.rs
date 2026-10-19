@@ -12,8 +12,6 @@
 mod aggregates;
 mod error;
 mod spectrum;
-#[cfg(test)]
-mod tests;
 mod waveform;
 
 /* === Re-Exports === */

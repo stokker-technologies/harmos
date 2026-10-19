@@ -20,11 +20,11 @@ product boundaries determine where Harmos behavior belongs.
 | `harmos-packaging` | Artifact collection, receipt verification, bundles, bindings and generated-project authoring. |
 | `harmos-macros` | Inert declaration fragments and compiler-facing authoring diagnostics. |
 
-Each crate has at most one integration binary (storage names it `integration-engine`);
-its modules retain their domain fixtures. Layers are capped per crate in `stkr.toml`
-(`[conventions.testing.limits]`: unit 512, integration 256, acceptance 128, system 64).
-Runtime domains enter through `tests/integration/main.rs`. Storage engine stories
-live in `tests/engine/`, sharing the controllable backend in `tests/support/`.
+Each crate has at most one integration binary. Layers share the project-wide caps
+in `stkr.toml` (`[conventions.testing.limits]`: unit 512, integration 256,
+acceptance 128, system 64). Integration domains mirror production modules beneath
+`tests/integration/main.rs`; shared controllable backends live in `tests/support/`.
+Storage manager stories exercise its public engine boundary.
 Their real `WorkerOwner` runs the canonical worker and joins it on close; a host
 runtime is needed only when the story proves host composition. Runtime storage
 stories own managed journal projection, operation dispatch and host lifecycle.
@@ -39,8 +39,8 @@ behavior through those real artifacts; do not add a shipped operation solely to
 inject a test fault.
 
 The dedicated sandbox guest retains guest-specific policy and cleanup behavior
-that schematic does not declare. Loading that component inside Wasmtime is an
-in-process integration boundary. Keep pure native command construction beside
+that schematic does not declare. Loading that built component inside Wasmtime is
+a system boundary because it composes a host and a plugin artifact. Keep pure native command construction beside
 the sidecar owner. The schematic sidecar system scene owns effective environment
 clearing, pre-readiness process failure, cleanup, withdrawal and fresh-generation
 recovery. Its host runs with a poisoned worker-count variable; a valid multithread

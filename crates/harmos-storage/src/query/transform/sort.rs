@@ -110,3 +110,35 @@ impl SortExecution for Sort {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use crate::query::transform::{
+        FieldPath, Transform, TransformExecution,
+        project::{Project, Projection},
+        sort::{Sort, SortKey},
+    };
+    use arrow_array::{Array, Int64Array, RecordBatch};
+    use arrow_schema::{DataType, Field, Schema};
+    use std::sync::Arc;
+
+    fn batch() -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![Field::new("key", DataType::Int64, false), Field::new("row", DataType::Int64, false)]));
+        RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![2, 1, 1, 2])), Arc::new(Int64Array::from(vec![0, 1, 2, 3]))])
+            .unwrap()
+    }
+
+    #[test]
+    fn sort_keeps_ties() {
+        // Sort Keeps Stable Ties Before Projection Selects The Original Row Order.
+        let original = batch();
+        let sorted = Transform::Sort(Sort { keys: vec![SortKey { field: FieldPath::from("key"), descending: false, nulls_first: false }] })
+            .apply(&original, &mut || Ok(()))
+            .unwrap();
+        let projected = Transform::Project(Project { fields: vec![Projection { field: FieldPath::from("row"), name: "selected".into() }] })
+            .apply(&sorted, &mut || Ok(()))
+            .unwrap();
+        let values = projected.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
+        assert_eq!(values.values().as_ref(), &[1, 2, 0, 3]);
+    }
+}

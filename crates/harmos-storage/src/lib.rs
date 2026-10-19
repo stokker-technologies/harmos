@@ -103,7 +103,4 @@ use crate as storage;
 /* === Tests === */
 
 #[cfg(test)]
-mod arrow_tests;
-
-#[cfg(test)]
 mod policy_tests;
