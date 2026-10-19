@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/tools/cliff.toml; sha256:5f5318264851d619c1ab617fc7745ddaef1671b8b65f22f54d49136b3f4251d7
+# Rendered by stkr project update from templates/tools/cliff.toml; sha256:5ed548ce5a65f31ae78cc6350f514a6e61d598e44bb3399dfbbf36ed253a852b
 # ***
 #
 # Harmos
@@ -49,9 +49,10 @@ protect_breaking_commits = true
 filter_commits = false
 tag_pattern = "v[0-9]*"
 
-# === Version Planning === #
+# === Version Bumping === #
 
 [bump]
+initial_tag = "v0.1.0"
 breaking_always_bump_major = false
 features_always_bump_minor = false
 bump_type = "patch"

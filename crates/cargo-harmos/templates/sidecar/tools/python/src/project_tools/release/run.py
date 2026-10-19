@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:112efa20e8d267004c8077b991d7ef4490b6d9c2ed903a0394700f69e5673e0b
+# Rendered by stkr project update from templates/python/release/run.py; sha256:930bd3c21c0cd5461476fb2c6ac756ee7dc5086c8a7f171abc8ffc6a6715a3ac
 # ***
 #
 # __PRODUCT_NAME__
@@ -201,40 +201,17 @@ def prepare(directory: Path, settings: dict) -> None:
         raise policy.ToolError("prepare requires a release/v<version> stabilization branch")
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("prepare requires clean committed candidate source")
-    tags = policy.execute(
-        directory,
-        ["git", "tag", "--merged", "HEAD", "--list", "v*", "--sort=-v:refname"],
-        capture=True,
-    ).splitlines()
-    if any(re.fullmatch("v" + STABLE, tag) is None for tag in tags):
-        raise policy.ToolError("prerelease tags require an explicit future policy")
-    current = policy.policy(directory, "version").get("value")
-    if not tags:
-        if not isinstance(current, str) or re.fullmatch(STABLE, current) is None:
-            raise policy.ToolError("initial release requires the current stable version")
-        planned = current
-    else:
-        planned = (
-            policy.execute(
-                directory,
-                [
-                    "git-cliff",
-                    "--bump",
-                    "patch",
-                    "--bumped-version",
-                    "--use-branch-tags",
-                ],
-                capture=True,
-            )
-            .strip()
-            .removeprefix("v")
+    planned = (
+        policy.execute(
+            directory,
+            ["git-cliff", "--bump", "patch", "--bumped-version", "--use-branch-tags"],
+            capture=True,
         )
+        .strip()
+        .removeprefix("v")
+    )
     if re.fullmatch(STABLE, planned) is None or branch != f"release/v{planned}":
         raise policy.ToolError(f"candidate branch must be release/v{planned}")
-    if tags:
-        major, minor, patch = map(int, tags[0][1:].split("."))
-        if planned != f"{major}.{minor}.{patch + 1}":
-            raise policy.ToolError("git-cliff did not produce the required patch increment")
     version.run(directory, "sync", value=planned)
     policy_path = directory / "stkr.toml"
     text = policy_path.read_text()
