@@ -13,8 +13,9 @@ mod owner;
 
 /* === Re-Exports === */
 
+pub use crate::error::Error;
 pub use harmos_domain::plugin::*;
-pub use owner::{Error, Owner, Table};
+pub use owner::{Owner, Table};
 
 /* === Imports === */
 
