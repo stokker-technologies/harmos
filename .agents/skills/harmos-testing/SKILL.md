@@ -49,12 +49,15 @@ Do not claim this startup failure proves a crash after readiness.
 
 ## Fixture Inputs
 
-`build` owns the root nextest archive and standalone native/Wasm compilation.
-`tools/python/src/harmos_tools/build/fixtures.py` compiles the standalone
-selections, records the Cargo messages, metadata and byte stamps `cargo harmos`
-collection requires, stages the outputs under `target/fixtures/` and writes the
-fixture stamp. Product selectors live in its `metadata`; `files` names every
-staged artifact a lane consumes with its hash.
+`build` produces packageable native/Wasm outputs under
+`target/build/<profile>/<target>/`; Product selectors and byte hashes live in
+`product/examples/catalog.json`. `build:tests` consumes those matching Product
+bytes, builds test harnesses and compile-contract inputs, exports
+`tests/archive.tar.zst` and stages test-only inputs under `fixtures/`.
+`tools/python/src/harmos_tools/build/fixtures.py` records the Cargo messages,
+metadata and byte stamps `cargo harmos` collection requires. The Tests producer
+writes `fixtures/stamp.json`: its `metadata` selects artifacts, libraries and
+offline inputs, while `files` names every stamped input with its hash.
 
 Use `harmos-runtime/tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
 Resolve package-owned executables at run time through `NEXTEST_BIN_EXE_<name>`,
