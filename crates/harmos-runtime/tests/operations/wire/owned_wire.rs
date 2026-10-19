@@ -179,35 +179,35 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
 }
 
 #[tokio::test]
-async fn builder_wire_catalog() {
-    let resources = Arc::new(Resources::default());
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
-            ..Default::default()
-        })
-        .wire_operations::<Authored, _>("app", Lanes::Open, Arc::clone(&resources))
-        .runtime()
-        .await
-        .unwrap();
-    assert!(resources.events.lock().unwrap().is_empty());
-    let invocation = runtime.operations.submit_encoded(ReadContract::ID, Text { value: "hello".into() }.encode_to_vec()).unwrap();
-    let response = invocation.await.unwrap();
-    assert_eq!(Text::decode(&response).unwrap().value, "hello:1");
-    assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "new").count(), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn registration_projects_wire() {
-    let (runtime, resources) = runtime().await;
-    let encoded = runtime.operations.submit_encoded(ReadContract::ID, payload("complete")).unwrap().await.unwrap();
-    assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
-    assert_eq!(*resources.events.lock().unwrap(), ["new", "initialize", "run", "stop", "finalize", "drop"]);
-    let answer = runtime.operations.call(ReadContract { value: "local".to_owned() }).await.unwrap();
-    assert_eq!(answer.value, "local:1");
-    runtime.stop().await.unwrap();
+async fn wire_bindings_execute() {
+    {
+        let resources = Arc::new(Resources::default());
+        let runtime = Runtime::<App>::builder((), ())
+            .register(Lanes::catalog())
+            .operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+                ..Default::default()
+            })
+            .wire_operations::<Authored, _>("app", Lanes::Open, Arc::clone(&resources))
+            .runtime()
+            .await
+            .unwrap();
+        assert!(resources.events.lock().unwrap().is_empty());
+        let invocation = runtime.operations.submit_encoded(ReadContract::ID, Text { value: "hello".into() }.encode_to_vec()).unwrap();
+        let response = invocation.await.unwrap();
+        assert_eq!(Text::decode(&response).unwrap().value, "hello:1");
+        assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "new").count(), 1);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, resources) = runtime().await;
+        let encoded = runtime.operations.submit_encoded(ReadContract::ID, payload("complete")).unwrap().await.unwrap();
+        assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
+        assert_eq!(*resources.events.lock().unwrap(), ["new", "initialize", "run", "stop", "finalize", "drop"]);
+        let answer = runtime.operations.call(ReadContract { value: "local".to_owned() }).await.unwrap();
+        assert_eq!(answer.value, "local:1");
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -254,10 +254,23 @@ async fn registration_refuses_stream() {
 }
 
 #[tokio::test]
-async fn contracts_retain_distinct() {
+async fn contracts_guard_identity() {
     use harmos_runtime::operations::{Contract, WireDeclaration};
-    let (runtime, _) = runtime().await;
+    let (runtime, resources) = runtime().await;
     let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
+    for change_policy in [false, true] {
+        let mut definition = declaration.operation().clone();
+        definition.id = harmos_runtime::Identifier::new("camera.read").unwrap();
+        if change_policy {
+            definition.policy.timeout += Duration::from_secs(1);
+        }
+        let contract =
+            Contract::new(definition, declaration.version() + u32::from(!change_policy), declaration.codec(), declaration.schema().clone())
+                .unwrap();
+        assert!(runtime.operations.register_wire_contract::<Read>("camera", &contract, Lanes::Open, resources.clone()).is_err());
+    }
+    assert!(resources.events.lock().unwrap().is_empty());
+
     let mut owners = Vec::new();
     for owner in ["camera", "simulator"] {
         let resources = Arc::new(Resources::default());
@@ -277,26 +290,6 @@ async fn contracts_retain_distinct() {
         owners.push(resources);
     }
     assert_ne!(owners[0].ids.lock().unwrap()[0], owners[1].ids.lock().unwrap()[0]);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn contract_rejects_drift() {
-    use harmos_runtime::operations::{Contract, WireDeclaration};
-    let (runtime, resources) = runtime().await;
-    let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
-    for change_policy in [false, true] {
-        let mut definition = declaration.operation().clone();
-        definition.id = harmos_runtime::Identifier::new("camera.read").unwrap();
-        if change_policy {
-            definition.policy.timeout += Duration::from_secs(1);
-        }
-        let contract =
-            Contract::new(definition, declaration.version() + u32::from(!change_policy), declaration.codec(), declaration.schema().clone())
-                .unwrap();
-        assert!(runtime.operations.register_wire_contract::<Read>("camera", &contract, Lanes::Open, resources.clone()).is_err());
-    }
-    assert!(resources.events.lock().unwrap().is_empty());
     runtime.stop().await.unwrap();
 }
 
