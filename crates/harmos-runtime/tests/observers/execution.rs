@@ -274,12 +274,17 @@ async fn cancellation_drops_init() {
 
 #[tokio::test]
 async fn diagnostics_preserve_scope() {
-    for maximum in [tracing::Level::INFO, tracing::Level::WARN] {
+    let captures = [tracing::Level::INFO, tracing::Level::WARN].map(|maximum| {
         let diagnostics = Diagnostics::default();
         let writer = diagnostics.clone();
         let subscriber =
             tracing_subscriber::fmt().with_max_level(maximum).without_time().with_ansi(false).with_writer(move || writer.clone()).finish();
-        let (mut task, mut events) = tracing::subscriber::with_default(subscriber, || {
+        (maximum, diagnostics, tracing::Dispatch::new(subscriber))
+    });
+
+    // Retain Both Filters So Shared Callsites Account For Every Subscriber.
+    for (maximum, diagnostics, dispatch) in &captures {
+        let (mut task, mut events) = tracing::dispatcher::with_default(dispatch, || {
             let span = tracing::info_span!("execution", token = 73);
             let _entered = span.enter();
             start(Behavior::FailFirst, None)
@@ -290,7 +295,7 @@ async fn diagnostics_preserve_scope() {
         task.shutdown().await.unwrap();
 
         let output = String::from_utf8(diagnostics.0.lock().unwrap().clone()).unwrap();
-        if maximum == tracing::Level::INFO {
+        if *maximum == tracing::Level::INFO {
             assert!(output.contains("execution{token=73}"), "{output}");
         } else {
             assert!(!output.contains("execution{token=73}"), "{output}");

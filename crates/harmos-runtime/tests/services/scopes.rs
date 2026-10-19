@@ -158,13 +158,14 @@ async fn final_release_joins() {
 }
 
 #[tokio::test]
-async fn resource_scopes_independent() {
+async fn scope_retirement_revival() {
     let runtime = assembly().runtime().await.unwrap();
     let foreign = assembly().runtime().await.unwrap();
     let manager = &runtime.operations;
     register(manager);
     let a = Arc::new(Resources::default());
     let b = Arc::new(Resources::default());
+
     let first = runtime.operations.submit_with_resources_at("scoped", a.clone()).await.unwrap();
     let second = runtime.operations.submit_with_resources_at("scoped", b.clone()).await.unwrap();
     first.ready().await.unwrap();
@@ -172,24 +173,46 @@ async fn resource_scopes_independent() {
     assert_ne!(manager.resident_key(first.id()), manager.resident_key(second.id()));
     assert_eq!(a.started.load(SeqCst), 1);
     assert_eq!(b.started.load(SeqCst), 1);
+
     assert!(matches!(manager.submit_resident("scoped").await, Err(Error::InvalidInput { .. })));
     assert!(matches!(
         foreign.operations.submit_with_resources_at("scoped", a.clone()).await,
         Err(Error::NotRegistered { domain: "resident", .. })
     ));
+
+    {
+        let stop = manager.retire_resources(&a);
+        tokio::pin!(stop);
+        tokio::select! {
+            _ = &mut stop => panic!("cleanup is gated"),
+            _ = a.stopping.notified() => {}
+        }
+    }
+
+    assert!(matches!(
+        manager.submit_with_resources_at("scoped", a.clone()).await,
+        Err(Error::Closing { domain })
+            if domain.ends_with("scope")
+    ));
+    assert_eq!(manager.resident(&manager.resident_key(first.id()).unwrap()).unwrap().leases, 0);
+
     a.cleanup.notify_one();
     manager.retire_resources(&a).await.unwrap();
+    assert_eq!(a.finished.load(SeqCst), 1);
     assert!(manager.resident_key(first.id()).is_none());
+
     let revived = manager.submit_with_resources_at("scoped", a.clone()).await.unwrap();
     revived.ready().await.unwrap();
     assert_ne!(revived.id(), first.id());
     assert_eq!(a.started.load(SeqCst), 2);
     assert!(matches!(manager.resident(&manager.resident_key(second.id()).unwrap()).unwrap().health, Some(ServiceStatus::Running { .. })));
+
     first.release().await.unwrap();
     a.cleanup.notify_one();
     revived.release().await.unwrap();
     b.cleanup.notify_one();
     second.release().await.unwrap();
+
     runtime.stop().await.unwrap();
     foreign.stop().await.unwrap();
 }
@@ -217,35 +240,6 @@ async fn dropped_lease_cleanup() {
     assert_eq!(resources.started.load(SeqCst), 2);
     resources.cleanup.notify_one();
     second.release().await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn scope_stop_closes() {
-    let runtime = assembly().runtime().await.unwrap();
-    let manager = &runtime.operations;
-    register(manager);
-    let resources = Arc::new(Resources::default());
-    let lease = manager.submit_with_resources_at("scoped", resources.clone()).await.unwrap();
-    lease.ready().await.unwrap();
-    {
-        let stop = manager.retire_resources(&resources);
-        tokio::pin!(stop);
-        tokio::select! {
-            _ = &mut stop => panic!("cleanup is gated"),
-            _ = resources.stopping.notified() => {}
-        }
-    }
-    assert!(matches!(
-        manager.submit_with_resources_at("scoped", resources.clone()).await,
-        Err(Error::Closing { domain })
-            if domain.ends_with("scope")
-    ));
-    assert_eq!(manager.resident(&manager.resident_key(lease.id()).unwrap()).unwrap().leases, 0);
-    resources.cleanup.notify_one();
-    manager.retire_resources(&resources).await.unwrap();
-    assert_eq!(resources.finished.load(SeqCst), 1);
-    lease.release().await.unwrap();
     runtime.stop().await.unwrap();
 }
 
