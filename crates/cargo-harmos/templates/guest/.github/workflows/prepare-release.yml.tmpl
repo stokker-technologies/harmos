@@ -1,12 +1,7 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:14280735f6651ebf74a018e757d8f3171074e2a485ddd2ab72b87a966e100601
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:f04136455504027ffd856046213f8b9982640ae0b68b36c0baea503bd8e2e832
 name: Prepare Release
 "on":
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Release Version
-        required: true
-        type: string
+  workflow_dispatch: {}
 permissions:
   contents: write
   actions: write
@@ -48,6 +43,11 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
+    - name: Select Release Version
+      shell: bash
+      run: |-
+        version="$(mise exec -- git-cliff --bump patch --bumped-version --use-branch-tags)"
+        printf 'RELEASE_VERSION=%s\n' "${version#v}" >> "$GITHUB_ENV"
     - run: git switch -c "release/v$RELEASE_VERSION"
     - run: mise run release:prepare
     - run: >-
@@ -55,6 +55,5 @@ jobs:
         project_tools.release.run author
     if: github.ref == 'refs/heads/dev'
     env:
-      RELEASE_VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
       MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab

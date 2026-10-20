@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:568a7dd061b34fa5d5e0580297f0743f8fe7c0d5988a785ffbc2bca01b5cacb4
+# Rendered by stkr project update from templates/python/release/run.py; sha256:a46281b7b28459bdf23e74620b138b55636565eabea003d40b4a002472153755
 # ***
 #
 # __PRODUCT_NAME__
@@ -303,7 +303,7 @@ def author(directory: Path, settings: dict) -> None:
             "input": {
                 "branch": {"repositoryNameWithOwner": settings["repository"], "branchName": branch},
                 "expectedHeadOid": expected,
-                "message": {"headline": "chore: prepare release v" + planned},
+                "message": {"headline": "chore(release): prepare v" + planned},
                 "fileChanges": {"additions": additions, "deletions": deletions},
             }
         },
@@ -358,7 +358,7 @@ def candidate(directory: Path, settings: dict) -> None:
             email = os.environ.get("GITLAB_USER_EMAIL", author + "@users.noreply.github.com")
             policy.execute(
                 directory,
-                ["git", "-c", "user.name=" + author, "-c", "user.email=" + email, "commit", "-m", "chore: prepare release v" + version],
+                ["git", "-c", "user.name=" + author, "-c", "user.email=" + email, "commit", "-m", "chore(release): prepare v" + version],
             )
     policy.execute(directory, ["mise", "run", "ci"])
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
@@ -578,6 +578,9 @@ def run(directory: Path, verb: str) -> None:
     if verb == "guard":
         registry.require_tag(directory, settings)
         return
+    if verb == "crates":
+        registry.publish_crates(directory)
+        return
     if verb == "route":
         registry.check_route(directory, settings)
         return
@@ -659,6 +662,7 @@ if __name__ == "__main__":
             "release",
             [
                 "guard",
+                "crates",
                 "prepare",
                 "author",
                 "candidate",

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:433a56287ccb01a906df6635d6a7023901fd81df4d113b6d41b63a5cc3905dc2
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:6570cd1fde6c1466c61e6ab6029e33510355877c9c906fe5dba558e8b9b196e3
 name: CI
 "on":
   push:
@@ -854,6 +854,7 @@ jobs:
     - validate_test_unit_rust
     - build_product_dev
     - build_product_release
+    - build_tests_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -952,7 +953,11 @@ jobs:
       'cancelled') && (github.event_name == 'pull_request' || startsWith(github.ref,
       'refs/tags/v') || ((github.event_name == 'push' || github.event_name ==
       'workflow_dispatch') && (github.ref == 'refs/heads/dev' || startsWith(github.ref,
-      'refs/heads/release/v'))))
+      'refs/heads/release/v')))) && (!startsWith(github.ref, 'refs/tags/v') ||
+      (needs.source.result == 'success' && needs.check_python.result == 'success' &&
+      needs.check_rust.result == 'success' && needs.validate_test_unit_rust.result == 'success' &&
+      needs.build_product_release.result == 'success' && needs.build_tests_release.result ==
+      'success'))
     strategy:
       fail-fast: false
       matrix:
@@ -1032,6 +1037,12 @@ jobs:
     timeout-minutes: 30
     needs:
     - package_rust
+    - source
+    - check_python
+    - check_rust
+    - validate_test_unit_rust
+    - build_product_release
+    - build_tests_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -1091,7 +1102,12 @@ jobs:
         key: ${{ steps.tools.outputs.cache-primary-key }}
     - run: sccache --show-stats
       if: always()
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && (!startsWith(github.ref,
+      'refs/tags/v') || (needs.source.result == 'success' && needs.check_python.result == 'success'
+      && needs.check_rust.result == 'success' && needs.validate_test_unit_rust.result
+      == 'success' && needs.build_product_release.result == 'success' &&
+      needs.build_tests_release.result == 'success'))
     environment: release
     permissions:
       contents: write

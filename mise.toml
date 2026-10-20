@@ -339,22 +339,23 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 
 [tasks."release:publish"]
 description = "Publish A Tagged Release"
-run = [{ task = "release:publish:rust" }, { task = "release:publish:assets" }]
+run = [{ task = "release:publish:assets" }, { task = "release:publish:rust" }, { task = "release:publish:finalize" }]
 
 [tasks."release:publish:assets"]
-description = "Publish Verified Release Assets"
-run = [
-  "uv run --locked --project tools/python python -m harmos_tools.release.run publish",
-  "uv run --locked --project tools/python python -m harmos_tools.release.run finalize",
-]
+description = "Draft The Release With Its Signed Assets"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run publish"
 
 [tasks."release:publish:dry"]
 description = "Verify Rust Registry Publication"
 run = "uv run --locked --project tools/python python -m harmos_tools.test.publish --rust"
 
+[tasks."release:publish:finalize"]
+description = "Publish The Drafted Release"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run finalize"
+
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
-run = "cargo publish --workspace --locked"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run crates"
 
 [tasks."release:stage"]
 description = "Stage Native Release Assets"
