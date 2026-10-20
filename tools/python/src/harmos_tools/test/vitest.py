@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/vitest.py; sha256:ba91f8a3ead9f4efeda97573bf8cdae08ba47afd79b3cedc9a97c2e74457dd9e
+# Rendered by stkr project update from templates/python/test/vitest.py; sha256:22591e28d397e796b4d675cc8b780d4ca78bf5508404d162f5b1d00b0b1e9ea6
 # ***
 #
 # Harmos
@@ -23,7 +23,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import policy
 

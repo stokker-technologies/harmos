@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/prune.py; sha256:a53159b34ecc580c04face9e06312f9d17adcb83d4ba1bf1efddc3ab334c1def
+# Rendered by stkr project update from templates/python/test/prune.py; sha256:4d901a4ad3e858dd262161bb300fd1be37eaafed153d41e8cac4632776a16fcd
 # ***
 #
 # Harmos
@@ -20,7 +20,6 @@ import time
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import policy
 

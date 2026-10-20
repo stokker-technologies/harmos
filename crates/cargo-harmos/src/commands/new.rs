@@ -125,22 +125,7 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
         if *name == "Cargo.toml"
             && let Some(root) = &local
         {
-            let mut lines = Vec::new();
-            for line in text.lines() {
-                let mut line = line.to_owned();
-                for dependency in ["harmos-domain".to_owned(), format!("harmos-{kind}")] {
-                    if line.starts_with(&format!("{dependency} =")) {
-                        let path = root.join("crates").join(&dependency);
-                        let replacement = format!("path = {}", serde_json::to_string(&path.to_string_lossy())?);
-                        line = line.replace(
-                            "git = \"https://github.com/stokker-technologies/harmos\", rev = \"__HARMOS_REVISION__\"",
-                            &replacement,
-                        );
-                    }
-                }
-                lines.push(line);
-            }
-            text = lines.join("\n") + "\n";
+            text = localized(&text, root, kind)?;
         }
         text = text.replace("__HARMOS_REVISION__", project.harmos_rev.as_deref().unwrap_or(""));
         prepared.push((*name, finalize_marker(&text)));
@@ -161,6 +146,32 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
 }
 
 /* === Private Functions === */
+
+// Point The Harmos Dependency Sub-Tables At A Local Checkout: Their Git Key Becomes A Path And Their Revision Goes.
+fn localized(text: &str, root: &Path, kind: &str) -> Result<String, Error> {
+    let local = ["harmos-domain".to_owned(), format!("harmos-{kind}")];
+    let mut dependency: Option<&String> = None;
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let entered = local.iter().find(|name| line == format!("[dependencies.{name}]"));
+        // A Table Header Ends The Current Sub-Table
+        dependency = if line.starts_with('[') { entered } else { dependency };
+        let Some(name) = dependency else {
+            lines.push(line.to_owned());
+            continue;
+        };
+        if line.starts_with("rev = ") {
+            continue;
+        }
+        if line.starts_with("git = ") {
+            let path = root.join("crates").join(name);
+            lines.push(format!("path = {}", serde_json::to_string(&path.to_string_lossy())?));
+            continue;
+        }
+        lines.push(line.to_owned());
+    }
+    Ok(lines.join("\n") + "\n")
+}
 
 // Rebind Only The Rendered Body Digest After Final Substitution.
 fn finalize_marker(text: &str) -> String {

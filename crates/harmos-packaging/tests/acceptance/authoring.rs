@@ -102,7 +102,7 @@ impl Project {
         // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
         let inherited = std::env::vars_os().filter_map(|(name, _)| {
             let value = name.to_str()?;
-            let isolated = value.starts_with("NEXTEST") || matches!(value, "VIRTUAL_ENV" | "MISE_LOCKED");
+            let isolated = value.starts_with("NEXTEST") || matches!(value, "VIRTUAL_ENV" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS");
             isolated.then_some(name)
         });
         for name in inherited {

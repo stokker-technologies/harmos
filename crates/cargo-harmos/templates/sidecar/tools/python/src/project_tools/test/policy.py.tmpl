@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:83719c9fc5c89f4eebfa944df486d364b7e72672310380bc4815678952debc16
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:19f6602ea3ebfb47f0019e1c22152488c9265febe50c8dfcfc73ab444bdb03e8
 # ***
 #
 # __PRODUCT_NAME__
@@ -248,9 +248,8 @@ def lanes(directory: Path) -> list[tuple[str, str]]:
     expected = []
     for name in tasks:
         parts = name.split(":")
-        if len(parts) == 3 and parts[0] == "test":
-            if parts[1] in CATEGORIES and parts[2] in LANGUAGES:
-                expected.append((parts[1], parts[2]))
+        if len(parts) == 3 and parts[0] == "test" and parts[1] in CATEGORIES and parts[2] in LANGUAGES:
+            expected.append((parts[1], parts[2]))
     return sorted(expected, key=lambda lane: (CATEGORIES.index(lane[0]), lane[1]))
 
 

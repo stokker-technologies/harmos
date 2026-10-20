@@ -7,12 +7,10 @@
  * ***
  */
 
-
 // The Closed Catalog Of Authored Operations.
 
 /* === Modules === */
 pub mod greeting;
-
 
 /* === Re-Exports === */
 
@@ -24,7 +22,6 @@ pub mod greeting;
 
 // Local Imports
 
-
 /* === Constants === */
 pub const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
@@ -32,7 +29,6 @@ pub const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::op
     retries: harmos_domain::operations::RetryPolicy::Never,
     restart: harmos_domain::operations::RestartPolicy::Never,
 };
-
 
 /* === Macros === */
 
@@ -42,8 +38,9 @@ pub const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::op
 
 /* === Enums === */
 #[harmos_domain::catalog]
-pub enum Operations { Greet(greeting::Greet) }
-
+pub enum Operations {
+    Greet(greeting::Greet),
+}
 
 /* === Traits === */
 

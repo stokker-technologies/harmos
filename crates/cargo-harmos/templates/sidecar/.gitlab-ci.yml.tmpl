@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:20e1085b6f1fdbbaa903c0a6769ce894ea15cc59d9178f951eaa8a95ff5bda93
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:80d579febdbaf31432ae1dd35f97e0ca7c1517e6c3beba688e615212a7125d10
 stages:
 - Check
 - Build
@@ -38,7 +38,7 @@ Check / Repository:
   timeout: 10 minutes
   needs: []
   script:
-  - mise run format:toml --check
+  - mise run check:repository
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: >-
@@ -72,8 +72,7 @@ Check / Python:
   timeout: 10 minutes
   needs: []
   script:
-  - mise run format:python --check
-  - mise run lint:python
+  - mise run check:python
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: >-
@@ -110,9 +109,7 @@ Check / Rust (linux):
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - mise run format:rust --check
-  - mise run lint:rust
-  - mise exec -- cargo check --workspace --all-targets --no-default-features
+  - mise run check:rust
   rules:
   - if: >-
       ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
@@ -266,14 +263,11 @@ Build / Tests / Dev (linux):
   tags:
   - saas-linux-medium-amd64
   timeout: 30 minutes
-  needs:
-  - job: Build / Product / Dev (linux)
-    artifacts: true
+  needs: []
   script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
   - mise run build:tests --profile dev
   - |-
     native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
@@ -436,14 +430,11 @@ Build / Tests / Release (linux):
   tags:
   - saas-linux-medium-amd64
   timeout: 30 minutes
-  needs:
-  - job: Build / Product / Release (linux)
-    artifacts: true
+  needs: []
   script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - tar --zstd -xf "target/ci/build-product-release-linux.tar.zst"
   - mise run build:tests --profile release
   - |-
     native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
@@ -660,9 +651,7 @@ Check / Rust (windows):
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - mise run format:rust --check
-  - mise run lint:rust
-  - mise exec -- cargo check --workspace --all-targets --no-default-features
+  - mise run check:rust
   rules:
   - if: >-
       ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
@@ -823,14 +812,11 @@ Build / Tests / Dev (windows):
   tags:
   - saas-windows-medium-amd64
   timeout: 30 minutes
-  needs:
-  - job: Build / Product / Dev (windows)
-    artifacts: true
+  needs: []
   script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - tar --zstd -xf "target/ci/build-product-dev-windows.tar.zst"
   - mise run build:tests --profile dev
   - |-
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
@@ -994,14 +980,11 @@ Build / Tests / Release (windows):
   tags:
   - saas-windows-medium-amd64
   timeout: 30 minutes
-  needs:
-  - job: Build / Product / Release (windows)
-    artifacts: true
+  needs: []
   script:
   - >-
     mise exec -- uv run --locked --project tools/python python -m
     project_tools.test.prune start
-  - tar --zstd -xf "target/ci/build-product-release-windows.tar.zst"
   - mise run build:tests --profile release
   - |-
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)

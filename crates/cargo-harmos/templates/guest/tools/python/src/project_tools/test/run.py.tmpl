@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:5a39e5a37c55b88ed7ee385cfb3b44cde6daeae4b74287f1a832c9e21ce15ba3
+# Rendered by stkr project update from templates/python/test/run.py; sha256:3e3569007483dbf83284b7e4441dcde8dbd35331cbbf35abab3249ee882d4868
 # ***
 #
 # __PRODUCT_NAME__
@@ -26,11 +26,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
-from . import archive, nextest, policy, pytest, report, vitest
 from .. import temporary
 from ..build import paths
+from . import archive, nextest, policy, pytest, report, vitest
 
 # Type Checking Imports
 
@@ -455,15 +454,15 @@ def _bench_rust(
         message = json.loads(line) if line.startswith("{") else {}
         target = message.get("target", {})
         name = target.get("name", "")
-        if message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable"):
-            if name == category or name.startswith(category + "-"):
-                targets.append(
-                    (
-                        name,
-                        str(directory / message["executable"]),
-                        (directory / message["manifest_path"]).parent,
-                    )
+        artifact = message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable")
+        if artifact and (name == category or name.startswith(category + "-")):
+            targets.append(
+                (
+                    name,
+                    str(directory / message["executable"]),
+                    (directory / message["manifest_path"]).parent,
                 )
+            )
 
     home = directory / CRITERION
     baselines = _criterion_baselines(home, identity)

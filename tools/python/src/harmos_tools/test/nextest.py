@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/nextest.py; sha256:0d777a4e4558c7c510d0df0074acd3c439df06d11bfefd41a2a76f08229811f6
+# Rendered by stkr project update from templates/python/test/nextest.py; sha256:de4a68a60d38797eb161ec94a09a644b51b4b99fef8affc5cbf7c26e0a2175e2
 # ***
 #
 # Harmos
@@ -25,7 +25,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import policy
 
