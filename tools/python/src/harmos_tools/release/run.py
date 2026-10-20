@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:d7d051bf9bad6d2ff67315dfb46fdb850ca915b13cefd1c79b10ee2bb688fa3f
+# Rendered by stkr project update from templates/python/release/run.py; sha256:fb4e836b1be6e5992f5be2d4d08338a27c1fafb798e10cfd62212f4720f7f5cd
 # ***
 #
 # Harmos
@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.parse
 from functools import cache
 from pathlib import Path
@@ -31,6 +32,7 @@ from pathlib import Path
 # isort: split
 from ..test import archive
 from ..package import run as packages
+from .. import temporary
 from . import policy, registry, screenshots, version
 
 # Type Checking Imports
@@ -41,13 +43,8 @@ from . import policy, registry, screenshots, version
 
 STABLE = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 RESERVED = {"SHA256SUMS", "release.json", "platform.json", "published.json"}
-LOCKS = (
-    "*Cargo.lock",
-    "*mise.lock",
-    "*uv.lock",
-    "*pnpm-lock.yaml",
-    "*package-lock.json",
-)
+REHEARSAL_CHECKOUT = "RELEASE_REHEARSAL_CHECKOUT"
+COLD_UNSET = {"RUSTC_WRAPPER", "UV_PROJECT_ENVIRONMENT", "CARGO_HOME", "UV_CACHE_DIR", "RELEASE_REHEARSAL_CHECKOUT"}
 
 # === Types === #
 
@@ -93,17 +90,10 @@ def inputs(directory: Path) -> dict:
             }
             for node in metadata["resolve"]["nodes"]
         ]
-    # Tooling Lives With Its Package, So Every Tracked Lock File Counts.
-    locks = {}
-    for name in _tracked(directory, *LOCKS):
-        path = directory / name
-        if path.is_file():
-            locks[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     environment = {name: os.environ.get(name) for name in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET")}
     identity = {
         "source_tree": tree,
         "graph": sorted(graph, key=lambda node: node["package"]),
-        "locks": locks,
         "build_environment": environment,
     }
 
@@ -231,7 +221,8 @@ def prepare(directory: Path, settings: dict) -> None:
     if commands is None:
         commands = []
         if (directory / "Cargo.toml").exists():
-            commands.append(["cargo", "update", "--workspace", "--offline"])
+            # Cold runners start with an empty Cargo home, so the workspace-only update may fetch the index.
+            commands.append(["cargo", "update", "--workspace"])
         # Each Lock Is Refreshed Beside The Package That Owns It.
         for lock in _tracked(directory, "*package-lock.json"):
             package = str(directory / Path(lock).parent)
@@ -440,7 +431,8 @@ def tag(directory: Path, settings: dict) -> None:
 
 
 def stage(directory: Path, settings: dict, folder: Path) -> None:
-    registry.require_tag(directory, settings)
+    # Staging publishes nothing, so the candidate branch stages the same bytes its tag will.
+    registry.require_candidate(directory, settings)
     packages.verify(directory, "release", target(settings))
     selected = assets(directory, settings)
     if policy.policy(directory, "version").get("value") != tag_version(settings["tag"]):
@@ -495,21 +487,20 @@ def verify_platform(
     folder: Path,
     receipt: dict,
     *,
-    validated: bool = True,
+    native: bool = True,
 ) -> None:
     if receipt.get("sha") != archive.revision(directory) or receipt.get("tag") != settings["tag"]:
         raise policy.ToolError("release SHA or tag differs; new commits require a new build")
     current = inputs(directory)
     if current.get("local_overrides") or receipt.get("inputs", {}).get("local_overrides"):
         raise policy.ToolError("release verification rejects local dependency overrides")
-    # Platform environment remains in the original receipt; common locked/source inputs must match.
-    for name in ["source_tree", "graph", "locks"]:
+    # Platforms share the committed tree, which holds every lock file, and the resolved graph; checkout bytes,
+    # tools and environment are platform-specific and stay in each receipt.
+    for name in ["source_tree", "graph"]:
         if not receipt.get("inputs", {}).get(name) or receipt["inputs"][name] != current[name]:
             if name == "graph" and receipt.get("inputs", {}).get(name) == current.get(name) == []:
                 continue
             raise policy.ToolError(f"release resolved inputs differ: {name}")
-    if not validated and (receipt["inputs"] != current or receipt["tools"] != tools(directory, settings)):
-        raise policy.ToolError("same-SHA build environment or tools differ")
     if receipt["created_at"] > time.time() + 300:
         raise policy.ToolError("release evidence timestamp is in the future")
     if time.time() - receipt["created_at"] > settings.get("max_age_seconds", 7 * 86400):
@@ -520,14 +511,17 @@ def verify_platform(
             raise policy.ToolError(f"release asset changed: {asset['name']}")
         if asset["target"] != receipt["target"]:
             raise policy.ToolError("asset target differs from native receipt")
-    if validated:
+    # A local rehearsal clone has no native run to verify.
+    if native:
         registry.verify_jobs(settings, receipt)
 
 
-def assemble(directory: Path, settings: dict, root: Path) -> dict:
+def assemble(directory: Path, settings: dict, root: Path, *, local: bool = False) -> dict:
     required = settings.get("targets")
     if not isinstance(required, list) or not required or len(set(required)) != len(required):
         raise policy.ToolError("release.targets must declare unique required OS/architecture targets")
+    if local:
+        required = [target(settings)]
     selected = {}
     names = set()
     files = []
@@ -536,7 +530,7 @@ def assemble(directory: Path, settings: dict, root: Path) -> dict:
         native = receipt.get("target")
         if native not in required or native in selected:
             raise policy.ToolError("unexpected or duplicate release target")
-        verify_platform(directory, settings, path.parent, receipt)
+        verify_platform(directory, settings, path.parent, receipt, native=not local)
         selected[native] = receipt
         for asset in receipt["assets"]:
             if asset["name"] in names:
@@ -560,6 +554,38 @@ def assemble(directory: Path, settings: dict, root: Path) -> dict:
     return manifest
 
 
+def rehearse(directory: Path, settings: dict) -> None:
+    """Rehearse The Publication Chain On A Disposable Draft: Natively In CI, Else From A Cold Clean Clone."""
+    if settings.get("provider") != "github":
+        raise policy.ToolError(registry.GITLAB_REHEARSAL)
+    root = policy.inside(directory, settings.get("directory", "target/release-assets"))
+    if os.environ.get(REHEARSAL_CHECKOUT) == "1":
+        # The cold clone has no native run, so cross-platform receipts and native artifacts stay with CI.
+        print("note: local rehearsal stages the native target only; cross-platform receipts and native artifacts are verified in CI")
+        _stage_local(directory, settings, policy.inside(root, target(settings)))
+        manifest = assemble(directory, settings, root, local=True)
+    elif continuous_integration():
+        registry.require_candidate(directory, settings)
+        manifest = assemble(directory, settings, root)
+    else:
+        _rehearse_clean(directory)
+        return
+    # Signing producers run on stable tags only, so candidate packages carry no signatures to check.
+    signed = not settings.get("package_signing") or os.environ.get("GITHUB_REF", "").startswith("refs/tags/")
+    registry.rehearse(directory, settings, root, manifest, _publication_leaves(directory), signed=signed)
+
+
+def discard(directory: Path, settings: dict) -> None:
+    """Delete The Rehearsal Draft Of This Revision Whatever Happened Before."""
+    if settings.get("provider") != "github":
+        raise policy.ToolError(registry.GITLAB_REHEARSAL)
+    sha = archive.revision(directory)
+    if not sha:
+        raise policy.ToolError("rehearsal discard requires a committed HEAD")
+    name = registry.rehearsal_name(sha)
+    print(f"{name}: deleted {registry.discard(settings, name)} rehearsal draft(s)")
+
+
 def run(directory: Path, verb: str) -> None:
     settings = policy.policy(directory, "release")
     if verb == "candidate":
@@ -572,6 +598,21 @@ def run(directory: Path, verb: str) -> None:
         author(directory, settings)
         return
     tag_version(settings["tag"])
+    if verb == "rehearse":
+        rehearse(directory, settings)
+        return
+    if verb == "rehearse-candidate":
+        branch = policy.execute(directory, ["git", "branch", "--show-current"], capture=True).strip()
+        if continuous_integration():
+            print("note: the native Publish / Rehearsal job rehearses candidates in CI")
+        elif branch != "release/" + settings["tag"]:
+            print(f"note: publication rehearsal runs on release/{settings['tag']}, not {branch or 'a detached HEAD'}")
+        else:
+            rehearse(directory, settings)
+        return
+    if verb == "discard":
+        discard(directory, settings)
+        return
     if verb == "tag":
         tag(directory, settings)
         return
@@ -605,6 +646,106 @@ def run(directory: Path, verb: str) -> None:
 
 
 # === Private Functions === #
+
+
+def _publication_leaves(directory: Path) -> list[str]:
+    """The release:publish Steps In Order, As The Real Chain Runs Them."""
+    with (directory / "mise.toml").open("rb") as file:
+        task = tomllib.load(file).get("tasks", {}).get("release:publish", {})
+    steps = task.get("run", []) if isinstance(task, dict) else []
+    leaves = [step["task"] if isinstance(step, dict) else str(step) for step in (steps if isinstance(steps, list) else [steps])]
+    if not leaves:
+        raise policy.ToolError("release:rehearse requires the release:publish chain")
+    return leaves
+
+
+def _stage_local(directory: Path, settings: dict, folder: Path) -> None:
+    """Stage The Native Release Package Like CI Staging, Bound To The Clean Clone Instead Of A Native Run."""
+    packages.verify(directory, "release", target(settings))
+    selected = assets(directory, settings)
+    identity = inputs(directory)
+    sha = archive.revision(directory)
+    if identity.get("local_overrides") or not identity["source_tree"] or not sha:
+        raise policy.ToolError("local rehearsal requires clean committed source without overrides")
+    if (folder / "platform.json").exists():
+        raise policy.ToolError("stage exists; the rehearsal clone must start clean")
+    folder.mkdir(parents=True, exist_ok=True)
+    for asset in selected:
+        shutil.copy(policy.inside(directory, asset["path"]), policy.inside(folder, asset["name"]))
+    receipt = {
+        "schema": 1,
+        "sha": sha,
+        "tag": settings["tag"],
+        "target": target(settings),
+        "provider": "local",
+        "run_id": "",
+        "build_job": "",
+        "artifact_name": "",
+        "attempt": "1",
+        "inputs": identity,
+        "tools": tools(directory, settings),
+        "assets": selected,
+        "created_at": int(time.time()),
+    }
+    policy.write_json(folder / "platform.json", receipt)
+
+
+def _rehearse_clean(directory: Path) -> None:
+    """Rehearse HEAD From A Fresh Clone With Cold Tool Caches, Refusing Render Drift First."""
+    if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):
+        raise policy.ToolError("local rehearsal uses the real GitHub API; export GH_TOKEN")
+    sha = archive.revision(directory)
+    if not sha:
+        raise policy.ToolError("local rehearsal requires a committed HEAD")
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        print(f"note: uncommitted changes are not rehearsed; the clone exports {sha}")
+    if shutil.which("stkr") is None:
+        raise policy.ToolError("the render drift check requires stkr on PATH")
+    with temporary.directory() as scratch:
+        checkout = scratch / "checkout"
+        policy.execute(directory, ["git", "clone", "--quiet", "--no-local", "--no-checkout", str(directory), str(checkout)])
+        policy.execute(checkout, ["git", "checkout", "--quiet", "--detach", sha])
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name not in COLD_UNSET and not name.startswith(("MISE_", "VIRTUAL_ENV", "CARGO_TARGET", "CARGO_BUILD_"))
+        }
+        environment.update(
+            {
+                "CARGO_HOME": str(scratch / "cargo"),
+                "UV_CACHE_DIR": str(scratch / "uv"),
+                "MISE_DATA_DIR": str(scratch / "mise"),
+                "MISE_CACHE_DIR": str(scratch / "mise-cache"),
+                "MISE_LOCKED": "1",
+                "MISE_TRUSTED_CONFIG_PATHS": str(checkout),
+                "npm_config_store_dir": str(scratch / "pnpm"),
+                "CARGO_INCREMENTAL": "0",
+            }
+        )
+        module = (__package__ or "release").rsplit(".", 1)[0] + ".release.run"
+        steps = [
+            ["mise", "install"],
+            ["stkr", "project", "update"],
+            ["mise", "run", "format"],
+            None,
+            ["mise", "run", "build", "--profile", "release"],
+            ["mise", "run", "package", "--profile", "release"],
+            ["mise", "exec", "--", "uv", "run", "--locked", "--project", "tools/python", "python", "-m", module, "rehearse"],
+        ]
+        for command in steps:
+            if command is None:
+                drift = subprocess.run(
+                    ["git", "status", "--porcelain"], cwd=checkout, capture_output=True, text=True, encoding="utf-8", check=True
+                ).stdout.strip()
+                if drift:
+                    raise policy.ToolError(f"render drift: stkr project update and the formatters change\n{drift}")
+                continue
+            print("rehearsal: " + " ".join(command), flush=True)
+            if command[-1] == "rehearse":
+                environment[REHEARSAL_CHECKOUT] = "1"
+            result = subprocess.run(command, cwd=checkout, env=environment, check=False)
+            if result.returncode:
+                raise policy.ToolError(f"local rehearsal step failed with exit code {result.returncode}: {' '.join(command)}")
 
 
 def _override_source(directory: Path) -> str:
@@ -663,6 +804,9 @@ if __name__ == "__main__":
             [
                 "guard",
                 "crates",
+                "rehearse",
+                "rehearse-candidate",
+                "discard",
                 "prepare",
                 "author",
                 "candidate",

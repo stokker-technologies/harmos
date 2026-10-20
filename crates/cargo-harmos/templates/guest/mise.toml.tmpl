@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:3920504a8ec4bff3f40593c2879fd35b90bfbda1f4d4eb061384c99cb30af45c
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:cb6ec6d66536c3d7e46645a5630bcbfcfe05991b226f07458a59f2abbb16028b
 # === Settings === #
 
 [settings]
@@ -88,12 +88,31 @@ run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 # === Check === #
 
 [tasks.check]
-description = "Check Rust Feature Proofs And Conventions"
-depends = ["check:rust"]
+description = "Check Every Language And Conventions"
+run = [
+  { task = "check:repository" },
+  { task = "check:rust" },
+  { task = "check:python" },
+]
+
+[tasks."check:python"]
+description = "Check Python"
+run = [
+  { task = "format:python --check" },
+  { task = "lint:python" },
+]
+
+[tasks."check:repository"]
+description = "Check Repository Configuration And Conventions"
+run = [
+  { task = "format:toml --check" },
+]
 
 [tasks."check:rust"]
 description = "Check Rust"
 run = [
+  { task = "format:rust --check" },
+  { task = "lint:rust" },
   "cargo check --workspace --all-targets --all-features",
   "cargo check --workspace --all-targets --no-default-features",
 ]
@@ -176,13 +195,9 @@ run = "uv run --locked --project tools/python python -m project_tools.package.ru
 description = "Run The CI Flow Locally"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  { task = "format:toml --check" },
-  { task = "format:rust --check" },
-  { task = "format:python --check" },
+  { task = "check" },
   { task = "build --profile {{usage.profile}}" },
   { task = "build:tests --profile {{usage.profile}}" },
-  { task = "check" },
-  { task = "lint" },
   { task = "test --profile {{usage.profile}}" },
 ]
 
