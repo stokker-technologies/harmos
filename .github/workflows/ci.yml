@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:4cc2d1b106ae6d385de99bdb0fab545e6bce13244c7c79aaf3ba40caa4cf520c
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:592a3e50201674a71b09e9cb0661df79cd2ab27940e2876779d8b29e9a39161e
 name: CI
 "on":
   push:
@@ -1674,6 +1674,7 @@ jobs:
     - validate_test_system_rust
     - build_product_dev
     - build_product_release
+    - build_tests_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -1800,7 +1801,13 @@ jobs:
       'cancelled') && (github.event_name == 'pull_request' || startsWith(github.ref,
       'refs/tags/v') || ((github.event_name == 'push' || github.event_name ==
       'workflow_dispatch') && (github.ref == 'refs/heads/dev' || startsWith(github.ref,
-      'refs/heads/release/v'))))
+      'refs/heads/release/v')))) && (!startsWith(github.ref, 'refs/tags/v') ||
+      (needs.source.result == 'success' && needs.check_python.result == 'success' &&
+      needs.check_rust.result == 'success' && needs.validate_generated.result == 'success' &&
+      needs.validate_test_unit_rust.result == 'success' &&
+      needs.validate_test_integration_rust.result == 'success' && needs.validate_test_acceptance_rust.result == 'success' &&
+      needs.validate_test_system_rust.result == 'success' &&
+      needs.build_product_release.result == 'success' && needs.build_tests_release.result == 'success'))
     strategy:
       fail-fast: false
       matrix:
@@ -1821,6 +1828,16 @@ jobs:
     timeout-minutes: 30
     needs:
     - package_rust
+    - source
+    - check_python
+    - check_rust
+    - validate_generated
+    - validate_test_unit_rust
+    - validate_test_integration_rust
+    - validate_test_acceptance_rust
+    - validate_test_system_rust
+    - build_product_release
+    - build_tests_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -1919,7 +1936,15 @@ jobs:
         key: ${{ steps.tools.outputs.cache-primary-key }}
     - run: sccache --show-stats
       if: always()
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && (!startsWith(github.ref,
+      'refs/tags/v') || (needs.source.result == 'success' && needs.check_python.result == 'success'
+      && needs.check_rust.result == 'success' && needs.validate_generated.result ==
+      'success' && needs.validate_test_unit_rust.result == 'success' &&
+      needs.validate_test_integration_rust.result == 'success' &&
+      needs.validate_test_acceptance_rust.result == 'success' && needs.validate_test_system_rust.result == 'success' &&
+      needs.build_product_release.result == 'success' && needs.build_tests_release.result ==
+      'success'))
     permissions:
       contents: read
       actions: read
@@ -2018,6 +2043,16 @@ jobs:
     needs:
     - package_rust
     - package_assets
+    - source
+    - check_python
+    - check_rust
+    - validate_generated
+    - validate_test_unit_rust
+    - validate_test_integration_rust
+    - validate_test_acceptance_rust
+    - validate_test_system_rust
+    - build_product_release
+    - build_tests_release
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -2104,7 +2139,15 @@ jobs:
         key: ${{ steps.tools.outputs.cache-primary-key }}
     - run: sccache --show-stats
       if: always()
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && (!startsWith(github.ref,
+      'refs/tags/v') || (needs.source.result == 'success' && needs.check_python.result == 'success'
+      && needs.check_rust.result == 'success' && needs.validate_generated.result ==
+      'success' && needs.validate_test_unit_rust.result == 'success' &&
+      needs.validate_test_integration_rust.result == 'success' &&
+      needs.validate_test_acceptance_rust.result == 'success' && needs.validate_test_system_rust.result == 'success' &&
+      needs.build_product_release.result == 'success' && needs.build_tests_release.result ==
+      'success'))
     environment: release
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

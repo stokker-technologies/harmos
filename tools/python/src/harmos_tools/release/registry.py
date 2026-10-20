@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:a5da4a50b8fc8669fa59f41964253de94d2988b6df940e4fb743a6d830dd74dc
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:fc2e88c9d987f7b1eeed7ea2d5c1646b4a7aad4b809575dfe5615d25cd376b49
 # ***
 #
 # Harmos
@@ -14,10 +14,13 @@
 # Standard Library Imports
 import hashlib
 import io
+import email.utils
 import json
 import os
 import re
+import subprocess
 import tarfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +40,11 @@ from ..package import run as packages
 # === Public Exports === #
 
 # === Constants === #
+
+# crates.io admits a short burst of new crates, then one per ten minutes.
+CRATES_INDEX = "https://index.crates.io"
+RATE_INTERVAL = 600
+RATE_BUDGET = 5400
 
 # === Types === #
 
@@ -60,6 +68,42 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 
 # === Public Functions === #
+
+
+def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -> None:
+    """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
+    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
+    members = set(metadata["workspace_members"])
+    packages = {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
+    deadline = clock() + RATE_BUDGET
+    for name in _publication_order(packages):
+        version = packages[name]["version"]
+        if _crate_published(name, version):
+            print(f"{name} {version}: already published")
+            continue
+        while True:
+            result = subprocess.run(
+                ["cargo", "publish", "--locked", "--package", name],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if result.returncode == 0:
+                print(f"{name} {version}: published")
+                break
+            if "already exists" in output:
+                print(f"{name} {version}: already published")
+                break
+            if "429" not in output and "Too Many Requests" not in output:
+                raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
+            wait = _retry_after(output)
+            if clock() + wait > deadline:
+                raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
+            print(f"{name} {version}: rate limited; retrying in {wait}s")
+            sleep(wait)
 
 
 def request(
@@ -750,3 +794,61 @@ def gitlab_merged_revision(proposal: dict) -> str | None:
 # === Private Functions === #
 
 # === Entry Point === #
+
+
+def _publication_order(packages: dict) -> list[str]:
+    """Publishable Crates After Every Publishable Crate They Depend On, Ties By Name."""
+    requires = {
+        name: sorted(
+            {
+                dependency["name"]
+                for dependency in package["dependencies"]
+                if dependency.get("kind") != "dev" and dependency["name"] in packages and dependency["name"] != name
+            }
+        )
+        for name, package in packages.items()
+    }
+    order = []
+    visiting = set()
+
+    def visit(name: str) -> None:
+        if name in order:
+            return
+        if name in visiting:
+            raise policy.ToolError(f"publishable crates form a dependency cycle at {name}")
+        visiting.add(name)
+        for dependency in requires[name]:
+            visit(dependency)
+        visiting.discard(name)
+        order.append(name)
+
+    for name in sorted(packages):
+        visit(name)
+    return order
+
+
+def _crate_published(name: str, version: str) -> bool:
+    """Whether The Sparse Index Already Lists This Exact Crate Version."""
+    lower = name.lower()
+    prefix = {1: "1", 2: "2", 3: "3/" + lower[0]}.get(len(lower), f"{lower[0:2]}/{lower[2:4]}")
+    try:
+        with urllib.request.urlopen(f"{CRATES_INDEX}/{prefix}/{lower}", timeout=60) as response:
+            lines = response.read().decode("utf-8").splitlines()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, FileNotFoundError):
+            return False
+        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
+    return any(json.loads(line).get("vers") == version for line in lines if line.strip())
+
+
+def _retry_after(output: str) -> int:
+    """Seconds Until The Registry-Indicated Retry Time, Or The Published Interval."""
+    match = re.search(r"try again after ([A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT)", output)
+    if match is None:
+        return RATE_INTERVAL
+    retry = email.utils.parsedate_to_datetime(match.group(1)).timestamp()
+    return max(1, min(RATE_INTERVAL * 2, int(retry - time.time()) + 1))

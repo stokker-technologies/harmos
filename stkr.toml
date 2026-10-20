@@ -434,7 +434,6 @@ lock_commands = [
     "cargo",
     "update",
     "--workspace",
-    "--offline",
   ],
   [
     "cargo",
@@ -442,7 +441,6 @@ lock_commands = [
     "--manifest-path",
     "examples/schematic/Cargo.toml",
     "--workspace",
-    "--offline",
   ],
   [
     "cargo",
@@ -450,7 +448,6 @@ lock_commands = [
     "--manifest-path",
     "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml",
     "--workspace",
-    "--offline",
   ],
 ]
 
