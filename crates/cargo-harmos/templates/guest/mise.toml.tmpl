@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:cb6ec6d66536c3d7e46645a5630bcbfcfe05991b226f07458a59f2abbb16028b
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:b46da2a5971bd08d19bc77f4b8c597cf1e56dfb0dce0e59281d56e73cc8eba23
 # === Settings === #
 
 [settings]
@@ -51,7 +51,11 @@ run = "uv sync --locked --project tools/python --all-groups"
 [tasks.format]
 description = "Format Every Language"
 usage = 'flag "--check"'
-depends = ["format:toml {% if usage.check %}--check{% endif %}", "format:rust {% if usage.check %}--check{% endif %}", "format:python {% if usage.check %}--check{% endif %}"]
+depends = [
+  "format:toml {% if usage.check %}--check{% endif %}",
+  "format:rust {% if usage.check %}--check{% endif %}",
+  "format:python {% if usage.check %}--check{% endif %}",
+]
 
 [tasks."format:python"]
 description = "Format Python"
@@ -76,10 +80,7 @@ depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = [
-  'uv run --locked --project tools/python ruff check "tools/python"',
-  'uv run --locked --project tools/python ty check "tools/python"',
-]
+run = ['uv run --locked --project tools/python ruff check "tools/python"', 'uv run --locked --project tools/python ty check "tools/python"']
 
 [tasks."lint:rust"]
 description = "Lint Rust"
@@ -89,24 +90,15 @@ run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
 [tasks.check]
 description = "Check Every Language And Conventions"
-run = [
-  { task = "check:repository" },
-  { task = "check:rust" },
-  { task = "check:python" },
-]
+run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
 
 [tasks."check:python"]
 description = "Check Python"
-run = [
-  { task = "format:python --check" },
-  { task = "lint:python" },
-]
+run = [{ task = "format:python --check" }, { task = "lint:python" }]
 
 [tasks."check:repository"]
 description = "Check Repository Configuration And Conventions"
-run = [
-  { task = "format:toml --check" },
-]
+run = [{ task = "format:toml --check" }]
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -203,21 +195,13 @@ run = [
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
-run = [
-  { task = "build" },
-  { task = "build:tests" },
-  { task = "test:coverage" },
-]
+run = [{ task = "build" }, { task = "build:tests" }, { task = "test:coverage" }]
 
 # === Release === #
 
 [tasks.release]
 description = "Prepare And Validate A Release"
-run = [
-  { task = "release:prepare" },
-  { task = "ci" },
-  { task = "release:publish:dry" },
-]
+run = [{ task = "release:prepare" }, { task = "ci" }, { task = "release:publish:dry" }]
 
 [tasks."release:prepare"]
 description = "Prepare The Release Branch"
@@ -225,9 +209,7 @@ run = "uv run --locked --project tools/python python -m project_tools.release.ru
 
 [tasks."release:publish"]
 description = "Publish A Tagged Release"
-run = [
-  { task = "release:publish:rust" },
-]
+run = [{ task = "release:publish:rust" }]
 
 [tasks."release:publish:dry"]
 description = "Dry-Run Every Publication"
