@@ -36,7 +36,6 @@ product!(FollowBoundaries {
 
 /* === Structs === */
 
-/// Follow record entries accepted after `after` (from the start when absent).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowRecords {
     pub after: Option<StorageCursor>,

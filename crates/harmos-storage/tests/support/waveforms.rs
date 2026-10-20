@@ -94,7 +94,6 @@ pub fn definition() -> harmos_domain::schema::graph::Schema {
     }
 }
 
-/// Integer Periods And Half-Open Uniform Samples Give Analytical RMS A / sqrt(2).
 pub fn samples(periods: usize) -> Vec<Sample> {
     (0..periods * SAMPLES_PER_PERIOD)
         .flat_map(|ordinal| {

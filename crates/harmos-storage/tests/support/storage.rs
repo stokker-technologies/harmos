@@ -154,7 +154,6 @@ struct Snapshot {
     rows: BTreeMap<u64, StoredRow>,
 }
 
-/// One persisted object lifecycle release frontier.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Release {
     pub schema: SchemaKey,

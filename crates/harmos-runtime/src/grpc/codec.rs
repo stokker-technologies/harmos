@@ -52,21 +52,18 @@ pub struct Encoder<W, E> {
     response: PhantomData<fn() -> (W, E)>,
 }
 
-/// Typed payloads: protobuf transcoded from each value's canonical Postcard form.
 pub struct Transcoded;
 
 /* === Enums === */
 
 /* === Traits === */
 
-/// How one payload type crosses the gRPC wire under the strategy `Self`.
 pub trait Wire<T>: Send + Sync + 'static {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
     fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError>;
     fn decode(input: DecodeInput<'_>) -> Result<T, MessageError>;
 }
 
-/// A gRPC response message written under the strategy `W`.
 pub trait Encode<W>: Send + 'static {
     fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
 }

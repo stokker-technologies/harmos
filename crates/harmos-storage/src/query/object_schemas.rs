@@ -49,8 +49,6 @@ use crate::{Error, MemorySize, Result};
 
 /* === Structs === */
 
-/// Resolved schemas for one finite object selection. A leading projection may
-/// normalize heterogeneous payloads before the common query pipeline begins.
 pub(super) struct NormalizedObjects {
     schemas: Vec<(StorageSchema, RetainedMemory)>,
     projection: Option<Project>,

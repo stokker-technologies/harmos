@@ -43,7 +43,6 @@ variants!(Condition {
 
 /* === Structs === */
 
-/// Disjunction of conjunctions. Negation belongs to each typed term.
 #[derive(Clone, Debug)]
 pub struct Filter {
     pub clauses: Vec<Clause>,

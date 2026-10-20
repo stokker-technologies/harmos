@@ -37,7 +37,6 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Structs === */
 
-/// Incremental histogram state.
 pub struct Bins {
     plan: Histogram,
     schema: Arc<Schema>,
@@ -51,7 +50,6 @@ pub struct Bins {
 pub trait HistogramExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    /// Start incremental binning over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Bins>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
@@ -78,7 +76,6 @@ impl HistogramExecution for Histogram {
         ]))
     }
 
-    /// Start incremental binning over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Bins> {
         Ok(Bins { schema: Arc::new(self.output_schema(input)?), plan: self.clone(), counts: vec![0; self.edges.len() + 1] })
     }
@@ -91,18 +88,14 @@ impl HistogramExecution for Histogram {
 }
 
 impl Bins {
-    /// Bytes retained by bin counts between batches.
     pub fn retained_bytes(&self) -> usize {
         self.counts.len().saturating_mul(16).saturating_add(1024)
     }
 
-    /// Bytes needed to materialize the final output batch.
     pub fn finish_bytes(&self) -> usize {
         self.counts.len().saturating_mul(96).saturating_add(4096)
     }
 
-    /// Count one batch. First and last bins hold finite values outside the
-    /// edges; a failed batch leaves the counts unchanged.
     pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
         let edges = &self.plan.edges;
         let mut counts = self.counts.clone();

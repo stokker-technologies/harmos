@@ -33,7 +33,6 @@ pub type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
 
-/// The bounded wait elapsed before the future completed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Elapsed;
 

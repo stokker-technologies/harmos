@@ -52,10 +52,6 @@ pub struct MutationReceipt {
     pub value: MutationValue,
 }
 
-/// Idempotent mutation receipts within the retry window, bounded by a share of
-/// the read budget. When admitting a receipt would exceed the bound, completed
-/// receipts are evicted oldest admission first; a retry of an evicted receipt
-/// then runs as a new mutation. Pending receipts are never evicted.
 pub(super) struct Receipts {
     execution: crate::execution::Execution,
     window: Identifier,
@@ -115,8 +111,6 @@ impl Receipts {
         })
     }
 
-    /// Recovery reads at most the receipts the ledger can hold, plus the
-    /// response vector itself.
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
             rows: NonZeroUsize::new(self.bound.get() / ENTRY_MINIMUM).unwrap_or(NonZeroUsize::MIN),
@@ -236,8 +230,6 @@ impl Receipts {
         receipts
     }
 
-    /// Replace the ledger with recovered receipts, oldest expiry first; when they
-    /// exceed the bound, the oldest are evicted as during normal admission.
     pub(super) fn restore(&mut self, mut receipts: Vec<MutationReceipt>) -> Result<()> {
         let now = self.execution.now();
         let wall = SystemTime::now();

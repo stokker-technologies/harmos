@@ -132,7 +132,6 @@ impl StateLog {
         RecoveryPosition { history: self.history.clone(), sequence: self.saved }
     }
 
-    /// The caller bounds the snapshot value; the configured limit bounds the written record.
     pub(super) fn snapshot(&self, maximum: usize) -> Result<Option<RecoverySnapshot>> {
         let bound = maximum.saturating_add(format::OVERHEAD);
         self.files.snapshot(bound.min(self.checkpoint_bytes))

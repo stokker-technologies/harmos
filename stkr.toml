@@ -87,7 +87,8 @@ hosts = [
 
 [conventions.testing.limits]
 unit = 512
-integration = 256
+# The Runtime Crate Alone Owns About 660 Curated Stories.
+integration = 1024
 acceptance = 128
 system = 64
 

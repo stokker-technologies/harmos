@@ -40,9 +40,6 @@ pub(crate) const MAX_FIELDS: usize = 4096;
 
 /* === Structs === */
 
-/// An admitted reservation retained until the last Arrow allocation is released.
-/// Admission and resizing are storage-internal; consumers cannot release a live
-/// result's charge while retaining its native zero-copy arrays.
 #[derive(Clone)]
 pub struct RetainedMemory {
     // Arrow Allocation Requires Unwind-Safe Shared Ownership; The Mutex Owner
@@ -50,7 +47,6 @@ pub struct RetainedMemory {
     owner: Arc<Mutex<Reservation>>,
 }
 
-/// Native Arrow schema with an explicitly encoded, immutable IPC representation.
 #[derive(Clone, Debug)]
 pub struct ArrowSchema {
     schema: Arc<Schema>,
@@ -58,7 +54,6 @@ pub struct ArrowSchema {
     retention: Option<Retained>,
 }
 
-/// Native Arrow data. Zero-copy clones and slices retain admitted buffer owners.
 #[derive(Clone, Debug)]
 pub struct ArrowBatch {
     batch: RecordBatch,
@@ -81,8 +76,6 @@ impl RetainedMemory {
         Self { owner }
     }
 
-    /// Shrink the charge after construction scratch is released. Growing a
-    /// retained charge is refused: allocations must be admitted before they exist.
     pub(crate) fn shrink_to(&self, bytes: usize) -> Result<()> {
         let mut held = self.owner.lock().unwrap();
         if bytes > held.bytes() {
@@ -128,7 +121,6 @@ impl ArrowSchema {
 }
 
 impl ArrowBatch {
-    /// Construct consumer-owned data. Storage admission attaches ownership with `retain`.
     pub fn try_new(batch: RecordBatch) -> Result<Self> {
         validate_schema(batch.schema().as_ref())?;
         let encoded = ipc::encode(batch.schema().as_ref(), Some(&batch))?;
@@ -136,8 +128,6 @@ impl ArrowBatch {
         Ok(Self { batch, ipc: Arc::new(encoded), resident, retention: None })
     }
 
-    /// Attach a reservation covering the native buffers, schema, and cached encoding.
-    /// Every returned zero-copy array retains that reservation in its buffer owner.
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Result<Self> {
         let owner =
             Arc::new(retention::Owner { _reservation: reservation.clone(), _encoded: Arc::clone(&self.ipc), _schema: self.batch.schema() });
@@ -203,7 +193,6 @@ impl MemorySize for ArrowBatch {
 
 /* === Public Functions === */
 
-/// Reject unsupported Arrow representations before output or decoding.
 pub fn validate_schema(schema: &Schema) -> Result<()> {
     let mut fields = 0;
     for field in schema.fields() {
@@ -215,7 +204,6 @@ pub fn validate_schema(schema: &Schema) -> Result<()> {
     Ok(())
 }
 
-/// Conservative bound including wire staging, Arrow decoding, and retained data.
 pub fn decoding_memory(bytes: &[u8], batch: bool) -> Result<usize> {
     ipc::preflight(bytes, batch)
 }

@@ -175,7 +175,6 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
     Ok(())
 }
 
-#[doc(hidden)]
 pub fn refusal(error: impl std::fmt::Display) -> Refusal {
     let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
     Refusal { code: refusal.code().to_string(), failure: refusal.failure().encode() }

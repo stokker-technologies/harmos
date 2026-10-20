@@ -38,7 +38,6 @@ use crate::{Error, Result};
 
 /* === Structs === */
 
-/// Serves `host.catalog`; stored kinds need the host's storage manager.
 pub struct Listing<C> {
     storage: Arc<Option<Arc<StorageManager<C>>>>,
 }
@@ -92,8 +91,6 @@ impl<C> Listing<C> {
 
 /* === Public Functions === */
 
-/// Serve `host.catalog` from this manager; without storage only live
-/// operation contracts are listed and stored kinds refuse as not ready.
 pub fn register<C: 'static>(
     operations: &OperationManager, owner: impl Into<String>, lane: impl Lane, storage: Option<Arc<StorageManager<C>>>,
 ) -> Result<()> {

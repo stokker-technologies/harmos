@@ -66,7 +66,6 @@ pub struct StreamSelection {
     pub source_start: Option<SystemTime>,
     pub source_end: Option<SystemTime>,
 
-    /// Only rows stored after this storage position, as `RecordRead::after`.
     pub after: u64,
 }
 
@@ -121,9 +120,6 @@ impl ObjectSelection {
 }
 
 impl Source {
-    /// Exact authorization resource for this selection. Prefixes separate source
-    /// kinds and stream identities from schema-wide selectors; `*` names an
-    /// unconstrained selection and does not introduce wildcard grant matching.
     pub fn grant_scope(&self) -> String {
         match self {
             Self::Objects(selection) => {

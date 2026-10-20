@@ -46,8 +46,6 @@ crate::declare!(FollowStream {
 
 /* === Structs === */
 
-/// Follow stream rows accepted after both `after` (from the start when absent)
-/// and `selection.after`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowStream {
     pub after: Option<StorageCursor>,

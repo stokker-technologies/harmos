@@ -84,8 +84,6 @@ pub trait Described: 'static {
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];
 
-    /// The variant an absent oneof decodes to, or `None` when a variant is
-    /// required; meaningful for enums only.
     const DEFAULT_VARIANT: Option<usize> = Some(0);
 
     const DEFINITION: declaration::Definition = declaration::Definition::of::<Self>();

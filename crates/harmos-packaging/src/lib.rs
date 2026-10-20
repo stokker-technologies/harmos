@@ -94,7 +94,6 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     })
 }
 
-/// Lowercase hexadecimal SHA-256 of `bytes`, the one digest form every stamp and marker uses.
 pub fn digest(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let hash = Sha256::digest(bytes);

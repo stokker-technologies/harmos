@@ -35,10 +35,6 @@ use crate::{Error, Result};
 
 /* === Structs === */
 
-/// The budget of one reloadable unit of read work. Scoped claims cover transient
-/// scratch; retained claims move bytes into their own reservations that outlive
-/// the attempt. Growth never waits; a refusal is recorded so the caller can
-/// release the attempt, wait for the recorded demand and retry the same work.
 pub(super) struct MemoryBank {
     state: Arc<Mutex<BankState>>,
 }
@@ -58,7 +54,6 @@ struct BankState {
 
 /* === Enums === */
 
-/// Why an attempt could not grow: other owners hold capacity, or it can never fit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Shortfall {
     Busy,
@@ -74,7 +69,6 @@ impl MemoryBank {
         Self { state: Arc::new(Mutex::new(BankState { requested: reservation.bytes(), reservation, used: 0, retained: 0, refusal: None })) }
     }
 
-    /// Admit `bytes` of credit for the attempt, waiting for other owners.
     pub(super) async fn admit(
         inner: &Arc<Inner>, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
@@ -82,12 +76,10 @@ impl MemoryBank {
         Ok(Self::new(reservation))
     }
 
-    /// Total demand observed during this attempt, including refused growth.
     pub(super) fn requested(&self) -> usize {
         self.state.lock().unwrap().requested
     }
 
-    /// The refusal that stopped this attempt, if growth was refused.
     pub(super) fn shortfall(&self) -> Option<Shortfall> {
         self.state.lock().unwrap().refusal
     }
@@ -96,7 +88,6 @@ impl MemoryBank {
         MemoryScope { bank: self, used: 0 }
     }
 
-    /// Claim bytes that outlive this attempt, such as a retained Arrow batch.
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
         let mut state = self.state.lock().unwrap();
         state.ensure(bytes)?;

@@ -71,7 +71,6 @@ pub enum PayloadEncoding {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectRetention {
-    /// Preserve every revision until the consumer durably releases its lifecycle.
     UntilReleased,
 
     Latest,

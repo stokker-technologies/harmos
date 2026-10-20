@@ -51,7 +51,6 @@ pub type Kind<R = Definition> = graph::Kind<R>;
 pub struct Definition {
     pub name: &'static str,
 
-    /// The variant an absent oneof selects, or `None` when one is required.
     pub default_variant: Option<usize>,
 
     pub identity: fn() -> TypeId,

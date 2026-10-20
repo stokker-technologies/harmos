@@ -46,7 +46,6 @@ pub trait FilterExecution {
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 
-    /// Ascending indices of the rows of `input` this filter keeps.
     fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>>;
 }
 
@@ -113,7 +112,6 @@ impl FilterExecution for Filter {
         take(input, self.select(input, check)?)
     }
 
-    /// Ascending indices of the rows of `input` this filter keeps.
     fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>> {
         let mut selected = Vec::new();
         for row in 0..input.num_rows() {

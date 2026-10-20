@@ -43,8 +43,6 @@ type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result
 
 /* === Structs === */
 
-/// The synced frames of one copy: each frame is one JSON array holding a
-/// standalone entry or every member of one logical commit.
 #[derive(Clone, Default)]
 pub struct Store(Arc<Mutex<Frames>>);
 
@@ -66,7 +64,6 @@ pub struct Journal<A: Wire> {
     application: PhantomData<fn() -> A>,
 }
 
-/// Folds a replica of state and saves it whenever a whole commit is reached.
 pub struct Snapshot<A: Application> {
     replica: A::State,
     taken: Position,
@@ -109,7 +106,6 @@ impl Store {
         self.frames().lines = lines;
     }
 
-    /// Every stored member, groups flattened, as the JSON it was synced as.
     pub fn members(&self) -> Vec<serde_json::Value> {
         self.lines()
             .iter()
@@ -433,7 +429,6 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
 
 /* === Public Functions === */
 
-/// One standalone frame, as some build stored it.
 pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_json::Value) -> String {
     let member = serde_json::json!({
         "position": position,

@@ -55,19 +55,14 @@ use harmos_domain::{Message, MessageError};
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.
 
-/// Append the protobuf form of `value`; fails only when `T`'s Message bytes
-/// break its described shape.
 pub fn encode<T: Message + Described>(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     transcode::encode(&T::DEFINITION, &value.encode_to_vec(), bytes)
 }
 
-/// Decode one protobuf `T`.
 pub fn decode<T: Message + Described>(input: DecodeInput<'_>) -> Result<T, MessageError> {
     T::decode(&transcode::decode(&T::DEFINITION, input)?)
 }
 
-/// The memory decoding one protobuf `T` holds: the intermediate Postcard buffer
-/// beside the decoded value.
 pub fn decoding_memory<T: Message + Described>(input: DecodeInput<'_>) -> Result<usize, MessageError> {
     let postcard = transcode::decode(&T::DEFINITION, input)?;
     decoding_add(postcard.capacity(), T::decoding_memory(&postcard)?)

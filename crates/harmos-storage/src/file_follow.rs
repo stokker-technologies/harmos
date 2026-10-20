@@ -88,7 +88,6 @@ impl FileFollower {
         self.progress
     }
 
-    /// The next retained byte batch, waiting while the file is still producing.
     pub async fn next_batch(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileBatch>> {
         loop {
             self.changed.borrow_and_update();

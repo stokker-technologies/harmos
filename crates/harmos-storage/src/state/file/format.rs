@@ -50,8 +50,6 @@ pub(super) enum Read<T> {
 
 /* === Public Functions === */
 
-/// Encodes one complete JSON envelope containing a value and its SHA-256 digest.
-/// The limit covers every byte written, including the envelope and newline.
 pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
     let json = serde_json::to_vec(value).map_err(json)?;
     let length = json.len().checked_add(OVERHEAD).ok_or_else(|| invalid("state size overflow"))?;
@@ -71,14 +69,11 @@ pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>>
     Ok(line)
 }
 
-/// A newline is the commit delimiter; malformed complete lines are never skipped.
 pub(super) fn write<T: Serialize>(writer: &mut impl Write, value: &T, maximum: usize) -> Result<()> {
     let line = encode(value, maximum)?;
     writer.write_all(&line).map_err(io)
 }
 
-/// Reads at most one configured record, envelope included.
-/// An incomplete tail is distinguished from corruption in a committed line.
 pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usize) -> Result<Read<T>> {
     let mut line = Vec::new();
     loop {

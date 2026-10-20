@@ -36,13 +36,9 @@ use crate::{Error, Result};
 
 /* === Structs === */
 
-/// Bytes held by one logical owner, such as a query or subscription, across all
-/// of its reservations, including results still retained by its consumer.
 #[derive(Clone, Default)]
 pub(super) struct Held(Arc<AtomicUsize>);
 
-/// The single RAII charge against a storage pool. Dropping it releases the bytes
-/// and wakes waiters; a zero-byte reservation releases nothing and wakes no one.
 pub(super) struct Reservation {
     inner: Arc<Inner>,
     pool: Pool,
@@ -50,7 +46,6 @@ pub(super) struct Reservation {
     held: Held,
 }
 
-/// The owners of one pool that hold bytes while waiting to grow.
 #[derive(Default)]
 pub(super) struct Growers {
     next: u64,
@@ -62,7 +57,6 @@ struct Grower {
     need: usize,
 }
 
-/// A registered grower; dropping it, including by cancelling the wait, leaves.
 struct Waiting {
     inner: Arc<Inner>,
     pool: Pool,
@@ -74,34 +68,24 @@ struct Waiting {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Pool {
-    /// The shared read budget: query, file and subscription work plus retained results.
     Read,
 
-    /// Write-side scratch inside the pending write budget.
     Write,
 }
 
-/// Typed outcome of a refused capacity request.
 #[derive(Debug)]
 pub(super) enum Refusal {
-    /// The owner's held bytes plus the request can never fit the configured pool.
     Exceeded(Pool),
 
-    /// Other owners currently hold the capacity; waiting may succeed.
     Busy,
 
-    /// Waiting would complete a certain cycle: no waiting holder, the caller
-    /// included, could grow even if every other owner released everything.
     Cycle,
 
-    /// The caller's deadline elapsed while waiting.
     Elapsed,
 
-    /// Storage cannot admit work at all (closing, stopped or failed).
     Failed(Error),
 }
 
-/// One step of a capacity wait.
 pub(super) enum Attempt<T> {
     Ready(T),
     Wait,
@@ -195,15 +179,12 @@ impl Reservation {
         Self { inner: Arc::clone(inner), pool, bytes: 0, held: held.clone() }
     }
 
-    /// Own bytes the caller already charged to `pool` under the state lock.
     pub(super) fn charged(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
         Self { inner: Arc::clone(inner), pool, bytes, held }
     }
 
-    /// Charge bytes for lifecycle work (startup recovery) that runs before the
-    /// worker admits ordinary requests; refuses rather than waits.
     pub(super) fn lifecycle(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Result<Self> {
         let mut state = inner.state.lock().unwrap();
         if bytes > pool.ceiling(inner) || !pool.charge(inner, &mut state, bytes) {
@@ -215,14 +196,12 @@ impl Reservation {
         Ok(Self { inner: Arc::clone(inner), pool, bytes, held })
     }
 
-    /// Reserve without waiting.
     pub(super) fn try_new(inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize) -> std::result::Result<Self, Refusal> {
         let mut reservation = Self::empty(inner, pool, held);
         reservation.try_grow(bytes)?;
         Ok(reservation)
     }
 
-    /// Reserve, waiting for other owners to release capacity.
     pub(super) async fn wait(
         inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
@@ -248,10 +227,6 @@ impl Reservation {
         }
     }
 
-    /// Grow, waiting for other owners to release capacity. An owner that already
-    /// holds bytes joins the pool's growers and waits unless no grower, itself
-    /// included, could grow even after every other owner released everything;
-    /// only that certain cycle is refused, with `Cycle`.
     pub(super) async fn grow(&mut self, additional: usize, deadline: Option<Instant>) -> std::result::Result<(), Refusal> {
         if additional == 0 {
             return Ok(());
@@ -276,22 +251,18 @@ impl Reservation {
         self.inner.notify();
     }
 
-    /// Give up ownership of the charged bytes without releasing them; the caller
-    /// moves them to another owner under the state lock it already holds.
     pub(super) fn disown(&mut self) -> usize {
         let bytes = std::mem::take(&mut self.bytes);
         self.held.0.fetch_sub(bytes, Ordering::SeqCst);
         bytes
     }
 
-    /// Move part of this charge into a separately owned reservation.
     pub(super) fn split(&mut self, bytes: usize) -> Self {
         assert!(bytes <= self.bytes, "split exceeds reservation");
         self.bytes -= bytes;
         Self { inner: Arc::clone(&self.inner), pool: self.pool, bytes, held: self.held.clone() }
     }
 
-    /// Hand this charge to Arrow buffers or other shared consumers.
     pub(super) fn retain(self) -> RetainedMemory {
         let owner = Arc::new(Mutex::new(self));
         RetainedMemory::new(owner)
@@ -392,11 +363,6 @@ impl Drop for Reservation {
 }
 
 impl Inner {
-    /// The one capacity wait. Notification is armed before each check, so a
-    /// release between check and await is never lost; a refused check changes
-    /// nothing and wakes no one; only the caller's grower registration is held
-    /// across the await, so dropping the future cancels cleanly; an optional
-    /// deadline bounds the wait.
     pub(super) async fn wait<T>(
         &self, deadline: Option<Instant>, mut attempt: impl FnMut(&mut State) -> Attempt<T>,
     ) -> std::result::Result<T, Refusal> {
@@ -418,8 +384,6 @@ impl Inner {
 }
 
 impl Inner {
-    /// The capacity wait for admission checks phrased as `Result<Option<T>>`:
-    /// `Ok(None)` waits for released capacity, `Err` refuses.
     pub(super) async fn admit_when<T>(&self, mut check: impl FnMut(&mut State) -> Result<Option<T>>) -> Result<T> {
         self.wait(None, |state| match check(state) {
             Ok(Some(value)) => Attempt::Ready(value),

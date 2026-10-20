@@ -38,7 +38,6 @@ use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
 /* === Structs === */
 
-/// Incremental aggregate state: groups in key order with their accumulators.
 pub struct Groups {
     plan: Aggregate,
     schema: Arc<Schema>,
@@ -59,7 +58,6 @@ struct Group {
 pub trait AggregateExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
-    /// Start an incremental reduction over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Groups>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
@@ -122,7 +120,6 @@ impl AggregateExecution for Aggregate {
         Ok(Schema::new(fields))
     }
 
-    /// Start an incremental reduction over batches of `input`.
     fn start(&self, input: &Schema) -> Result<Groups> {
         let schema = Arc::new(self.output_schema(input)?);
         let mut groups = Groups { plan: self.clone(), schema, groups: Vec::new(), capture: 0, retained: 0 };
@@ -142,12 +139,10 @@ impl AggregateExecution for Aggregate {
 }
 
 impl Groups {
-    /// Bytes retained by group keys and accumulator state between batches.
     pub fn retained_bytes(&self) -> usize {
         self.retained
     }
 
-    /// Bytes needed to materialize the final output batch.
     pub fn finish_bytes(&self) -> Result<usize> {
         let text = self
             .groups
@@ -166,7 +161,6 @@ impl Groups {
             .ok_or_else(|| invalid("aggregate finish estimate overflow"))
     }
 
-    /// Fold one batch into the groups. A failed batch leaves no partial update.
     pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
         // Extract Keys And Values Before Any Group Changes.
         let mut rows = Vec::with_capacity(input.num_rows());

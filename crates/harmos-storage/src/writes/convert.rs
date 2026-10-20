@@ -48,9 +48,6 @@ const MAX_DEPTH: usize = 64;
 
 /* === Public Functions === */
 
-/// Encode typed payload rows using the registered Harmos message schema. The
-/// allowance covers the returned row-vector allocation and all encoded bytes;
-/// validation and exact sizing finish before output allocation begins.
 pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
     let metadata = payload
         .len()

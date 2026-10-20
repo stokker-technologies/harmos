@@ -99,7 +99,6 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
     RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
 }
 
-/// Saved records of `schema` as (position, item), read through the Query operation contract.
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_runtime::storage::operations::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
@@ -133,7 +132,6 @@ pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &Schem
     records
 }
 
-/// Whether one poll of `future` leaves it pending, without waiting for anything.
 pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
     std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }

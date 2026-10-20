@@ -69,8 +69,6 @@ pub(super) fn decode(bytes: &[u8], batch: bool) -> Result<(Arc<Schema>, Option<R
     Ok((schema, value))
 }
 
-/// Inspect the wire representation without building an Arrow schema or arrays.
-/// The bound includes encoded copies, aligned body copies, nodes and descriptors.
 pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<usize> {
     let mut offset = 0usize;
     let mut schemas = 0usize;

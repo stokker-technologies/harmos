@@ -43,8 +43,6 @@ use journal::StateLog;
 
 /* === Structs === */
 
-/// A long-lived file resource. Scheduling, admission and evidence dependencies
-/// belong to StorageManager; this backend owns file durability and integrity.
 pub struct FileBackend {
     root: PathBuf,
     history: StoreHistory,

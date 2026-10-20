@@ -81,7 +81,6 @@ impl Files {
         self.replace("state.json", |writer| format::write(writer, value, maximum))
     }
 
-    /// The caller has already durably published a checkpoint covering discarded entries.
     pub(super) fn replace_journal(&self, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {
         self.replace("state.jsonl", write)
     }

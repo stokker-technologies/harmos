@@ -46,7 +46,6 @@ crate::declare!(FollowFile {
 
 /* === Structs === */
 
-/// Follow the bytes of one producing file from `offset`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowFile {
     pub file: StagedFile,

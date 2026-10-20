@@ -41,7 +41,6 @@ use harmos_domain::operations::storage::ReadFile;
 
 /* === Structs === */
 
-/// Streams a byte range of one finished, immutable file in response batches.
 pub struct FileReader {
     inner: Arc<Inner>,
     held: Held,
@@ -62,7 +61,6 @@ pub struct FileReader {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
-    /// Open a finished file reference for reading. Producing files are refused.
     pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
         let ReadFile { file, range } = request;
         let end = range.end(file.length)?;
@@ -127,7 +125,6 @@ impl FileReader {
         self.offset
     }
 
-    /// The next byte batch within the response byte ceiling, or `None` at the range end.
     pub async fn next(&mut self) -> Result<Option<FileBatch>> {
         let Some(snapshot) = &self.snapshot else {
             return Ok(None);

@@ -32,15 +32,6 @@ use crate::{Aggregate, Error, Result};
 
 /* === Structs === */
 
-/// Folds scalar values into one aggregate with query transform semantics.
-///
-/// Exact columns (signed, unsigned and exact fractions) keep `Sum`, `Mean` and
-/// `Median` exact in rational arithmetic, and `Min`, `Max` and `Last` select by
-/// scalar ordering over any comparable kind; neither is floating statistics.
-/// Every floating statistic is answered by the signal `Summary` (mergeable
-/// members) or `Series` (median and percentiles); `Rms`, `Std` and
-/// percentiles of exact columns read their values as the nearest float.
-/// `Missing` and `Null` count toward `Len` only.
 #[derive(Clone, Debug)]
 pub struct Accumulator {
     agg: Agg,
@@ -52,7 +43,6 @@ pub struct Accumulator {
     running: Summary,
     scratch: Vec<ScalarValue>,
 }
-/// The bound on values order statistics retain, shared by the accumulators of one fold.
 #[derive(Clone, Debug)]
 pub struct Scratch {
     remaining: usize,
@@ -65,13 +55,11 @@ pub struct Scratch {
 /* === Implementations === */
 
 impl Scratch {
-    /// Admit at most `slots` retained values across every accumulator using it.
     pub fn new(slots: usize) -> Self {
         Self { remaining: slots }
     }
 }
 impl Accumulator {
-    /// An empty fold of `agg`.
     pub fn new(agg: Agg) -> Self {
         Self {
             agg,
@@ -85,7 +73,6 @@ impl Accumulator {
         }
     }
 
-    /// Fold one value observed at `capture` order; `Last` keeps the greatest capture.
     pub fn push(&mut self, capture: u64, value: &ScalarValue, scratch: &mut Scratch) -> Result<()> {
         value.check()?;
         self.rows = self.rows.checked_add(1).ok_or(invalid("row count overflow"))?;
@@ -174,8 +161,6 @@ impl Accumulator {
         Ok(ScalarValue::Float(finite(aggregate::of_series(&series, statistic))?))
     }
 
-    /// The aggregate, polling `check` around the sorts order statistics need.
-    /// An empty fold answers `Missing`, except `Len`, `Count` and `Sum`.
     pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
         let statistic = match self.agg {
             Agg::Len => return Ok(ScalarValue::Unsigned(self.rows)),

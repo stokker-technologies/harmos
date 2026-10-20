@@ -174,7 +174,6 @@ impl<C: ObjectCatalog> StorageManager<C> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 
-    /// Read one object revision from the saved image: the latest, or an exact version.
     pub async fn read_object<T: StoredObject>(&self, key: &T::Key, version: ObjectVersion) -> Result<Option<ObjectRevision<T>>>
     where
         C: Contains<T>,

@@ -31,15 +31,11 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-/// Consumer-owned limits for one durable state root, measured in encoded bytes
-/// written to disk, including each record's integrity envelope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageStateSettings {
-    /// Largest encoded journal record for one recovery entry.
     pub max_entry_bytes: NonZeroUsize,
 
-    /// Largest encoded checkpoint record.
     pub max_checkpoint_bytes: NonZeroUsize,
 }
 

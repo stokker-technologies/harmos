@@ -61,7 +61,6 @@ impl<C> StorageManager<C> {
         true
     }
 
-    /// Charge consumer-retained Arrow data to the shared read budget without waiting.
     pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
         Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error)
     }

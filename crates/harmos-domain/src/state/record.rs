@@ -27,7 +27,6 @@ use crate::Identified;
 
 /* === Type Aliases === */
 
-/// Record members a transaction contributes, each with its optional system fact.
 pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
 
 /* === Structs === */

@@ -46,7 +46,6 @@ crate::declare!(FollowObjects {
 
 /* === Structs === */
 
-/// Follow every object revision accepted after `after` (from the start when absent).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowObjects {
     pub after: Option<StorageCursor>,

@@ -137,7 +137,6 @@ pub(super) struct State {
     pub(super) scratch_bytes: usize,
     pub(super) read_bytes: usize,
 
-    /// Per pool: owners that hold bytes and are waiting to grow.
     pub(super) growers: [super::capacity::Growers; 2],
 
     pub(super) data_attempted: u64,

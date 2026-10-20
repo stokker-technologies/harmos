@@ -11,7 +11,6 @@
 
 mod admissions;
 
-#[doc(hidden)]
 pub mod aggregate;
 pub mod arrow;
 mod backend;
@@ -66,7 +65,6 @@ pub use receipts::{MutationReceipt, MutationValue};
 pub use staging::StorageFile;
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
-#[doc(hidden)]
 pub use staging::checkpoint::FileSave;
 pub use worker::Worker;
 pub use writes::StorageSchema;

@@ -44,7 +44,6 @@ const SETTLE: usize = 64;
 
 /* === Public Functions === */
 
-/// Poll `future` while every other ready task runs, asserting it stays pending.
 pub(crate) async fn parked<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     for _ in 0..SETTLE {
         assert!(poll_once(future.as_mut()).await, "the future stays parked");
@@ -52,7 +51,6 @@ pub(crate) async fn parked<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     }
 }
 
-/// Assert `future` stays pending across `span` of the paused clock.
 pub(crate) async fn outlasts<F: Future + ?Sized>(mut future: Pin<&mut F>, span: Duration) {
     parked(future.as_mut()).await;
     tokio::time::advance(span).await;

@@ -41,22 +41,18 @@ use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Structs === */
 
-/// One accepted queue operation, opaque outside this crate.
 pub struct Queued<'a>(&'a Operation);
 
 /* === Enums === */
 
 /* === Traits === */
 
-/// One stored entry kind: how it is scanned, matched, positioned and found in
-/// the accepted queue. Sealed: the engine owns every implementation.
 pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     type Selection: Send + Sync;
 
     fn position(&self) -> &StorageCursor;
     fn matches(&self, selection: &Self::Selection) -> bool;
 
-    /// The storage position a selection starts after; scans begin there.
     fn start(_selection: &Self::Selection) -> u64 {
         0
     }
