@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:6570cd1fde6c1466c61e6ab6029e33510355877c9c906fe5dba558e8b9b196e3
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:987aab2e1ba14bcc23c2e3e57d6b4a6bbcee222f66dff0121a3c5be2a8decbc2
 name: CI
 "on":
   push:
@@ -463,7 +463,9 @@ jobs:
         key: ${{ steps.tools.outputs.cache-primary-key }}
     - run: sccache --show-stats
       if: always()
-    if: "!startsWith(github.ref, 'refs/tags/v')"
+    if: >-
+      always() && (!startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build_product_dev.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -730,7 +732,9 @@ jobs:
         key: ${{ steps.tools.outputs.cache-primary-key }}
     - run: sccache --show-stats
       if: always()
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      always() && (startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build_product_release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -1103,11 +1107,11 @@ jobs:
     - run: sccache --show-stats
       if: always()
     if: >-
-      startsWith(github.ref, 'refs/tags/v') && (!startsWith(github.ref,
-      'refs/tags/v') || (needs.source.result == 'success' && needs.check_python.result == 'success'
-      && needs.check_rust.result == 'success' && needs.validate_test_unit_rust.result
-      == 'success' && needs.build_product_release.result == 'success' &&
-      needs.build_tests_release.result == 'success'))
+      always() && (startsWith(github.ref, 'refs/tags/v')) &&
+      needs.package_rust.result == 'success' && needs.source.result == 'success' && needs.check_python.result
+      == 'success' && needs.check_rust.result == 'success' &&
+      needs.validate_test_unit_rust.result == 'success' && needs.build_product_release.result == 'success' &&
+      needs.build_tests_release.result == 'success'
     environment: release
     permissions:
       contents: write
