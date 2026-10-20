@@ -16,6 +16,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -41,6 +42,7 @@ use harmos_packaging::{
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
@@ -62,6 +64,7 @@ const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/che
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::message]
 struct Payload {
     text: String,
@@ -116,6 +119,7 @@ struct Exported {
 }
 
 /* === Enums === */
+
 #[harmos_domain::catalog]
 enum Routes {
     Read(Read),
@@ -131,6 +135,7 @@ enum Routes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Four Streaming Shapes Plus A Wide, A Recursive And A Reserved-Name Schema
 fn contracts() -> Vec<Contract> {
     let mut contracts = Contracts::of::<Routes>().unwrap();
@@ -274,6 +279,7 @@ fn both(name: &str, exported: &Exported, input: &[u8]) -> Vec<Vec<u8>> {
 }
 
 /* === Tests === */
+
 #[test]
 fn export_refuses_invalid() {
     let contracts = Contracts::of::<Routes>().unwrap();

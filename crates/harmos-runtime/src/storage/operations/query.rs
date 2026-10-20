@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use super::IO_TIMEOUT;
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
@@ -36,6 +37,7 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -45,6 +47,7 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Query;
     type Resources = StorageManager<C>;

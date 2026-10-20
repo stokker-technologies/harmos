@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub mod analysis;
 pub mod app;
 pub mod config;
@@ -23,10 +24,12 @@ pub mod transactions;
 mod wire;
 
 /* === Re-Exports === */
+
 pub use error::{Error, Result};
 pub use schematic_domain as domain;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

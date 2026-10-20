@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -44,28 +45,25 @@ use harmos_domain::model::storage::object_key;
 /* === Type Aliases === */
 
 /* === Structs === */
-/// A typed read of one object type's saved revisions.
+
 pub struct ObjectRead<'a, T: StoredObject> {
     pub at: StorageCursor,
     pub key: Option<&'a T::Key>,
     pub versions: ObjectVersions,
 }
 
-/// A typed read of one record schema's saved records after a storage position.
 pub struct RecordRead {
     pub at: StorageCursor,
     pub selection: RecordSelection,
     pub after: u64,
 }
 
-/// Delivers bounded pages of decoded object revisions at one saved cursor.
 pub struct ObjectReader<T> {
     pages: Pages<ObjectEntry>,
     schema: SchemaKey,
     _value: PhantomData<fn() -> T>,
 }
 
-/// Delivers bounded pages of decoded records at one saved cursor.
 pub struct RecordReader<T> {
     pages: Pages<StoredRecord>,
     _payload: PhantomData<fn() -> T>,
@@ -91,10 +89,8 @@ struct Pages<E: Entry> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: ObjectCatalog> StorageManager<C> {
-    /// Read saved revisions of `T`, latest or complete, decoded from their
-    /// stored bytes without Arrow payload expansion.
-    /// A type whose schema was never written reads as no revisions.
     pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
     where
         C: Contains<T>,
@@ -108,8 +104,6 @@ impl<C: ObjectCatalog> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
-    /// Read saved records of one postcard schema after `read.after`, decoded as
-    /// `T`. A schema that was never written reads as no records.
     pub async fn read_records<T: Message>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
         read.selection.schema.require_postcard()?;
@@ -120,7 +114,6 @@ impl<C> StorageManager<C> {
 }
 
 impl<T: StoredObject> ObjectReader<T> {
-    /// The next nonempty page within the response row bound, or `None` once exhausted.
     pub async fn next(&mut self) -> Result<Option<Vec<ObjectRevision<T>>>> {
         let schema = &self.schema;
         self.pages
@@ -137,7 +130,6 @@ impl<T: StoredObject> ObjectReader<T> {
             .await
     }
 
-    /// Every remaining revision, for selections bounded by their domain.
     pub async fn collect(mut self) -> Result<Vec<ObjectRevision<T>>> {
         let mut values = Vec::new();
         while let Some(page) = self.next().await? {
@@ -148,7 +140,6 @@ impl<T: StoredObject> ObjectReader<T> {
 }
 
 impl<T: Message> RecordReader<T> {
-    /// The next nonempty page within the response row bound, or `None` once exhausted.
     pub async fn next(&mut self) -> Result<Option<Vec<StoredRecord<T>>>> {
         self.pages
             .next(
@@ -169,7 +160,6 @@ impl<T: Message> RecordReader<T> {
             .await
     }
 
-    /// Every remaining record, for selections bounded by their domain.
     pub async fn collect(mut self) -> Result<Vec<StoredRecord<T>>> {
         let mut values = Vec::new();
         while let Some(page) = self.next().await? {
@@ -289,6 +279,7 @@ impl<E: Entry> Pages<E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn decoding<T: Message>(payload: &[u8]) -> Result<usize> {
     T::decoding_memory(payload).map_err(|error| Error::backend("preflight payload", BackendFailure::Corrupt, error))
 }

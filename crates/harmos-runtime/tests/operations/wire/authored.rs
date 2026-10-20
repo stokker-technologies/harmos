@@ -39,6 +39,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Trace {
     constructed: AtomicUsize,
@@ -78,6 +79,7 @@ struct Answer {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 enum Mode {
     Complete,
@@ -113,6 +115,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Read {
     type Declaration = ReadContract;
     type Resources = Resources;
@@ -210,6 +213,7 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());
@@ -241,132 +245,132 @@ async fn lazy_construction_lifecycle() {
 }
 
 #[tokio::test]
-async fn failed_init_skips() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_initialize.store(true, Ordering::SeqCst);
-    // A failed initialization owns no instance, so a failing
-    // stop cannot retain one.
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    assert!(matches!((&mut instance).await, Err(Error::OperationFailed { .. })));
-    instance.settle().await.unwrap();
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    assert_eq!(instance.status().outcome(), Some(harmos_runtime::operations::OperationOutcome::Failed));
-    // The transient failure is not retried and the partial owner
-    // is dropped without cleanup.
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 0);
-    assert_eq!(count(&trace.stopped), 0);
-    assert_eq!(count(&trace.finalized), 0);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cancel_interrupts_initialize() {
-    let (runtime, trace) = runtime().await;
-    trace.wait_initialize.store(true, Ordering::SeqCst);
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    trace.initializing.notified().await;
-    assert_eq!(instance.status().phase(), OperationPhase::Initializing);
-    assert!(instance.status().started_at().is_some());
-    instance.cancel();
-    assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
-    assert_eq!(count(&trace.ran), 0);
-    // A failed initialization drops its partial owner without cleanup.
-    assert_eq!(count(&trace.stopped), 0);
-    assert_eq!(count(&trace.finalized), 0);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
+async fn initialization_refuses_work() {
+    {
+        let (runtime, trace) = runtime().await;
+        trace.fail_new.store(true, Ordering::SeqCst);
+        // A refused construction fails the instance before any work.
+        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        assert!(matches!(instance.join().await, Err(Error::OperationFailed { .. })));
+        runtime.stop().await.unwrap();
+        assert_eq!(count(&trace.initialized), 0);
+        assert_eq!(count(&trace.stopped), 0);
+        assert_eq!(count(&trace.dropped), 0);
+    }
+    {
+        let (runtime, trace) = runtime().await;
+        trace.fail_initialize.store(true, Ordering::SeqCst);
+        // A failed initialization owns no instance, so a failing
+        // stop cannot retain one.
+        trace.fail_stop.store(true, Ordering::SeqCst);
+        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        assert!(matches!((&mut instance).await, Err(Error::OperationFailed { .. })));
+        instance.settle().await.unwrap();
+        assert_eq!(instance.status().phase(), OperationPhase::Settled);
+        assert_eq!(instance.status().outcome(), Some(harmos_runtime::operations::OperationOutcome::Failed));
+        // The transient failure is not retried and the partial owner
+        // is dropped without cleanup.
+        assert_eq!(count(&trace.initialized), 1);
+        assert_eq!(count(&trace.ran), 0);
+        assert_eq!(count(&trace.stopped), 0);
+        assert_eq!(count(&trace.finalized), 0);
+        assert_eq!(count(&trace.dropped), 1);
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test(start_paused = true)]
-async fn initialization_uses_total() {
-    let (runtime, trace) = runtime().await;
-    trace.wait_initialize.store(true, Ordering::SeqCst);
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    trace.initializing.notified().await;
-    tokio::time::advance(Duration::from_secs(2)).await;
-    assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::TimedOut))));
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 0);
-    assert_eq!(count(&trace.stopped), 0);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn stop_failure_retained() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    assert!((&mut instance).await.is_err());
-    // A failed stop retains the owner with its cleanup pending.
-    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-    assert!(instance.status().cleanup_pending());
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.finalized), 0);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.fail_stop.store(false, Ordering::SeqCst);
-    trace.block_stop.store(true, Ordering::SeqCst);
-    trace.block_finalize.store(true, Ordering::SeqCst);
-    let mut settle = std::pin::pin!(instance.settle());
-    // Settlement retries stop and finalizes only after stop returns.
-    tokio::select! {
-        biased;
-        _ = &mut settle => panic!("settled while the retried stop blocks"),
-        () = trace.stopping.notified() => {}
+async fn initialization_settles_partial() {
+    {
+        let (runtime, trace) = runtime().await;
+        trace.wait_initialize.store(true, Ordering::SeqCst);
+        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        trace.initializing.notified().await;
+        assert_eq!(instance.status().phase(), OperationPhase::Initializing);
+        assert!(instance.status().started_at().is_some());
+        instance.cancel();
+        assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
+        assert_eq!(count(&trace.ran), 0);
+        // A failed initialization drops its partial owner without cleanup.
+        assert_eq!(count(&trace.stopped), 0);
+        assert_eq!(count(&trace.finalized), 0);
+        assert_eq!(count(&trace.dropped), 1);
+        runtime.stop().await.unwrap();
     }
-    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-    assert_eq!(count(&trace.stopped), 2);
-    assert_eq!(count(&trace.finalized), 0);
-    trace.release_stop.notify_one();
-    tokio::select! {
-        biased;
-        _ = &mut settle => panic!("settled while finalization blocks"),
-        () = trace.finalizing.notified() => {}
+    {
+        let (runtime, trace) = runtime().await;
+        trace.wait_initialize.store(true, Ordering::SeqCst);
+        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        trace.initializing.notified().await;
+        tokio::time::advance(Duration::from_secs(2)).await;
+        assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::TimedOut))));
+        assert_eq!(count(&trace.initialized), 1);
+        assert_eq!(count(&trace.ran), 0);
+        assert_eq!(count(&trace.stopped), 0);
+        assert_eq!(count(&trace.dropped), 1);
+        runtime.stop().await.unwrap();
     }
-    assert_eq!(count(&trace.finalized), 1);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.release.notify_one();
-    settle.await.unwrap();
-    assert_eq!(count(&trace.constructed), 1);
-    assert_eq!(count(&trace.stopped), 2);
-    assert_eq!(count(&trace.finalized), 1);
-    assert_eq!(count(&trace.dropped), 1);
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn cleanup_failure_retried() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_finalize.store(true, Ordering::SeqCst);
-    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    assert!((&mut instance).await.is_err());
-    assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.fail_finalize.store(false, Ordering::SeqCst);
-    // The retry repeats cleanup without replaying stop.
-    instance.settle().await.unwrap();
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.finalized), 2);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn refusal_never_start() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_new.store(true, Ordering::SeqCst);
-    // A refused construction fails the instance before any work.
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
-    assert!(matches!(instance.join().await, Err(Error::OperationFailed { .. })));
-    runtime.stop().await.unwrap();
-    assert_eq!(count(&trace.initialized), 0);
-    assert_eq!(count(&trace.stopped), 0);
-    assert_eq!(count(&trace.dropped), 0);
+async fn finalization_retries_owner() {
+    {
+        let (runtime, trace) = runtime().await;
+        trace.fail_stop.store(true, Ordering::SeqCst);
+        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        assert!((&mut instance).await.is_err());
+        // A failed stop retains the owner with its cleanup pending.
+        assert_eq!(instance.status().phase(), OperationPhase::Stopping);
+        assert!(instance.status().cleanup_pending());
+        assert_eq!(count(&trace.stopped), 1);
+        assert_eq!(count(&trace.finalized), 0);
+        assert_eq!(count(&trace.dropped), 0);
+        trace.fail_stop.store(false, Ordering::SeqCst);
+        trace.block_stop.store(true, Ordering::SeqCst);
+        trace.block_finalize.store(true, Ordering::SeqCst);
+        let mut settle = std::pin::pin!(instance.settle());
+        // Settlement retries stop and finalizes only after stop returns.
+        tokio::select! {
+            biased;
+            _ = &mut settle => panic!("settled while the retried stop blocks"),
+            () = trace.stopping.notified() => {}
+        }
+        assert_eq!(instance.status().phase(), OperationPhase::Stopping);
+        assert_eq!(count(&trace.stopped), 2);
+        assert_eq!(count(&trace.finalized), 0);
+        trace.release_stop.notify_one();
+        tokio::select! {
+            biased;
+            _ = &mut settle => panic!("settled while finalization blocks"),
+            () = trace.finalizing.notified() => {}
+        }
+        assert_eq!(count(&trace.finalized), 1);
+        assert_eq!(count(&trace.dropped), 0);
+        trace.release.notify_one();
+        settle.await.unwrap();
+        assert_eq!(count(&trace.constructed), 1);
+        assert_eq!(count(&trace.stopped), 2);
+        assert_eq!(count(&trace.finalized), 1);
+        assert_eq!(count(&trace.dropped), 1);
+        assert_eq!(instance.status().phase(), OperationPhase::Settled);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, trace) = runtime().await;
+        trace.fail_finalize.store(true, Ordering::SeqCst);
+        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        assert!((&mut instance).await.is_err());
+        assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
+        assert_eq!(count(&trace.stopped), 1);
+        assert_eq!(count(&trace.dropped), 0);
+        trace.fail_finalize.store(false, Ordering::SeqCst);
+        // The retry repeats cleanup without replaying stop.
+        instance.settle().await.unwrap();
+        assert_eq!(count(&trace.stopped), 1);
+        assert_eq!(count(&trace.finalized), 2);
+        assert_eq!(count(&trace.dropped), 1);
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -380,39 +384,6 @@ async fn panic_stops_finalizes() {
     assert_eq!(count(&trace.finalized), 1);
     assert_eq!(count(&trace.dropped), 1);
     runtime.stop().await.unwrap();
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
-async fn dropped_response_retains() {
-    use std::future::Future;
-    use std::task::{Context as TaskContext, Waker};
-    // Dropping the response before or after its first poll keeps the
-    // running instance owned until its cleanup is released.
-    for polled in [false, true] {
-        let (runtime, trace) = runtime().await;
-        trace.block_finalize.store(true, Ordering::SeqCst);
-        let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
-        let id = instance.id();
-        // Only a constructed instance has cleanup to retain.
-        trace.running.notified().await;
-        let mut response = Box::pin(harmos_runtime::grpc::response(instance));
-        if polled {
-            assert!(response.as_mut().poll(&mut TaskContext::from_waker(Waker::noop())).is_pending());
-        }
-        drop(response);
-        trace.finalizing.notified().await;
-        let status = runtime.operations.status(id).expect("same running instance is retained");
-        assert!(status.cancellation_requested());
-        assert_eq!(status.phase(), OperationPhase::Finalizing);
-        assert_eq!(count(&trace.constructed), 1);
-        assert_eq!(count(&trace.ran), 1);
-        assert_eq!(count(&trace.stopped), 1);
-        assert_eq!(count(&trace.dropped), 0);
-        trace.release.notify_one();
-        runtime.stop().await.unwrap();
-        assert_eq!(count(&trace.dropped), 1);
-    }
 }
 
 #[cfg(feature = "grpc")]
@@ -456,9 +427,36 @@ async fn response_keeps_owner() {
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn run_retains_instance() {
+async fn response_drop_retains() {
     use std::future::Future;
     use std::task::{Context as TaskContext, Waker};
+    // Dropping the response before or after its first poll keeps the
+    // running instance owned until its cleanup is released.
+    for polled in [false, true] {
+        let (runtime, trace) = runtime().await;
+        trace.block_finalize.store(true, Ordering::SeqCst);
+        let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
+        let id = instance.id();
+        // Only a constructed instance has cleanup to retain.
+        trace.running.notified().await;
+        let mut response = Box::pin(harmos_runtime::grpc::response(instance));
+        if polled {
+            assert!(response.as_mut().poll(&mut TaskContext::from_waker(Waker::noop())).is_pending());
+        }
+        drop(response);
+        trace.finalizing.notified().await;
+        let status = runtime.operations.status(id).expect("same running instance is retained");
+        assert!(status.cancellation_requested());
+        assert_eq!(status.phase(), OperationPhase::Finalizing);
+        assert_eq!(count(&trace.constructed), 1);
+        assert_eq!(count(&trace.ran), 1);
+        assert_eq!(count(&trace.stopped), 1);
+        assert_eq!(count(&trace.dropped), 0);
+        trace.release.notify_one();
+        runtime.stop().await.unwrap();
+        assert_eq!(count(&trace.dropped), 1);
+    }
+
     let (runtime, trace) = runtime().await;
     trace.block_finalize.store(true, Ordering::SeqCst);
     let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();

@@ -39,14 +39,17 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::{Error, Result};
 
 /* === Constants === */
+
 const MAX_AGE: Duration = Duration::from_secs(600);
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Accepted<E> = fn(std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E>;
 
 /* === Structs === */
+
 // An exact browser origin such as `tauri://localhost`: scheme and authority,
 // with no path, credentials or wildcard.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,6 +73,7 @@ pub(super) struct Gate<S> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Origin {
     pub fn parse(origin: &str) -> Result<Self> {
         let invalid = |reason| Error::InvalidInput { field: "gRPC allowed origin", reason };
@@ -160,6 +164,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn no_content<E>(result: std::result::Result<Response<Body>, E>) -> std::result::Result<Response<Body>, E> {
     result.map(|mut response| {
         *response.status_mut() = StatusCode::NO_CONTENT;

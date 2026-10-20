@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use crate::Error;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Demand {
     updates: watch::Receiver<usize>,
@@ -42,6 +44,7 @@ pub(crate) struct Holding {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Demand {
     pub(crate) fn of(window: &Window) -> Self {
         Self { updates: window.interest() }

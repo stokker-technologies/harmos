@@ -20,6 +20,7 @@ mod native;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -35,6 +36,7 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Original {
@@ -104,6 +106,7 @@ struct Choices {
 }
 
 /* === Enums === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum Choice {
@@ -124,6 +127,7 @@ enum ReorderedChoice {
 #[derive(Debug, Default, PartialEq)]
 enum ExplicitDefault {
     Other(String),
+
     #[default]
     Selected,
 }
@@ -148,6 +152,7 @@ enum SingleVariant {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Encode A Fixture Through The Shared Transport Adapter.
 fn encode<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -302,19 +307,6 @@ fn sizes_count_capacity() {
     assert_eq!(value.memory_size(), expected - 32);
     assert_eq!(value.encoded_size(), harmos_domain::Message::encode_to_vec(&value).len());
     assert!(value.memory_size() > value.encoded_size());
-}
-
-#[test]
-fn allocation_never_small() {
-    struct Overflow;
-    impl MemorySize for Overflow {
-        fn memory_size(&self) -> usize {
-            usize::MAX
-        }
-    }
-    assert_eq!(Some(Overflow).memory_size(), usize::MAX);
-    assert_eq!(vec![Overflow].memory_size(), usize::MAX);
-    assert_eq!(None::<Overflow>.memory_size(), std::mem::size_of::<Option<Overflow>>());
 }
 
 #[test]

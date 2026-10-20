@@ -98,6 +98,7 @@ mod atomic_records {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::num::NonZeroUsize;
@@ -119,14 +120,17 @@ use harmos_sidecar::{Attach, PluginNative, Supervisor};
 use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 /* === Constants === */
+
 static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type IdleManaged = harmos_runtime::sidecar::Managed<Bank, PluginNative<Idle>, fn(&harmos_runtime::services::Service<Bank>, Notice), Lanes>;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "sim.pending",
@@ -217,6 +221,7 @@ struct IdleResident {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Operations {
     Pending(Pending),
@@ -229,6 +234,7 @@ enum Operations {
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Jobs,
 }
@@ -236,6 +242,7 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Pending {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
@@ -542,6 +549,7 @@ impl harmos_runtime::services::Resident<Bank> for IdleResident {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn bank(seed: u64) -> Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())

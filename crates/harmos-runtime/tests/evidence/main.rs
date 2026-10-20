@@ -17,6 +17,7 @@ mod vault;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::PathBuf;
 use std::time::Duration;
@@ -38,6 +39,7 @@ use vault::Directory;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Recording;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +66,7 @@ struct Counted {
 struct Idle;
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Interruption {
     Verify,
@@ -74,6 +77,7 @@ enum Interruption {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Identified for Recording {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new("recording"), 1)
@@ -243,6 +247,7 @@ impl Resident<Bank> for Idle {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn upload() -> Upload {
     Upload { filename: "camera-3.mp4".to_owned(), content_type: "video/mp4".to_owned() }
 }

@@ -29,6 +29,7 @@ use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHisto
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
+
 const ID_COPIES: usize = 5;
 const NODE_SHARE: usize = node_bytes().div_ceil(4);
 // The Map And Order Headers Plus The Root Node, Charged While Any Receipt Is Held.
@@ -41,6 +42,7 @@ const ENTRY_MINIMUM: usize = ID_COPIES * std::mem::size_of::<MutationId>() + std
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MutationReceipt {
@@ -50,10 +52,6 @@ pub struct MutationReceipt {
     pub value: MutationValue,
 }
 
-/// Idempotent mutation receipts within the retry window, bounded by a share of
-/// the read budget. When admitting a receipt would exceed the bound, completed
-/// receipts are evicted oldest admission first; a retry of an evicted receipt
-/// then runs as a new mutation. Pending receipts are never evicted.
 pub(super) struct Receipts {
     execution: crate::execution::Execution,
     window: Identifier,
@@ -75,6 +73,7 @@ struct Entry {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
@@ -95,6 +94,7 @@ pub(super) enum ReceiptState {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Receipts {
     pub(super) fn new(retention: Duration, bound: NonZeroUsize, execution: crate::execution::Execution) -> Result<Self> {
         let now = execution.now();
@@ -111,8 +111,6 @@ impl Receipts {
         })
     }
 
-    /// Recovery reads at most the receipts the ledger can hold, plus the
-    /// response vector itself.
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
             rows: NonZeroUsize::new(self.bound.get() / ENTRY_MINIMUM).unwrap_or(NonZeroUsize::MIN),
@@ -232,8 +230,6 @@ impl Receipts {
         receipts
     }
 
-    /// Replace the ledger with recovered receipts, oldest expiry first; when they
-    /// exceed the bound, the oldest are evicted as during normal admission.
     pub(super) fn restore(&mut self, mut receipts: Vec<MutationReceipt>) -> Result<()> {
         let now = self.execution.now();
         let wall = SystemTime::now();
@@ -423,6 +419,7 @@ impl MemorySize for MutationReceipt {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn epoch() -> Result<Identifier> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes)

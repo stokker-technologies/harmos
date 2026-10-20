@@ -32,6 +32,7 @@ mod support;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -50,6 +51,7 @@ use harmos_runtime::{Error, Runtime};
 use support::{Bank, Ledger, catalog};
 
 /* === Constants === */
+
 const STARTING: &[OperationPhase] = &[OperationPhase::Queued, OperationPhase::Initializing];
 
 const RUNNING: &[OperationPhase] = &[OperationPhase::Running];
@@ -61,9 +63,11 @@ const STOPPED: &[OperationPhase] = &[OperationPhase::Stopped];
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Lease = OperationInstance<Activation>;
 
 /* === Structs === */
+
 struct FinalPublication;
 
 struct ReentrantBackend(Reentrant);
@@ -102,6 +106,7 @@ struct Observing {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Mode {
     Cooperative,
@@ -113,6 +118,7 @@ enum Mode {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Control {
     fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -274,6 +280,7 @@ impl Drop for Observing {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap()
 }
@@ -332,33 +339,66 @@ async fn cancellation_skips_backend() {
 }
 
 #[tokio::test]
-async fn clones_share_activation() {
+async fn shared_demand_lifecycle() {
     let runtime = runtime().await;
-    let manager = runtime.handle().operations;
-    register(&manager, "watch", Mode::Cooperative);
-    assert_eq!(observers(&runtime.operations).len(), 1);
-    assert!(matches!(manager.register_observer(Backend { id: "watch", mode: Mode::Cooperative }), Err(Error::AlreadyRegistered { .. })));
-    let resources = Control::new();
-    let first = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
-    let second = runtime.operations.submit_with_resources_at("watch", resources.clone()).await.unwrap();
-    let key = key(&manager, &first);
-    assert_eq!(first.id(), second.id());
-    assert_eq!(manager.resident(&key).unwrap().instance, first.id());
-    reached(&resources.starts).await;
-    phase(&manager, &key, RUNNING).await;
-    assert_eq!(leases(&manager, &key), 2);
+    register(&runtime.operations, "watch", Mode::Cooperative);
+    {
+        let manager = &runtime.operations;
+        let resources = Control::new();
+        let mut consumers = Vec::new();
+        for _ in 0..32 {
+            let manager = manager.clone();
+            let resources = resources.clone();
+            consumers.push(tokio::spawn(async move { manager.submit_with_resources_at("watch", resources).await }));
+        }
+        let mut leases_held = Vec::new();
+        for consumer in consumers {
+            leases_held.push(consumer.await.unwrap().unwrap());
+        }
+        let last = leases_held.pop().unwrap();
+        let key = key(manager, &last);
+        phase(manager, &key, RUNNING).await;
+        assert_eq!(leases(manager, &key), 32);
+        reached(&resources.starts).await;
+        assert!(resources.starts.try_acquire().is_err());
+        for lease in leases_held {
+            assert_eq!(lease.id(), last.id());
+            lease.release().await.unwrap();
+        }
+        assert_eq!(leases(manager, &key), 1);
+        resources.finish.add_permits(1);
+        last.release().await.unwrap();
+        assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
+    }
+    {
+        let manager = runtime.handle().operations;
+        assert_eq!(observers(&runtime.operations).len(), 1);
+        assert!(matches!(
+            manager.register_observer(Backend { id: "watch", mode: Mode::Cooperative }),
+            Err(Error::AlreadyRegistered { .. })
+        ));
+        let resources = Control::new();
+        let first = manager.submit_with_resources_at("watch", resources.clone()).await.unwrap();
+        let second = runtime.operations.submit_with_resources_at("watch", resources.clone()).await.unwrap();
+        let key = key(&manager, &first);
+        assert_eq!(first.id(), second.id());
+        assert_eq!(manager.resident(&key).unwrap().instance, first.id());
+        reached(&resources.starts).await;
+        phase(&manager, &key, RUNNING).await;
+        assert_eq!(leases(&manager, &key), 2);
 
-    first.release().await.unwrap();
-    assert_eq!(leases(&manager, &key), 1);
-    assert!(resources.stops.try_acquire().is_err());
-    drop(second);
-    reached(&resources.stops).await;
-    pending::parked(std::pin::pin!(manager.stop_observers())).await;
-    resources.finish.add_permits(1);
-    runtime.stop().await.unwrap();
-    assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
-    assert_eq!(current(&manager, &key), OperationPhase::Stopped);
-    assert!(matches!(manager.submit_with_resources_at("watch", resources.clone()).await, Err(Error::Closing { .. })));
+        first.release().await.unwrap();
+        assert_eq!(leases(&manager, &key), 1);
+        assert!(resources.stops.try_acquire().is_err());
+        drop(second);
+        reached(&resources.stops).await;
+        pending::parked(std::pin::pin!(manager.stop_observers())).await;
+        resources.finish.add_permits(1);
+        runtime.stop().await.unwrap();
+        assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
+        assert_eq!(current(&manager, &key), OperationPhase::Stopped);
+        assert!(matches!(manager.submit_with_resources_at("watch", resources.clone()).await, Err(Error::Closing { .. })));
+    }
 }
 
 #[tokio::test]
@@ -621,39 +661,6 @@ async fn runtime_joins_final() {
     assert_eq!(stopped, runtime.state.applied());
     assert!(matches!(runtime.state.commit(support::deposit(1)).await, Err(Error::Unavailable)));
     lease.release().await.unwrap();
-}
-
-#[tokio::test]
-async fn consumers_share_initialization() {
-    let runtime = runtime().await;
-    let manager = &runtime.operations;
-    register(manager, "watch", Mode::Cooperative);
-    let resources = Control::new();
-    let mut consumers = Vec::new();
-    for _ in 0..32 {
-        let manager = manager.clone();
-        let resources = resources.clone();
-        consumers.push(tokio::spawn(async move { manager.submit_with_resources_at("watch", resources).await }));
-    }
-    let mut leases_held = Vec::new();
-    for consumer in consumers {
-        leases_held.push(consumer.await.unwrap().unwrap());
-    }
-    let last = leases_held.pop().unwrap();
-    let key = key(manager, &last);
-    phase(manager, &key, RUNNING).await;
-    assert_eq!(leases(manager, &key), 32);
-    reached(&resources.starts).await;
-    assert!(resources.starts.try_acquire().is_err());
-    for lease in leases_held {
-        assert_eq!(lease.id(), last.id());
-        lease.release().await.unwrap();
-    }
-    assert_eq!(leases(manager, &key), 1);
-    resources.finish.add_permits(1);
-    last.release().await.unwrap();
-    assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use super::*;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn backend(id: &'static str) -> Backend {
     Backend { id, mode: Mode::Cooperative }
 }

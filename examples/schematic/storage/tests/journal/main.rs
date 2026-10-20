@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod source_scenarios;
 
 #[path = "../support/mod.rs"]
@@ -16,6 +17,7 @@ mod support;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc,
@@ -33,9 +35,11 @@ use support::scratch;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Refusal = &'static str;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct State {
     balance: i64,
@@ -68,6 +72,7 @@ struct Add {
     amount: i64,
     count: usize,
     mode: u8,
+
     #[serde(skip)]
     encodings: Arc<AtomicUsize>,
 }
@@ -101,6 +106,7 @@ struct Obsolete {
 }
 
 /* === Enums === */
+
 #[harmos::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -118,6 +124,7 @@ enum Facts {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
         Err(serde::ser::Error::custom("record cannot encode"))
@@ -272,6 +279,7 @@ impl From<ObservedV1> for Observed {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn add(amount: i64, count: usize, mode: u8) -> Add {
     Add { amount, count, mode, encodings: Arc::default() }
 }

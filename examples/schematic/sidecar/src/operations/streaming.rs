@@ -37,6 +37,7 @@ use schematic_domain::operations::{AnalyzeExchange, AnalyzeUpload};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Uploading {
     resources: Arc<Resources>,
 }
@@ -49,6 +50,7 @@ pub(crate) struct Exchanging {
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_sidecar::operation]
 impl Uploading {
     fn classify(error: &Error) -> harmos_sidecar::operations::FailureKind {
@@ -103,6 +105,7 @@ impl Exchanging {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn validate_title(title: &str) -> Result<(), Error> {
     if title.trim().is_empty() || title.len() > 128 {
         return Err(Error::InvalidInput);

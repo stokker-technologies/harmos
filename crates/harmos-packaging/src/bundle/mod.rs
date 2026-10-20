@@ -8,16 +8,19 @@
  */
 
 /* === Modules === */
+
 mod archive;
 mod error;
 mod manifest;
 mod metadata;
 
 /* === Re-Exports === */
+
 pub use error::Error;
 pub use manifest::{Executable, Facility, File, Identity, Limits, Manifest, PackageMetadata};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -35,6 +38,7 @@ use harmos_domain::inventory::Declaration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Source<'a> {
     pub path: &'a str,
     pub bytes: &'a [u8],
@@ -49,9 +53,11 @@ pub struct Bundle {
 }
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Bundle {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Result<Self, Error> {
@@ -146,6 +152,7 @@ impl Bundle {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }

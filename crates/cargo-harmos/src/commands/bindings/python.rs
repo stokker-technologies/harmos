@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{io::Read as _, path::PathBuf};
 // Third Party Imports
@@ -24,6 +25,7 @@ use harmos_packaging::{
 };
 
 /* === Constants === */
+
 const MAX_BUILD_BYTES: u64 = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -31,33 +33,45 @@ const MAX_BUILD_BYTES: u64 = 16 * 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     #[arg(help = "An Exact Cargo OUT_DIR Catalog Export; No Directory Discovery.")]
     #[arg(long, conflicts_with = "build_json", required_unless_present = "build_json")]
     export: Option<PathBuf>,
+
     #[arg(help = "JSON Returned By A Successful Cargo Harmos Build.")]
     #[arg(long, conflicts_with = "export", requires_all = ["producer", "catalog"])]
     build_json: Option<PathBuf>,
+
     #[arg(long, requires = "build_json")]
     producer: Option<String>,
+
     #[arg(long, requires = "build_json")]
     catalog: Option<String>,
+
     #[arg(long)]
     output: PathBuf,
+
     #[arg(long)]
     distribution: String,
+
     #[arg(long)]
     module: String,
+
     #[arg(long)]
     package_version: semver::Version,
+
     #[arg(long)]
     description: String,
+
     #[arg(long)]
     license: String,
+
     #[arg(help = "Select Operation Identities; The Default Requires Every Contract To Be Protobuf-Bound.")]
     #[arg(long)]
     operation: Vec<String>,
+
     #[arg(long, default_value = "protoc")]
     protoc: PathBuf,
 }
@@ -69,6 +83,7 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
     let export = selected_export(&arguments)?;
     let artifacts = Artifacts::read(&export).map_err(python::Error::from)?;
@@ -88,6 +103,7 @@ pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
 }
 
 /* === Private Functions === */
+
 fn selected_export(arguments: &Arguments) -> Result<PathBuf, python::Error> {
     if let Some(path) = &arguments.export {
         return Ok(path.clone());

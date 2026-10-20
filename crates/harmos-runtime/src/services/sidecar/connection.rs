@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -32,6 +33,7 @@ use harmos_sidecar::Frame;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Endpoint {
     provider: Option<Arc<crate::supervision::instance::Instance>>,
     requests: mpsc::UnboundedSender<Request>,
@@ -54,6 +56,7 @@ pub(crate) struct Endpoint {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Endpoint {
     pub(super) fn new(
         requests: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[Definition], contracts: &[Contract],

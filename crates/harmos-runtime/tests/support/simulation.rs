@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
 use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
 use harmos_runtime::{DefinitionId, Identified};
@@ -37,6 +38,7 @@ use harmos_runtime::{DefinitionId, Identified};
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Identified for Deposit {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new(DEPOSIT.1), DEPOSIT.2)
@@ -50,6 +52,7 @@ impl Identified for Noted {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
     let mut sim = builder.simulated_service("adapter", resident).simulate().expect("the simulation boots");
     sim.commit(alice(), Deposit { account: super::support::HOUSE, amount: 7 }).expect("the scripted commit lands");
@@ -61,6 +64,7 @@ pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
 }
 
 /* === Private Functions === */
+
 async fn resident(mut context: harmos_runtime::services::Service<Bank>) -> Result<(), Fault<&'static str>> {
     context.ready();
     context.stopping().await;

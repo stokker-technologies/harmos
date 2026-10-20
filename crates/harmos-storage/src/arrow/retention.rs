@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
@@ -34,6 +35,7 @@ use crate::Result;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Owner {
     pub(super) _reservation: RetainedMemory,
     pub(super) _encoded: Arc<Vec<u8>>,
@@ -52,6 +54,7 @@ struct BufferOwner {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn resident_bytes(batch: &RecordBatch) -> Result<usize> {
     let mut seen = BTreeMap::new();
     let mut bytes = super::schema_memory(batch.schema().as_ref());
@@ -109,6 +112,7 @@ pub(super) fn attach(batch: &RecordBatch, owner: Arc<Owner>) -> Result<RecordBat
 }
 
 /* === Private Functions === */
+
 fn count(data: &ArrayData, seen: &mut BTreeMap<usize, usize>, bytes: &mut usize) -> Result<()> {
     *bytes = bytes.checked_add(std::mem::size_of::<ArrayData>()).ok_or_else(|| invalid("Arrow resident size overflow"))?;
     for buffer in data.buffers().iter().chain(data.nulls().map(|nulls| nulls.buffer())) {

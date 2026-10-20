@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,12 +27,14 @@ use crate::model::storage::codec::{Code, Index, Nested, Optional, coded, product
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Downsample { max_rows: Index => 1, algorithm: Code<Algorithm> => 2, value: Optional<Nested<FieldPath>> => 3, axis: Optional<Nested<FieldPath>> => 4 });
 coded!(Algorithm { Decimate, Extrema, Lttb, LttbLog });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Downsample {
     pub max_rows: usize,
@@ -41,6 +44,7 @@ pub struct Downsample {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Algorithm {
     Decimate,
@@ -52,6 +56,7 @@ pub enum Algorithm {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Downsample {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

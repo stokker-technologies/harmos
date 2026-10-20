@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +30,7 @@ use harmos::{state::Invert, state::Transaction};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "symbol.move", version = 1, inverse = Self)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct MoveSymbol {
@@ -41,6 +43,7 @@ pub struct MoveSymbol {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Schematic> for MoveSymbol {
     type Error = SchematicError;
 

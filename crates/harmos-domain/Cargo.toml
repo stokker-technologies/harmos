@@ -1,7 +1,8 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos-domain"
+description = "Harmos domain model: identifiers, contracts, catalogs and storage identities."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
@@ -13,15 +14,15 @@ publish.workspace = true
 # off writes the implementations by hand and links no proc-macro chain at all.
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
 [features]
 default = ["derive"]
 derive = ["dep:harmos-macros"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -62,16 +63,17 @@ memchr = { workspace = true, default-features = true }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
 [dev-dependencies]
 # Downstream Crates Stay Path-Only So The Packaged Manifest Drops Them Instead Of Forming A Publish Cycle
 harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
+
 # Local
-harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
 harmos-macros = { workspace = true }
+harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
 
 # Git
 
@@ -105,28 +107,28 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 # Testing
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
 [[test]]
 name = "integration"
 path = "tests/message/main.rs"
 required-features = ["derive"]
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

@@ -9,6 +9,7 @@
 
 
 /* === Modules === */
+
 mod relative {
     #[facade::message]
     pub struct WireReply { pub value: String }
@@ -19,6 +20,7 @@ mod rows { pub use facade::Reading; }
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -52,10 +54,12 @@ pub struct Echo { pub value: String }
 pub struct Guest;
 
 /* === Enums === */
+
 #[facade::catalog]
 pub enum Operations { Echo(Echo) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
@@ -82,6 +86,7 @@ impl ProductPlugin for State {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

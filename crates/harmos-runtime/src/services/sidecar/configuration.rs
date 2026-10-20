@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl DemandSource {
     pub fn hold(&self, key: &str) -> Result<DemandLease, SidecarError> {
         let count = self.keys.get(key).ok_or_else(|| SidecarError::Malformed(format!("undeclared demand key `{key}`")))?.clone();
@@ -178,3 +201,9 @@ impl<A: Application, S: Clone, H> Clone for Supervised<A, S, H> {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

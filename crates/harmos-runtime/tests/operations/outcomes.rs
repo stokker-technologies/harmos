@@ -36,10 +36,12 @@ use harmos_runtime::{Error, Refusal, Runtime, state::FactSource, state::Position
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Exported<T> = Result<T, Failed>;
 type Answered<T, E = Failed> = Result<T, E>;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Counts {
     constructed: AtomicUsize,
@@ -55,6 +57,7 @@ struct Compute {
 struct Parent;
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[derive(Clone, Copy)]
 enum Mode {
@@ -68,8 +71,10 @@ enum Mode {
 enum Failed {
     #[error("the instrument said no")]
     Instrument,
+
     #[error("not drained yet")]
     Backlog,
+
     #[error(transparent)]
     Child(#[from] Error),
 }
@@ -118,6 +123,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Compute {
     type Declaration = ComputeContract;
     type Resources = Counts;
@@ -199,6 +205,7 @@ impl Operation for Parent {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let counts = Arc::new(Counts::default());

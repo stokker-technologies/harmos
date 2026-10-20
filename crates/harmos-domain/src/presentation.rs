@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,12 +27,15 @@ use crate::Metadata;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StreamField {
     pub metadata: Metadata,
+
     #[serde(default)]
     pub role: Option<String>,
+
     #[serde(default)]
     pub unit: Option<String>,
 }
@@ -39,6 +43,7 @@ pub struct StreamField {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait RowMetadata {
     const ROW_METADATA_JSON: &'static str = "[]";
 

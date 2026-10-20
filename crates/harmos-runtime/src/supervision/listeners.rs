@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::future::Future;
@@ -33,6 +34,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Listener {
     scope: PluginScope,
     task: Task<()>,
@@ -56,6 +58,7 @@ struct Pending {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Listener {
     pub(crate) fn spawn<F>(scope: &PluginScope, run: impl FnOnce(Arc<Delivery>, watch::Receiver<bool>) -> F + Send + 'static) -> Self
     where

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::schema::declaration::Named;
 use crate::schema::graph::Schema;
 
 /* === Constants === */
+
 const LIMIT: usize = 4096;
 
 /* === Macros === */
@@ -33,6 +35,7 @@ const LIMIT: usize = 4096;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
@@ -65,20 +68,27 @@ pub struct NamedManifest {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
+
     #[error(transparent)]
     Contract(#[from] contracts::Error),
+
     #[error(transparent)]
     Listener(#[from] crate::listeners::Error),
+
     #[error("multiple listener inventories for {facility} artifact `{owner}`")]
     Duplicate { facility: String, owner: String },
+
     #[error("listener inventory identity or count is invalid")]
     Inventory,
+
     #[error("duplicate listener or callback `{id}`")]
     Entry { id: String },
+
     #[error("listener callback `{id}` is absent or differs from its provided contract")]
     Callback { id: String },
 }
@@ -117,6 +127,7 @@ impl NamedManifest {
 }
 
 /* === Public Functions === */
+
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, provides: &[Contract]) -> Result<Option<Vec<Definition>>, Error> {
     let mut selected = None;
     for manifest in manifests {
@@ -164,6 +175,7 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, entries: &[Node
 }
 
 /* === Private Functions === */
+
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
     assert!(contracts::valid_identity(facility, owner), "invalid listener inventory identity");
     assert!(crate::catalog::count(entries) <= LIMIT, "listener inventory exceeds leaf limit");

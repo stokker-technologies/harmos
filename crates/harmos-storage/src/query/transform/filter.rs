@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,16 +40,17 @@ use crate::storage::query::transform::FieldPathExecution;
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait FilterExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch>;
 
-    /// Ascending indices of the rows of `input` this filter keeps.
     fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>>;
 }
 
 /* === Implementations === */
+
 impl FilterExecution for Filter {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.clauses.is_empty()
@@ -109,7 +112,6 @@ impl FilterExecution for Filter {
         take(input, self.select(input, check)?)
     }
 
-    /// Ascending indices of the rows of `input` this filter keeps.
     fn select(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<u64>> {
         let mut selected = Vec::new();
         for row in 0..input.num_rows() {
@@ -165,6 +167,7 @@ impl FilterExecution for Filter {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn compare(value: &ScalarValue, op: Compare, expected: &ScalarValue) -> Result<bool> {
     let order = value.compare(expected)?;
     Ok(match op {

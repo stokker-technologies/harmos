@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,6 +34,7 @@ use harmos_runtime::{Error, Refusal, services::Fault, services::ServiceExit, ser
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Sequence {
     events: Arc<Mutex<Vec<&'static str>>>,
     started: Arc<Notify>,
@@ -62,6 +64,7 @@ struct PhysicalStop(Arc<Cleanup>);
 struct StopWait(Arc<Cleanup>);
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
         response = (),
@@ -86,6 +89,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Ordered {
     type Declaration = OrderedContract;
     type Resources = Sequence;

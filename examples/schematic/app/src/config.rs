@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use std::path::{Path, PathBuf};
 use crate::error::ConfigError;
 
 /* === Constants === */
+
 pub const RECORDINGS: &str = "SCHEMATIC_RECORDINGS";
 
 /* === Macros === */
@@ -29,6 +31,7 @@ pub const RECORDINGS: &str = "SCHEMATIC_RECORDINGS";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub journal_sync_entries: NonZeroUsize,
@@ -40,6 +43,7 @@ pub struct Settings {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
         Self { journal_sync_entries: NonZeroUsize::new(1).unwrap(), recordings: recordings.into() }

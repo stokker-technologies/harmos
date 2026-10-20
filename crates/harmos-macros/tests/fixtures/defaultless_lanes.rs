@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +29,7 @@
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos::lanes]
 enum Lanes {
     #[lane(serial)]
@@ -41,6 +43,7 @@ enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

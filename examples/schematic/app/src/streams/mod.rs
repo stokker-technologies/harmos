@@ -8,12 +8,15 @@
  */
 
 /* === Modules === */
+
 mod voltage;
 
 /* === Re-Exports === */
+
 pub use voltage::NetVoltage;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +32,7 @@ pub use voltage::NetVoltage;
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos::streams]
 pub enum Streams {
     NetVoltage(NetVoltage),

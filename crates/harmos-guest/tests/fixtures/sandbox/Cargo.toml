@@ -6,7 +6,16 @@
 #
 # ***
 
-# === Package ===
+# === Workspace === #
+
+# A Fixture Outside The Root Workspace, Built Once For wasm32-unknown-unknown
+[workspace]
+
+# === Workspace Package === #
+
+# === Workspace Dependencies === #
+
+# === Package === #
 
 [package]
 name = "harmos-sandbox-guest"
@@ -14,18 +23,18 @@ description = "The guest the host harness drives through every sandbox behaviour
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
-version = "0.2.0"
+version = "0.1.0"
 publish = false
 
-# === Package Targets ===
+# === Package Targets === #
 
 [lib]
 crate-type = ["cdylib"]
 path = "src/lib.rs"
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -60,23 +69,23 @@ harmos-guest = { path = "../../..", default-features = false, features = ["deriv
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
-# === Profiles ===
+# === Profiles === #
 
 # Guest Fuel Counts Wasm Instructions, Generated Schema Decoding Included: Keep Dev
 # Assertions But Optimize Enough That Initialization Fits The Host's Fuel Budget
@@ -84,9 +93,9 @@ harmos-guest = { path = "../../..", default-features = false, features = ["deriv
 opt-level = 1
 debug = false
 
-# === Patches ===
+[profile.dev.package."*"]
+opt-level = 2
 
-# === Other ===
+# === Patches === #
 
-# A Fixture Outside The Root Workspace, Built Once For wasm32-unknown-unknown
-[workspace]
+# === Other === #

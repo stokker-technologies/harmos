@@ -9,12 +9,14 @@
 
 
 /* === Modules === */
+
 #[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +30,7 @@ mod controls;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Bridge;
 
 struct Host;
@@ -39,13 +42,16 @@ struct Watch;
 struct Output { value: u64 }
 
 /* === Enums === */
+
 #[harmos::catalog]
 enum Observers { Watch(Watch) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
+
 impl harmos::sidecar::ObserverHost<()> for Host {
     fn bind(_: std::sync::Arc<()>, _: harmos::sidecar::Supervisor) -> Self { Self }
 }
@@ -67,6 +73,7 @@ impl ProductPlugin for Bridge {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

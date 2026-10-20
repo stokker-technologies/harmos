@@ -32,6 +32,7 @@ use tonic_reflection::pb::v1::{
 use crate::operations::OperationManager;
 
 /* === Constants === */
+
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
@@ -40,6 +41,7 @@ const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(crate) struct Reflection {
     operations: OperationManager,
@@ -50,6 +52,7 @@ pub(crate) struct Reflection {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Reflection {
     pub(crate) fn service(operations: OperationManager) -> ServerReflectionServer<Self> {
         ServerReflectionServer::new(Self { operations })
@@ -100,6 +103,7 @@ impl ServerReflection for Reflection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn answer(pool: &DescriptorPool, request: Option<&MessageRequest>) -> Result<MessageResponse, Status> {
     let missing = || Status::not_found("descriptor not found");
     match request.ok_or_else(|| Status::invalid_argument("missing reflection request"))? {

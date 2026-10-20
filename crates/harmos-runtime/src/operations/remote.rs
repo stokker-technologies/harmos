@@ -32,6 +32,7 @@ use crate::{MemorySize, Message};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Transfer<'a> {
     observed: &'a AtomicBool,
     completed: bool,
@@ -43,10 +44,13 @@ struct Transfer<'a> {
 pub enum RemoteStreamError {
     #[error("remote stream protocol failed: {0}")]
     Protocol(&'static str),
+
     #[error("remote stream item codec failed")]
     Payload(#[from] crate::MessageError),
+
     #[error("remote stream output admission failed")]
     Output(#[from] crate::Error),
+
     // The provider's stream failure crosses unchanged.
     #[error(transparent)]
     Remote(harmos_domain::Failure),
@@ -66,6 +70,7 @@ pub trait StreamEndpoints: EndpointSet {
 }
 
 /* === Implementations === */
+
 impl Drop for Transfer<'_> {
     fn drop(&mut self) {
         if !self.completed {
@@ -175,6 +180,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(super) async fn attempt<P: StreamPeer, E: StreamEndpoints>(
     peer: &P, endpoints: &mut E, invocation: u64, epoch: u64, transferred: &AtomicBool,
     running: impl Future<Output = Result<WireAnswer, P::Error>> + Send,

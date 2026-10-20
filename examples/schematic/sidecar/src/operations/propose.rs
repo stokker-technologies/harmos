@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -29,6 +30,7 @@ use schematic_domain::operations::schematic::propose::Route;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Routing;
 
 /* === Enums === */
@@ -36,6 +38,7 @@ pub(crate) struct Routing;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_sidecar::operation]
 impl Routing {
     async fn initialize(_: Arc<crate::Resources>, _: &harmos_sidecar::Supervisor) -> Self {

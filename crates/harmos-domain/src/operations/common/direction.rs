@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::marker::PhantomData;
@@ -34,13 +35,16 @@ use crate::{MemorySize, MessageError};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Stream<T>(PhantomData<fn() -> T>);
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoStream {}
 
 /* === Traits === */
+
 pub trait Direction: Send + Sync + 'static {
     type Item: crate::Portable;
     const STREAMED: bool;
@@ -55,6 +59,7 @@ pub trait Direction: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl<T: crate::Portable> Direction for Stream<T> {
     type Item = T;
     const STREAMED: bool = true;
@@ -95,12 +100,14 @@ impl crate::__private::PostcardValue for NoStream {
 }
 
 /* === Public Functions === */
+
 // The Item Types An Operation Streams, Input Then Output.
 pub fn item_types<O: super::OperationDeclaration>() -> (Option<TypeId>, Option<TypeId>) {
     (<O::Input as Direction>::item_type(), <O::Output as Direction>::item_type())
 }
 
 /* === Private Functions === */
+
 fn absent() -> MessageError {
     MessageError::borrowed("the operation streams no items in this direction")
 }

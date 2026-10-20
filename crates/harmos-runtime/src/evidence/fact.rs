@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +24,7 @@ use crate::evidence::EvidenceError;
 use crate::{DefinitionId, Identified, state::At, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
+
 pub(crate) const SOURCE: &str = "artifact";
 
 pub(crate) const FINALIZED: &str = "finalized";
@@ -34,6 +36,7 @@ pub(crate) const VERSION: u32 = 1;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceRecord {
     pub kind: DefinitionId,
@@ -53,6 +56,7 @@ struct Recorded {
     key: String,
     digest: u64,
     length: u64,
+
     #[serde(default = "nothing")]
     details: Box<RawValue>,
 }
@@ -60,11 +64,13 @@ struct Recorded {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait EvidenceKind: Identified {
     type Details: Serialize + DeserializeOwned;
 }
 
 /* === Implementations === */
+
 impl EvidenceRecord {
     pub fn details<K: EvidenceKind>(&self) -> Result<K::Details, EvidenceError> {
         let (named, _) = K::definition();
@@ -119,6 +125,7 @@ impl EvidenceRecord {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn nothing() -> Box<RawValue> {
     described(b"null")
 }

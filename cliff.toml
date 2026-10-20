@@ -1,4 +1,3 @@
-# Rendered by stkr project update from templates/tools/cliff.toml; sha256:a0638cffc1961beaa2514b7a3ad6e3f6f018ef794bf86f96af198638f20de45b
 # ***
 #
 # Harmos
@@ -32,6 +31,7 @@ conventional_commits = true
 filter_unconventional = true
 split_commits = false
 commit_parsers = [
+  { message = '^chore\(release\): prepare v[0-9]+\.[0-9]+\.[0-9]+$', skip = true },
   { message = "^feat", group = "added" },
   { message = "^fix", group = "fixed" },
   { message = "^docs", group = "changed" },
@@ -48,9 +48,10 @@ protect_breaking_commits = true
 filter_commits = false
 tag_pattern = "v[0-9]*"
 
-# === Version Planning === #
+# === Version Bumping === #
 
 [bump]
+initial_tag = "v0.1.0"
 breaking_always_bump_major = false
 features_always_bump_minor = false
 bump_type = "patch"

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::{Any, TypeId};
 use std::hash::Hash;
@@ -24,6 +25,7 @@ use serde::de::DeserializeOwned;
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! prefix {
     (($($whole:ident),+) selects ($($taken:ident),+) at ($($at:tt),+)) => {
         impl<$($whole: Track),+> Prefix<($($whole,)+)> for ($($taken,)+) {
@@ -61,6 +63,7 @@ prefix!((A, B, C, D) selects (A, B, C, D) at (0, 1, 2, 3));
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 // A declaration is a value an application *states*; only the host core reads
 // what it states. In an authoring build there is no host core, so these fields
@@ -140,6 +143,7 @@ pub trait Batched: 'static {
 }
 
 /* === Implementations === */
+
 impl Definition {
     pub fn row(&self) -> TypeId {
         self.row

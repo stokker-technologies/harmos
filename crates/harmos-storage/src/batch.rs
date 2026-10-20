@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -28,6 +29,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct StorageBatch<'a> {
     parts: &'a [StoragePart<'a>],
@@ -38,6 +40,7 @@ pub struct StorageBatch<'a> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 pub enum StoragePart<'a> {
     Schemas(&'a [StorageSchema]),
@@ -59,6 +62,7 @@ pub enum StorageEntry<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> StorageBatch<'a> {
     pub fn new(parts: &'a [StoragePart<'a>], max_bytes: NonZeroUsize) -> Result<Self> {
         let mut entries = parts.iter().copied().flat_map(StoragePart::entries);
@@ -201,6 +205,7 @@ impl<'a> StorageEntry<'a> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage batch", reason }
 }

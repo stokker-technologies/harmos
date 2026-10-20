@@ -38,6 +38,7 @@ use crate::{Application, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Native<A: Application, L> {
     driver: RuntimeDriver<A, L>,
 }
@@ -47,6 +48,7 @@ struct Native<A: Application, L> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> PluginHost<A> {
     pub async fn register_sidecar<C>(
         &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync,
@@ -149,6 +151,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn diagnostics<A: Application>(_: &Service<A>, notice: Notice) {
     if let Notice::Logged { line } = notice {
         tracing::debug!(target: "harmos::plugin::sidecar", %line, "native plugin output");

@@ -10,11 +10,13 @@
 // Compose Producer Binding Commands.
 
 /* === Modules === */
+
 mod python;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
@@ -26,6 +28,7 @@ mod python;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(clap::Args)]
 pub struct Arguments {
     #[command(subcommand)]
@@ -33,6 +36,7 @@ pub struct Arguments {
 }
 
 /* === Enums === */
+
 #[derive(clap::Subcommand)]
 enum Command {
     #[command(about = "Generate A Pure Python Package From One Selected Contract Export.")]
@@ -44,6 +48,7 @@ enum Command {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
     match arguments.command {
         Command::Python(arguments) => python::run(arguments),

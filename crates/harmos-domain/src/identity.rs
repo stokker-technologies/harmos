@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 
@@ -27,6 +28,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DefinitionId(String);
@@ -40,12 +42,14 @@ pub struct Requirement {
 /* === Enums === */
 
 /* === Traits === */
+
 // The Stable Identity And Semantic Version Of A Declared Definition.
 pub trait Identified {
     fn definition() -> (DefinitionId, u32);
 }
 
 /* === Implementations === */
+
 impl DefinitionId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -70,6 +74,7 @@ impl fmt::Display for DefinitionId {
 }
 
 /* === Public Functions === */
+
 pub const fn artifact_subset(id: &str) -> bool {
     let bytes = id.as_bytes();
     if bytes.is_empty() || !bytes[0].is_ascii_lowercase() {

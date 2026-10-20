@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod codec;
 mod owned;
 #[cfg(feature = "grpc")]
@@ -16,11 +17,13 @@ mod protobuf;
 mod streams;
 
 /* === Re-Exports === */
+
 pub use codec::WireCodecError;
 #[cfg(feature = "streaming")]
 pub use streams::{WireEndpoints, WireStreamLimits, WireStreams};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -36,6 +39,7 @@ use super::{AuthoredDeclarations, Contract, ContractError, Definition, FailureKi
 use crate::catalog::{Catalog, Member, Projection, Visitor};
 
 /* === Constants === */
+
 pub const WIRE_METHOD: &str = "harmos.operation.v2";
 
 pub const CHILD_METHOD: &str = "harmos.operation.child.v2";
@@ -43,6 +47,7 @@ pub const CHILD_METHOD: &str = "harmos.operation.child.v2";
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Answer<'a> = Pin<Box<dyn Future<Output = Result<Vec<u8>, ServingError>> + Send + 'a>>;
 type Finished<'a> = Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'a>>;
 type Finalization<S> = Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)> + Send + 'static>>;
@@ -50,16 +55,21 @@ type Prepare<C> = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared<C>>, Serv
 type Install<H, C> = fn(&mut WireTable<C>, Arc<H>) -> Result<(), ServingError>;
 
 /* === Structs === */
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WireChildCall {
     pub context: [u8; 32],
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_context: Option<[u8; 32]>,
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<super::CallValue>,
+
     pub operation: String,
     pub payload: Vec<u8>,
+
     // Submitted children answer their instance id at admission and remain
     // owned by the calling attempt until joined, released or detached.
     #[serde(default)]
@@ -82,6 +92,7 @@ pub struct WireTable<C> {
     capacity: NonZeroUsize,
     closed: bool,
     ordinary_closed: bool,
+
     #[cfg(feature = "streaming")]
     stream_limits: Option<WireStreamLimits>,
 }
@@ -89,8 +100,10 @@ pub struct WireTable<C> {
 struct Slot<C> {
     lifecycle: bool,
     resident: bool,
+
     #[cfg(feature = "streaming")]
     streams: Option<WireStreams>,
+
     state: Mutex<SlotState<C>>,
 }
 
@@ -126,6 +139,7 @@ pub struct WireBinding<H, C> {
 }
 
 /* === Enums === */
+
 // Answers: `Join` the child's response payload, `Status` and `Cancel` an
 // encoded `builtin::InstanceState`, `Release` and `Detach` an empty payload.
 // Releasing cancels the child; detaching leaves it running without a handle.
@@ -171,59 +185,81 @@ pub enum WireAnswer {
 pub enum ServingError {
     #[error("carrier invocation does not support stream commands")]
     StreamUnsupported,
+
     #[cfg(feature = "streaming")]
     #[error("streaming catalog requires explicit provider stream limits")]
     StreamLimits,
+
     #[cfg(feature = "streaming")]
     #[error("carrier stream failed: {0}")]
     Stream(#[source] super::streaming::Error),
+
     #[cfg(feature = "streaming")]
     #[error("carrier stream direction already has an outstanding request")]
     StreamBusy,
+
     #[cfg(feature = "streaming")]
     #[error("carrier stream direction or attempt is not available")]
     StreamPhase,
+
     #[error(transparent)]
     Lifecycle(#[from] crate::operations::lifecycle::Error),
+
     #[error(transparent)]
     Contract(#[from] ContractError),
+
     #[error(transparent)]
     Declaration(#[from] crate::Error),
+
     #[error("operation `{operation}` has no bound carrier handler")]
     Unknown { operation: String },
+
     #[error("operation `{operation}` requires streaming endpoints unsupported by this carrier binding")]
     Streaming { operation: String },
+
     #[error("carrier invocation `{invocation}` is already prepared")]
     Duplicate { invocation: u64 },
+
     #[error("carrier invocation `{invocation}` has not been prepared")]
     Missing { invocation: u64 },
+
     #[error("carrier operation has not completed initialization")]
     Uninitialized,
+
     #[error("carrier operation initialization already started and cannot be replayed")]
     InitializationStarted,
+
     #[error("carrier invocation capacity is exhausted")]
     Capacity,
+
     #[error("carrier ordinary invocations have not finished settlement")]
     Unsettled,
+
     #[error("carrier operation admission is closing")]
     Closing,
+
     #[error("carrier handler definitions differ from the selected operation catalog")]
     Catalog,
+
     #[error("operation payload codec failed")]
     Codec(#[source] crate::MessageError),
+
     #[error("carrier handler panicked")]
     Panicked,
+
     // The handler's failure, written once at its origin.
     #[error(transparent)]
     Handler(crate::Failure),
 }
 
 /* === Traits === */
+
 trait Prepared<C>: Send {
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<WireStreams> {
         None
     }
+
     // The grant the prepared request needs, answered to the host with Prepare.
     fn grant(&self) -> Option<crate::plugin::Grant> {
         None
@@ -234,6 +270,7 @@ trait Prepared<C>: Send {
 }
 
 /* === Implementations === */
+
 impl<C: Send + Sync + 'static> WireTable<C> {
     pub fn new(capacity: NonZeroUsize) -> Self {
         Self {
@@ -747,6 +784,7 @@ where
 }
 
 /* === Public Functions === */
+
 // A Prepare answer is empty when the request needs no grant, else the grant as JSON.
 pub fn encode_prepared_grant(grant: Option<&crate::plugin::Grant>) -> Vec<u8> {
     grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
@@ -760,6 +798,7 @@ pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<crate::plugin::Gra
 }
 
 /* === Private Functions === */
+
 fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
     match result {
         Ok(payload) => WireAnswer::Ready { payload },

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::ops::Bound;
@@ -31,6 +32,7 @@ use harmos_runtime::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Kept = Arc<Mutex<Vec<At<Capture>>>>;
 
 type Asked = Arc<Mutex<Vec<(String, Vec<String>)>>>;
@@ -40,6 +42,7 @@ type Budgets = Arc<Mutex<Vec<usize>>>;
 type Watched = (Kept, Asked, Budgets);
 
 /* === Structs === */
+
 struct Tape {
     rows: Kept,
     asked: Asked,
@@ -54,6 +57,7 @@ struct Tape {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Tape {
     fn new() -> (Self, Watched) {
         Self::retaining_above(Position::ORIGIN)
@@ -190,6 +194,7 @@ impl Series<Bank> for Tape {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn narrowed(track: &[String], row: &Capture) -> bool {
     Prefix::<<Capture as Tracked>::Track>::labels(&row.track()).starts_with(track)
 }

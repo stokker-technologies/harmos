@@ -10,11 +10,13 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::journal::Position;
 
 pub use std::time::SystemTime as Timestamp;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 // Third Party Imports
@@ -28,6 +30,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CorrelationId(pub Position);
@@ -48,6 +51,7 @@ pub struct RequestKey(String);
 pub struct Metadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<(Position, Position)>,
+
     pub principal: Option<PrincipalId>,
     pub correlation: CorrelationId,
     pub causation: Option<CausationId>,
@@ -79,6 +83,7 @@ pub struct Receipt {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Link {
     UndoOf(Position),
@@ -88,6 +93,7 @@ pub enum Link {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl fmt::Display for CorrelationId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}", self.0)

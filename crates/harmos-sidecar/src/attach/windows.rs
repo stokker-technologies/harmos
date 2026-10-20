@@ -30,14 +30,17 @@ use windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId;
 use crate::transport::Io;
 
 /* === Constants === */
+
 const VARIABLE: &str = "HARMOS_CONTROL_V2";
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Connection = Pin<Box<dyn Future<Output = io::Result<NamedPipeServer>> + Send>>;
 
 /* === Structs === */
+
 pub(super) struct Prepared(NamedPipeServer);
 
 struct Pipe {
@@ -45,6 +48,7 @@ struct Pipe {
 }
 
 /* === Enums === */
+
 enum State {
     Connecting(Connection),
     Connected(NamedPipeServer),
@@ -54,6 +58,7 @@ enum State {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Prepared {
     pub(super) fn io(self, child: u32) -> Io {
         let connection = Box::pin(async move {
@@ -105,6 +110,7 @@ impl AsyncWrite for Pipe {
 }
 
 /* === Public Functions === */
+
 pub(super) fn prepare(command: &mut Command) -> io::Result<Prepared> {
     let mut entropy = [0; 32];
     getrandom::fill(&mut entropy).map_err(io::Error::other)?;
@@ -151,6 +157,7 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
 }
 
 /* === Private Functions === */
+
 fn name(identity: &str) -> String {
     format!(r"\\.\pipe\harmos-control-{}", identity.replace(':', "-"))
 }

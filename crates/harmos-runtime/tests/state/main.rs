@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../state/managed.rs"]
 mod managed;
 #[path = "../support/mod.rs"]
@@ -44,6 +45,7 @@ mod undo;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

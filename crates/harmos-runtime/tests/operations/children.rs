@@ -36,6 +36,7 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Trace {
     attempts: AtomicUsize,
     events: Mutex<Vec<&'static str>>,
@@ -53,6 +54,7 @@ struct Parent {
 struct Child(Arc<Trace>);
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 enum Exit {
     Return,
@@ -65,8 +67,10 @@ enum Exit {
 enum Failed {
     #[error("the attempt failed")]
     Attempt,
+
     #[error("retry the attempt")]
     Retry,
+
     #[error(transparent)]
     Child(#[from] Error),
 }
@@ -113,6 +117,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Parent {
     type Declaration = ParentContract;
     type Resources = Trace;
@@ -194,6 +199,7 @@ impl Drop for Child {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         attempts: AtomicUsize::new(0),

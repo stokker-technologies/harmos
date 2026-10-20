@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -26,6 +27,7 @@ use harmos::guest::{Host, Loaded};
 use schematic_domain::operations::Operations;
 
 /* === Constants === */
+
 pub const NAME: &str = "schematic-tools";
 
 const SDK_ENCODING_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
@@ -43,6 +45,7 @@ const SDK_ENCODING_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<()> {
     if loaded.declaration().id != NAME {
         return Err(harmos::Error::InvalidInput {
@@ -61,6 +64,7 @@ pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEdito
 }
 
 /* === Private Functions === */
+
 pub(super) fn failure(source: impl std::error::Error + Send + Sync + 'static) -> harmos::Error {
     harmos::Error::OperationFailed { operation: NAME.into(), source: Arc::new(source) }
 }

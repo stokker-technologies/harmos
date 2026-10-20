@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(AbandonFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
@@ -43,6 +45,7 @@ crate::declare!(AbandonFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Abandon A Producing File Session, Exactly Once Per Mutation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AbandonFile {
@@ -55,6 +58,7 @@ pub struct AbandonFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for AbandonFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

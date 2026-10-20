@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ use schematic_storage::Wire;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Ledger {
     pub balance: i64,
@@ -95,6 +97,7 @@ pub struct Bank;
 struct Definitions(Vec<(Kind, DefinitionId, u32)>);
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -120,6 +123,7 @@ pub enum Fact {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -308,6 +312,7 @@ impl Registration<Bank> for Definitions {
 }
 
 /* === Public Functions === */
+
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
 }
@@ -350,6 +355,7 @@ pub fn scratch(name: &str) -> PathBuf {
 }
 
 /* === Private Functions === */
+
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,

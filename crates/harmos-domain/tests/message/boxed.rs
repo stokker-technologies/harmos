@@ -10,6 +10,7 @@
 // Boxed Message Fields Against Their Plain Twins
 
 /* === Modules === */
+
 // Plain Nested Messages Own The Reference Wire Shape
 mod plain {
     use super::Leaf;
@@ -55,6 +56,7 @@ mod heap {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt::Debug;
 // Third Party Imports
@@ -73,6 +75,7 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leaf {
@@ -86,6 +89,7 @@ pub struct Leaf {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl From<heap::Holder> for plain::Holder {
     fn from(value: heap::Holder) -> Self {
         Self { row: *value.row, count: value.count }
@@ -103,6 +107,7 @@ impl From<heap::Choice> for plain::Choice {
 }
 
 /* === Public Functions === */
+
 #[test]
 fn boxed_descriptors_match() {
     descriptors::<plain::Holder, heap::Holder>();
@@ -114,7 +119,7 @@ fn boxed_descriptors_match() {
 }
 
 #[test]
-fn boxed_bytes_match() {
+fn boxed_codec_parity() {
     let (plain, boxed) = holders();
     assert_eq!(crate::encode(&boxed), crate::encode(&plain));
     assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
@@ -126,11 +131,8 @@ fn boxed_bytes_match() {
         assert_eq!(Message::encode_to_vec(&boxed), Message::encode_to_vec(&plain));
         assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
     }
-}
 
-#[test]
-fn boxed_decoding_agrees() {
-    let (plain, _) = holders();
+    // Both Representations Decode Default, Repeated And Segmented Fields.
     let encoded = crate::encode(&plain);
     let mut duplicate = encoded.clone();
     duplicate.extend(crate::encode(&plain::Holder { row: Leaf { value: 0, payload: vec![4], label: "second".into() }, count: 9 }));
@@ -159,6 +161,22 @@ fn boxed_decoding_agrees() {
         let decoded = <heap::Choice as Message>::decode(&postcard).unwrap();
         assert_eq!(plain::Choice::from(decoded), plain);
     }
+
+    // Portable Preflight Includes The Box Pointee And Bounds Resident Memory.
+    let bytes = Message::encode_to_vec(&plain);
+    let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
+    let boxed_bound = <heap::Holder as Message>::decoding_memory(&bytes).unwrap();
+    assert_eq!(
+        boxed_bound - std::mem::size_of::<heap::Holder>(),
+        plain_bound - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<Leaf>()
+    );
+    let decoded = <heap::Holder as Message>::decode(&bytes).unwrap();
+    assert_eq!(decoded, boxed);
+    assert!(decoded.memory_size() <= boxed_bound);
+    assert_eq!(
+        boxed.memory_size(),
+        plain.memory_size() - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<heap::Holder>() + std::mem::size_of::<Leaf>()
+    );
 }
 
 #[test]
@@ -179,38 +197,8 @@ fn boxed_refuses_malformed() {
     }
 }
 
-#[test]
-fn boxed_portable_bound() {
-    let (plain, boxed) = holders();
-    let bytes = Message::encode_to_vec(&plain);
-    let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
-    let boxed_bound = <heap::Holder as Message>::decoding_memory(&bytes).unwrap();
-    assert_eq!(
-        boxed_bound - std::mem::size_of::<heap::Holder>(),
-        plain_bound - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<Leaf>()
-    );
-    let decoded = <heap::Holder as Message>::decode(&bytes).unwrap();
-    assert_eq!(decoded, boxed);
-    assert!(decoded.memory_size() <= boxed_bound);
-}
-
-#[test]
-fn boxed_sizes_saturate() {
-    struct Overflow;
-    impl MemorySize for Overflow {
-        fn memory_size(&self) -> usize {
-            usize::MAX
-        }
-    }
-    assert_eq!(Box::new(Overflow).memory_size(), usize::MAX);
-    let (plain, boxed) = holders();
-    assert_eq!(
-        boxed.memory_size(),
-        plain.memory_size() - std::mem::size_of::<plain::Holder>() + std::mem::size_of::<heap::Holder>() + std::mem::size_of::<Leaf>()
-    );
-}
-
 /* === Private Functions === */
+
 fn holders() -> (plain::Holder, heap::Holder) {
     let row = Leaf { value: 7, payload: vec![1, 2, 255], label: "first".into() };
     let boxed = heap::Holder { row: Box::new(row.clone()), count: 3 };

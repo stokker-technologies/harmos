@@ -33,6 +33,7 @@ use super::{FailureKind, OperationDeclaration};
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait EndpointSet: Send + 'static {
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>);
     fn transferred(&self) -> bool {
@@ -88,6 +89,7 @@ pub trait Operation: Send + Sized + 'static {
 }
 
 /* === Implementations === */
+
 impl EndpointSet for () {
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
         (None, None)

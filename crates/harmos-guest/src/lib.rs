@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 mod error;
 
 #[cfg(feature = "kit")]
 pub mod kit;
 
 /* === Re-Exports === */
+
 pub use error::{Error, Result};
 pub use harmos_domain::{catalog, listeners};
 pub use harmos_sdk::Plugin;
@@ -40,6 +42,7 @@ pub use harmos_domain::{listener, message, operation, stream};
 pub use harmos_sdk::plugin;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -59,6 +62,7 @@ pub use harmos_sdk::plugin;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[cfg(feature = "kit")]
 impl harmos_domain::__private::CarrierContext for Context {
     const FACILITY: &'static str = "guest";

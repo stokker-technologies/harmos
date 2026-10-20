@@ -16,6 +16,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -32,6 +33,7 @@ use harmos_sidecar::{Activity, Instance};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Native<R, H, F> {
     pub(crate) instance: Instance<R, H>,
     pub(crate) factory: Arc<F>,
@@ -44,6 +46,7 @@ struct Retained(Activity);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl crate::supervision::cleanup::Resource for Retained {
     fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
         Box::pin(async move {
@@ -120,6 +123,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed { domain: "native observer", source: Arc::new(source) }
 }

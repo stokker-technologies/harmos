@@ -36,6 +36,7 @@ use super::*;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: ObjectCatalog> Data<C> {
     pub(super) fn fixture_supports_file_sessions(&self) -> bool {
         true

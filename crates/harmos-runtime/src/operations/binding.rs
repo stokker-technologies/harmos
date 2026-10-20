@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -30,6 +31,7 @@ use crate::{Error, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Prepare<O, P> = dyn Fn(
         (Request<O>, P),
         OperationInstanceId,
@@ -44,6 +46,7 @@ type Prepare<O, P> = dyn Fn(
     + Sync;
 
 /* === Structs === */
+
 pub(super) struct Request<T> {
     pub(super) value: T,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
@@ -59,6 +62,7 @@ pub(super) struct Typed<O: OperationDeclaration, P = ()> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T> From<T> for Request<T> {
     fn from(value: T) -> Self {
         Self { value, retention: None, context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) }
@@ -72,6 +76,7 @@ impl<T> Request<T> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn Body<O>>) -> Prepared<O> {
     Prepared {
         body,
@@ -94,4 +99,5 @@ pub(super) fn classify<E: std::error::Error + Send + Sync + 'static>(error: &Err
 }
 
 /* === Private Functions === */
+
 /* === Tests === */

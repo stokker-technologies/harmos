@@ -35,6 +35,7 @@ use super::*;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
 pub struct Scale {

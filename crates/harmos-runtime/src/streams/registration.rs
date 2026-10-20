@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
@@ -31,6 +32,7 @@ use harmos_domain::StreamDeclaration;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[must_use = "retain the stream registration through plugin settlement"]
 pub struct StreamRegistration {
     table: Arc<Table>,
@@ -51,6 +53,7 @@ pub(super) struct Staged {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> StreamManager<A> {
     pub async fn stage_plugin(
         &self, scope: &PluginScope, declarations: impl IntoIterator<Item = StreamDeclaration>,

@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::{fs::OpenOptions, io::Write, num::NonZeroUsize};
 // Third Party Imports
@@ -18,14 +21,23 @@ use harmos_runtime::storage::state::{RecoveryEntry, RecoverySnapshot, StateBacke
 use harmos_runtime::storage::{ReadLimits, RecoveryPosition, StorageCursor, StoreHistory};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn retired_header(history: &StoreHistory) -> Vec<u8> {
     use sha2::Digest;
 
@@ -43,6 +55,7 @@ fn retired_header(history: &StoreHistory) -> Vec<u8> {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn checkpoint_survives_reopen() {
     let root = tempfile::tempdir().unwrap();

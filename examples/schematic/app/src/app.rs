@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::result::Result;
@@ -34,6 +35,7 @@ use harmos::prelude::*;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Origin = harmos::state::Origin<Schematic>;
 
 pub type Runtime = harmos::Runtime<SchematicEditor>;
@@ -46,6 +48,7 @@ pub type StreamManager = harmos::streams::StreamManager<SchematicEditor>;
 pub type Simulated = harmos::simulation::SimulatedRuntime<SchematicEditor>;
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchematicEditor;
 
@@ -54,6 +57,7 @@ pub struct SchematicEditor;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for SchematicEditor {
     type State = Schematic;
     type Transaction = Transactions;
@@ -63,6 +67,7 @@ impl Application for SchematicEditor {
 }
 
 /* === Public Functions === */
+
 pub fn builder(origin: impl Into<Origin>, resources: ()) -> Builder<SchematicEditor> {
     let settings = harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()), ..Default::default() };
     harmos::Runtime::builder(origin, resources)

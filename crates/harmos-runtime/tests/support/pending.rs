@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -25,6 +26,7 @@ use std::time::Duration;
 // Local Imports
 
 /* === Constants === */
+
 // Scheduler turns granted to the tasks a parked future waits on.
 const SETTLE: usize = 64;
 
@@ -41,7 +43,7 @@ const SETTLE: usize = 64;
 /* === Implementations === */
 
 /* === Public Functions === */
-/// Poll `future` while every other ready task runs, asserting it stays pending.
+
 pub(crate) async fn parked<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     for _ in 0..SETTLE {
         assert!(poll_once(future.as_mut()).await, "the future stays parked");
@@ -49,7 +51,6 @@ pub(crate) async fn parked<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     }
 }
 
-/// Assert `future` stays pending across `span` of the paused clock.
 pub(crate) async fn outlasts<F: Future + ?Sized>(mut future: Pin<&mut F>, span: Duration) {
     parked(future.as_mut()).await;
     tokio::time::advance(span).await;
@@ -57,6 +58,7 @@ pub(crate) async fn outlasts<F: Future + ?Sized>(mut future: Pin<&mut F>, span: 
 }
 
 /* === Private Functions === */
+
 async fn poll_once<F: Future + ?Sized>(mut future: Pin<&mut F>) -> bool {
     std::future::poll_fn(|context| Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }

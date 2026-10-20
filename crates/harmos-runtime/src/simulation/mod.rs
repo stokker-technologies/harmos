@@ -8,14 +8,17 @@
  */
 
 /* === Modules === */
+
 mod clock;
 mod entropy;
 pub(crate) mod executor;
 
 /* === Re-Exports === */
+
 pub use entropy::entropy;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::fmt;
@@ -37,11 +40,13 @@ use crate::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
 type BuildStep<A> = Arc<dyn Fn(Builder<A>) -> Builder<A> + Send + Sync>;
 type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
 
 /* === Structs === */
+
 pub struct SimulatedRuntime<A>
 where
     A: Application,
@@ -118,12 +123,15 @@ struct MemorySource<A: Application> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {
     #[error("the simulated runtime is not running")]
     NotRunning,
+
     #[error("service `{0}` is not declared in this simulation")]
     UnknownService(String),
+
     #[error("service `{0}` has no running attempt to receive the fault")]
     ServiceStopped(String),
 }
@@ -131,6 +139,7 @@ pub enum SimError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<S: fmt::Debug> fmt::Display for Divergence<S> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -620,6 +629,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn stored<A>(entry: &Entry<Recorded<A>>, identities: &BTreeMap<Position, Stamp>, strict: bool) -> Result<Envelope<Payload<A>>, Incompatible>
 where
     A: Application,

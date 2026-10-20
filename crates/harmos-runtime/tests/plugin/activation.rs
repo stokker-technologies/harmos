@@ -27,6 +27,7 @@ use super::*;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct WireClient;
 #[harmos_runtime::message(harmos_path = harmos_runtime)]
 #[harmos_runtime::operation(
@@ -43,6 +44,7 @@ struct WireCall {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum WireClients {
     Run(WireClient),
@@ -51,6 +53,7 @@ enum WireClients {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for WireClient {
     type Declaration = WireCall;
     type Resources = ();

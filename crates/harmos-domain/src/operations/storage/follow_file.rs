@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::Visibility;
 /* === Constants === */
 
 /* === Macros === */
+
 product!(FollowFile {
     file: Nested<StagedFile> => 1,
     offset: Unsigned => 2,
@@ -43,7 +45,7 @@ crate::declare!(FollowFile {
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Follow the bytes of one producing file from `offset`.
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowFile {
     pub file: StagedFile,
@@ -55,6 +57,7 @@ pub struct FollowFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for FollowFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

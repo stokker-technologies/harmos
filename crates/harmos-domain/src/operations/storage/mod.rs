@@ -11,6 +11,7 @@
 // Each Declaration To Its Storage Handler.
 
 /* === Modules === */
+
 mod abandon_file;
 mod append_file;
 mod create_file;
@@ -31,6 +32,7 @@ mod write_schema;
 mod write_streams;
 
 /* === Re-Exports === */
+
 pub use abandon_file::AbandonFile;
 pub use append_file::AppendFile;
 pub use create_file::CreateFile;
@@ -51,6 +53,7 @@ pub use write_schema::WriteSchema;
 pub use write_streams::WriteStreams;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -60,6 +63,7 @@ use crate::catalog::{Catalog, Contains, Member, Visitor};
 use crate::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
+
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(15),
@@ -86,6 +90,7 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 macro_rules! catalog {
     ($($leaf:ident),* $(,)?) => {
         pub enum Operations { $($leaf($leaf)),* }

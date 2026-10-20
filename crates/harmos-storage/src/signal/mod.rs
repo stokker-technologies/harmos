@@ -8,14 +8,14 @@
  */
 
 /* === Modules === */
+
 mod aggregates;
 mod error;
 mod spectrum;
-#[cfg(test)]
-mod tests;
 mod waveform;
 
 /* === Re-Exports === */
+
 pub use aggregates::Aggregates;
 pub use error::{Error, Result};
 pub use spectrum::{
@@ -30,6 +30,7 @@ pub use waveform::{
 };
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

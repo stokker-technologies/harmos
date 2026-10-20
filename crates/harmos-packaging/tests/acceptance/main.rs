@@ -16,10 +16,12 @@ mod authoring;
 mod bindings;
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
+mod proto;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn samples(list: &syn::MetaList) -> Result<LitInt, Error> {
     let mut samples = None;
     let mut gaps = None;

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -41,6 +42,7 @@ use crate::path::{self, HarmosPath};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
         Ok(expanded) => expanded,
@@ -52,6 +54,7 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
     let (harmos, interval, streams, demand_keys, activation, description, id) = arguments(attribute)?;
     let block = block(item.clone(), "#[harmos::observer]")?;

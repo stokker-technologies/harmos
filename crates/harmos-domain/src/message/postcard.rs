@@ -21,6 +21,7 @@
 use super::{MessageError, decoding_add, decoding_multiply, decoding_vector};
 
 /* === Constants === */
+
 const MAX_DEPTH: usize = 32;
 const MAX_VALUES: usize = 1_048_576;
 
@@ -29,6 +30,7 @@ const MAX_VALUES: usize = 1_048_576;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Append<'a>(&'a mut Vec<u8>);
 
 #[derive(Clone)]
@@ -75,6 +77,7 @@ pub trait Value: Sized + Send + Sync {
 }
 
 /* === Implementations === */
+
 impl Extend<u8> for Append<'_> {
     fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
         self.0.extend(iter);
@@ -287,12 +290,13 @@ impl<T: Value> Value for Option<T> {
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn fixed_bytes_preserve_length_prefix_and_reject_wrong_width() {
+    fn fixed_bytes_format() {
         let digest = [7_u8; 32];
         let mut bytes = Vec::new();
         digest.write(&mut bytes);

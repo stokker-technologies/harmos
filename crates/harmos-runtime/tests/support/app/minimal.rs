@@ -28,6 +28,7 @@ use harmos_runtime::{Application, state::Never};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct App<R = ()>(PhantomData<R>);
 
 /* === Enums === */
@@ -35,6 +36,7 @@ pub struct App<R = ()>(PhantomData<R>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<R: Send + Sync + 'static> Application for App<R> {
     type State = ();
     type Transaction = Never;

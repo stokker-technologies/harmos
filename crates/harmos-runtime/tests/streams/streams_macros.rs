@@ -89,6 +89,7 @@ mod streams {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::pin::Pin;
@@ -107,6 +108,7 @@ use harmos_runtime::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct State;
 
@@ -116,15 +118,18 @@ struct Studio;
 struct PresentedSample {
     #[row(description = "Measured voltage", label = "Voltage", role = value, unit = "V", tags("electrical"), attributes(precision = 4u64))]
     voltage: f64,
+
     sample_index: u64,
 }
 
 /* === Enums === */
+
 enum Change {}
 
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<State> for Change {
     type Error = Infallible;
 
@@ -159,6 +164,7 @@ impl harmos_runtime::state::TransactionCatalog<State> for Change {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }

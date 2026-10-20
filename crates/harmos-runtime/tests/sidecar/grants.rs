@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -29,6 +30,7 @@ use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, Retr
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
+
 const ALLOWED: &str = "fixture.remote.allowed";
 const REFUSED: &str = "fixture.remote.refused";
 const POLICY: OperationPolicy = OperationPolicy {
@@ -45,6 +47,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Runs(AtomicUsize);
 
@@ -109,6 +112,7 @@ struct LocalFetching {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Gated {
     Fetch(RemoteFetch),
@@ -117,6 +121,7 @@ enum Gated {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Seed {
     fn new(runs: &Arc<Runs>) -> Self {
         let id = NEXT_SEED.try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1)).unwrap();
@@ -140,6 +145,7 @@ impl Authenticator for Bearers {
             match call.metadata().get("authorization").and_then(|value| value.to_str().ok()) {
                 Some("Bearer holder") => Ok(Principal("holder")),
                 Some("Bearer lacking") => Ok(Principal("lacking")),
+                Some("Bearer full") => Ok(Principal("full")),
                 _ => Err(harmos_runtime::Error::Unauthenticated),
             }
         })
@@ -147,15 +153,18 @@ impl Authenticator for Bearers {
 }
 
 impl harmos_runtime::operations::authorization::Authorizer for Holdings {
-    fn required(
+    fn authorize(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
-    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Required>> {
+    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
+        use harmos_runtime::operations::authorization::{Authorization, Required};
+        assert_eq!(provider.plugin, provider.owner.as_str() == "gated", "provenance comes from the original plugin scope");
         let grants = match context.get::<Principal>().map(|principal| principal.0) {
+            Some("full") => return Ok(Some(Authorization::Full(provider.contract.clone()))),
             Some("holder") => vec![Grant::of(provider.contract.operation().id.as_str().to_owned(), ALLOWED)],
             Some("lacking") => vec![],
             _ => return Ok(None),
         };
-        Ok(Some(harmos_runtime::operations::authorization::Required { contract: provider.contract.clone(), grants }))
+        Ok(Some(Authorization::Restricted(Required { contract: provider.contract.clone(), grants })))
     }
 }
 
@@ -233,6 +242,7 @@ impl Operation for LocalFetching {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Value 20 needs the held scope, 21 one nobody holds, 22 the held scope on
 // another operation, anything else no grant.
 fn scoped(operation: &'static str, value: u32) -> Option<Grant> {
@@ -273,6 +283,10 @@ async fn enforced(channel: &tonic::transport::Channel, path: &'static str, runs:
     // carry over to a grant the request resolves on another operation.
     denied(fetch(channel.clone(), "Bearer holder", path, 22).await);
     assert_eq!(runs.0.load(Ordering::SeqCst), 2, "refusals never run");
+    assert_eq!(fetch(channel.clone(), "Bearer full", path, 20).await.unwrap(), 21);
+    assert_eq!(fetch(channel.clone(), "Bearer full", path, 21).await.unwrap(), 22);
+    denied(fetch(channel.clone(), "Bearer full", path, 22).await);
+    assert_eq!(runs.0.load(Ordering::SeqCst), 4, "full control still refuses a foreign-operation grant");
 }
 
 #[tokio::test]

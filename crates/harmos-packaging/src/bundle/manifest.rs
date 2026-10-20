@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,12 +26,14 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub name: String,
     pub version: semver::Version,
     pub description: String,
+
     #[serde(default)]
     pub package: PackageMetadata,
 }
@@ -61,6 +64,7 @@ pub struct File {
     pub path: String,
     pub size: u64,
     pub sha256: String,
+
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub executable: Option<Executable>,
 }
@@ -84,6 +88,7 @@ pub struct Limits {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Facility {
@@ -94,6 +99,7 @@ pub enum Facility {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for Limits {
     fn default() -> Self {
         Self {

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod analyze;
 mod propose;
 mod validate;
@@ -15,6 +16,7 @@ mod validate;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +32,7 @@ mod validate;
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_guest::catalog]
 pub(crate) enum Operations {
     Validate(validate::Validating),

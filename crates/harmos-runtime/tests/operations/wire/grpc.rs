@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc, Mutex,
@@ -34,9 +35,11 @@ use harmos_runtime::operations::{Context, Operation, OperationPhase, OperationPo
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Request = Produce;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "grpc.produce",
@@ -88,6 +91,7 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Production {
     type Declaration = Produce;
     type Resources = Trace;
@@ -139,6 +143,7 @@ impl Drop for Production {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace {

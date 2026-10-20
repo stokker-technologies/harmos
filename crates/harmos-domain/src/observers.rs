@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -28,11 +29,13 @@ use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
+
 // The observe control runs until the host cancels it.
 pub const POLICY: OperationPolicy =
     OperationPolicy { timeout: UNBOUNDED, attempt_timeout: UNBOUNDED, retries: RetryPolicy::Never, restart: RestartPolicy::Never };
 
 /* === Macros === */
+
 crate::declare!(Control {
     id: "harmos.observe",
     version: 1,
@@ -45,6 +48,7 @@ crate::declare!(Control {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Control {
     pub observer: String,
@@ -56,6 +60,7 @@ pub struct Control {
 /* === Traits === */
 
 /* === Implementations === */
+
 crate::message::postcard_product!(Control { observer: String, generation: u64 });
 
 impl crate::MemorySize for Control {
@@ -76,6 +81,7 @@ impl Described for Control {
 }
 
 /* === Public Functions === */
+
 // The Contract Every Observer-Declaring Sidecar Serves.
 pub fn contract() -> Result<Contract, ContractError> {
     Contract::reserved::<Control>(POLICY)

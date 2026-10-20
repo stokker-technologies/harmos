@@ -36,6 +36,7 @@ use super::Error;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Default)]
 pub struct BuildCancellation {
     stopped: Arc<AtomicBool>,
@@ -52,6 +53,7 @@ pub(super) struct Process {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl BuildCancellation {
     pub fn cancel(&self) {
         self.stopped.store(true, Ordering::Release);

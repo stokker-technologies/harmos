@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,12 +30,14 @@
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Answer {
     type Ok;
     type Err;
 }
 
 /* === Implementations === */
+
 impl<T, E> Answer for Result<T, E> {
     type Ok = T;
     type Err = E;

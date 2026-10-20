@@ -16,6 +16,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,6 +39,7 @@ use crate::supervision::{self, Task, instance::Instance};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Backend<B>(pub(crate) B);
 
 pub(crate) struct ChildSettlement {
@@ -51,6 +53,7 @@ pub(crate) struct ChildSettlement {
 pub struct ObserverActivation {
     report: Report,
     stopping: watch::Receiver<bool>,
+
     #[cfg(feature = "plugin-sidecar")]
     children: Arc<ChildSettlement>,
 }
@@ -60,6 +63,7 @@ pub struct ObserverActivation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<B: ObserverBackend> Runner for Backend<B> {
     fn resources(&self) -> TypeId {
         TypeId::of::<B::Resources>()

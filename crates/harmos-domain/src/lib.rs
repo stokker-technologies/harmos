@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod aggregate;
 mod answer;
 pub mod artifacts;
@@ -66,6 +67,7 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
+
 pub use aggregate::Aggregate;
 pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
@@ -88,6 +90,7 @@ pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

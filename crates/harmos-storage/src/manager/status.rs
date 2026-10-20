@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
         if !self.cursor_saved().covers(required)? {
@@ -38,7 +61,6 @@ impl<C> StorageManager<C> {
         true
     }
 
-    /// Charge consumer-retained Arrow data to the shared read budget without waiting.
     pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
         Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error)
     }
@@ -63,3 +85,9 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

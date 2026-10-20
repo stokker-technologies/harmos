@@ -10,6 +10,7 @@
 // Stored Entry Kinds Shared By Scans And Live Subscriptions
 
 /* === Modules === */
+
 mod sealed {
     pub trait Sealed {}
 }
@@ -17,6 +18,7 @@ mod sealed {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::SystemTime;
 
@@ -38,23 +40,23 @@ use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 /* === Type Aliases === */
 
 /* === Structs === */
-/// One accepted queue operation, opaque outside this crate.
+
 pub struct Queued<'a>(&'a Operation);
 
 /* === Enums === */
 
 /* === Traits === */
-/// One stored entry kind: how it is scanned, matched, positioned and found in
-/// the accepted queue. Sealed: the engine owns every implementation.
+
 pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     type Selection: Send + Sync;
 
     fn position(&self) -> &StorageCursor;
     fn matches(&self, selection: &Self::Selection) -> bool;
-    /// The storage position a selection starts after; scans begin there.
+
     fn start(_selection: &Self::Selection) -> u64 {
         0
     }
+
     fn pending(queued: Queued<'_>) -> &[Self];
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
@@ -62,6 +64,7 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
 }
 
 /* === Implementations === */
+
 impl<'a> Queued<'a> {
     pub(super) fn new(operation: &'a Operation) -> Self {
         Self(operation)
@@ -243,6 +246,7 @@ impl Entry for StoredIdentity {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn optional(expected: &Option<Identifier>, actual: Option<&Identifier>) -> bool {
     expected.as_ref().is_none_or(|expected| Some(expected) == actual)
 }

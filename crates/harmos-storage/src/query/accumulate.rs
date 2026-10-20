@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{cmp::Ordering, num::NonZeroU128};
 
@@ -30,15 +31,7 @@ use crate::{Aggregate, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Folds scalar values into one aggregate with query transform semantics.
-///
-/// Exact columns (signed, unsigned and exact fractions) keep `Sum`, `Mean` and
-/// `Median` exact in rational arithmetic, and `Min`, `Max` and `Last` select by
-/// scalar ordering over any comparable kind; neither is floating statistics.
-/// Every floating statistic is answered by the signal `Summary` (mergeable
-/// members) or `Series` (median and percentiles); `Rms`, `Std` and
-/// percentiles of exact columns read their values as the nearest float.
-/// `Missing` and `Null` count toward `Len` only.
+
 #[derive(Clone, Debug)]
 pub struct Accumulator {
     agg: Agg,
@@ -50,7 +43,6 @@ pub struct Accumulator {
     running: Summary,
     scratch: Vec<ScalarValue>,
 }
-/// The bound on values order statistics retain, shared by the accumulators of one fold.
 #[derive(Clone, Debug)]
 pub struct Scratch {
     remaining: usize,
@@ -61,14 +53,13 @@ pub struct Scratch {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Scratch {
-    /// Admit at most `slots` retained values across every accumulator using it.
     pub fn new(slots: usize) -> Self {
         Self { remaining: slots }
     }
 }
 impl Accumulator {
-    /// An empty fold of `agg`.
     pub fn new(agg: Agg) -> Self {
         Self {
             agg,
@@ -82,7 +73,6 @@ impl Accumulator {
         }
     }
 
-    /// Fold one value observed at `capture` order; `Last` keeps the greatest capture.
     pub fn push(&mut self, capture: u64, value: &ScalarValue, scratch: &mut Scratch) -> Result<()> {
         value.check()?;
         self.rows = self.rows.checked_add(1).ok_or(invalid("row count overflow"))?;
@@ -171,8 +161,6 @@ impl Accumulator {
         Ok(ScalarValue::Float(finite(aggregate::of_series(&series, statistic))?))
     }
 
-    /// The aggregate, polling `check` around the sorts order statistics need.
-    /// An empty fold answers `Missing`, except `Len`, `Count` and `Sum`.
     pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
         let statistic = match self.agg {
             Agg::Len => return Ok(ScalarValue::Unsigned(self.rows)),
@@ -219,6 +207,7 @@ impl Accumulator {
 }
 
 /* === Public Functions === */
+
 // Fallible In-Place Heapsort Polls Original Cancellation During Comparisons.
 pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
     fn sift<T: Copy>(order: &mut [T], mut root: usize, end: usize, compare: &mut impl FnMut(T, T) -> Result<Ordering>) -> Result<()> {
@@ -246,6 +235,7 @@ pub fn sort_values<T: Copy>(order: &mut [T], mut compare: impl FnMut(T, T) -> Re
 }
 
 /* === Private Functions === */
+
 fn numeric_kind(kind: ScalarKind) -> bool {
     matches!(kind, ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact)
 }
@@ -284,3 +274,55 @@ pub(super) fn invalid(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fold(agg: Agg, values: &[ScalarValue]) -> ScalarValue {
+        let mut scratch = Scratch::new(values.len());
+        let mut accumulator = Accumulator::new(agg);
+        for (capture, value) in values.iter().enumerate() {
+            accumulator.push(capture as u64, value, &mut scratch).unwrap();
+        }
+        accumulator.finish(&mut || Ok(())).unwrap()
+    }
+
+    fn ratio(negative: bool, numerator: u128, denominator: u128) -> ScalarValue {
+        ScalarValue::Exact(ExactNumber::new(negative, numerator, NonZeroU128::new(denominator).unwrap()))
+    }
+
+    #[test]
+    fn public_scalar_fold() {
+        let unsigned = [1u64, 2, 3, 4].map(ScalarValue::Unsigned);
+        assert_eq!(fold(Agg::Of(Aggregate::Sum), &unsigned), ScalarValue::Unsigned(10));
+        assert_eq!(fold(Agg::Of(Aggregate::Mean), &unsigned), ratio(false, 5, 2));
+        assert_eq!(fold(Agg::Of(Aggregate::Median), &unsigned), ratio(false, 5, 2));
+        let signed = [ScalarValue::Signed(-3), ScalarValue::Signed(1)];
+        assert_eq!(fold(Agg::Of(Aggregate::Mean), &signed), ScalarValue::Signed(-1));
+        let text = ["b", "c", "a"].map(|value| ScalarValue::Text(value.into()));
+        assert_eq!(fold(Agg::Of(Aggregate::Min), &text), ScalarValue::Text("a".into()));
+        assert_eq!(fold(Agg::Of(Aggregate::Max), &text), ScalarValue::Text("c".into()));
+        assert_eq!(fold(Agg::Last, &text), ScalarValue::Text("a".into()));
+        let sparse = [ScalarValue::Unsigned(1), ScalarValue::Null, ScalarValue::Missing];
+        assert_eq!(fold(Agg::Len, &sparse), ScalarValue::Unsigned(3));
+        assert_eq!(fold(Agg::Of(Aggregate::Count), &sparse), ScalarValue::Unsigned(1));
+        assert_eq!(fold(Agg::Of(Aggregate::Mean), &[ScalarValue::Null]), ScalarValue::Missing);
+
+        // Floating Statistics Answer Through The Signal Kernels: Population Std.
+        let values = [1.0, 2.0, 4.0, 8.0].map(ScalarValue::Float);
+        let float = |agg| match fold(Agg::Of(agg), &values) {
+            ScalarValue::Float(value) => value,
+            other => panic!("floating statistic answered {other:?}"),
+        };
+        assert!((float(Aggregate::Std) - 7.1875f64.sqrt()).abs() < 1e-12);
+        assert!((float(Aggregate::Rms) - 21.25f64.sqrt()).abs() < 1e-12);
+        assert_eq!(fold(Agg::Of(Aggregate::Median), &values), ScalarValue::Float(3.0));
+        let mut accumulator = Accumulator::new(Agg::Of(Aggregate::Sum));
+        let mut scratch = Scratch::new(0);
+        accumulator.push(0, &ScalarValue::Unsigned(1), &mut scratch).unwrap();
+        assert!(accumulator.push(1, &ScalarValue::Text("x".into()), &mut scratch).is_err());
+        let mut median = Accumulator::new(Agg::Of(Aggregate::Median));
+        assert!(median.push(0, &ScalarValue::Unsigned(1), &mut scratch).is_err());
+    }
+}

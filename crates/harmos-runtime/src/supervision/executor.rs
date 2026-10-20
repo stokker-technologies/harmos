@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::time::Duration;
@@ -35,6 +36,7 @@ use tokio::time::error::Elapsed;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn task<F>(future: F) -> JoinHandle<F::Output>
 where
     F: Future + Send + 'static,

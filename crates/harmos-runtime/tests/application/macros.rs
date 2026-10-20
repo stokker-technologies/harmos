@@ -431,58 +431,64 @@ mod unified_plugins {
     }
 
     #[test]
-    fn inventory_rejects_changed() {
-        let mut parts: Vec<serde_json::Value> = Listening::markers()
-            .unwrap()
-            .into_iter()
-            .map(|marker| serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1]).unwrap())
-            .collect();
-        let bytes = |parts: &[serde_json::Value]| {
-            let mut bytes = Vec::new();
-            for part in parts {
-                bytes.extend_from_slice(harmos_domain::PREFIX);
-                bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
-                bytes.push(0);
-            }
-            bytes
-        };
-        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
-        assert!(
-            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                .is_err()
-        );
-        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
-        parts.iter_mut().find(|part| part["kind"] == "contracts").unwrap()["provides"] = serde_json::json!([]);
-        assert!(
-            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                .is_err()
-        );
-    }
+    fn listener_inventory_contract() {
+        {
+            let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
+            let declaration =
+                harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
+                    .unwrap();
+            let selected = declaration.listeners;
+            assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
+            assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
+            assert_eq!(selected[0].callback().version(), 1);
+            let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
+            let guest =
+                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
+                    .unwrap();
+            assert_eq!(&guest.listeners, &selected);
+            assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
 
-    #[test]
-    fn listener_inventory_inert() {
-        let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
-        let declaration =
-            harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                .unwrap();
-        let selected = declaration.listeners;
-        assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
-        assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-        assert_eq!(selected[0].callback().version(), 1);
-        let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
-        let guest =
-            harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                .unwrap();
-        assert_eq!(&guest.listeners, &selected);
-        assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
-
-        let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
-        assert_eq!(
-            harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
+            let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
+            assert_eq!(
+                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
+                    .unwrap()
+                    .listeners,
+                Vec::new()
+            );
+        }
+        {
+            let mut parts: Vec<serde_json::Value> = Listening::markers()
                 .unwrap()
-                .listeners,
-            Vec::new()
-        );
+                .into_iter()
+                .map(|marker| serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1]).unwrap())
+                .collect();
+            let bytes = |parts: &[serde_json::Value]| {
+                let mut bytes = Vec::new();
+                for part in parts {
+                    bytes.extend_from_slice(harmos_domain::PREFIX);
+                    bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
+                    bytes.push(0);
+                }
+                bytes
+            };
+            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
+            assert!(
+                harmos_runtime::sidecar::inventory::Declaration::inspect(
+                    &bytes(&parts),
+                    harmos_runtime::sidecar::inventory::Facility::Sidecar
+                )
+                .is_err()
+            );
+            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
+            parts.iter_mut().find(|part| part["kind"] == "contracts").unwrap()["provides"] = serde_json::json!([]);
+            assert!(
+                harmos_runtime::sidecar::inventory::Declaration::inspect(
+                    &bytes(&parts),
+                    harmos_runtime::sidecar::inventory::Facility::Sidecar
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]
@@ -743,6 +749,7 @@ mod unified_plugins {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 // Third Party Imports
@@ -798,64 +805,62 @@ async fn product_commits_refuses() {
 }
 
 #[tokio::test]
-async fn macro_authored_catalog() {
-    let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
-        .into_iter()
-        .chain(definitions_of::<Studio>(Fact::catalog()))
-        .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
-        .collect();
+async fn catalog_declares_records() {
+    {
+        // The stamped identity is the permanent wire name, not the Rust type name.
+        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 2));
+        assert_eq!(Rename::HISTORY, [(Kind::Transaction, "sheet.rename", 1)]);
+        assert!(Erase::HISTORY.is_empty(), "a definition with no earlier version declares none");
+        assert_eq!(sheet::RenameV1::VERSION, 1);
 
-    assert_eq!(
-        registered,
-        BTreeMap::from([
-            (("sheet.erase".to_owned(), 1), Kind::Transaction),
-            (("sheet.noted".to_owned(), 1), Kind::Record),
-            (("sheet.rename".to_owned(), 1), Kind::Transaction),
-            (("sheet.rename".to_owned(), 2), Kind::Transaction),
-        ]),
-        "one variant per definition, plus every version its history declares"
-    );
-}
+        // The generated conversions and dispatch are ordinary Rust the application
+        // could have written itself.
+        let change: Change = Change::from(sheet::rename("named"));
+        let mut state = Sheet::default();
 
-#[tokio::test]
-async fn runtime_ac001_generated() {
-    // The stamped identity is the permanent wire name, not the Rust type name.
-    assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 2));
-    assert_eq!(Rename::HISTORY, [(Kind::Transaction, "sheet.rename", 1)]);
-    assert!(Erase::HISTORY.is_empty(), "a definition with no earlier version declares none");
-    assert_eq!(sheet::RenameV1::VERSION, 1);
+        assert_eq!(change, Change::Rename(sheet::rename("named")));
+        assert_eq!(Transaction::check(&change, &state), Ok(()));
+        Transaction::apply(&change, &mut state);
+        assert_eq!(state.title, "named");
+        assert_eq!(
+            harmos_runtime::state::Invert::invert(&sheet::rename("named"), &Sheet::default()),
+            Rename { to: String::new() },
+            "the declared body answers against the state before the change"
+        );
 
-    // The generated conversions and dispatch are ordinary Rust the application
-    // could have written itself.
-    let change: Change = Change::from(sheet::rename("named"));
-    let mut state = Sheet::default();
+        // The record catalog is the same shape minus behavior.
+        let fact: Fact = Noted("exported".to_owned()).into();
+        assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
+        assert_eq!(Noted::DEFINITION, (Kind::Record, "sheet.noted", 1));
+    }
+    {
+        let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
+            .into_iter()
+            .chain(definitions_of::<Studio>(Fact::catalog()))
+            .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
+            .collect();
 
-    assert_eq!(change, Change::Rename(sheet::rename("named")));
-    assert_eq!(Transaction::check(&change, &state), Ok(()));
-    Transaction::apply(&change, &mut state);
-    assert_eq!(state.title, "named");
-    assert_eq!(
-        harmos_runtime::state::Invert::invert(&sheet::rename("named"), &Sheet::default()),
-        Rename { to: String::new() },
-        "the declared body answers against the state before the change"
-    );
+        assert_eq!(
+            registered,
+            BTreeMap::from([
+                (("sheet.erase".to_owned(), 1), Kind::Transaction),
+                (("sheet.noted".to_owned(), 1), Kind::Record),
+                (("sheet.rename".to_owned(), 1), Kind::Transaction),
+                (("sheet.rename".to_owned(), 2), Kind::Transaction),
+            ]),
+            "one variant per definition, plus every version its history declares"
+        );
+    }
+    {
+        let runtime = studio().await;
 
-    // The record catalog is the same shape minus behavior.
-    let fact: Fact = Noted("exported".to_owned()).into();
-    assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
-    assert_eq!(Noted::DEFINITION, (Kind::Record, "sheet.noted", 1));
-}
+        let noted = runtime.records.publish(Noted("exported".to_owned())).await.expect("a fact cannot be refused");
+        let facts: Vec<Fact> =
+            runtime.state.query::<Fact>(Position::ORIGIN).await.map(|entry| entry.expect("the tail holds it").value).collect();
 
-#[tokio::test]
-async fn runtime_ac001_macro() {
-    let runtime = studio().await;
-
-    let noted = runtime.records.publish(Noted("exported".to_owned())).await.expect("a fact cannot be refused");
-    let facts: Vec<Fact> =
-        runtime.state.query::<Fact>(Position::ORIGIN).await.map(|entry| entry.expect("the tail holds it").value).collect();
-
-    assert_eq!(noted.position, Position(1));
-    assert_eq!(facts, vec![Fact::Noted(Noted("exported".to_owned()))]);
+        assert_eq!(noted.position, Position(1));
+        assert_eq!(facts, vec![Fact::Noted(Noted("exported".to_owned()))]);
+    }
 }
 
 #[tokio::test]

@@ -30,15 +30,20 @@ use crate::operations::{EndpointSet, Operation, OperationDeclaration, WireDeclar
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct State<T: Operation> {
     physical: Option<Physical<T>>,
+
     #[cfg(feature = "streaming")]
     streams: Option<super::WireStreams>,
+
     initialization: Initialization,
     closing: bool,
     finalization: Option<Finalization<Physical<T>>>,
+
     #[cfg(feature = "grpc")]
     protobuf: Option<super::protobuf::Codec>,
+
     // The grant the decoded request needs; the host checks it before any attempt.
     grant: Option<crate::plugin::Grant>,
 }
@@ -53,11 +58,13 @@ struct Physical<T: Operation> {
 
 struct Endpoints<E> {
     endpoints: E,
+
     #[cfg(feature = "streaming")]
     streams: Option<super::WireStreams>,
 }
 
 /* === Enums === */
+
 enum Initialization {
     Pending,
     Started,
@@ -67,6 +74,7 @@ enum Initialization {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: Send + Sync + 'static> WireTable<C> {
     pub fn bind_operation<T>(&mut self, resources: Arc<T::Resources>) -> Result<(), ServingError>
     where
@@ -414,6 +422,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // The handler's error becomes the failure's cause here, in the plugin process
 // where it originated; every later carrier forwards the same value.
 fn operation_error<T: Operation>(error: T::Error) -> ServingError {

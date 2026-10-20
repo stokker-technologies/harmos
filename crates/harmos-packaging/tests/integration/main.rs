@@ -10,15 +10,13 @@
 // Compose Packaging Integration Story Domains
 
 /* === Modules === */
+
 #[cfg(feature = "sidecar")]
 #[path = "../build/main.rs"]
 mod build;
 #[cfg(feature = "generate-proto")]
-#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
-mod fixtures;
-#[cfg(feature = "generate-proto")]
-#[path = "../grpc/main.rs"]
-mod grpc;
+#[path = "../proto/main.rs"]
+mod proto;
 
 /* === Re-Exports === */
 

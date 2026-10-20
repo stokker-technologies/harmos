@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -30,6 +31,7 @@ use crate::{Application, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type StartupFuture<A> = Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type ReconcileFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
@@ -39,6 +41,7 @@ pub(super) type Reconciliation<A> =
     Box<dyn FnOnce(super::StateManager<A>, StorageManager<crate::storage::ErasedCatalog>) -> ReconcileFuture + Send>;
 
 /* === Structs === */
+
 pub(super) struct Initializer<A: Application> {
     pub(super) timeout: Duration,
     pub(super) initialize: Initialize<A>,
@@ -81,6 +84,7 @@ pub(super) struct Boot<A: Application> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootstrapStatus {
     Starting,
@@ -93,6 +97,7 @@ pub enum BootstrapStatus {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> Startup<A> {
     pub(super) fn new(builder: super::Builder<A>, storage: Option<StorageManager<crate::storage::ErasedCatalog>>) -> Self {
         let cleanup = BootstrapCleanup::new();

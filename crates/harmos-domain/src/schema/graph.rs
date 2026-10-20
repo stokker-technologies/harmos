@@ -10,11 +10,13 @@
 // Shared Message Schema Definitions And References
 
 /* === Modules === */
+
 mod codec;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -34,6 +36,7 @@ use crate::config::SchemaSettings;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Schema {
     pub root: usize,
@@ -51,6 +54,7 @@ pub struct View<'a> {
 pub struct Field<R = usize> {
     #[serde(deserialize_with = "name")]
     pub name: Cow<'static, str>,
+
     pub tag: u32,
     pub kind: Kind<R>,
     pub cardinality: Cardinality,
@@ -76,6 +80,7 @@ struct Budget {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Kind<R = usize> {
@@ -95,10 +100,13 @@ pub enum Kind<R = usize> {
 pub enum Error {
     #[error("schema preparation exceeds its memory or work allowance")]
     Budget,
+
     #[error("schema definition {definition} is absent")]
     Reference { definition: usize },
+
     #[error("schema definition {definition} is unreachable")]
     Unreachable { definition: usize },
+
     #[error("invalid schema field `{field}`: {reason}")]
     Field { field: String, reason: &'static str },
 }
@@ -106,6 +114,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<R> Kind<R> {
     pub(crate) fn try_map<S, E>(self, reference: impl FnOnce(R) -> Result<S, E>) -> Result<Kind<S>, E> {
         Ok(match self {
@@ -130,6 +139,7 @@ impl<'de, R: Deserialize<'de>> Deserialize<'de> for Kind<R> {
         struct Input<R> {
             #[serde(rename = "type", deserialize_with = "kind_name")]
             kind: String,
+
             #[serde(default, deserialize_with = "definition")]
             definition: Option<R>,
         }
@@ -485,7 +495,9 @@ impl<'de> Visitor<'de> for DefinitionSeed<'_> {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn definition<'de, D: Deserializer<'de>, R: Deserialize<'de>>(deserializer: D) -> Result<Option<R>, D::Error> {
     R::deserialize(deserializer).map(Some)
 }

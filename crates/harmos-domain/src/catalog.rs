@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::inventory::observers::Entry as ObserverEntry;
 pub use crate::inventory::publications::Entry as PublicationEntry;
 pub use crate::listeners::Entry as ListenerEntry;
@@ -17,6 +18,7 @@ pub use crate::operations::{Entry as OperationEntry, WireDeclaration as WireEntr
 pub use crate::plugin::Requirement as RequirementEntry;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -32,12 +34,14 @@ pub use crate::plugin::Requirement as RequirementEntry;
 /* === Structs === */
 
 /* === Enums === */
+
 pub enum Node<E: 'static> {
     Leaf(E),
     Nested(&'static [Node<E>]),
 }
 
 /* === Traits === */
+
 pub trait Visitor {
     type Entry: 'static;
 }
@@ -65,6 +69,7 @@ pub trait Catalog<V: Visitor> {
 pub trait Contains<T> {}
 
 /* === Implementations === */
+
 impl<E, const N: usize> Projection<E> for [E; N] {
     const LEN: usize = N;
 
@@ -106,6 +111,7 @@ impl<V: Visitor<Entry = E>, E: 'static> InertCatalog<V, E> for () {
 }
 
 /* === Public Functions === */
+
 pub const fn count<E>(nodes: &[Node<E>]) -> usize {
     let mut len: usize = 0;
     let mut index = 0;
@@ -128,6 +134,7 @@ pub fn try_for_each<E, F>(nodes: &[Node<E>], mut visit: impl FnMut(&E) -> Result
 }
 
 /* === Private Functions === */
+
 fn visit_nodes<E, F>(nodes: &[Node<E>], visit: &mut impl FnMut(&E) -> Result<(), F>) -> Result<(), F> {
     for node in nodes {
         match node {

@@ -8,17 +8,21 @@
  */
 
 /* === Modules === */
+
 #[path = "publication_delivery.rs"]
 mod publication_delivery;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::pin::Pin;
+
 // Third Party Imports
 use tokio::sync::Notify;
+
 // Local Imports
 use super::operations::{Lanes, Managed};
 use super::*;
@@ -27,9 +31,11 @@ use harmos_runtime::{storage::Batch, storage::Cursor, storage::StreamConsumer};
 use harmos_sidecar::{Attach, ObserverContext};
 
 /* === Constants === */
+
 // 2025-10-09 Around 08:53 UTC In Microseconds
 const TIMED_BASE: i64 = 1_760_000_000_000_000;
 const TICKING_DEMAND: harmos_sidecar::DemandKey = harmos_sidecar::DemandKey::new("ticking", "pulse");
+
 // Each Tick Publishes A Batch Wider Than The Flood Window
 const FLOOD_BATCH: u64 = 12;
 const FLOOD_ROWS: u64 = 240;
@@ -38,13 +44,21 @@ static GATE_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Gate>
 static NEXT_OBSERVER_SEED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 static OBSERVER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<ObserverCounts>>> =
     Mutex::new(std::collections::BTreeMap::new());
+const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_millis(500),
+    retries: harmos_runtime::operations::RetryPolicy::Never,
+    restart: harmos_runtime::operations::RestartPolicy::Never,
+};
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type CapturedRows = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
 
 /* === Structs === */
+
 struct Recorder {
     cursor: Cursor,
     rows: CapturedRows,
@@ -54,6 +68,7 @@ struct Recorder {
 struct Gate {
     #[serde(skip)]
     started: Arc<Notify>,
+
     #[serde(skip)]
     release: Arc<Notify>,
 }
@@ -120,18 +135,25 @@ struct Flooding {
 struct ObserverCounts {
     #[serde(skip)]
     coordinated: Arc<std::sync::atomic::AtomicBool>,
+
     #[serde(skip)]
     stop_panics: Arc<std::sync::atomic::AtomicBool>,
+
     #[serde(skip)]
     stop_attempts: Arc<std::sync::atomic::AtomicUsize>,
+
     #[serde(skip)]
     initialized: Arc<std::sync::atomic::AtomicUsize>,
+
     #[serde(skip)]
     started: Arc<[std::sync::atomic::AtomicUsize; 2]>,
+
     #[serde(skip)]
     stopped: Arc<[std::sync::atomic::AtomicUsize; 2]>,
+
     #[serde(skip)]
     stopped_changed: Arc<tokio::sync::Notify>,
+
     #[serde(skip)]
     released: Arc<std::sync::atomic::AtomicUsize>,
 }
@@ -170,6 +192,7 @@ struct Advertised<S> {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum TickingObservers {
     Producer(Producer),
@@ -194,6 +217,7 @@ enum FloodObservers {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
     type Error = S::Error;
 
@@ -525,13 +549,6 @@ impl Drop for ObserverSeed {
     }
 }
 
-const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
-    timeout: Duration::from_secs(2),
-    attempt_timeout: Duration::from_millis(500),
-    retries: harmos_runtime::operations::RetryPolicy::Never,
-    restart: harmos_runtime::operations::RestartPolicy::Never,
-};
-
 impl harmos_runtime::operations::lifecycle::Policy for SampledTwins {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
@@ -757,17 +774,20 @@ impl harmos_runtime::Plugin for Flood {
 }
 
 /* === Public Functions === */
+
 pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
     (ready.wait_for(|value| *value)).await.unwrap();
 }
 
 /* === Private Functions === */
+
 // A Pass Racing Shutdown Meets The Closed Carrier; Any Other Refusal Fails The Story
 fn published<E: std::fmt::Debug>(result: Result<(), E>) {
     if let Err(error) = result {
         assert!(format!("{error:?}").contains("carrier attempt admission is closed"), "{error:?}");
     }
 }
+
 fn observers(
     runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>,
 ) -> std::collections::BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot> {
@@ -804,3 +824,5 @@ async fn row(
     })
     .await;
 }
+
+/* === Tests === */

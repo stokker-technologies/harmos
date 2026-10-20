@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 
@@ -30,6 +31,7 @@ use harmos::state::Transaction;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "net.connect", version = 1, irreversible)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ConnectPins {
@@ -43,6 +45,7 @@ pub struct ConnectPins {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Schematic> for ConnectPins {
     type Error = SchematicError;
 

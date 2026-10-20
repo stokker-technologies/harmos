@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
@@ -36,6 +37,7 @@ use crate::{Error, Identifier, MemorySize, Message, Result};
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StoreHistory {
     pub fn encode_bounded(&self, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         encode_bounded(self, max_bytes)
@@ -111,6 +113,7 @@ pub fn decode_bounded<T: Message + MemorySize>(bytes: &[u8], max_bytes: NonZeroU
 }
 
 /* === Private Functions === */
+
 fn bound_error() -> Error {
     Error::InvalidInput { field: "storage native codec", reason: "value exceeds allowance" }
 }

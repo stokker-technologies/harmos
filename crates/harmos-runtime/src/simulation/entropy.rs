@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ use std::sync::{Arc, Mutex};
 /* === Constants === */
 
 /* === Macros === */
+
 tokio::task_local! {
     static CURRENT: Context;
 }
@@ -29,6 +31,7 @@ tokio::task_local! {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(crate) struct Context {
     inner: Arc<Inner>,
@@ -44,6 +47,7 @@ struct Inner {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Context {
     pub(crate) fn seeded(seed: u64) -> Self {
         Self { inner: Arc::new(Inner { state: Mutex::new(seed), draws: Mutex::new(Vec::new()) }) }
@@ -76,6 +80,7 @@ impl Context {
 }
 
 /* === Public Functions === */
+
 pub fn entropy() -> u64 {
     CURRENT.try_with(Context::draw).expect("simulation entropy is only available inside simulated work")
 }

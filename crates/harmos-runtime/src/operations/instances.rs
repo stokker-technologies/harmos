@@ -39,10 +39,12 @@ use crate::{Error, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Driver = Pin<Box<dyn Future<Output = ()> + Send>>;
 type Completion = Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Result<(), JoinError>)> + Send>>;
 
 /* === Structs === */
+
 pub(crate) struct Instances {
     lanes: Lanes,
     state: Mutex<State>,
@@ -90,6 +92,7 @@ struct Submission {
 pub(crate) struct QueuePermit(Arc<Mutex<Option<OwnedSemaphorePermit>>>);
 
 /* === Enums === */
+
 enum Event {
     Closing,
     Submit(Submission),
@@ -100,6 +103,7 @@ enum Event {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Instances {
     pub(crate) fn start(
         lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: Arc<dyn Any + Send + Sync>, settings: &Settings,
@@ -286,6 +290,7 @@ impl QueuePermit {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn dispatch(mut receiving: Receiving, mut stopping: watch::Receiver<bool>) {
     let mut running: FuturesUnordered<Completion> = FuturesUnordered::new();
     let mut closing = false;

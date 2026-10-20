@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use tokio::sync::Semaphore;
 // Local Imports
 
 /* === Constants === */
+
 // The lane resident controls run in: unbounded, so a control that runs until
 // cancelled never holds a slot another call is waiting for.
 pub(crate) const RESIDENT: &str = "harmos.resident";
@@ -29,6 +31,7 @@ pub(crate) const RESIDENT: &str = "harmos.resident";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Capacity {
     width: usize,
@@ -53,12 +56,14 @@ pub(crate) struct Lanes {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Lane: Send + 'static {
     fn name(&self) -> &'static str;
     fn capacity(&self) -> Capacity;
 }
 
 /* === Implementations === */
+
 impl Capacity {
     pub const fn serial() -> Self {
         Self { width: 1 }

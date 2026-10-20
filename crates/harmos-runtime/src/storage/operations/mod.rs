@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod abandon_file;
 mod append_file;
 mod create_file;
@@ -28,6 +29,7 @@ mod write_schema;
 mod write_streams;
 
 /* === Re-Exports === */
+
 pub use harmos_domain::operations::storage::*;
 
 /* === Imports === */
@@ -48,9 +50,11 @@ use crate::storage::StorageManager;
 use crate::{Result, operations::Lane};
 
 /* === Constants === */
+
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /* === Macros === */
+
 // Bind Each Declaration To Its Original Storage Handler.
 macro_rules! provider {
     ($($module:ident),* $(,)?) => {
@@ -90,17 +94,20 @@ provider! {
 struct Provider<C>(std::marker::PhantomData<fn() -> C>);
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // Serve The Storage Operations Over One Storage Manager.
 pub fn register<C: 'static>(operations: &OperationManager, owner: &str, lane: impl Lane, storage: Arc<StorageManager<C>>) -> Result<()> {
     operations.register_wire_operations::<Provider<C>, _>(owner, lane, storage)
 }
 
 /* === Private Functions === */
+
 fn output_timeout() -> crate::Error {
     crate::Error::backend(
         "storage output",

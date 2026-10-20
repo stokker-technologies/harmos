@@ -34,6 +34,7 @@ use harmos_domain::state::Position;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct RecoveryReader<'a, C> {
     storage: &'a StorageManager<C>,
     // Release Budget Before Unlocking The Recovery Lifecycle.
@@ -49,6 +50,7 @@ pub struct RecoveryReader<'a, C> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_, C>> {
         let lifecycle = self.inner.lifecycle.read().await;

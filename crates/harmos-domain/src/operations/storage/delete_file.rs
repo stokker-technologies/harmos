@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(DeleteFile {
     mutation: Nested<MutationId> => 1,
     file: Nested<StagedFile> => 2,
@@ -43,6 +45,7 @@ crate::declare!(DeleteFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Delete A Staged File, Exactly Once Per Mutation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeleteFile {
@@ -55,6 +58,7 @@ pub struct DeleteFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for DeleteFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

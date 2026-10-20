@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
@@ -27,10 +28,12 @@
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Packaging(#[from] harmos_packaging::Error),
+
     #[error(transparent)]
     Bindings(#[from] harmos_packaging::python::Error),
 }
@@ -38,6 +41,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Error {
     pub fn exit_code(&self) -> u8 {
         use harmos_packaging::Error as Packaging;

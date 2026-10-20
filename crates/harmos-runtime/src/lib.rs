@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) use harmos_storage::aggregate;
 pub mod builtin;
 pub mod config;
@@ -41,9 +42,6 @@ pub mod runtime;
 
 #[cfg(feature = "simulation")]
 pub mod simulation;
-
-#[cfg(feature = "signal")]
-pub mod signal;
 
 pub mod streams;
 
@@ -91,9 +89,14 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
+
 pub use application::Application;
 pub use error::{BackendFailure, Error};
 pub use harmos_domain::{DefinitionId, Identified};
+
+#[cfg(feature = "signal")]
+pub use harmos_storage::signal;
+
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 
@@ -109,6 +112,7 @@ pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema}
 pub use harmos_macros::{lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction, transactions};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -121,6 +125,7 @@ extern crate self as harmos_runtime;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Result<T, E = std::convert::Infallible> = std::result::Result<T, Error<E>>;
 
 /* === Structs === */

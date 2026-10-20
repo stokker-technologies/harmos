@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[cfg(unix)]
 pub(crate) mod control;
 #[cfg(windows)]
@@ -17,6 +18,7 @@ pub(crate) mod control;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::ffi::OsString;
 use std::future::Future;
@@ -34,16 +36,19 @@ use crate::StreamDeclaration;
 use crate::inventory::{Declaration, DeclarationError, Facility};
 
 /* === Constants === */
+
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type EndWork = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
 type EndStart = Box<dyn FnOnce() -> EndWork + Send>;
 
 /* === Structs === */
+
 #[must_use = "retain the ending until physical settlement succeeds"]
 pub struct Ending {
     receipt: Box<dyn End>,
@@ -80,23 +85,29 @@ pub struct Executable {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutableError {
     #[error("the sidecar executable `{path}` is not an absolute path")]
     Relative { path: PathBuf },
+
     #[error("the sidecar executable `{path}` cannot be read: {source}")]
     Unreadable { path: PathBuf, source: std::io::Error },
+
     #[error("the sidecar executable `{path}` is not a file")]
     NotFile { path: PathBuf },
+
     #[error("the sidecar executable `{path}` has no valid declaration: {source}")]
     Declaration {
         path: PathBuf,
+
         #[source]
         source: Box<DeclarationError>,
     },
 }
 
 /* === Traits === */
+
 pub trait End: Send + 'static {
     fn settle(&mut self) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + '_>>;
 }
@@ -142,6 +153,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl Ending {
     pub fn new(receipt: impl End) -> Self {
         Self { receipt: Box::new(receipt) }
@@ -371,6 +383,7 @@ impl Attach for Executable {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn command(
     program: &Path, arguments: &[OsString], directory: Option<&Path>, environment: &[(OsString, OsString)],
 ) -> Result<Command, Error> {
@@ -429,7 +442,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_retains_explicit_configuration_without_spawning() {
+    fn command_configuration_preserved() {
         let arguments = [OsString::from("--plugin")];
         let directory = Path::new("work");
         let environment = [

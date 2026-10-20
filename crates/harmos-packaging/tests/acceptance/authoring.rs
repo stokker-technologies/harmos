@@ -35,6 +35,7 @@ use super::fixtures;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Watching {
     child: Option<Child>,
     reader: Option<JoinHandle<()>>,
@@ -52,6 +53,7 @@ struct Project {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Project {
     fn new(kind: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
@@ -98,10 +100,13 @@ impl Project {
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = Command::new(program);
         // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
-        for (name, _) in std::env::vars_os() {
-            if name.to_str().is_some_and(|name| name.starts_with("NEXTEST") || matches!(name, "VIRTUAL_ENV" | "MISE_LOCKED")) {
-                command.env_remove(name);
-            }
+        let inherited = std::env::vars_os().filter_map(|(name, _)| {
+            let value = name.to_str()?;
+            let isolated = value.starts_with("NEXTEST") || matches!(value, "VIRTUAL_ENV" | "MISE_LOCKED");
+            isolated.then_some(name)
+        });
+        for name in inherited {
+            command.env_remove(name);
         }
         command
             .current_dir(&self.root)
@@ -124,6 +129,7 @@ impl Project {
     fn check_and_test(&self) {
         self.run("mise", &["run", "check"]);
         self.run("mise", &["run", "build"]);
+        self.run("mise", &["run", "build:tests"]);
         self.run("mise", &["run", "test:unit"]);
     }
 }
@@ -142,6 +148,7 @@ impl Watching {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x00000200); // CREATE_NEW_PROCESS_GROUP
         }
+
         let mut child = command.spawn().unwrap();
         let output = child.stdout.take().unwrap();
         let (sender, events) = mpsc::channel();
@@ -153,6 +160,7 @@ impl Watching {
                 }
             }
         });
+
         Self { child: Some(child), reader: Some(reader), events, log }
     }
 
@@ -184,10 +192,12 @@ impl Watching {
 
 impl Drop for Watching {
     fn drop(&mut self) {
+        if let Some(child) = self.child.as_mut()
+            && child.try_wait().ok().flatten().is_none()
+        {
+            interrupt(child.id());
+        }
         if let Some(mut child) = self.child.take() {
-            if child.try_wait().ok().flatten().is_none() {
-                interrupt(child.id());
-            }
             let _ = child.wait();
         }
         if let Some(reader) = self.reader.take() {
@@ -205,6 +215,7 @@ impl Drop for Project {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[cfg(unix)]
 fn interrupt(pid: u32) {
     let _ = Command::new("kill").args(["-INT", &pid.to_string()]).status();
@@ -226,9 +237,20 @@ fn digest(path: &Path) -> String {
 fn pins(lock: &str) -> Vec<(String, String)> {
     let field = |block: &str, key: &str| {
         let prefix = format!("{key} = \"");
-        block.lines().find_map(|line| line.strip_prefix(&prefix)?.strip_suffix('"')).unwrap().to_owned()
+        let value = block.lines().find_map(|line| {
+            let value = line.strip_prefix(&prefix)?;
+            value.strip_suffix('"')
+        });
+        value.unwrap().to_owned()
     };
-    lock.split("[[package]]").skip(1).map(|block| (field(block, "name"), field(block, "version"))).collect()
+    let packages = lock.split("[[package]]").skip(1);
+    packages
+        .map(|block| {
+            let name = field(block, "name");
+            let version = field(block, "version");
+            (name, version)
+        })
+        .collect()
 }
 
 fn dev_rebuilds(kind: &str) {

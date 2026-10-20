@@ -33,6 +33,7 @@ use harmos_runtime::operations::{Context, Host, Instance, Operation, OperationDe
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(5),
     attempt_timeout: Duration::from_secs(5),
@@ -45,6 +46,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The declaration is its own request, so `call` and `submit` infer it.
 #[harmos_runtime::message]
 #[harmos_runtime::operation(id = "fixture.hold", version = 1, response = u64, policy = POLICY)]
@@ -77,6 +79,7 @@ struct Ticker {}
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Holding {
     type Declaration = Hold;
     type Resources = Gate;
@@ -107,6 +110,7 @@ impl Operation for Holding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     let gate = Arc::new(Gate {
         started: Notify::new(),
@@ -121,23 +125,9 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     (runtime, gate)
 }
 
-// Generic over the host, as a body shared by every binding would be.
-async fn joined<H: Host>(host: &H, gate: &Gate) -> Result<u64, H::Error> {
-    let instance = host.submit(Hold { value: 21 }).await?;
-    gate.started.notified().await;
-    let status = instance.status().await?;
-    assert_eq!(status.phase, Phase::Running);
-    assert_eq!(status.outcome, None);
-    gate.release.add_permits(1);
-    let response = instance.join().await?;
-    Ok(*response)
-}
-
-async fn cancelled<H: Host>(host: &H, gate: &Gate) -> Result<(), H::Error> {
-    let instance = host.submit(Hold { value: 1 }).await?;
-    gate.started.notified().await;
-    assert!(instance.cancel_and_join().await.is_err());
-    Ok(())
+// Submit Through Only The Portable Host And Instance Contracts.
+async fn submitted<H: Host>(host: &H, request: Hold) -> Result<impl Instance<Hold, Error = H::Error>, H::Error> {
+    host.submit(request).await
 }
 
 // The built-ins refuse unknown and foreign instances alike.
@@ -149,52 +139,58 @@ fn hidden(error: Option<Error>) -> bool {
 }
 
 /* === Tests === */
-#[tokio::test]
-async fn host_submit_joins() {
-    let (runtime, gate) = runtime().await;
-    assert_eq!(joined(&runtime.operations, &gate).await.unwrap(), 42);
-    let called = Host::call(&runtime.operations, Hold { value: 4 });
-    gate.release.add_permits(1);
-    assert_eq!(*called.await.unwrap(), 8);
-    assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
-    runtime.stop().await.unwrap();
-}
 
 #[tokio::test]
-async fn host_cancel_joins() {
-    let (runtime, gate) = runtime().await;
-    cancelled(&runtime.operations, &gate).await.unwrap();
-    assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-    assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn host_drop_cancels() {
-    let (runtime, gate) = runtime().await;
-    let instance = runtime.operations.submit(Hold { value: 1 }).unwrap();
-    gate.started.notified().await;
-    let cleaned = gate.cleanup.notified();
-    drop(instance);
-    // Dropping an unsettled instance cancels it.
-    cleaned.await;
-    assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn host_detach_continues() {
-    let (runtime, gate) = runtime().await;
-    let instance = runtime.operations.submit(Hold { value: 1 }).unwrap();
-    gate.started.notified().await;
-    let id = Instance::detach(instance);
-    let status = runtime.operations.call(builtin::Status::of(id)).await;
-    assert_eq!(status.unwrap().phase, Phase::Running.as_str());
-    let cleaned = gate.cleanup.notified();
-    gate.release.add_permits(1);
-    cleaned.await;
-    assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
+async fn host_instances_settle() {
+    {
+        let (runtime, gate) = runtime().await;
+        let instance = submitted(&runtime.operations, Hold { value: 21 }).await.unwrap();
+        gate.started.notified().await;
+        let status = instance.status().await.unwrap();
+        assert_eq!(status.phase, Phase::Running);
+        assert_eq!(status.outcome, None);
+        gate.release.add_permits(1);
+        let response = instance.join().await.unwrap();
+        assert_eq!(*response, 42);
+        let called = Host::call(&runtime.operations, Hold { value: 4 });
+        gate.release.add_permits(1);
+        assert_eq!(*called.await.unwrap(), 8);
+        assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, gate) = runtime().await;
+        let instance = submitted(&runtime.operations, Hold { value: 1 }).await.unwrap();
+        gate.started.notified().await;
+        assert!(instance.cancel_and_join().await.is_err());
+        assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
+        assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, gate) = runtime().await;
+        let instance = runtime.operations.submit(Hold { value: 1 }).unwrap();
+        gate.started.notified().await;
+        let cleaned = gate.cleanup.notified();
+        drop(instance);
+        // Dropping an unsettled instance cancels it.
+        cleaned.await;
+        assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, gate) = runtime().await;
+        let instance = runtime.operations.submit(Hold { value: 1 }).unwrap();
+        gate.started.notified().await;
+        let id = Instance::detach(instance);
+        let status = runtime.operations.call(builtin::Status::of(id)).await;
+        assert_eq!(status.unwrap().phase, Phase::Running.as_str());
+        let cleaned = gate.cleanup.notified();
+        gate.release.add_permits(1);
+        cleaned.await;
+        assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]

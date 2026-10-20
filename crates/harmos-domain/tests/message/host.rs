@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,20 +29,26 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Previous Wire Schema Is An Independent Compatibility Oracle
 #[derive(Clone, PartialEq, prost::Message)]
 #[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct PreviousPublication {
     #[prost(string, tag = "1")]
     stream: String,
+
     #[prost(uint32, tag = "2")]
     schema: u32,
+
     #[prost(uint64, optional, tag = "3")]
     sequence: Option<u64>,
+
     #[prost(int64, optional, tag = "4")]
     published_unix_micros: Option<i64>,
+
     #[prost(string, optional, tag = "5")]
     context: Option<String>,
+
     #[prost(bytes = "vec", tag = "6")]
     payload: Vec<u8>,
 }
@@ -52,12 +59,16 @@ struct PreviousPublication {
 struct BatchedPublication {
     #[prost(string, tag = "1")]
     stream: String,
+
     #[prost(uint64, optional, tag = "3")]
     sequence: Option<u64>,
+
     #[prost(int64, optional, tag = "4")]
     published_unix_micros: Option<i64>,
+
     #[prost(bytes = "vec", tag = "6")]
     payload: Vec<u8>,
+
     #[prost(message, repeated, tag = "7")]
     following: Vec<BatchedRow>,
 }
@@ -67,6 +78,7 @@ struct BatchedPublication {
 struct BatchedRow {
     #[prost(bytes = "vec", tag = "1")]
     payload: Vec<u8>,
+
     #[prost(int64, optional, tag = "2")]
     published_delta_micros: Option<i64>,
 }
@@ -80,6 +92,7 @@ struct BatchedRow {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
     let encoded = crate::encode(&value);
     let bound = grpc::decoding_memory::<T>(DecodeInput::new(&encoded)).unwrap();

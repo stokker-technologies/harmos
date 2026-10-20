@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use crate::storage::query::transform::ProjectExecution;
 // Standard Library Imports
 use std::sync::Arc;
@@ -47,8 +48,7 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Resolved schemas for one finite object selection. A leading projection may
-/// normalize heterogeneous payloads before the common query pipeline begins.
+
 pub(super) struct NormalizedObjects {
     schemas: Vec<(StorageSchema, RetainedMemory)>,
     projection: Option<Project>,
@@ -61,6 +61,7 @@ pub(super) struct NormalizedObjects {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl NormalizedObjects {
     pub(super) async fn resolve(
         inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, selection: &ObjectSelection, transforms: &mut Vec<Transform>,
@@ -196,6 +197,7 @@ impl NormalizedObjects {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn canonical_schema(schema: &Schema) -> Schema {
     Schema::new_with_metadata(schema.fields().iter().map(|field| canonical_field(field)).collect::<Vec<_>>(), schema.metadata().clone())
 }

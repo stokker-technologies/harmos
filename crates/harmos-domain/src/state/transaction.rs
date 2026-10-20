@@ -8,9 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 // Third Party Imports
@@ -23,9 +25,11 @@ use crate::state::envelope::DefinitionId;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Never {}
 
@@ -33,13 +37,16 @@ pub enum Never {}
 pub enum DecodeError {
     #[error("no definition is declared for the id {id}")]
     UnknownDefinition { id: DefinitionId },
+
     #[error("{id} declares no implementation for version {version}")]
     UndeclaredVersion { id: DefinitionId, version: u32 },
+
     #[error("the payload did not decode as {id} version {version}")]
     Malformed { id: DefinitionId, version: u32 },
 }
 
 /* === Traits === */
+
 pub trait Transaction<S> {
     type Error;
 
@@ -96,6 +103,7 @@ pub trait Catalogued<C>: Sized {
 }
 
 /* === Implementations === */
+
 impl<S> TransactionCatalog<S> for Never {}
 
 impl super::record::CatalogCodec for Never {

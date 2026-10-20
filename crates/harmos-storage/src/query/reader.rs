@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -40,6 +41,7 @@ use harmos_domain::model::storage::ArrowIpc;
 use harmos_domain::operations::storage::Query;
 
 /* === Constants === */
+
 // Two Protobuf Keys (Five Bytes Each) And Two Length Varints (Ten Bytes Each),
 // Less The Postcard Variant And Length Bytes They Replace.
 const PROTOBUF_FRAMING: usize = 30;
@@ -49,12 +51,7 @@ const PROTOBUF_FRAMING: usize = 30;
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Delivers one schema, then bounded batches, of one admitted query.
-///
-/// The reader owns an active query slot and a pinned snapshot until the source
-/// is exhausted. Dropping it cancels remaining work; batches already returned
-/// keep their memory charged until the consumer drops them. Dropping an
-/// in-progress `next` future poisons the reader.
+
 pub struct QueryReader {
     inner: Arc<Inner>,
     held: Held,
@@ -77,7 +74,7 @@ pub struct QueryReader {
 }
 
 /* === Enums === */
-/// One native query item: the result schema first, then retained batches.
+
 #[derive(Clone, Debug)]
 pub enum QueryArrow {
     Schema(ArrowSchema),
@@ -94,8 +91,8 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl QueryArrow {
-    /// The wire form of this item: its Arrow IPC message.
     pub fn output(&self) -> QueryOutput {
         match self {
             Self::Schema(schema) => QueryOutput::Schema(ArrowIpc::new(schema.ipc_bytes().to_vec())),
@@ -107,7 +104,6 @@ impl QueryArrow {
 impl TryFrom<&QueryOutput> for QueryArrow {
     type Error = Error;
 
-    /// Decode a wire item, preflighting the Arrow allocation it describes.
     fn try_from(output: &QueryOutput) -> Result<Self> {
         Ok(match output {
             QueryOutput::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc.bytes())?),
@@ -126,8 +122,6 @@ impl MemorySize for QueryArrow {
     }
 }
 impl<C> StorageManager<C> {
-    /// Validate and admit a query at its fixed cursor. Results are produced by
-    /// successive `QueryReader::next` calls.
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         query.validate()?;
         self.inner.primary.history().check(&query.at.history)?;
@@ -429,7 +423,7 @@ impl Rows {
 }
 
 /* === Public Functions === */
-/// Resolve the schema registered under `key` at the snapshot, charged to `held`.
+
 pub(crate) async fn schema_at(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
 ) -> Result<(StorageSchema, RetainedMemory)> {
@@ -438,7 +432,6 @@ pub(crate) async fn schema_at(
         .ok_or(Error::InvalidInput { field: "storage schema", reason: "schema is unavailable at requested cursor" })
 }
 
-/// The schema registered under `key` at the snapshot, or `None` when it was never written.
 pub(crate) async fn find_schema(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
 ) -> Result<Option<(StorageSchema, RetainedMemory)>> {
@@ -465,7 +458,6 @@ pub(crate) async fn find_schema(
     }
 }
 
-/// An active scan slot, queueing within the pending bound when all are busy.
 pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermit> {
     if let Ok(active) = Arc::clone(&inner.query_active).try_acquire_owned() {
         return Ok(active);
@@ -476,13 +468,10 @@ pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermi
     Arc::clone(&inner.query_active).acquire_owned().await.map_err(|_| Error::Closing { domain: "storage queries" })
 }
 
-/// Admit an attempt bank; an impossible credit is a precise capacity error.
 pub(crate) async fn admit(inner: &Arc<Inner>, held: &Held, credit: usize) -> Result<MemoryBank> {
     MemoryBank::admit(inner, held, credit, None).await.map_err(Refusal::into_error)
 }
 
-/// Decide whether a failed attempt can retry: busy capacity retries with the
-/// observed demand as credit; impossible demand halves the page when possible.
 pub(crate) fn retry(bank: &MemoryBank, error: Error, rows: Option<&mut NonZeroUsize>) -> Result<usize> {
     match bank.shortfall() {
         Some(Shortfall::Busy) => Ok(bank.requested()),
@@ -498,6 +487,7 @@ pub(crate) fn retry(bank: &MemoryBank, error: Error, rows: Option<&mut NonZeroUs
 }
 
 /* === Private Functions === */
+
 async fn scan<T: Entry>(snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows) -> Result<(Rows, usize)> {
     let (entries, bytes) = snapshot.scan::<T>(selection, page).await?;
     Ok((wrap(entries), bytes))

@@ -26,12 +26,14 @@ use crate::{Error, MemorySize, Result};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(SchemaInput { key: Nested<SchemaKey> => 1, graph: Nested<Schema> => 2 });
 product!(SchemaInfo { position: Nested<StorageCursor> => 1, schema: Nested<SchemaInput> => 2 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchemaInput {
     pub key: SchemaKey,
@@ -49,6 +51,7 @@ pub struct SchemaInfo {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl SchemaInput {
     pub fn new(key: SchemaKey, graph: &Schema) -> Result<Self> {
         graph

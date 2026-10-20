@@ -33,6 +33,7 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Measure;
 
 #[harmos_runtime::message]
@@ -68,6 +69,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Measure {
     type Declaration = MeasureContract;
     type Resources = ();
@@ -97,6 +99,7 @@ impl Operation for Measure {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).expect("measured waits fit in u64 nanoseconds")
 }

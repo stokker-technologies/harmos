@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +32,7 @@ use harmos_runtime::sidecar::{Refusal, Supervisor};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Provider {
     resources: Arc<Resources>,
 }
@@ -50,6 +52,7 @@ struct Reading {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::operations::lifecycle::Policy for Provider {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
@@ -151,4 +154,5 @@ impl Operation for Reading {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 /* === Tests === */

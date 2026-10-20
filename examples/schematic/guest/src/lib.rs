@@ -8,13 +8,16 @@
  */
 
 /* === Modules === */
+
 mod error;
 mod operations;
 
 /* === Re-Exports === */
+
 pub use error::Error;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -28,11 +31,13 @@ use harmos_guest::operations::{OperationPolicy, ServingError, StreamSettings, Wi
 /* === Constants === */
 
 /* === Macros === */
+
 harmos_guest::export_plugin!(Plugin, capacity = 8);
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Plugin {
     resources: Arc<()>,
 }
@@ -42,6 +47,7 @@ pub struct Plugin {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_guest::operations::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_domain::operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;

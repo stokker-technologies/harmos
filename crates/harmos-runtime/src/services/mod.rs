@@ -15,6 +15,7 @@
 // runtime's typed managers as context values.
 
 /* === Modules === */
+
 mod restart;
 mod runner;
 
@@ -22,6 +23,7 @@ mod runner;
 mod sidecar;
 
 /* === Re-Exports === */
+
 pub(crate) use runner::{Once, Typed};
 
 #[cfg(feature = "plugin-sidecar")]
@@ -35,6 +37,7 @@ pub(crate) use sidecar::HostPublish;
 pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::future::Future;
@@ -52,6 +55,7 @@ use crate::supervision::executor;
 use crate::{Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager};
 
 /* === Constants === */
+
 // Three restarts after environmental faults, refilled after a quarter second of
 // health; `timeout` is the stop deadline.
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -74,6 +78,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct ServiceDefinition {
     pub id: String,
@@ -97,15 +102,18 @@ pub struct Service<A: Application> {
     pub(crate) evidence: Evidence<A>,
     pub(crate) stopping: watch::Receiver<bool>,
     pub(crate) ready: watch::Sender<bool>,
+
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) provider: Arc<crate::supervision::instance::Instance>,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Fault<E> {
     #[error("environmental fault: {0}")]
     Environmental(E),
+
     #[error("application fault: {0}")]
     Application(E),
 }
@@ -114,10 +122,13 @@ pub enum Fault<E> {
 pub enum ServiceExit {
     #[error("application: {0}")]
     Application(String),
+
     #[error("resident panicked")]
     Panicked,
+
     #[error("restart credit exhausted")]
     CreditExhausted,
+
     #[error("resident stop deadline exceeded")]
     StopTimedOut,
 }
@@ -133,6 +144,7 @@ pub enum ServiceStatus {
 }
 
 /* === Traits === */
+
 // A resident runs until stopped. Each run is stopped and cleaned up before the
 // next restart or before the instance stops.
 pub trait Resident<A: Application>: Send + 'static {
@@ -148,6 +160,7 @@ pub trait Resident<A: Application>: Send + 'static {
 }
 
 /* === Implementations === */
+
 impl ServiceDefinition {
     pub fn new(id: impl Into<String>) -> Self {
         Self { id: id.into(), policy: POLICY }
@@ -330,6 +343,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) fn validate(definition: &ServiceDefinition) -> Result<()> {
     if definition.id.is_empty() {
         return Err(Error::InvalidInput { field: "service name", reason: "must not be empty" });

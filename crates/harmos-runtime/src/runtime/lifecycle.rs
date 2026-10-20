@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -33,9 +34,11 @@ use crate::{Application, Error, Result, state::Position};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(super) type Outcome = std::result::Result<Position, Failure>;
 
 /* === Structs === */
+
 pub(super) struct Shutdown<A: Application> {
     handles: Handle<A>,
     participants: Participants,
@@ -53,6 +56,7 @@ pub(super) struct Failure {
 }
 
 /* === Enums === */
+
 enum Drain {
     Running(JoinHandle<Position>),
     Drained(Outcome),
@@ -61,6 +65,7 @@ enum Drain {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> Runtime<A> {
     pub async fn start_storage<C>(&self, storage: StorageManager<C>) -> Result<()> {
         let storage = storage.erased();
@@ -242,6 +247,7 @@ impl<A: Application> Handle<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>) -> Outcome {
     let mut grace = Box::pin(tokio::time::sleep(STOP_GRACE));
     let joined = std::future::poll_fn(|context| {

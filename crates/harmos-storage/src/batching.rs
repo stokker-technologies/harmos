@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -29,6 +30,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Batch {
     entries: Vec<Arc<Pending>>,
     _reservation: Reservation,
@@ -46,6 +48,7 @@ pub(super) struct Progress {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Progress {
     pub(super) fn include(&mut self, entry: &Pending) {
         let target = Target { index: entry.index, sequence: entry.operation.sequence() };
@@ -172,6 +175,7 @@ impl Batch {
 }
 
 /* === Public Functions === */
+
 pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Result<StorageCursor> {
     // Logical admissions are indivisible; never persist a prefix of one batch.
     let batch = StorageBatch::new(parts, inner.settings.max_batch_bytes())?;
@@ -195,6 +199,7 @@ pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Resu
 }
 
 /* === Private Functions === */
+
 fn append_domain(operation: &Operation) -> Option<Domain> {
     match operation {
         Operation::ObjectGroup { .. } | Operation::Records(_) | Operation::Stream(_) | Operation::Recovery(_) => Some(operation.domain()),

@@ -10,9 +10,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -32,6 +34,7 @@ use crate::operations::OperationDeclaration;
 use crate::{Error, Result, operations::Scope, state::Position};
 
 /* === Constants === */
+
 static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
@@ -40,6 +43,7 @@ static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OperationGeneration(u64);
 
@@ -76,6 +80,7 @@ pub struct Context<'a> {
     pub(super) admission: Admission,
     pub(super) source: Source,
     pub(super) origin: Origin,
+
     #[cfg(feature = "plugin-sidecar")]
     pub(super) retirement: bool,
 }
@@ -85,6 +90,7 @@ pub struct Context<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl OperationGeneration {
     pub(super) fn fresh() -> Result<Self> {
         NEXT_GENERATION
@@ -366,6 +372,7 @@ impl Context<'_> {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
     NEXT_INSTANCE
         .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))

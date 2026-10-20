@@ -36,6 +36,7 @@
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_packaging::Error> {
     if json {
         println!("{}", serde_json::to_string_pretty(build)?);

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -33,6 +34,7 @@ use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
 
 /* === Constants === */
+
 const ENCODED: &str = "harmos::encoded";
 const ENCODED_MARKER: &[u8] =
     &crate::schema::declaration::encode::<{ crate::schema::declaration::encoded_len(ENCODED, &[]) }>(ENCODED, &[]);
@@ -43,6 +45,7 @@ const MAX_NATIVE_OPERATIONS: usize = 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Native {
     endpoint: Arc<NativeEndpoint>,
 }
@@ -99,6 +102,7 @@ pub(super) struct Binding {
 }
 
 /* === Enums === */
+
 enum Phase {
     Initialize,
     Attempt,
@@ -116,33 +120,45 @@ enum Selection {
 pub enum NativeError {
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
+
     #[error("native provider retention failed")]
     Provider(#[source] crate::Error),
+
     #[error("the selected native generation is unavailable")]
     Unavailable,
+
     #[error("native operation capacity is retained")]
     Capacity,
+
     #[error("native attempt context entropy is unavailable")]
     Entropy(#[from] getrandom::Error),
+
     #[error("operation `{operation}` differs from the selected native catalog")]
     Catalog { operation: String },
+
     #[error(transparent)]
     Declaration(#[from] harmos_domain::Error),
+
     #[error("native operation transport failed")]
     Transport(#[from] SidecarError),
+
     #[error("native operation response codec failed")]
     Payload(#[from] crate::MessageError),
+
     // The provider refused the request while preparing it.
     #[error(transparent)]
     Preparation(harmos_domain::Failure),
+
     #[error("native operation request is not granted")]
     Unauthorized(#[source] crate::Error),
+
     // The provider's handler failed; its failure crosses unchanged.
     #[error(transparent)]
     Remote(harmos_domain::Failure),
 }
 
 /* === Traits === */
+
 // The Stream Directions Of One Endpoint Set.
 pub(crate) trait Shape {
     type Input: crate::operations::Direction;
@@ -150,6 +166,7 @@ pub(crate) trait Shape {
 }
 
 /* === Implementations === */
+
 impl NativeError {
     pub(crate) fn classification(&self) -> FailureKind {
         classify(self)
@@ -809,6 +826,7 @@ impl super::Bindings<'_> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn bindings(
     operations: &super::OperationManager, lane: &'static str, native: Arc<Native>, capacity: NonZeroUsize,
     scope: &crate::plugin::PluginScope,
@@ -925,6 +943,7 @@ pub(super) fn dispatch(
 }
 
 /* === Private Functions === */
+
 fn encoded_binding<E: super::StreamEndpoints + Shape>(
     operations: &OperationManager, lane: &'static str, handler: &Arc<Binding>, definition: &Definition, scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {

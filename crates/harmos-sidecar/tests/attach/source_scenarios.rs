@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use harmos_sidecar::Executable;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn refused(path: impl AsRef<std::path::Path>, why: &str) -> String {
     match Executable::at(path) {
         Ok(_) => panic!("{why}"),

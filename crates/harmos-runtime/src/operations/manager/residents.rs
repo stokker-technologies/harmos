@@ -16,6 +16,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -44,6 +45,7 @@ use crate::{Application, Result};
 /* === Traits === */
 
 /* === Implementations === */
+
 impl OperationManager {
     // Register an observer visible at once, activated over any resources of
     // its backend's resource type.

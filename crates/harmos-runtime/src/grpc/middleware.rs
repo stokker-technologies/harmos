@@ -28,9 +28,11 @@ use crate::operations::CallContext;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Enter<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub struct Invocation {
     path: String,
     metadata: MetadataMap,
@@ -54,12 +56,14 @@ pub(super) struct Session {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Middleware: Send + Sync + 'static {
     fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a>;
     fn observe(&self, _call: &Invocation, _observation: Observation) {}
 }
 
 /* === Implementations === */
+
 impl Invocation {
     pub fn path(&self) -> &str {
         &self.path
@@ -138,6 +142,7 @@ impl Drop for Session {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod accounting;
 mod admission;
 mod arrow;
@@ -20,19 +21,22 @@ mod status;
 mod writes;
 
 /* === Re-Exports === */
+
 pub use encoding::encoded_size;
 pub(crate) use encoding::{recovery_preparation_bytes, recovery_resident_bytes};
 
 /* === Imports === */
-use harmos_domain::model::storage::{RecordWrite, StreamWrite};
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+
 // Third Party Imports
 use serde::Serialize;
 use tokio::sync::watch;
+
 // Local Imports
 use super::admissions::Mutation;
 use super::arrow::RetainedMemory;
@@ -48,8 +52,10 @@ use super::{
 };
 use crate::execution::Execution;
 use crate::{Error, Identifier, Result};
+use harmos_domain::model::storage::{RecordWrite, StreamWrite};
 
 /* === Constants === */
+
 const WORKER_NAME: &str = "harmos-storage";
 
 // Includes owned envelopes, queue nodes, Arc headers, and cloned metadata.
@@ -60,6 +66,7 @@ pub(super) const ENTRY_OVERHEAD: usize = 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct StorageMetrics {
     pub accepted: StorageCursor,
@@ -129,8 +136,9 @@ pub(super) struct State {
     pub(super) queue: PendingQueue,
     pub(super) scratch_bytes: usize,
     pub(super) read_bytes: usize,
-    /// Per pool: owners that hold bytes and are waiting to grow.
+
     pub(super) growers: [super::capacity::Growers; 2],
+
     pub(super) data_attempted: u64,
     pub(super) objects_pruned: u64,
     pub(super) objects_prune_owed: bool,
@@ -172,17 +180,18 @@ struct Admission {
     active: bool,
 }
 
-enum Admitted {
-    Replayed(u64),
-    Reserved(u64, u64, u64),
-}
-
 struct WriteWaiter {
     inner: Arc<Inner>,
     measurement: bool,
 }
 
 /* === Enums === */
+
+enum Admitted {
+    Replayed(u64),
+    Reserved(u64, u64, u64),
+}
+
 pub enum ErasedCatalog {}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -202,14 +211,17 @@ pub(super) enum Operation {
 }
 
 /* === Traits === */
+
 pub(crate) trait RecordWriteBytes {
     fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
 }
+
 pub trait WorkerOwner: Send + Sync {
     fn stop(&self) -> StorageFuture<'_, ()>;
 }
 
 /* === Implementations === */
+
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone(), catalog: PhantomData }
@@ -307,3 +319,9 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

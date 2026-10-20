@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "../support/mod.rs"]
 mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::File;
 use std::io;
@@ -32,6 +34,7 @@ use support::{Bank, Ledger, booted, deposit, ledger, scratch};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Deserialize, Serialize)]
 struct Artifact {
     generation: u64,

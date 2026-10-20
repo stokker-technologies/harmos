@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,12 +29,14 @@ use crate::MemorySize;
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Aggregate { groups: Repeated<Projection> => 1, measures: Repeated<Measure> => 2 });
 product!(Measure { field: Nested<FieldPath> => 1, statistic: Nested<crate::Aggregate> => 2, name: Text => 3 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Aggregate {
     pub groups: Vec<Projection>,
@@ -51,6 +54,7 @@ pub struct Measure {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Aggregate {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

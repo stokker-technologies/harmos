@@ -1,19 +1,19 @@
-# === Workspace ===
+# === Workspace === #
 
 [workspace]
 resolver = "3"
 members = ["app", "cli", "domain", "guest", "sidecar", "storage"]
 
-# === Workspace Package ===
+# === Workspace Package === #
 
 [workspace.package]
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 publish = false
 
-# === Workspace Dependencies ===
+# === Workspace Dependencies === #
 
 [workspace.dependencies]
 # Local
@@ -59,7 +59,7 @@ tokio = { version = "1", default-features = false, features = ["sync"] }
 
 # Testing
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -67,14 +67,17 @@ unsafe_code = "warn"
 [workspace.lints.clippy]
 all = "warn"
 
-# === Lints ===
+# === Lints === #
 
-# === Profiles ===
+# === Profiles === #
 
 # Guest fuel counts Wasm instructions, including schema decoding at initialization; unoptimized guests exhaust it.
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [profile.dev.package.cranelift-codegen]
 opt-level = 3
@@ -90,6 +93,6 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

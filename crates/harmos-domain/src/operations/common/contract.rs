@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::schema::{self, Described};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "DecodedContract")]
 pub struct Contract {
@@ -38,6 +40,7 @@ pub struct Contract {
     version: u32,
     codec: Codec,
     schema: Schema,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grpc: Option<super::Grpc>,
 }
@@ -45,10 +48,13 @@ pub struct Contract {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DecodedContract {
+    #[serde(with = "super::DecodedDefinition")]
     operation: Definition,
+
     version: u32,
     codec: Codec,
     schema: Schema,
+
     #[serde(default)]
     grpc: Option<super::Grpc>,
 }
@@ -68,6 +74,7 @@ pub struct Contracts;
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Codec {
@@ -78,14 +85,18 @@ pub enum Codec {
 pub enum ContractError {
     #[error("invalid or reserved gRPC binding name")]
     Grpc,
+
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::Error),
+
     #[error("wire operation `{id}` has a zero semantic version")]
     Version { id: String },
+
     #[error("invalid {direction} schema for wire operation `{id}`: {source}")]
     Schema {
         id: String,
         direction: &'static str,
+
         #[source]
         source: schema::Error,
     },
@@ -94,6 +105,7 @@ pub enum ContractError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl WireDeclaration {
     pub const fn of<O: OperationDeclaration>() -> Self {
         Self {
@@ -266,7 +278,26 @@ impl TryFrom<DecodedContract> for Contract {
     type Error = ContractError;
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
-        Self::new(decoded.operation, decoded.version, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc)
+        if !crate::reserved(decoded.operation.id.as_str()) {
+            return Self::new(decoded.operation, decoded.version, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc);
+        }
+
+        // Read Only Exact SDK Metadata; Ordinary Declaration Admission Still Rejects These Names.
+        use crate::operations::lifecycle::{Action, Descriptor, Initialize, Shutdown};
+        let refused = || crate::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
+        let expected = match decoded.operation.id.as_str() {
+            crate::observers::Control::ID => crate::observers::contract()?,
+            Initialize::ID => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            Shutdown::ID => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+            _ => return Err(refused()),
+        };
+        let identity_matches =
+            decoded.operation == expected.operation && decoded.version == expected.version && decoded.codec == expected.codec;
+        let schema_matches = decoded.schema == expected.schema && decoded.grpc == expected.grpc;
+        if !identity_matches || !schema_matches {
+            return Err(refused());
+        }
+        Ok(expected)
     }
 }
 
@@ -310,6 +341,7 @@ impl Contracts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
     if D::STREAMED { Some(<D::Item as Described>::DEFINITION) } else { None }
 }
@@ -326,3 +358,85 @@ fn append(
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operations::lifecycle::{self, Action, Descriptor};
+    use crate::operations::{Backoff, Jitter, RestartPolicy, RetryPolicy};
+    use serde_json::json;
+
+    fn sdk_contracts() -> [Contract; 3] {
+        let policy = super::super::OperationPolicy {
+            timeout: std::time::Duration::from_secs(17),
+            attempt_timeout: std::time::Duration::from_secs(11),
+            ..lifecycle::POLICY
+        };
+        [
+            crate::observers::contract().unwrap(),
+            Descriptor::new(Action::Initialize, policy).unwrap().contract().clone(),
+            Descriptor::new(Action::Shutdown, policy).unwrap().contract().clone(),
+        ]
+    }
+
+    #[test]
+    fn sdk_metadata_roundtrip() {
+        for original in sdk_contracts() {
+            let encoded = serde_json::to_vec(&original).unwrap();
+            let decoded: Contract = serde_json::from_slice(&encoded).unwrap();
+            assert_eq!(decoded, original);
+        }
+    }
+
+    #[test]
+    fn sdk_metadata_forgery() {
+        let delay = std::time::Duration::from_secs(1);
+        let backoff = Backoff::Fixed { delay, jitter: Jitter::None };
+        for original in sdk_contracts() {
+            let encoded = serde_json::to_value(&original).unwrap();
+            for (pointer, replacement) in [
+                ("/operation/id", json!("harmos.forged")),
+                ("/operation/description", json!("forged SDK contract")),
+                ("/operation/visibility", json!("shared")),
+                ("/operation/policy/attempt_timeout/secs", json!(0)),
+                ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/operation/policy/restart", json!(RestartPolicy::OnTransient { credit: 1, sustained_health: delay, backoff })),
+                ("/version", json!(2)),
+                ("/schema", json!({"root": 0, "definitions": [[]]})),
+            ] {
+                let mut forged = encoded.clone();
+                *forged.pointer_mut(pointer).unwrap() = replacement;
+                assert!(serde_json::from_value::<Contract>(forged).is_err(), "{pointer}");
+            }
+            let mut exposed = encoded;
+            exposed["grpc"] = json!({"package": "forged.v1", "service": "Exposed", "method": "Invoke"});
+            assert!(serde_json::from_value::<Contract>(exposed).is_err());
+        }
+    }
+
+    #[test]
+    fn reserved_operations_refused() {
+        use crate::inventory::contracts::{Manifest, validate};
+        for contract in sdk_contracts() {
+            assert!(contract.operation().validate().is_err());
+            let definition = serde_json::to_value(contract.operation()).unwrap();
+            assert!(serde_json::from_value::<Definition>(definition).is_err());
+
+            let mut manifest = Manifest {
+                facility: "sidecar".into(),
+                owner: "fixture".into(),
+                provides: Vec::new(),
+                requires: Vec::new(),
+                lifecycle: [
+                    Descriptor::new(Action::Initialize, lifecycle::POLICY).unwrap(),
+                    Descriptor::new(Action::Shutdown, lifecycle::POLICY).unwrap(),
+                ],
+            };
+            validate(&manifest).unwrap();
+            manifest.provides.push(contract);
+            assert!(validate(&manifest).is_err());
+            let encoded = serde_json::to_value(&manifest).unwrap();
+            assert!(serde_json::from_value::<Manifest>(encoded).is_err());
+        }
+    }
+}

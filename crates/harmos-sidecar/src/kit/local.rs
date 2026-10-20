@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -24,14 +25,17 @@ use crate::Attached;
 use crate::attach::{End, Ending};
 
 /* === Constants === */
+
 const BUFFER: usize = 64 * 1024;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type EndWork = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
 
 /* === Structs === */
+
 struct LocalEnd {
     opening: Option<SharedOpening>,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
@@ -45,6 +49,7 @@ struct LocalEnd {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl End for LocalEnd {
     fn settle(&mut self) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + '_>> {
         Box::pin(async move {
@@ -73,6 +78,7 @@ impl End for LocalEnd {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn binary(opening: Opening) -> Attached {
     let opening = Arc::new(tokio::sync::Mutex::new(opening));
     let (here, there) = duplex(BUFFER);

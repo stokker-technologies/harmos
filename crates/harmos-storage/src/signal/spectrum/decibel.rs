@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Decibel {
     pub reference: f64,
@@ -32,10 +34,12 @@ pub struct Decibel {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Scale {
     #[default]
     Linear,
+
     Decibel(Decibel),
     Ratio {
         factor: f64,
@@ -45,6 +49,7 @@ pub enum Scale {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Decibel {
     #[must_use]
     pub fn amplitude(reference: f64) -> Self {

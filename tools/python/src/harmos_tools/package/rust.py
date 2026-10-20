@@ -7,7 +7,7 @@
 # ***
 
 
-"""Assemble Rust Crate Packages And Already Built Native Artifacts"""
+"""Assemble Declared Native Distributions And Typed Plugin Packages"""
 
 # === Imports === #
 
@@ -17,14 +17,18 @@ import hashlib
 import json
 import shutil
 import subprocess
-import tomllib
+import sys
+import zipfile
 from pathlib import Path
+from collections.abc import Iterable
 
 # Third Party Imports
 
 # Local Imports
-from ..build.fixtures import FIXTURES, ROOT, STAMP
-from ..test import preflight
+from ..build.fixtures import ROOT
+from ..build import paths
+from .. import temporary
+from . import run
 
 # Type Checking Imports
 
@@ -44,42 +48,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     profile = parser.parse_args().profile
-    preflight.main(["--profile", profile])
-    stamp = json.loads(STAMP.read_text(encoding="utf-8"))
-    selectors = stamp["metadata"]
-    destination = ROOT / "dist" / profile
+    export = paths.output(ROOT, "build", profile)
+    examples = export / "product/examples"
+    catalog_path = examples / "catalog.json"
+    selectors = json.loads(catalog_path.read_text(encoding="utf-8"))
+    for relative, expected in selectors["files"].items():
+        _asset(ROOT / relative, expected)
+    destination = paths.output(ROOT, "package", profile)
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
 
-    # Cargo Packages Source Without Compiling The Candidate.
-    workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
-    version = workspace["workspace"]["package"]["version"]
-    crates = []
-    for manifest in sorted((ROOT / "crates").glob("*/Cargo.toml")):
-        package = tomllib.loads(manifest.read_text())["package"]
-        if package.get("publish") is False:
-            continue
-        selected = package.get("version", version)
-        selected = version if isinstance(selected, dict) else selected
-        output = ROOT / "target/package" / f"{package['name']}-{selected}.crate"
-        output.unlink(missing_ok=True)
-        crates.append(output)
-    subprocess.run(["cargo", "package", "--workspace", "--locked", "--no-verify"], cwd=ROOT, check=True)
-    assets = {}
-    for source in crates:
-        expected = _digest(source)
-        _copy(source, destination / source.name, expected)
-        assets[source.name] = _asset(destination / source.name, expected)
+    # Assemble Declared Products From The Matching Build.
+    subprocess.run(
+        [sys.executable, "-m", run.__name__, "rust", "--profile", profile],
+        cwd=ROOT,
+        check=True,
+    )
+    packaged = (source for source in (destination / "rust").iterdir() if source.is_file())
+    assets = _records(packaged, destination)
+    products = run.definitions(ROOT, profile, paths.target())
+    bundles = [item for item in products if "triple" not in item]
+    for bundle in bundles:
+        _verify_schematic(destination / "rust" / bundle["output"], export, selectors)
 
-    # Distribute The Exact Native Tools The Lanes Tested.
-    for name in ("cargo-harmos", "schematic-cli"):
-        source = FIXTURES / selectors["artifacts"][name]
-        expected = stamp["files"][source.relative_to(ROOT).as_posix()]
-        _copy(source, destination / source.name, expected)
-        assets[source.name] = _asset(destination / source.name, expected)
-    tool = FIXTURES / selectors["artifacts"]["cargo-harmos"]
+    tool = export / selectors["artifacts"]["cargo-harmos"]
     for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
-        receipt = FIXTURES / selectors["builds"][name]
+        receipt = export / selectors["builds"][name]
         result = destination / f"{name}.json"
         command = [
             str(tool),
@@ -91,17 +85,16 @@ def main() -> None:
             "--relocate-from",
             selectors["build_roots"][name],
             "--relocate-to",
-            str(FIXTURES / "builds" / name),
+            str(examples / "builds" / name),
             "--output",
             str(destination),
             "--json",
         ]
-        with result.open("w", encoding="utf-8") as output:
-            subprocess.run(command, cwd=ROOT, stdout=output, check=True)
+        _package_plugin(command, result)
         build = json.loads(receipt.read_text(encoding="utf-8"))
-        for artifact in build["artifacts"]:
-            path = destination / artifact["producer"] / f"{artifact['name']}.harmos"
-            assets[path.relative_to(destination).as_posix()] = {"sha256": _digest(path), "bytes": path.stat().st_size}
+        produced = [destination / artifact["producer"] / f"{artifact['name']}.harmos" for artifact in build["artifacts"]]
+        records = _records(produced, destination)
+        assets.update(records)
     catalog = {"profile": profile, "assets": assets}
     (destination / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
@@ -109,9 +102,53 @@ def main() -> None:
 # === Private Functions === #
 
 
-def _copy(source: Path, destination: Path, expected: str) -> None:
-    shutil.copy2(source, destination)
-    _asset(destination, expected)
+def _verify_schematic(bundle: Path, export: Path, selectors: dict) -> None:
+    expected = {}
+    for name in ("schematic-cli", "schematic-sidecar", "schematic-guest"):
+        source = export / selectors["artifacts"][name]
+        relative = source.relative_to(export / "bin").as_posix()
+        expected[relative] = selectors["files"][source.relative_to(ROOT).as_posix()]
+
+    with temporary.directory() as install:
+        _unpack_schematic(bundle, install, expected)
+        executable = install / ("schematic-cli.exe" if sys.platform == "win32" else "schematic-cli")
+        _walkthrough(executable, install / "sidecar", [])
+        _walkthrough(executable, install / "guest", ["--guest"])
+
+
+def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> None:
+    with zipfile.ZipFile(bundle) as archive:
+        names = archive.namelist()
+        contents = {name: archive.read(name) for name in expected}
+    if sorted(names) != sorted(expected):
+        raise RuntimeError("Schematic bundle differs from its declared runtime layout")
+
+    for name, data in contents.items():
+        target = install / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        _asset(target, expected[name])
+        permissions = 0 if name.endswith(".wasm") else 0o111
+        target.chmod(target.stat().st_mode | permissions)
+
+
+def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:
+    directory.mkdir()
+    result = subprocess.run([str(executable), *arguments], cwd=directory, capture_output=True, text=True, check=True)
+    if "Reopened: 2 symbols, 1 net, 3 route points" not in result.stdout.splitlines():
+        raise RuntimeError(f"packaged Schematic {directory.name} walkthrough did not reopen its document")
+
+
+def _package_plugin(command: list[str], result: Path) -> None:
+    with result.open("w", encoding="utf-8") as output:
+        subprocess.run(command, cwd=ROOT, stdout=output, check=True)
+
+
+def _records(sources: Iterable[Path], destination: Path) -> dict:
+    records = {}
+    for path in sources:
+        records[path.relative_to(destination).as_posix()] = {"sha256": _digest(path), "bytes": path.stat().st_size}
+    return records
 
 
 def _digest(path: Path) -> str:

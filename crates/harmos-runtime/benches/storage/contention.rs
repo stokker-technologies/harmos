@@ -7,8 +7,11 @@
  * ***
  */
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::{Duration, Instant};
 
@@ -22,13 +25,21 @@ use harmos_runtime::storage::*;
 use super::{fixture::Fixture, waveforms};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/contention");
     let samples = waveforms::samples(16);
@@ -108,4 +119,5 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     group.finish();
 }
 /* === Private Functions === */
+
 /* === Tests === */

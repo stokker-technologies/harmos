@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../support/app/minimal.rs"]
 mod app;
 #[path = "../support/operations_fixture.rs"]

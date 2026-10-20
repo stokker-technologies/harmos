@@ -9,12 +9,14 @@
 
 
 /* === Modules === */
+
 #[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,14 +31,17 @@ use harmos::operations::OperationPolicy;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Program;
 
 /* === Enums === */
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
+
 impl harmos::operations::lifecycle::Policy for Program {
     const INITIALIZATION_POLICY: OperationPolicy = controls::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = controls::POLICY;
@@ -49,6 +54,7 @@ impl ProductPlugin for Program {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

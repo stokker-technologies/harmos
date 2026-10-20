@@ -8,14 +8,17 @@
  */
 
 /* === Modules === */
+
 mod sdk;
 mod serving;
 pub(crate) mod session;
 
 /* === Re-Exports === */
+
 pub use serving::Serving;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -34,6 +37,7 @@ use crate::{Application, Runtime, streams::StreamManager};
 use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 
 /* === Constants === */
+
 const TICK: Duration = Duration::from_millis(1);
 
 const UNBOUNDED: u64 = u64::MAX / 2;
@@ -43,6 +47,7 @@ const UNBOUNDED: u64 = u64::MAX / 2;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Epochs {
     engine: WasmEngine,
 }
@@ -102,34 +107,48 @@ struct Bridge<A: Application> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Routing(#[from] crate::plugin::DispatchError),
+
     #[error(transparent)]
     OperationCaller(#[from] crate::Error),
+
     #[error(transparent)]
     Stream(#[from] crate::streams::StreamAdmissionError),
+
     #[error(transparent)]
     Declaration(#[from] DeclarationError),
+
     #[error("guest component exceeds the {limit}-byte host bound")]
     Oversized { limit: usize },
+
     #[error("the Wasmtime guest engine could not be configured: {message}")]
     Engine { message: String },
+
     #[error("guest `{id}` is not a compatible component: {message}")]
     Component { id: String, message: String },
+
     #[error("the guest refused activation: {message}")]
     Refused { message: String },
+
     #[error("the guest host call was denied ({code}): {message}")]
     Denied { code: &'static str, message: String },
+
     #[error("the guest refused an operation: {refusal}")]
     Operation { refusal: OperationRefusal },
+
     #[error("the guest cannot answer `{method}`: {discarded}")]
     Unavailable { method: String, discarded: String },
+
     #[error("the guest answered `{method}` outside its route contract: {message}")]
     Malformed { method: String, message: String },
+
     #[error("the guest failed: {message}")]
     Guest { message: String },
+
     #[error("guest operation execution failed: {source}")]
     Execution {
         #[source]
@@ -140,6 +159,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Epochs {
     fn start(engine: &WasmEngine) -> Arc<Self> {
         let epochs = Arc::new(Self { engine: engine.clone() });
@@ -414,6 +434,7 @@ impl<A: Application> Bridge<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
     StoreLimitsBuilder::new()
         .memory_size(settings.memory_bytes.get())

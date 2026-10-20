@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub mod codec;
 
 /* === Re-Exports === */
@@ -31,6 +32,7 @@ use crate::{Identifier, MemorySize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordInput {
     pub schema: SchemaKey,
@@ -56,8 +58,10 @@ pub struct StoredRecord<T = Vec<u8>> {
     pub scope: Option<Identifier>,
     pub item: Identifier,
     pub source: Option<Identifier>,
+
     #[serde(default, with = "crate::model::storage::time::optional")]
     pub source_time: Option<Timestamp>,
+
     pub payload: T,
 }
 
@@ -91,6 +95,7 @@ pub struct StreamWrite<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for RecordInput {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.schema.memory_size() - std::mem::size_of::<SchemaKey>() + self.scope.memory_size()

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -32,6 +33,7 @@ use crate::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct RecordManager<A: Application> {
     pub(super) state: StateManager<A>,
     pub(super) catalog: Arc<Dispatch<A, crate::storage::Payload<A>>>,
@@ -44,6 +46,7 @@ pub struct RecordManager<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> RecordManager<A> {
     pub fn new(state: StateManager<A>) -> Self {
         let (catalog, preparing) = state.record_resources();

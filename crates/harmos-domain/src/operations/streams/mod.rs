@@ -8,12 +8,15 @@
  */
 
 /* === Modules === */
+
 mod payloads;
 
 /* === Re-Exports === */
+
 pub use payloads::{FollowingRow, Publish};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +27,7 @@ use crate::operations::Visibility;
 /* === Constants === */
 
 /* === Macros === */
+
 // A Sidecar Publishing One Ordered Batch Of Stream Rows To Its Host.
 crate::declare!(Publish {
     id: "host.publish",
@@ -42,6 +46,7 @@ crate::declare!(Publish {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
 
 /* === Private Functions === */

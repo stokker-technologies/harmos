@@ -19,6 +19,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,6 +39,7 @@ use crate::supervision::{self, Task, instance::Instance, instance::Phase};
 use crate::{Error, Result};
 
 /* === Constants === */
+
 static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
 
 const ROOT: ScopeId = ScopeId(0);
@@ -45,11 +47,13 @@ const ROOT: ScopeId = ScopeId(0);
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub(crate) type Outcome = std::result::Result<(), Arc<Error>>;
 pub(crate) type Completion = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 pub(crate) type Resources = Arc<dyn Any + Send + Sync>;
 
 /* === Structs === */
+
 // The declaration a resident handle names when its definition is selected by
 // identity at runtime. It is never registered by its own identity.
 pub struct Activation;
@@ -108,6 +112,7 @@ pub(crate) struct Registration {
     scope: Option<ScopeId>,
     internal: bool,
     published: Arc<AtomicBool>,
+
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     plugin: Option<crate::plugin::PluginScope>,
 }
@@ -185,6 +190,7 @@ struct Entry {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Observer,
@@ -203,6 +209,7 @@ enum Acquisition {
 }
 
 /* === Traits === */
+
 // A kind's driver. It spawns one instance over its resources and reports the
 // instance's progress; the registry owns everything else.
 pub(crate) trait Runner: Send + Sync + 'static {
@@ -229,6 +236,7 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 harmos_domain::postcard_product!(Activation {});
 
 impl crate::schema::Described for Activation {
@@ -1213,6 +1221,7 @@ impl Drop for Shared {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 pub(crate) async fn settle(running: Vec<Running>) -> Result<()> {
     let pending = running.into_iter().map(|running| async move {
         let domain = running.report.kind.domain();

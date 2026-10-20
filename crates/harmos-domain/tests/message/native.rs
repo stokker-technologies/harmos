@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 use prost::encoding::{WireType, encode_key, encode_varint};
@@ -24,11 +25,13 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 // A Consumer Domain Alias Must Never Bind Generated Codec Signatures
 #[allow(dead_code, reason = "consumer alias remains a macro name-resolution fixture")]
 type Result<T> = ::std::result::Result<T, MessageError>;
 
 /* === Structs === */
+
 // Intentionally Neither Clone Nor Default Nor Prost Message
 #[derive(Debug, PartialEq)]
 struct Native {
@@ -64,6 +67,7 @@ struct Secret {
 }
 
 /* === Enums === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
@@ -81,6 +85,7 @@ enum RedactedChoice {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl std::fmt::Debug for Secret {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("Secret([REDACTED])")
@@ -117,6 +122,7 @@ impl Described for Native {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn frame(tag: u32, payload: &[u8], bytes: &mut Vec<u8>) {
     encode_key(tag, WireType::LengthDelimited, bytes);
     encode_varint(payload.len() as u64, bytes);

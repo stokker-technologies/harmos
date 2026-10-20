@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -30,15 +31,18 @@ use crate::{
 use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
+
 const PAGE_ROWS: usize = 64;
 const REGISTRATIONS: usize = 64;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Submit<A> = fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>>;
 
 /* === Structs === */
+
 pub struct PluginListenerBindings<'a, A: Application> {
     records: &'a RecordManager<A>,
     scope: &'a PluginScope,
@@ -68,6 +72,7 @@ pub(super) struct Listening {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> RecordManager<A> {
     pub fn stage_listeners(
         &self, scope: &PluginScope, operations: &OperationManager, after: Position,
@@ -255,6 +260,7 @@ impl Listening {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn submit<A, R>(record: &A::Record, context: Context, callback: &PluginCallback) -> Result<Option<EncodedInvocation>>
 where
     A: Application,

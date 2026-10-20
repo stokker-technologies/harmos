@@ -37,6 +37,7 @@ use harmos_sdk::operations::{CallContext, ContextError, ContextValue, Host, Inst
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O> {
     host: Supervisor,
@@ -50,6 +51,7 @@ pub struct OperationInstance<O> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> Id {
         self.id
@@ -163,6 +165,7 @@ impl Host for Supervisor {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn decode_response<O: OperationDeclaration>(bytes: &[u8]) -> Result<Response<O::Response>, CallError> {
     let response = O::Response::decode(bytes).map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })?;
     Ok(Response::new(response))

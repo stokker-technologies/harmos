@@ -33,6 +33,7 @@ use super::*;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn finish_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileReference> {
         self.inner.primary.history().check(&token.history)?;

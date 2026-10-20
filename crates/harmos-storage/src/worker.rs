@@ -35,11 +35,13 @@ use crate::{BackendFailure, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Worker(pub(crate) StorageManager<crate::storage::ErasedCatalog>);
 
 struct Running(Arc<Inner>);
 
 /* === Enums === */
+
 enum Action {
     Write(Arc<Pending>),
     Snapshot(SnapshotAction),
@@ -62,6 +64,7 @@ enum Completed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Worker {
     pub async fn cleanup(&mut self) -> Result<()> {
         // StorageManager owns physical backend teardown before this worker's
@@ -397,6 +400,7 @@ impl Operation {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),

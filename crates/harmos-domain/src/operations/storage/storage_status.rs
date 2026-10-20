@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(StorageStatus {});
 
 crate::declare!(StorageStatus {
@@ -40,6 +42,7 @@ crate::declare!(StorageStatus {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Read The Storage Frontiers, Mutation Window And File Batch Size.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageStatus {}
@@ -49,6 +52,7 @@ pub struct StorageStatus {}
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for StorageStatus {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

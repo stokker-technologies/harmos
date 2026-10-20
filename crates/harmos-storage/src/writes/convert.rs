@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
@@ -30,6 +31,7 @@ use crate::storage::{ObjectKey, ObjectValue, PayloadEncoding, RecordInput, Strea
 use crate::{Error, Identifier, Result};
 
 /* === Constants === */
+
 const MAX_DEPTH: usize = 64;
 
 /* === Macros === */
@@ -45,9 +47,7 @@ const MAX_DEPTH: usize = 64;
 /* === Implementations === */
 
 /* === Public Functions === */
-/// Encode typed payload rows using the registered Harmos message schema. The
-/// allowance covers the returned row-vector allocation and all encoded bytes;
-/// validation and exact sizing finish before output allocation begins.
+
 pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
     let metadata = payload
         .len()
@@ -149,6 +149,7 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
 }
 
 /* === Private Functions === */
+
 trait Sink {
     fn append(&mut self, value: &[u8]) -> Result<()>;
 }

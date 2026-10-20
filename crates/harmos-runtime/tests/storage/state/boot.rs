@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +34,7 @@ use harmos_runtime::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Gate {
     entered: Notify,
@@ -56,6 +58,7 @@ struct Probe {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Probe {
     fn new() -> Self {
         let data = Arc::new(Data::new(history()));
@@ -115,6 +118,7 @@ impl Source<Bank> for Probe {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn builder() -> Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog())
 }
@@ -385,22 +389,43 @@ async fn zero_deadline_refused() {
 }
 
 #[tokio::test]
-async fn init_failure_closes() {
-    let probe = Probe::new();
-    let mut error = builder()
-        .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled initialization failure")) })
-        .runtime_with_storage(&probe.storage)
-        .await
-        .err()
-        .unwrap();
-    let cause = std::error::Error::source(&error).unwrap();
-    let source = std::error::Error::source(cause).unwrap();
-    assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().to_string(), "controlled initialization failure");
-    assert!(error.cleanup_error().is_none());
-    error.retry_cleanup().await.unwrap();
-    assert!(probe.storage.status().closed);
-    assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 1);
-    assert_eq!(probe.recovery.control.closes.load(Ordering::SeqCst), 1);
+async fn initialization_cleanup_retry() {
+    {
+        let probe = Probe::new();
+        let mut error = builder()
+            .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled initialization failure")) })
+            .runtime_with_storage(&probe.storage)
+            .await
+            .err()
+            .unwrap();
+        let cause = std::error::Error::source(&error).unwrap();
+        let source = std::error::Error::source(cause).unwrap();
+        assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().to_string(), "controlled initialization failure");
+        assert!(error.cleanup_error().is_none());
+        error.retry_cleanup().await.unwrap();
+        assert!(probe.storage.status().closed);
+        assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.recovery.control.closes.load(Ordering::SeqCst), 1);
+    }
+    {
+        let probe = Probe::new();
+        probe.data.control.fail_close.store(true, Ordering::SeqCst);
+        let mut error = builder()
+            .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled startup failure")) })
+            .runtime_with_storage(&probe.storage)
+            .await
+            .err()
+            .unwrap();
+        assert!(error.cleanup_error().is_some());
+        assert!(error.to_string().contains("controlled startup failure"));
+        assert!(error.to_string().contains("cleanup also failed"));
+        assert!(probe.data.control.open.load(Ordering::SeqCst));
+        assert!(error.retry_cleanup().await.is_err());
+        probe.data.control.fail_close.store(false, Ordering::SeqCst);
+        error.retry_cleanup().await.unwrap();
+        assert!(error.cleanup_error().is_none());
+        assert!(probe.storage.status().closed);
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -487,27 +512,6 @@ async fn cancelled_init_settles() {
     cleanup_gate.release.notify_one();
     closed(&probe.storage, &cleanup).await;
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn failed_cleanup_retryable() {
-    let probe = Probe::new();
-    probe.data.control.fail_close.store(true, Ordering::SeqCst);
-    let mut error = builder()
-        .initialize(Duration::from_secs(1), |_| async { Err::<(), _>(std::io::Error::other("controlled startup failure")) })
-        .runtime_with_storage(&probe.storage)
-        .await
-        .err()
-        .unwrap();
-    assert!(error.cleanup_error().is_some());
-    assert!(error.to_string().contains("controlled startup failure"));
-    assert!(error.to_string().contains("cleanup also failed"));
-    assert!(probe.data.control.open.load(Ordering::SeqCst));
-    assert!(error.retry_cleanup().await.is_err());
-    probe.data.control.fail_close.store(false, Ordering::SeqCst);
-    error.retry_cleanup().await.unwrap();
-    assert!(error.cleanup_error().is_none());
-    assert!(probe.storage.status().closed);
 }
 
 /* === Tests === */

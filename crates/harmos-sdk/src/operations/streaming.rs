@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::config::StreamSettings;
 
 /* === Imports === */
@@ -34,6 +35,7 @@ use crate::{MemorySize, Message};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /* === Structs === */
@@ -69,6 +71,7 @@ pub struct StreamPermit<'a, T, E = Error> {
 }
 
 /* === Enums === */
+
 enum Payload<T> {
     Plain(T),
     Owned { response: super::response::ErasedResponse, project: fn(&super::response::ErasedResponse) -> &T },
@@ -78,14 +81,19 @@ enum Payload<T> {
 pub enum Error {
     #[error("stream capacity exceeds semaphore limits")]
     Settings,
+
     #[error("operation stream byte capacity exhausted")]
     Capacity,
+
     #[error("constructed value exceeds its reserved stream bytes")]
     Construction,
+
     #[error("operation stream input is closed")]
     Closed,
+
     #[error("borrowed stream payload cannot be moved out of its original owner")]
     Ownership,
+
     #[error("operation stream decode failed: {0}")]
     Codec(#[source] crate::MessageError),
 }
@@ -93,6 +101,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T: Send + 'static> super::EndpointSet for StreamInput<T> {
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
@@ -332,6 +341,7 @@ impl<T: Message + MemorySize, E: From<Error>> StreamOutput<T, E> {
 }
 
 /* === Public Functions === */
+
 pub fn validate(settings: &StreamSettings) -> Result<()> {
     if settings.bytes.get() > Semaphore::MAX_PERMITS
         || settings.bytes.get() > u32::MAX as usize
@@ -364,6 +374,7 @@ pub fn channel<T, E: From<Error>>(settings: StreamSettings) -> Result<(StreamOut
 }
 
 /* === Private Functions === */
+
 fn owned<T: Send + Sync + 'static>(response: &super::response::ErasedResponse) -> &T {
     response.value::<T>().expect("owned stream payload retains its declared type")
 }

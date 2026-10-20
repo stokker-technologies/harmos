@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -33,6 +34,7 @@ use crate::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Group<P> {
@@ -53,6 +55,7 @@ pub(crate) struct Recovered<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<P> Group<P> {
     pub(crate) fn new(entries: Vec<Envelope<P>>) -> Self {
         Self { version: 1, entries }
@@ -161,6 +164,7 @@ impl Group<serde_json::Value> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn decode<A: Application>(
     envelope: Envelope<serde_json::Value>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {

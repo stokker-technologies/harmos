@@ -7,17 +7,20 @@
  * ***
  */
 
-// Walk The Built Interfaces A Developer Runs: The Schematic CLI, The Cargo
-// Tool And The Generated Python Package.
+// Inspect Built Plugin Metadata Through The Cargo Subcommand.
 
 /* === Modules === */
+
 #[path = "../support/fixtures.rs"]
 mod fixtures;
 mod schematic;
+#[cfg(feature = "grpc")]
+mod storage;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

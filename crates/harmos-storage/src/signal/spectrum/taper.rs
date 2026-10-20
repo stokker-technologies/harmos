@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::f64::consts::PI;
 // Third Party Imports
@@ -27,6 +28,7 @@ use std::f64::consts::PI;
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Taper {
     Rectangular,
@@ -46,6 +48,7 @@ pub enum Band {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Taper {
     #[must_use]
     pub fn coefficient(&self, index: usize, length: usize) -> f64 {
@@ -111,6 +114,7 @@ impl Band {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn bessel_i0(argument: f64) -> f64 {
     let magnitude = argument.abs();
 

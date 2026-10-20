@@ -36,6 +36,7 @@ use harmos_runtime::{Builder, Runtime};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub async fn runtime() -> Runtime<Bank> {
     booted(Ledger::default(), |builder| builder).await
 }

@@ -34,9 +34,11 @@ use crate::config::{BuildBackend, BuildProfile, BuildSettings};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type BuildMessages = (Vec<Artifact>, BTreeSet<(String, PathBuf)>);
 
 /* === Structs === */
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Artifact {
@@ -101,8 +103,10 @@ struct Message {
     reason: String,
     package_id: Option<String>,
     executable: Option<PathBuf>,
+
     #[serde(default)]
     filenames: Vec<PathBuf>,
+
     target: Option<Target>,
     out_dir: Option<PathBuf>,
     message: Option<Diagnostic>,
@@ -131,6 +135,7 @@ struct Target {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Artifact {
     // Stamp An Existing Cargo Output Without Launching A Compiler.
     pub fn read(producer: String, name: String, path: PathBuf) -> Result<Self, Error> {
@@ -234,6 +239,7 @@ impl Build {
 }
 
 /* === Public Functions === */
+
 pub fn build(settings: &BuildSettings) -> Result<Build, Error> {
     build_with_cancellation(settings, &BuildCancellation::default())
 }
@@ -395,6 +401,7 @@ fn finish_build(
 }
 
 /* === Private Functions === */
+
 pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
     let enabled = match settings.backend {
         BuildBackend::Sidecar => cfg!(feature = "sidecar"),

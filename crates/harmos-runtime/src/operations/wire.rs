@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -34,13 +35,16 @@ use crate::{Error, Message, Refusal, Result, operations::Scope};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Outcome = Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>>;
 pub(super) type Dispatch = fn(&OperationManager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
 
 /* === Structs === */
+
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
+
     #[cfg(feature = "plugin-sidecar")]
     pub(super) native_capacity: Option<OwnedSemaphorePermit>,
 }
@@ -74,6 +78,7 @@ pub struct EncodedInvocation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl EncodedInvocation {
     pub fn id(&self) -> OperationInstanceId {
         self.id
@@ -304,6 +309,7 @@ impl super::Context<'_> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn dispatch<O>(
     operations: &OperationManager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation>
@@ -371,6 +377,7 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
 }
 
 /* === Private Functions === */
+
 fn codec<O: OperationDeclaration, T>(run: impl FnOnce() -> T) -> Result<T> {
     catch_unwind(AssertUnwindSafe(run)).map_err(|_| Error::OperationPanicked { operation: O::ID.to_owned() })
 }

@@ -8,13 +8,16 @@
  */
 
 /* === Modules === */
+
 pub mod codec;
 pub mod read;
 
 /* === Re-Exports === */
+
 pub use read::{ByteRange, FileBatch, FileCompletion};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +33,7 @@ use crate::{Identifier, MemorySize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileMetadata {
@@ -71,6 +75,7 @@ pub struct FileProgress {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u64)]
 pub enum FilePhase {
@@ -82,6 +87,7 @@ pub enum FilePhase {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for FileMetadata {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

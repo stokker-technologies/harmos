@@ -41,6 +41,7 @@ use crate::config::{BuildSettings, DevSettings};
 /* === Structs === */
 
 /* === Enums === */
+
 pub enum DevEvent {
     Started { attempt: u64 },
     Finished { attempt: u64, result: Result<Build, Error> },
@@ -51,6 +52,7 @@ pub enum DevEvent {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn dev(
     settings: &BuildSettings, policy: DevSettings, cancellation: &BuildCancellation, mut report: impl FnMut(DevEvent) -> Result<(), Error>,
 ) -> Result<(), Error> {
@@ -138,6 +140,7 @@ pub fn dev(
 }
 
 /* === Private Functions === */
+
 fn configure(watcher: &mut impl Watcher, watched: &mut BTreeSet<PathBuf>, inputs: &Inputs) -> Result<(), Error> {
     // Watch Source Directories Without Recursively Entering Generated Trees.
     let mut selected = BTreeSet::new();

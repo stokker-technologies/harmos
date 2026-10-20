@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use crate::storage::manager::RecordWriteBytes;
 // Standard Library Imports
 use std::sync::Arc;
@@ -33,6 +34,7 @@ use harmos_domain::state::Position;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Permit {
     inner: Arc<Inner>,
     bytes: usize,
@@ -51,6 +53,7 @@ pub struct Permit {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub async fn reserve_transition(&self, payload_bytes: usize, records: Option<ReadLimits>) -> Result<Permit> {
         self.reserve_recovery(payload_bytes, records, false).await

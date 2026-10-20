@@ -10,11 +10,13 @@
 // Generate A Pure Python Producer Package From Verified Contract Artifacts.
 
 /* === Modules === */
+
 mod package;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{
     collections::BTreeSet,
@@ -32,6 +34,7 @@ use crate::proto::{Artifacts, ExportError};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Catalog<'a> {
     pub contracts: &'a [harmos_domain::operations::Contract],
     pub settings: &'a Settings,
@@ -51,30 +54,42 @@ pub struct Settings {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid Python binding setting: {0}")]
     Settings(&'static str),
+
     #[error("unsupported Python binding contract: {0}")]
     Unsupported(String),
+
     #[error("Python binding name collision: {0}")]
     Collision(String),
+
     #[error("unknown selected operation: {0}")]
     Selection(String),
+
     #[error("Python binding output already exists: {0}")]
     Exists(PathBuf),
+
     #[error("protobuf compiler failed: {0}")]
     Compiler(String),
+
     #[error("generated Python package exceeds its bounded output limit")]
     Limit,
+
     #[error("failed to remove incomplete output after {cause}: {source}")]
     Cleanup { cause: String, source: std::io::Error },
+
     #[error(transparent)]
     Export(#[from] ExportError),
+
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
+
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -82,6 +97,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Settings {
     fn validate(&self) -> Result<(), Error> {
         if !identifier(&self.module) || self.module.starts_with('_') {
@@ -105,6 +121,7 @@ impl Settings {
 }
 
 /* === Public Functions === */
+
 // Export Standard Protobuf Classes, Stubs And Typed Descriptors Into A New Package Root.
 //
 // `protoc` Is An Explicit Maintainer Tool. Neither Importing Nor Building The Result
@@ -144,6 +161,7 @@ pub fn generate(catalog: Catalog<'_>, output: &Path) -> Result<PathBuf, Error> {
 }
 
 /* === Private Functions === */
+
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     value.len() <= 128

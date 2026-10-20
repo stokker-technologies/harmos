@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod contribution;
 pub(crate) mod listener;
 pub(crate) mod observer;
@@ -17,6 +18,7 @@ pub(crate) mod restart;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,6 +40,7 @@ use syn::{Error, LitStr};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn validate_id(id: &LitStr) -> Result<(), Error> {
     let value = id.value();
     let valid = !value.is_empty()
@@ -96,6 +99,7 @@ pub(crate) fn documentation(attributes: &[syn::Attribute]) -> String {
 }
 
 /* === Private Functions === */
+
 fn documented(attribute: &syn::Attribute) -> Option<String> {
     let syn::Meta::NameValue(named) = &attribute.meta else {
         return None;

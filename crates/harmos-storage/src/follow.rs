@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -33,13 +34,15 @@ use super::{StorageCursor, StorageManager};
 use crate::{Error, Result};
 
 /* === Constants === */
+
 static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
+
 /* === Type Aliases === */
 
 /* === Structs === */
-/// An open subscription: saved history first, then accepted entries as they arrive.
+
 pub struct Follower<T: Entry> {
     inner: Arc<Inner>,
     id: u64,
@@ -51,7 +54,6 @@ pub struct Follower<T: Entry> {
     accepted: StorageCursor,
 }
 
-/// One delivered page; its entries stay charged until the page drops.
 pub struct FollowPage<T> {
     entries: Vec<T>,
     _charge: Reservation,
@@ -63,6 +65,7 @@ pub(super) struct Following {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Failure {
     Gap { requested: u64, available: u64 },
@@ -72,8 +75,8 @@ enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
-    /// Open a live subscription for one entry kind after `after`.
     pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {
         if let Some(after) = after {
             self.inner.primary.history().check(&after.history)?;
@@ -104,8 +107,6 @@ impl<C> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
-    /// One page of durable entries after storage position `after`, read at the
-    /// saved frontier; its entries stay charged until the page drops.
     pub async fn page<T: Entry>(&self, selection: &T::Selection, after: u64, limits: ReadLimits) -> Result<FollowPage<T>> {
         let held = Held::default();
         let rows = limits.rows.min(SCAN_ROWS);
@@ -128,7 +129,6 @@ impl<T: Entry> Follower<T> {
         &self.accepted
     }
 
-    /// The next nonempty page, waiting for newly accepted entries when caught up.
     pub async fn next(&mut self) -> Result<FollowPage<T>> {
         loop {
             if let Some(page) = self.next_history().await? {
@@ -222,7 +222,6 @@ impl Following {
 }
 
 impl State {
-    /// Close every live subscription when storage begins closing.
     pub(super) fn close_followers(&mut self) {
         for following in self.followers.values_mut() {
             following.failure.get_or_insert(Failure::Closed);
@@ -236,7 +235,6 @@ impl State {
         self.queue.retire_data(self.data_flushed, through);
     }
 
-    /// Fail lagging subscriptions so saved queue entries can be retired under pressure.
     pub(super) fn lag_followers(&mut self) -> bool {
         let Some(through) = self
             .queue

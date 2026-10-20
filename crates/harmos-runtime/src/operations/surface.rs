@@ -40,6 +40,7 @@ use crate::{Error, Result};
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_sdk::operations::Host for OperationManager {
     type Error = Error;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;

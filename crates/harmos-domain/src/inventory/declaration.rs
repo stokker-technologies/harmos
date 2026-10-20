@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -24,6 +25,7 @@ use crate::operations::{Contract, Definition};
 use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
 
 /* === Constants === */
+
 const OWNED: [&str; 14] = [
     "capabilities",
     "contracts",
@@ -46,6 +48,7 @@ const OWNED: [&str; 14] = [
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Declaration {
     pub id: String,
@@ -70,6 +73,7 @@ pub struct RestartPolicy {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facility {
     Sidecar,
@@ -86,37 +90,52 @@ pub enum CarrierSection {
 pub enum DeclarationError {
     #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
     IncompatiblePayload,
+
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
+
     #[error(transparent)]
     PublicationInventory(#[from] publications::Error),
+
     #[error(transparent)]
     ContractInventory(#[from] contracts::Error),
+
     #[error(transparent)]
     ContributionInventory(#[from] contributions::Error),
+
     #[error(transparent)]
     ListenerInventory(#[from] listeners::Error),
+
     #[error(transparent)]
     ObserverInventory(#[from] observers::Error),
+
     #[error("guest observer callbacks are unsupported")]
     UnsupportedObservers,
+
     #[error("the Harmos sidecar restart policy is invalid")]
     InvalidRestartPolicy,
+
     #[error("the artifact carries no Harmos {facility} declaration")]
     MissingIdentity { facility: &'static str },
+
     #[error("the artifact carries more than one Harmos {facility} declaration")]
     DuplicateIdentity { facility: &'static str },
+
     #[error("a Harmos metadata fragment exceeds its {FRAGMENT_LIMIT}-byte bound")]
     OversizedFragment,
+
     #[error("a Harmos metadata fragment is invalid: {source}")]
     Malformed {
         #[source]
         source: serde_json::Error,
     },
+
     #[error("a Harmos metadata fragment declares the unknown kind `{kind}`")]
     UnknownKind { kind: String },
+
     #[error("`{id}` is not a portable Harmos artifact id")]
     InvalidId { id: String },
+
     #[error("the Harmos plugin version is invalid: {source}")]
     Version {
         #[source]
@@ -140,6 +159,7 @@ enum Fragment {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Facility {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -299,6 +319,7 @@ impl From<ScanError> for DeclarationError {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn restart(policies: Vec<(String, String, RestartPolicy)>, owner: &str) -> Result<Option<RestartPolicy>, DeclarationError> {
     let mut selected = policies.into_iter().filter(|(facility, candidate, _)| facility == "sidecar" && candidate == owner);
     let Some((_, _, policy)) = selected.next() else {

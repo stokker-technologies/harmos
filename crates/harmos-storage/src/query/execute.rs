@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use crate::storage::query::transform::AggregateExecution;
 use crate::storage::query::transform::HistogramExecution;
 use crate::storage::query::transform::TransformExecution;
@@ -34,6 +35,7 @@ use crate::storage::memory::MemoryBank;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
+
 const MAX_TRANSFORMS: usize = 64;
 
 /* === Macros === */
@@ -41,12 +43,7 @@ const MAX_TRANSFORMS: usize = 64;
 /* === Type Aliases === */
 
 /* === Structs === */
-/// A validated transform chain with its output schema fixed before any rows.
-///
-/// Leading Filter/Project run page by page. The first other transform is the
-/// global stage: Aggregate and Histogram reduce incrementally, Sort and
-/// Downsample collect the selected input. Remaining transforms run once on the
-/// global output. The row slice applies last, across the whole invocation.
+
 pub(super) struct Plan {
     input: Arc<Schema>,
     output: Arc<Schema>,
@@ -60,6 +57,7 @@ pub(super) struct Plan {
 }
 
 /* === Enums === */
+
 enum Stage {
     Stream,
     Aggregate(Option<Groups>),
@@ -70,6 +68,7 @@ enum Stage {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Plan {
     pub(super) fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
         crate::storage::arrow::validate_schema(&input)?;
@@ -110,7 +109,6 @@ impl Plan {
         Arc::clone(&self.output)
     }
 
-    /// Retained plan descriptors; reduction state and collected input are charged separately.
     pub(super) fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(schema_memory(&self.input))
@@ -119,14 +117,10 @@ impl Plan {
             .saturating_add(self.suffix.memory_size())
     }
 
-    /// Whether the row limit is already satisfied, so no more input is needed.
     pub(super) fn is_satisfied(&self) -> bool {
         matches!(self.stage, Stage::Stream) && self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
-    /// Process one source page. Streaming plans return the page's sliced output;
-    /// global plans fold or collect it. Every claim draws from the attempt bank,
-    /// and stateful stages change only after all claims for the page succeed.
     pub(super) fn page(
         &mut self, input: &RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
     ) -> Result<Option<RecordBatch>> {
@@ -170,7 +164,6 @@ impl Plan {
         }
     }
 
-    /// Bytes the global stage needs to produce its output once all input arrived.
     pub(super) fn finish_bytes(&self) -> Result<usize> {
         let stage = match &self.stage {
             Stage::Stream => 0,
@@ -189,7 +182,6 @@ impl Plan {
             .ok_or_else(|| invalid("query finish estimate overflow"))
     }
 
-    /// Produce the global output once after the source is exhausted.
     pub(super) fn finish(&mut self, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         let output = match &mut self.stage {
             Stage::Stream => return Ok(None),
@@ -245,8 +237,7 @@ impl Plan {
 }
 
 /* === Public Functions === */
-/// Conservative working memory for one transform over `input`: input/output
-/// coexistence, scalar keys, ordering scratch and nested owner metadata.
+
 pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usize> {
     let resident = resident_bytes(input)?;
     let width = output.fields().len().max(input.num_columns()).max(1);
@@ -260,6 +251,7 @@ pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usiz
 }
 
 /* === Private Functions === */
+
 // Run Transforms In Order, Retaining Each Output Under The Attempt Bank.
 fn apply(
     transforms: &[Transform], mut current: RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,

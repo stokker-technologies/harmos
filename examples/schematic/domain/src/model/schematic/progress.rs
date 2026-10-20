@@ -28,6 +28,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::stream(id = "schematic.analysis_progress", window = 16)]
 #[harmos_domain::message]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

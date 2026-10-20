@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod catalog;
 mod context;
 mod contract;
@@ -19,6 +20,7 @@ pub(crate) mod payload;
 mod policy;
 
 /* === Re-Exports === */
+
 pub use crate::observers;
 pub use catalog::{Declarations, Entry};
 pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
@@ -29,6 +31,7 @@ pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -37,10 +40,12 @@ use serde::{Deserialize, Serialize};
 use crate::Identifier;
 
 /* === Constants === */
+
 // A deadline no caller reaches: resident and watch policies run until stopped.
 pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 32);
 
 /* === Macros === */
+
 // Declare An Operation On Its Request Type. Fields Keep This Order; Optional
 // Ones May Be Omitted. Absent Streams Are `NoStream`.
 #[macro_export]
@@ -87,6 +92,7 @@ macro_rules! declare {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Definition {
     pub id: Identifier,
@@ -109,6 +115,7 @@ struct DecodedDefinition {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
@@ -118,6 +125,7 @@ pub enum Visibility {
 }
 
 /* === Traits === */
+
 // The Operation Is Its Request Type. `declare!` (Through `#[operation]`) Is The
 // Only Writer Of This Impl; Every Bound A Projection Needs Is Named Here, So One
 // Generic Walk Serves The Catalog, gRPC, Descriptor Export And Bindings.
@@ -148,6 +156,7 @@ pub trait Declares {
 }
 
 /* === Implementations === */
+
 impl<O: OperationDeclaration> Declares for O {
     type Declaration = O;
 }

@@ -8,17 +8,20 @@
  */
 
 /* === Modules === */
+
 mod draft;
 mod fact;
 mod vault;
 
 /* === Re-Exports === */
+
 pub use draft::Draft;
 pub(crate) use fact::SOURCE;
 pub use fact::{EvidenceKind, EvidenceRecord};
 pub use vault::{Excerpt, Vault};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -35,9 +38,11 @@ use vault::Keeping;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Held<T> = BTreeMap<String, BTreeMap<(DefinitionId, String), T>>;
 
 /* === Structs === */
+
 pub(crate) struct Declaration {
     vault: Arc<dyn Keeping>,
     kinds: Vec<(DefinitionId, u32)>,
@@ -56,34 +61,48 @@ struct Inner<A: Application> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EvidenceError {
     #[error("this runtime was assembled without an evidence vault")]
     Unserved,
+
     #[error("`{kind}` is not a declared evidence kind")]
     Undeclared { kind: DefinitionId },
+
     #[error("this evidence vault hands out no external draft paths")]
     Unsupported,
+
     #[error("this draft is written by a process outside the runtime")]
     Foreign,
+
     #[error("`{scope}`/`{key}` already names evidence of kind `{kind}`")]
     Conflict { kind: DefinitionId, scope: String, key: String },
+
     #[error("no evidence is open or finalized under this key")]
     Unknown,
+
     #[error("`{named}` does not declare the details of `{kind}` evidence")]
     Mismatched { kind: DefinitionId, named: DefinitionId },
+
     #[error("the details of `{kind}` do not match its declaration: {cause}")]
     Malformed { kind: DefinitionId, cause: String },
+
     #[error("this evidence is already being finalized")]
     Finalizing,
+
     #[error("a read of {requested} bytes is past this vault's {ceiling}-byte bound")]
     Bound { requested: usize, ceiling: usize },
+
     #[error("the stored evidence is {found} bytes where {written} were written")]
     Corrupt { written: u64, found: u64 },
+
     #[error("the evidence vault could not be read: {0}")]
     Unreadable(String),
+
     #[error("the evidence vault could not be written: {0}")]
     Unwritable(String),
+
     #[error("the state is unavailable, so nothing was finalized")]
     Unavailable,
 }
@@ -91,6 +110,7 @@ pub enum EvidenceError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl EvidenceError {
     pub fn unreadable(cause: impl std::fmt::Display) -> Self {
         Self::Unreadable(cause.to_string())
@@ -393,6 +413,7 @@ impl<A: Application> Inner<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn observing(draft: Weak<Open>, cadence: std::time::Duration) {
     loop {
         executor::sleep(cadence).await;

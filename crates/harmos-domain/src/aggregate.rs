@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -23,6 +24,7 @@ use crate::schema::{Cardinality, Described, declaration};
 use crate::{MemorySize, MessageError, RowMetadata};
 
 /* === Constants === */
+
 // Protobuf variant tags, hashed from each authored variant name exactly as
 // `#[harmos::message]` derives them; the message tests pin them against a
 // derived twin, so the hand-written codec and the derive cannot drift apart.
@@ -44,10 +46,12 @@ const RANK: u32 = 211_531_165;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The percentile variant payload: one `rank` field carrying the percentage.
 struct Rank;
 
 /* === Enums === */
+
 // The one statistic vocabulary every Harmos reduction answers: plot buckets,
 // storage group-bys and stream batch measurements name what they compute with
 // these members, and `harmos::signal` holds the math behind each of them.
@@ -86,6 +90,7 @@ pub enum Aggregate {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Aggregate {
     // The wire name: the member in snake case, a percentile as `p` and its rank.
     pub fn name(&self) -> String {
@@ -240,6 +245,7 @@ impl RowMetadata for Aggregate {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // Serde carries the rank as the declared u32, so its Postcard matches the schema.
 mod rank {
     pub(super) fn serialize<S: serde::Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
@@ -259,3 +265,40 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
 // A zero rank is the proto3 default and stays off the wire.
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::Aggregate;
+
+    const EVERY: [Aggregate; 11] = [
+        Aggregate::Count,
+        Aggregate::Sum,
+        Aggregate::Mean,
+        Aggregate::Median,
+        Aggregate::Min,
+        Aggregate::Max,
+        Aggregate::Rms,
+        Aggregate::Std,
+        Aggregate::Percentile(0),
+        Aggregate::Percentile(25),
+        Aggregate::Percentile(100),
+    ];
+
+    #[test]
+    fn wire_names() {
+        for kind in EVERY {
+            assert_eq!(Aggregate::parse(&kind.name()), Some(kind));
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(serde_json::from_str::<Aggregate>(&json).unwrap(), kind);
+        }
+        assert_eq!(serde_json::to_string(&Aggregate::Count).unwrap(), "\"count\"");
+        assert_eq!(serde_json::to_string(&Aggregate::Rms).unwrap(), "\"rms\"");
+        assert_eq!(serde_json::to_string(&Aggregate::Percentile(95)).unwrap(), "{\"percentile\":95}");
+        assert_eq!(Aggregate::Percentile(95).name(), "p95");
+        assert_eq!(Aggregate::parse("p95"), Some(Aggregate::Percentile(95)));
+        for refused in ["p101", "p", "p+5", "variance"] {
+            assert_eq!(Aggregate::parse(refused), None, "{refused}");
+        }
+        assert!(!Aggregate::Percentile(101).answerable());
+    }
+}

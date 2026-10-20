@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -38,6 +39,7 @@ use schematic_storage::Wire;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Wire for SchematicEditor {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
         match value {

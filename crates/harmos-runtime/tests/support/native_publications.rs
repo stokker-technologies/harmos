@@ -28,6 +28,7 @@ use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Message, Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(60),
@@ -38,10 +39,12 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Source = harmos_sidecar::PluginNative<Producer>;
 type Resident = Supervised<Model, Source, fn(&Service<Model>, Notice)>;
 
 /* === Structs === */
+
 pub struct Model;
 
 pub struct Fixture {
@@ -81,6 +84,7 @@ pub struct Producer;
 struct Publishing;
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 pub enum Operations {
     Publish(Publish),
@@ -95,6 +99,7 @@ pub enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
@@ -270,6 +275,7 @@ impl Fixture {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn notices(_: &Service<Model>, _: Notice) {}
 
 /* === Tests === */

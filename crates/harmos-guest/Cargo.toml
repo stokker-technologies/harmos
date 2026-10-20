@@ -1,7 +1,8 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos-guest"
+description = "Harmos guest kit for WebAssembly component plugins."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +10,9 @@ license.workspace = true
 publish.workspace = true
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
 [features]
 default = ["derive"]
@@ -27,12 +28,12 @@ streaming = ["harmos-sdk/streaming"]
 # Any Authored Async Lifecycle Or Operation May Wait On Rust-Originating Events.
 kit = ["dep:wit-bindgen", "wit-bindgen/inter-task-wakeup"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
-harmos-sdk = { workspace = true }
 harmos-domain = { workspace = true }
+harmos-sdk = { workspace = true }
 
 # Git
 
@@ -68,11 +69,11 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
@@ -139,26 +140,31 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 
 # Testing
 
-# === Test Targets ===
+# === Test Targets === #
 
 [[test]]
 name = "integration"
 path = "tests/kit/main.rs"
 required-features = ["derive"]
 
-# === Bench Targets ===
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
+required-features = ["derive"]
 
-# === Example Targets ===
+# === Bench Targets === #
 
-# === Workspace Lints ===
+# === Example Targets === #
 
-# === Lints ===
+# === Workspace Lints === #
+
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

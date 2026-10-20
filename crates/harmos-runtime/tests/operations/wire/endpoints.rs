@@ -36,6 +36,7 @@ use harmos_runtime::operations::{
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
+
 const DECLARATION_NAME: &str = concat!(module_path!(), "::Declaration");
 const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
     { harmos_runtime::schema::declaration::encoded_len(DECLARATION_NAME, <Consume as harmos_runtime::schema::Described>::FIELDS) },
@@ -44,9 +45,11 @@ const DECLARATION_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Endpoints = (StreamInput<u32>, StreamOutput<u32>);
 
 /* === Structs === */
+
 // One Forwarding Declaration Per Shape: The Request Says Whether To Consume Input.
 struct Declaration<const N: u8> {
     consume: bool,
@@ -82,12 +85,14 @@ struct Parent<const CHARGED: bool>;
 /* === Enums === */
 
 /* === Traits === */
+
 trait Shape {
     type Input: harmos_runtime::operations::Direction;
     type Output: harmos_runtime::operations::Direction;
 }
 
 /* === Implementations === */
+
 crate::operations::in_process!(ParentDeclaration);
 
 impl harmos_runtime::MemorySize for ParentDeclaration {
@@ -278,6 +283,7 @@ impl<const N: u8> Drop for Forward<N> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
     stream(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4).unwrap() }).unwrap()
 }
@@ -301,9 +307,32 @@ async fn envelope(
 /* === Tests === */
 
 #[tokio::test]
-async fn endpoints_share_operation() {
+async fn endpoint_admission_contract() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
+    assert!(matches!(
+        runtime.operations.register_operation::<Forward<3>>("app", Lanes::Open, trace.clone()),
+        Err(Error::InvalidInput { field: "operation endpoint types", .. })
+    ));
+    assert!(matches!(
+        runtime.operations.register_operation::<Forward<4>>("app", Lanes::Open, trace.clone()),
+        Err(Error::InvalidInput { field: "operation endpoint types", .. })
+    ));
+    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+
+    {
+        runtime.operations.register_operation::<Forward<1>>("app", Lanes::Open, trace.clone()).unwrap();
+        runtime.operations.register_operation::<Forward<2>>("app", Lanes::Open, trace.clone()).unwrap();
+        let (input, receiving) = channel();
+        let (sending, _output) = channel();
+        assert!(matches!(
+            runtime.operations.submit_endpoints(Declaration::<2> { consume: false }, (receiving, sending)),
+            Err(Error::InvalidInput { field: "operation stream cache", .. })
+        ));
+        assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+        assert!(input.is_closed());
+    }
+
     runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
     let (input, receiving) = channel();
     let (sending, mut output) = channel();
@@ -372,42 +401,9 @@ async fn cleanup_retains_endpoints() {
 }
 
 #[tokio::test]
-async fn stream_retry_admission() {
-    let runtime = runtime().await;
-    let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<1>>("app", Lanes::Open, trace.clone()).unwrap();
-    runtime.operations.register_operation::<Forward<2>>("app", Lanes::Open, trace.clone()).unwrap();
-    let (input, receiving) = channel();
-    let (sending, _output) = channel();
-    assert!(matches!(
-        runtime.operations.submit_endpoints(Declaration::<2> { consume: false }, (receiving, sending)),
-        Err(Error::InvalidInput { field: "operation stream cache", .. })
-    ));
-    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
-    assert!(input.is_closed());
-    bounded(runtime.stop()).await.unwrap();
-}
-
-#[tokio::test]
 async fn cancellation_settles_child() {
     parent_cancellation::<false>().await;
     parent_cancellation::<true>().await;
-}
-
-#[tokio::test]
-async fn registration_refuses_mismatched() {
-    let runtime = runtime().await;
-    let trace = Arc::new(Trace::default());
-    assert!(matches!(
-        runtime.operations.register_operation::<Forward<3>>("app", Lanes::Open, trace.clone()),
-        Err(Error::InvalidInput { field: "operation endpoint types", .. })
-    ));
-    assert!(matches!(
-        runtime.operations.register_operation::<Forward<4>>("app", Lanes::Open, trace.clone()),
-        Err(Error::InvalidInput { field: "operation endpoint types", .. })
-    ));
-    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
-    bounded(runtime.stop()).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -593,13 +589,19 @@ async fn exchange_drop_cancels() {
 }
 
 #[tokio::test]
-async fn request_survives_cleanup() {
+async fn charged_request_ownership() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    trace.fail_stop.store(true, Ordering::SeqCst);
     runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
     let (requests, mut decoded) =
         stream::<Declaration<0>>(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1).unwrap() }).unwrap();
+    requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
+    let request = decoded.recv().await.unwrap();
+    assert!(matches!(runtime.operations.submit_charged::<Declaration<0>, _>(request, ()), Err(Error::InvalidInput { .. })));
+    drop(bounded(requests.reserve(1)).await.unwrap());
+    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+
+    trace.fail_stop.store(true, Ordering::SeqCst);
     requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
     let request = decoded.recv().await.unwrap();
     let (_input, receiving) = channel();
@@ -615,26 +617,27 @@ async fn request_survives_cleanup() {
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
-async fn request_releases_memory() {
-    let runtime = runtime().await;
-    let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
-    let (requests, mut decoded) =
-        stream::<Declaration<0>>(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1).unwrap() }).unwrap();
-    requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
-    let request = decoded.recv().await.unwrap();
-    assert!(matches!(runtime.operations.submit_charged::<Declaration<0>, _>(request, ()), Err(Error::InvalidInput { .. })));
-    drop(bounded(requests.reserve(1)).await.unwrap());
-    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
-    bounded(runtime.stop()).await.unwrap();
-}
-
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn opening_projects_charged() {
+async fn opening_admission_exchange() {
     use futures_util::StreamExt;
     use harmos_runtime::grpc::InputEnvelope;
+    {
+        let missing = harmos_runtime::grpc::open::<bool, u32, _>(futures_util::stream::empty()).await;
+        assert!(matches!(missing, Err(error) if error.code() == tonic::Code::InvalidArgument));
+        let early = futures_util::stream::iter([Ok(envelope(InputEnvelope::Item(1)).await)]);
+        assert!(matches!(harmos_runtime::grpc::open(early).await, Err(error) if error.code() == tonic::Code::InvalidArgument));
+        let frames = futures_util::stream::iter([
+            Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
+            Ok(envelope(InputEnvelope::Request(Declaration { consume: false })).await),
+            Ok(envelope(InputEnvelope::Item(7)).await),
+        ]);
+        let (_request, items) = harmos_runtime::grpc::open(frames).await.unwrap();
+        tokio::pin!(items);
+        assert!(matches!(items.next().await.unwrap(), Err(error) if error.code() == tonic::Code::InvalidArgument));
+        assert!(items.next().await.is_none());
+    }
+
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
     runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
@@ -653,26 +656,6 @@ async fn opening_projects_charged() {
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.stop()).await.unwrap();
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
-async fn opening_refuses_bad() {
-    use futures_util::StreamExt;
-    use harmos_runtime::grpc::InputEnvelope;
-    let missing = harmos_runtime::grpc::open::<bool, u32, _>(futures_util::stream::empty()).await;
-    assert!(matches!(missing, Err(error) if error.code() == tonic::Code::InvalidArgument));
-    let early = futures_util::stream::iter([Ok(envelope(InputEnvelope::Item(1)).await)]);
-    assert!(matches!(harmos_runtime::grpc::open(early).await, Err(error) if error.code() == tonic::Code::InvalidArgument));
-    let frames = futures_util::stream::iter([
-        Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
-        Ok(envelope(InputEnvelope::Request(Declaration { consume: false })).await),
-        Ok(envelope(InputEnvelope::Item(7)).await),
-    ]);
-    let (_request, items) = harmos_runtime::grpc::open(frames).await.unwrap();
-    tokio::pin!(items);
-    assert!(matches!(items.next().await.unwrap(), Err(error) if error.code() == tonic::Code::InvalidArgument));
-    assert!(items.next().await.is_none());
 }
 
 async fn parent_cancellation<const CHARGED: bool>() {

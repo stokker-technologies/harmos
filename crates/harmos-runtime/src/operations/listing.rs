@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -36,7 +37,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Serves `host.catalog`; stored kinds need the host's storage manager.
+
 pub struct Listing<C> {
     storage: Arc<Option<Arc<StorageManager<C>>>>,
 }
@@ -46,6 +47,7 @@ pub struct Listing<C> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: 'static> Operation for Listing<C> {
     type Declaration = Catalog;
     type Resources = Option<Arc<StorageManager<C>>>;
@@ -88,8 +90,7 @@ impl<C> Listing<C> {
 }
 
 /* === Public Functions === */
-/// Serve `host.catalog` from this manager; without storage only live
-/// operation contracts are listed and stored kinds refuse as not ready.
+
 pub fn register<C: 'static>(
     operations: &OperationManager, owner: impl Into<String>, lane: impl Lane, storage: Option<Arc<StorageManager<C>>>,
 ) -> Result<()> {
@@ -97,6 +98,7 @@ pub fn register<C: 'static>(
 }
 
 /* === Private Functions === */
+
 // One Page Of Durable Entries After The Request's Storage Position. Pages Order
 // By Storage Position, So A Nonempty Page Always Continues And An Empty Page
 // Ends The Catalog.

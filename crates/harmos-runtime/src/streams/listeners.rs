@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::fmt;
@@ -33,6 +34,7 @@ use crate::{Application, Error, Message, MessageError, Result};
 use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
+
 const PAGE_ROWS: usize = 64;
 const SOURCES: usize = 64;
 const REGISTRATIONS: usize = 64;
@@ -40,9 +42,11 @@ const REGISTRATIONS: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Submit = fn(&Row, Context, &PluginCallback) -> Result<EncodedInvocation>;
 
 /* === Structs === */
+
 pub struct PluginListenerBindings<'a, A: Application> {
     streams: &'a StreamManager<A>,
     scope: &'a PluginScope,
@@ -88,6 +92,7 @@ struct Payload<'a>(&'a [u8]);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> StreamManager<A> {
     pub fn stage_listeners(
         &self, scope: &PluginScope, operations: &OperationManager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
@@ -368,6 +373,7 @@ impl Message for Payload<'_> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn submit_native<S: Message + 'static>(row: &Row, context: Context, callback: &PluginCallback) -> Result<EncodedInvocation> {
     let row = row
         .downcast_ref::<S>()

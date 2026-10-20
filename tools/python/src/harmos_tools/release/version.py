@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/version.py; sha256:6dc576cf8fc984ad52d519a749549045a09787f8c77ac8c22f1c894677ada6f2
+# Rendered by stkr project update from templates/python/release/version.py; sha256:c832dfd37baf01645bfd27853b58d733b2172e161e201299dea124f8d5b933cf
 # ***
 #
 # Harmos
@@ -37,8 +37,9 @@ VERSION = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
 
 
 def versions(text: str, name: str) -> list[str]:
-    if name.endswith("package.json"):
-        value = json.loads(text).get("version")
+    if name.endswith(".json"):
+        document = json.loads(text)
+        value = document.get("version") if isinstance(document, dict) else None
         return [value] if isinstance(value, str) else []
     if name.endswith(".toml"):
         value = tomllib.loads(text)
@@ -68,7 +69,7 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
         if verb == "check" and any(value != target for value in current):
             raise policy.ToolError(f"{name}: versions {current} differ from {target}")
         if verb == "sync":
-            if name.endswith("package.json"):
+            if name.endswith(".json"):
                 document = json.loads(text)
                 document["version"] = target
                 text = json.dumps(document, indent=2) + "\n"

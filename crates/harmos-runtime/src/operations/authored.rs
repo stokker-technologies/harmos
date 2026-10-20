@@ -37,9 +37,11 @@ use crate::{Error, Result, operations::Scope};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Payload<T> = <<T as Operation>::Declaration as OperationDeclaration>::Response;
 
 /* === Structs === */
+
 struct Physical<T: Operation> {
     resources: Arc<T::Resources>,
     operation: Option<T>,
@@ -78,6 +80,7 @@ struct Owned<T: Operation> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<T: Operation> Physical<T> {
     async fn finish(&mut self, name: &str, control: &Weak<Instance>) -> Result<()> {
         // An Operation That Never Initialized Owns Nothing To Stop
@@ -191,6 +194,7 @@ impl<T: Operation> Finalizer for Owned<T> {
 }
 
 /* === Public Functions === */
+
 pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
     operations: &OperationManager, resources: Arc<T::Resources>,
 ) -> Typed<T::Declaration, T::Endpoints> {
@@ -258,6 +262,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
 }
 
 /* === Private Functions === */
+
 async fn guarded<O, E>(operation: &str, future: impl Future<Output = std::result::Result<O, E>>) -> Result<O>
 where
     E: std::error::Error + Send + Sync + 'static,

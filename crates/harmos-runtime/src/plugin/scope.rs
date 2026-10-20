@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
@@ -28,12 +29,15 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct PluginScope {
     owner: Arc<str>,
     generation: PluginGeneration,
+
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     generation_context: Arc<OnceLock<[u8; 32]>>,
+
     phase: Arc<watch::Sender<Phase>>,
     operation_registry: Arc<OnceLock<Weak<crate::operations::Registry>>>,
     dependencies: Arc<BTreeSet<String>>,
@@ -47,12 +51,14 @@ pub struct PluginScope {
     listeners: Arc<[harmos_domain::listeners::Definition]>,
     lifecycle: Arc<Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
+
     // The live native call surface of this generation, answering its host publications.
     #[cfg(feature = "plugin-sidecar")]
     native: Arc<Mutex<Weak<crate::services::NativeEndpoint>>>,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Staged {
@@ -72,6 +78,7 @@ enum Phase {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl PluginScope {
     pub(crate) fn same_activation(&self, other: &Self) -> bool {
         self.generation == other.generation && Arc::ptr_eq(&self.phase, &other.phase)

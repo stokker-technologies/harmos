@@ -29,6 +29,7 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 use harmos_runtime::{Error, Runtime, operations::Lane};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
@@ -41,6 +42,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Trace {
     lane: &'static str,
     parent_constructions: AtomicUsize,
@@ -64,6 +66,7 @@ struct Free {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 enum Mode {
     Leaf,
@@ -100,6 +103,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation for Parent {
     type Declaration = ParentContract;
     type Resources = Trace;
@@ -205,6 +209,7 @@ impl Drop for Free {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         lane: parent_lane.name(),

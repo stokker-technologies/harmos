@@ -29,6 +29,7 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
@@ -41,11 +42,13 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Note;
 struct Descend;
 struct Family;
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(response = (), id = "causation.note", version = 1, policy = POLICY)]
 struct NoteContract {
@@ -150,6 +153,7 @@ impl Operation for Family {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<Bank> {
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime.operations.register_operation::<Family>("app", Lanes::Serial, Arc::new(())).unwrap();

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +25,7 @@ use crate::{Identifier, MemorySize};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Catalog {
     kind: Code<CatalogKind> => 1,
     schema: Optional<Id> => 2,
@@ -39,9 +41,7 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 /* === Type Aliases === */
 
 /* === Structs === */
-/// One page of the catalog: live operation contracts, or the schemas, streams
-/// or objects storage holds durably. `schema` narrows the stored kinds to one
-/// schema id; `after` continues from the previous page's `next`.
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Catalog {
     pub kind: CatalogKind,
@@ -51,8 +51,6 @@ pub struct Catalog {
     pub bytes: Option<usize>,
 }
 
-/// `entries` is a UTF-8 JSON array of the kind's canonical entries:
-/// `DiscoveredOperation`, stored schemas, or `StoredIdentity` values.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CatalogPage {
     pub entries: Vec<u8>,
@@ -60,10 +58,12 @@ pub struct CatalogPage {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CatalogKind {
     #[default]
     Operations,
+
     Schemas,
     Streams,
     Objects,
@@ -72,6 +72,7 @@ pub enum CatalogKind {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Catalog {
     // Stored Data Follows The Storage Read Grant Grammar; Operation Discovery
     // Keeps Its Per-Contract Conditional Access.

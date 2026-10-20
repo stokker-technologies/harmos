@@ -6,7 +6,7 @@
 #
 # ***
 
-# === Package ===
+# === Package === #
 
 [package]
 name = "cargo-harmos"
@@ -14,18 +14,25 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+publish.workspace = true
+repository = "https://github.com/stokker-technologies/harmos"
+description = "Build, inspect and package Harmos plugins and generated bindings"
 
-# === Package Targets ===
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }{ binary-ext }"
+pkg-fmt = "bin"
+bin-dir = "{ bin }{ binary-ext }"
 
-# === Features ===
+# === Package Targets === #
+
+# === Features === #
 
 [features]
 default = ["sidecar", "guest"]
 sidecar = ["harmos-packaging/sidecar", "dep:ctrlc"]
 guest = ["harmos-packaging/guest", "dep:ctrlc"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -64,27 +71,27 @@ ctrlc = { workspace = true, optional = true, features = ["termination"] }
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

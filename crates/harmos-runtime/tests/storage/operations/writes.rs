@@ -7,8 +7,11 @@
  * ***
  */
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -26,13 +29,21 @@ use harmos_runtime::{Identifier, MemorySize, Message};
 use super::{Fixture, Lanes, config};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
+
 pub(super) fn settings() -> StreamSettings {
     StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(1024 * 1024).unwrap() }
 }
@@ -138,4 +149,5 @@ fn batch_descriptor_roundtrips() {
 }
 
 /* === Private Functions === */
+
 /* === Tests === */

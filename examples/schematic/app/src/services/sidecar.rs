@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::Path;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use harmos::{Error, Result};
 use schematic_domain::operations::Native;
 
 /* === Constants === */
+
 pub const NAME: &str = "schematic-tools";
 
 /* === Macros === */
@@ -42,6 +44,7 @@ pub const NAME: &str = "schematic-tools";
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<()> {
     let program = std::fs::canonicalize(path).map_err(failed)?;
     let executable = Executable::at(&program).map_err(failed)?.directory(directory);
@@ -55,6 +58,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
 }
 
 /* === Private Functions === */
+
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::OperationFailed { operation: NAME.into(), source: Arc::new(source) }
 }

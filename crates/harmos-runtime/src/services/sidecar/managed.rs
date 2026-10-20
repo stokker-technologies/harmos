@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
@@ -40,6 +41,7 @@ use harmos_sidecar::{Attach, Executable};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type NativeCatalog<L> = fn(&mut crate::operations::Bindings<'_>, L, std::sync::Arc<crate::operations::Native>, NonZeroUsize) -> Result<()>;
 
 type Diagnostics<A> = fn(&Service<A>, Notice);
@@ -47,6 +49,7 @@ type Diagnostics<A> = fn(&Service<A>, Notice);
 type StreamListeners<A> = fn(&PluginDefinition, &mut crate::streams::PluginListenerBindings<'_, A>) -> Result<()>;
 
 /* === Structs === */
+
 pub(crate) struct RuntimeDriver<A: Application, L> {
     host: Host<A, Executable, Diagnostics<A>, L>,
     backend: PluginBackend<(), Backend<A, Executable, Diagnostics<A>>, ()>,
@@ -97,6 +100,7 @@ struct Host<A: Application, S, H, L> {
 }
 
 /* === Enums === */
+
 enum Progress {
     Admission,
     Settlement,
@@ -106,6 +110,7 @@ enum Progress {
 pub enum ManagedError {
     #[error("{0}")]
     Physical(String),
+
     #[error(transparent)]
     Lifecycle(#[from] Error),
 }
@@ -113,6 +118,7 @@ pub enum ManagedError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A, L> RuntimeDriver<A, L>
 where
     A: Application,
@@ -536,6 +542,7 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn verify_local_artifact<S>(_: &S, definition: &PluginDefinition) -> Result<()> {
     if matches!(&definition.artifact, PluginArtifact::LocalSidecar { .. }) {
         return Ok(());

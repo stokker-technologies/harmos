@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -29,6 +30,7 @@ use crate::DefinitionId;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct Draft {
     pub(crate) open: Arc<Open>,
@@ -70,6 +72,7 @@ pub(crate) struct Staged {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Draft {
     pub fn kind(&self) -> &DefinitionId {
         &self.open.kind

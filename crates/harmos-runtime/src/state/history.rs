@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
@@ -37,11 +38,13 @@ use crate::error::Error;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Predicate<A> = Arc<dyn Fn(&<A as Application>::Transaction) -> bool + Send + Sync>;
 
 type Step<A, X> = Pin<Box<dyn Future<Output = (Parts<A>, Result<Vec<Entry<X>>, Error>)> + Send>>;
 
 /* === Structs === */
+
 pub struct Origin<S> {
     pub value: S,
     pub position: Position,
@@ -97,12 +100,14 @@ struct Watching<A: Application, X> {
 }
 
 /* === Enums === */
+
 pub(crate) enum ReadRequest<A: Application> {
     Entries { after: Position, through: Position, reply: oneshot::Sender<Result<Vec<Entry<Recorded<A>>>, Error>> },
     State { origin: Origin<A::State>, at: Position, reply: oneshot::Sender<Result<At<A::State>, Error>> },
 }
 
 /* === Traits === */
+
 pub(crate) trait ReplayPayload<A: Application>: Sized {
     fn prepared(&self) -> Option<crate::state::Prepared> {
         None
@@ -115,6 +120,7 @@ pub(crate) trait ReplayPayload<A: Application>: Sized {
 }
 
 /* === Implementations === */
+
 impl<S> Origin<S> {
     pub fn initial(value: S) -> Self {
         Self { value, position: Position::ORIGIN }
@@ -411,6 +417,7 @@ where
 }
 
 /* === Public Functions === */
+
 pub(crate) fn replay<A, W>(
     catalog: Option<&Dispatch<A, W>>, recorded: Vec<Envelope<W>>, state: &mut At<A::State>, undos: &mut Undos<A>, inverses: Inverting<A>,
     tail: usize,
@@ -464,6 +471,7 @@ where
 }
 
 /* === Private Functions === */
+
 async fn next<A, X>(mut parts: Parts<A>) -> (Parts<A>, Result<Vec<Entry<X>>, Error>)
 where
     A: Application,

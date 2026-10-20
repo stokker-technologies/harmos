@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::error::Error as StdError;
 use std::future::Future;
@@ -33,9 +34,11 @@ use crate::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Outcome = Result<(), Arc<dyn StdError + Send + Sync>>;
 
 /* === Structs === */
+
 pub struct Serving<A: Application> {
     instance: Option<PluginEndpoint>,
     session: Option<Session<A>>,
@@ -53,6 +56,7 @@ struct Cleanup<A: Application> {
 }
 
 /* === Enums === */
+
 enum Finalization<A: Application> {
     Pending(JoinHandle<(Cleanup<A>, Outcome)>),
     Failed(Box<Cleanup<A>>, Arc<dyn StdError + Send + Sync>),
@@ -62,6 +66,7 @@ enum Finalization<A: Application> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> Active<A> {
     pub fn serve(mut self) -> Result<Serving<A>, Error> {
         if !self.store.data().active {

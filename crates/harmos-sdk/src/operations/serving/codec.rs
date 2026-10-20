@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod payload {
     use serde::{Deserialize, Deserializer, Serializer};
 
@@ -23,6 +24,7 @@ mod payload {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 
 /* === Constants === */
+
 const VERSION: u8 = 6;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
@@ -39,24 +42,31 @@ pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Serialize, Deserialize)]
 struct Value<'a> {
     key: &'a str,
+
     #[serde(borrow, with = "payload")]
     payload: &'a [u8],
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum WireCodecError {
     #[error("operation envelope exceeds the 16 MiB limit")]
     Oversized,
+
     #[error("unsupported operation envelope version")]
     Version,
+
     #[error("unexpected operation envelope kind")]
     Kind,
+
     #[error("trailing operation envelope bytes")]
     Trailing,
+
     #[error("invalid operation envelope")]
     Encoding(#[from] postcard::Error),
 }
@@ -68,6 +78,7 @@ enum Envelope<'a> {
     Prepare {
         invocation: u64,
         operation: &'a str,
+
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
     },
@@ -78,6 +89,7 @@ enum Envelope<'a> {
     Attempt {
         invocation: u64,
         context: [u8; 32],
+
         #[serde(borrow)]
         values: Vec<Value<'a>>,
     },
@@ -94,16 +106,21 @@ enum Envelope<'a> {
     Child {
         context: [u8; 32],
         generation_context: Option<[u8; 32]>,
+
         #[serde(borrow)]
         values: Vec<Value<'a>>,
+
         operation: &'a str,
+
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
+
         submit: bool,
     },
     PrepareGrpc {
         invocation: u64,
         operation: &'a str,
+
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
     },
@@ -111,12 +128,14 @@ enum Envelope<'a> {
         invocation: u64,
         epoch: u64,
         context: [u8; 32],
+
         #[serde(borrow)]
         values: Vec<Value<'a>>,
     },
     StreamSend {
         invocation: u64,
         epoch: u64,
+
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
     },
@@ -131,6 +150,7 @@ enum Envelope<'a> {
     StreamItem {
         epoch: u64,
         transferred: bool,
+
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
     },
@@ -148,6 +168,7 @@ enum Envelope<'a> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl WireCommand {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         encode(self.envelope())
@@ -272,6 +293,7 @@ impl WireChild {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError> {
     let bytes = values.iter().map(|value| value.key.len().saturating_add(value.payload.len())).fold(0usize, usize::saturating_add);
     if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {

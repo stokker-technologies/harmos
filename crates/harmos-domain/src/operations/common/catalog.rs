@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 // Third Party Imports
@@ -28,6 +29,7 @@ use crate::{Error, Identifier, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Entry {
     pub id: &'static str,
@@ -44,6 +46,7 @@ pub struct Declarations;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Entry {
     pub const fn of<O: OperationDeclaration>() -> Self {
         Self { id: O::ID, description: O::DESCRIPTION, policy: O::POLICY, visibility: O::VISIBILITY, replay: O::REPLAY }
@@ -103,6 +106,7 @@ impl Declarations {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn append(declaration: &Entry, names: &mut BTreeSet<Identifier>, definitions: &mut Vec<Definition>) -> Result<()> {
     let definition = declaration.definition()?;
     if !names.insert(definition.id.clone()) {

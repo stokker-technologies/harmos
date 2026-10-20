@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 mod codec;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{collections::BTreeMap, fmt};
 // Third Party Imports
@@ -28,6 +30,7 @@ use crate::{MemorySize, Value};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct Identifier(String);
@@ -36,25 +39,33 @@ pub struct Identifier(String);
 pub struct Metadata {
     pub identifier: Identifier,
     pub label: String,
+
     #[serde(default)]
     pub description: Option<String>,
+
     #[serde(default, deserialize_with = "unique_tags")]
     pub tags: Vec<String>,
+
     #[serde(default)]
     pub attributes: BTreeMap<String, Value>,
+
     #[serde(default, with = "crate::value::optional_datetime")]
     pub created_at: Option<OffsetDateTime>,
+
     #[serde(default, with = "crate::value::optional_datetime")]
     pub updated_at: Option<OffsetDateTime>,
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum IdentifierError {
     #[error("identifier must not be empty")]
     Empty,
+
     #[error("identifier must start with an ASCII letter, number, or underscore")]
     InvalidStart,
+
     #[error("identifier may contain only ASCII letters, numbers, '.', '_', or '-'")]
     InvalidCharacter,
 }
@@ -62,6 +73,7 @@ pub enum IdentifierError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Metadata {
     fn memory_size(&self) -> usize {
         let fields = [
@@ -162,6 +174,7 @@ impl Metadata {
 }
 
 /* === Public Functions === */
+
 pub(crate) const fn validate_identifier(value: &str) -> Result<(), IdentifierError> {
     let bytes = value.as_bytes();
     if bytes.is_empty() {
@@ -181,6 +194,7 @@ pub(crate) const fn validate_identifier(value: &str) -> Result<(), IdentifierErr
 }
 
 /* === Private Functions === */
+
 fn unique_tags<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
     let tags = Vec::<String>::deserialize(deserializer)?;
     let mut unique = Vec::new();

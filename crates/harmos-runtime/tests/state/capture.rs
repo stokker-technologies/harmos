@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -29,10 +30,12 @@ use harmos_runtime::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Refusal = &'static str;
 type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
 
 /* === Structs === */
+
 #[harmos_runtime::record(id = "capture.observed", version = 1)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Observed(String);
@@ -52,6 +55,7 @@ struct Consumer {
 struct Panics;
 
 /* === Enums === */
+
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -67,6 +71,7 @@ enum Facts {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<i64> for Add {
     type Error = &'static str;
     fn check(&self, _: &i64) -> Result<(), Self::Error> {
@@ -111,6 +116,7 @@ impl JournalCapture<Model> for Panics {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model>, mpsc::UnboundedReceiver<Group>, Arc<Semaphore>) {
     let (offered, observed) = mpsc::unbounded_channel();
     let release = Arc::new(Semaphore::new(0));

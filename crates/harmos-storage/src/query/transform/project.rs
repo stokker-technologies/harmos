@@ -12,9 +12,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::model::storage::query::transform::project::{Project, Projection};
 
 /* === Imports === */
+
 use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
@@ -36,6 +38,7 @@ use crate::Result;
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait ProjectExecution {
     fn output_schema(&self, input: &Schema) -> Result<Schema>;
 
@@ -43,6 +46,7 @@ pub trait ProjectExecution {
 }
 
 /* === Implementations === */
+
 impl ProjectExecution for Project {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.fields.is_empty() || self.fields.len() > 4096 {

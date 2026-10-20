@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -31,6 +32,7 @@ use crate::supervision::instance::{Instance, Phase, Status};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct Scope<'a> {
     core: &'a ScopeCore,
@@ -58,6 +60,7 @@ pub(crate) struct Child {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> Scope<'a> {
     pub(crate) fn over(core: &'a ScopeCore) -> Self {
         Self { core }
@@ -103,12 +106,10 @@ impl<'a> Scope<'a> {
         crate::records::RecordManager::new(self.state::<A>())
     }
 
-    /// The Runtime-Owned Storage Instance, When Storage Is Enabled.
     pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
         self.core.instances.handles_of::<A>().storage.get()
     }
 
-    /// Streams Own Their Listener Lifecycle; Services Are Operation Residents.
     pub fn streams<A: crate::Application>(&self) -> crate::streams::StreamManager<A> {
         self.core.instances.handles_of::<A>().streams.clone()
     }

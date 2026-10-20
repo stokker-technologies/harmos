@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::storage::capacity::{Pool, Reservation};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct FileSave {
     snapshot: FileSnapshot,
     _reservation: Reservation,
@@ -42,6 +44,7 @@ pub(crate) struct FileSnapshot {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C> StorageManager<C> {
     pub fn capture_files(&self, through: Option<&StorageCursor>) -> Result<Option<FileSave>> {
         let mut state = self.inner.state.lock().unwrap();

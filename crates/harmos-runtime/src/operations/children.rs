@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -26,6 +27,7 @@ use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireC
 use harmos_domain::{Message, Refusal};
 
 /* === Constants === */
+
 pub(crate) const CHILD_REQUESTS: usize = 64;
 
 /* === Macros === */
@@ -33,6 +35,7 @@ pub(crate) const CHILD_REQUESTS: usize = 64;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub(crate) struct Children {
     pub(crate) context: [u8; 32],
@@ -58,6 +61,7 @@ pub(crate) struct Child {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Children {
     pub(crate) async fn call(
         &self, call: WireChildCall, submitted: tokio::time::Instant, mut cancelled: oneshot::Receiver<()>,
@@ -180,6 +184,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
 }
 
 /* === Private Functions === */
+
 // Await one child; cancellation requests interruption and the same child still
 // drains before its outcome is reported.
 async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {

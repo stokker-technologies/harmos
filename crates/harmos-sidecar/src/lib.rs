@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod error;
 
 #[cfg(feature = "transport")]
@@ -23,6 +24,7 @@ pub mod kit;
 mod wire;
 
 /* === Re-Exports === */
+
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
@@ -62,6 +64,7 @@ pub use harmos_sdk::plugin;
 pub use kit::__private;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -81,6 +84,7 @@ pub use kit::__private;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[cfg(feature = "kit")]
 impl harmos_domain::__private::CarrierContext for Supervisor {
     const FACILITY: &'static str = "sidecar";

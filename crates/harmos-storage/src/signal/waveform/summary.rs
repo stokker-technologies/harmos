@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -25,6 +26,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The streaming, mergeable reduction: count, sum, extremes, mean and spread
 // kept in constant space, so partial summaries of disjoint runs merge into the
 // summary of their union. Non-finite values are skipped, the same values
@@ -44,6 +46,7 @@ pub struct Summary {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for Summary {
     fn default() -> Self {
         Self { count: 0, sum: 0.0, mean: 0.0, lowest: f64::INFINITY, highest: f64::NEG_INFINITY, deviations: 0.0 }
@@ -175,3 +178,33 @@ impl Summary {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::Summary;
+    use crate::signal::Series;
+
+    const CLOSE: f64 = 1e-9;
+
+    fn close(found: Option<f64>, expected: f64) {
+        let found = found.expect("an answer");
+        assert!((found - expected).abs() <= CLOSE * expected.abs().max(1.0), "{found} is not {expected}");
+    }
+
+    // Series answers over the whole run at once; Summary is folded from chunks and
+    // merged, so agreement proves the streaming form matches the exact one.
+    #[test]
+    fn chunked_summaries_agree() {
+        let values: Vec<f64> = (0..97).map(|index| ((index * 37) % 23) as f64 * 1.5 - 11.0).chain([f64::NAN, f64::INFINITY]).collect();
+        let series = Series::new(&values);
+        let summary = values.chunks(10).map(Summary::of).fold(Summary::new(), |held, next| held.merge(&next));
+
+        assert_eq!(series.count(), summary.count());
+        close(Some(series.sum()), summary.sum());
+        close(series.mean(), summary.mean().unwrap());
+        assert_eq!(series.min(), summary.min());
+        assert_eq!(series.max(), summary.max());
+        close(series.rms(), summary.rms().unwrap());
+        close(series.std(), summary.std().unwrap());
+    }
+}

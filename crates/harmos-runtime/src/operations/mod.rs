@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod admission;
 mod authored;
 pub mod authorization;
@@ -49,6 +50,7 @@ mod sdk;
 mod wire;
 
 /* === Re-Exports === */
+
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use caller::Caller;
@@ -104,6 +106,7 @@ pub use wire::PluginCallback;
 pub(crate) use wire::PluginControl;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

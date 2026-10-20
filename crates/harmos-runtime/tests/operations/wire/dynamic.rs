@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -23,6 +24,7 @@ use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Wi
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
+
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
@@ -35,6 +37,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[derive(Debug, PartialEq)]
 struct Value {
@@ -77,6 +80,7 @@ struct Exchange {
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[test]
 fn dynamic_wire_interop() {
     let contract = WireDeclaration::of::<Unary>().contract().unwrap();

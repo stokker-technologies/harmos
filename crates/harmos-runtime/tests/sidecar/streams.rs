@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 #[cfg(feature = "grpc")]
 use std::time::Duration;
@@ -31,6 +32,7 @@ use harmos_runtime::operations::{Operation, StreamInput, StreamOutput, StreamSet
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! serving {
     ($owner:ident, $declaration:ident, $endpoints:ty, $request:ident, $ports:ident, $run:block) => {
         struct $owner(Arc<Counts>);
@@ -72,6 +74,7 @@ macro_rules! serving {
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     version = 1,
@@ -135,6 +138,7 @@ enum Implemented {
 /* === Traits === */
 
 /* === Implementations === */
+
 serving!(Uploading, Upload, StreamInput<u32>, request, input, {
     let mut total = request.value;
     while let Some(item) = input.recv().await {
@@ -158,6 +162,7 @@ serving!(Exchanging, Exchange, (StreamInput<u32>, StreamOutput<u32>), request, p
 });
 
 /* === Public Functions === */
+
 pub(super) fn bind(
     table: &mut WireTable<harmos_runtime::sidecar::Supervisor>, counts: Arc<Counts>,
 ) -> Result<(), harmos_runtime::operations::ServingError> {
@@ -167,6 +172,7 @@ pub(super) fn bind(
 }
 
 /* === Private Functions === */
+
 #[cfg(feature = "grpc")]
 fn opening<R: Send + Sync + 'static>(
     request: R,

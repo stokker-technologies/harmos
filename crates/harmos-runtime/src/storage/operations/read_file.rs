@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 use harmos_domain::operations::storage::ReadFile;
 // Standard Library Imports
 use std::sync::Arc;
@@ -40,6 +41,7 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ReadFile;
     type Resources = StorageManager<C>;
@@ -73,4 +75,5 @@ impl<C: 'static> Operation for Handler<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 /* === Tests === */

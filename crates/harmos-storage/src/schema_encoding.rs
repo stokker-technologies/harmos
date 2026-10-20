@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Input<A> {
     map: A,
     position: Option<StorageCursor>,
@@ -41,6 +43,7 @@ struct Input<A> {
 struct StorageVisitor;
 
 /* === Enums === */
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Encoding {
@@ -50,6 +53,7 @@ enum Encoding {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl StorageSchema {
     // Empty definitions have the highest allocation-to-JSON ratio: each `[]`
     // retains a vector header and traversal state. Include vector growth and the

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 // Third Party Imports
@@ -37,6 +38,7 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 // A Message Enum Is A Oneof: Each Variant Selects One Payload Shape Whose Fields
 // Are The Variant's Fields. Payload Shapes Are Unit Markers Carrying Only Their
 // Described Fields; Values Live In The Enum And Its Postcard Encoding.

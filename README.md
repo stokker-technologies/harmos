@@ -101,7 +101,7 @@ mise trust
 mise install --locked
 mise run prepare:tools
 mise run build
-target/debug/schematic-cli
+target/build/dev/linux-x86_64/bin/schematic-cli
 ```
 
 Install [mise](https://mise.jdx.dev) first. The walkthrough runs in the terminal
@@ -126,8 +126,8 @@ and propose a route, apply the proposal as a host transaction, undo/redo, and
 save/reopen the document.
 
 ```sh
-target/debug/schematic-cli
-target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
+target/build/dev/linux-x86_64/bin/schematic-cli
+target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
 `mise run build` builds the workspace and the example's CLI, sidecar and guest
@@ -189,12 +189,21 @@ cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path example
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
-Install the native GitHub Release archive for your Rust target triple by
-extracting its `cargo-harmos-<version>-<target>/` directory and placing
-`cargo-harmos` (`cargo-harmos.exe` on Windows) on `PATH`. Run `cargo harmos --help`
-to check installation. Releases contain the tool, README and Apache license;
-examples and test reports are downloadable CI artifacts. Cargo registry
-publication is deferred.
+The upcoming release is configured to publish raw
+`cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
+After publication, download the matching asset, verify it against `SHA256SUMS`,
+rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
+`PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
+installation. Cargo-binstall and mise installation are verified against those
+same published bytes before release completion. Harmos crates, including the
+CLI, are configured for crates.io publication.
+
+The release also declares `schematic-<version>-<platform>.zip` demo bundles for
+`linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
+`schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
+Wasm backend. Keep its `plugins/` directory beside the executable. Package
+checks run both backends from an isolated extraction. Release downloads include
+`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use
@@ -246,7 +255,7 @@ cargo harmos sidecar build -p schematic-sidecar --json > build.json
 cargo harmos bindings python --build-json build.json \
   --producer schematic-sidecar --catalog operations \
   --distribution schematic-bindings --module schematic_bindings \
-  --package-version 0.2.0 --description "Schematic Operation Bindings" \
+  --package-version 0.1.0 --description "Schematic Operation Bindings" \
   --license Apache-2.0 --output generated/schematic-bindings
 python -m pip install ./generated/schematic-bindings
 ```
@@ -308,9 +317,17 @@ request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 
 Register one `operations::authorization::Authorizer` with the original operation
-manager before external calls. It selects a compatible canonical `Required` from
-trusted `CallContext` and live provider metadata; discovery and actual request
-grants use the same selection. Application policy owns roles and entitlements.
+manager before external calls. Its `authorize` method selects
+`Authorization::Restricted(Required)` for exact grants or
+`Authorization::Full(Contract)` for all scopes on that original operation;
+`None` denies access. Both selections validate the live provider contract.
+Full control still refuses a grant naming a different operation and cannot
+override a calling plugin's own capability requirements. Trusted `CallContext`
+and live provider metadata drive the same selection for discovery and actual
+requests. `Provider.plugin` reports whether the original registration belongs
+to a plugin scope; an arbitrary host owner name cannot establish that provenance.
+Discovery lists finite selected grants without inventing wildcards;
+invocation always checks the actual request. Application policy owns entitlements.
 Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants
 retain their authenticated context and separate cache identity. Existing
@@ -326,6 +343,14 @@ and closes its connections gracefully; connections that cannot drain, such as
 unread streams, are aborted after half of `shutdown_timeout`. The application
 runtime stays available for a new attachment. Accepted sockets
 use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
+
+Several `grpc().attach(settings)` calls may serve the same operation registry
+concurrently, each with independent TLS, connection/call limits and shutdown.
+Retain each `Attached` handle and use its `local_addr()`; dropping or detaching
+it ends only that listener. Runtime shutdown ends every attachment. The manager's
+singular `local_addr()` returns an address only when exactly one listener is
+active. Register shared services and middleware before attachment; they remain
+frozen while any listener is active.
 
 Storage is configured by three explicit groups, with no defaults:
 
@@ -429,6 +454,10 @@ committed earlier batches; callers must not blindly replay unacknowledged data.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
 and a JSONL journal, bounded by the storage batch ceiling.
+`FileBackend::with_journal_opener` accepts a caller-owned journal opener for
+controlled file access, including fault testing. The opener receives the journal
+path under the exclusive root lease and must preserve its existing bytes; it is
+also used when reopening after checkpoint replacement.
 
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.
@@ -685,29 +714,39 @@ The consuming application owns authentication, connections, metadata and cancell
 Use the setup commands in [Quick Start](#quick-start), then choose a task:
 
 ```sh
-mise run build                  # Build the workspace and the example once
+mise run build                  # Build packageable products and generated clients
+mise run build:tests            # Build the shared test archive and fixtures
 mise run check                  # Run repository checks
 mise run test                   # Run the test suite
+mise run build:bench            # Build benchmark executables
 mise run bench                  # Record benchmark results
 ```
 
 Local and development validation use the development profile. `mise run build`
-compiles the workspace once into a nextest archive and stamps the
-schematic/sandbox artifacts under `target/fixtures/`; test layers run from that
-archive and refuse a missing or stale fixture. Separate `test:unit`,
+exports shipping binaries and generated clients. `mise run build:tests` compiles
+one shared nextest archive and stamps the schematic/sandbox fixtures under
+`target/build/dev/<target>/fixtures/`; test layers run from that archive and
+refuse a missing or stale fixture. Product and Tests outputs use matching
+`target/build/<profile>/<target>/` directories. Separate `test:unit`,
 `test:integration`, `test:acceptance` and `test:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
+Unit and integration lanes consume Tests outputs; metadata inspection uses
+stamped inert artifact copies. Acceptance and system lanes additionally select
+their declared Product hosts, and only acceptance prepares compiler libraries
+and offline authoring inputs.
 `mise run test:coverage` instruments the full selection separately. `mise run ci`
 runs the same graph as CI on the current tree; a failing lane fails the run.
 
 CI runs the Check, Build and Validate stages on Linux and Windows, and both
-platforms are required for `dev`, `main` and releases. Pushes to `dev` add
-development packages and a publication dry run; nightly adds coverage and
+platforms are required for `dev`, `main` and releases. Pull requests and pushes
+to `dev` verify development packages and dry publication; packages consume
+Product outputs under `target/package/<profile>/<target>/`. Nightly adds coverage and
 benchmarks. Optimized distribution builds and publication belong to release-tag
-pipelines. Rust crates and product assets are the published distributions;
-generated Python clients belong to their consuming producer package.
+pipelines. Rust crates publish to crates.io; CI packages retain the native CLI
+and example plugin bundles. Generated Python clients belong to their consuming
+producer package.
 
-Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
+Task PRs squash into `dev`. Stable `release/v<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into
 `dev`. Harmos currently enables the release-branch route into `main`; a published-tag
 hotfix needs its explicit release context before enabling that route.

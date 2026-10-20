@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -28,6 +29,7 @@ use harmos_domain::Refusal;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct Router(Arc<Registry>);
 
@@ -60,24 +62,33 @@ pub struct PluginCaller {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum DispatchError {
     #[error("plugin `{owner}` is absent from the admitted graph")]
     UnknownOwner { owner: String },
+
     #[error("plugin `{0}` is already serving or admitted")]
     Occupied(String),
+
     #[error("plugin `{owner}` has not bound its complete admitted operation inventory")]
     IncompleteOperations { owner: String },
+
     #[error("plugin `{owner}` has not retained its complete admitted stream inventory")]
     IncompleteStreams { owner: String },
+
     #[error("plugin `{owner}` has not retained its complete admitted listener inventory")]
     IncompleteListeners { owner: String },
+
     #[error("the plugin instance is unavailable")]
     Unavailable,
+
     #[error("the plugin request queue is full")]
     Busy,
+
     #[error("the route deadline expired")]
     Deadline,
+
     #[error(transparent)]
     Refused(#[from] Refusal),
 }
@@ -85,6 +96,7 @@ pub enum DispatchError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl DispatchError {
     pub fn code(&self) -> i64 {
         match self {

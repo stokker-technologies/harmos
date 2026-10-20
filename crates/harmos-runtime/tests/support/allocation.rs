@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod feeds {
     use serde::{Deserialize, Serialize};
 
@@ -45,6 +46,7 @@ mod feeds {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -59,6 +61,7 @@ use feeds::{Narrow, Waveform, Wide};
 use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
 
 /* === Constants === */
+
 const PHASES: [(u64, Duration); 7] = [
     (1_024, Duration::from_millis(2)),
     (4_096, Duration::from_millis(2)),
@@ -75,6 +78,7 @@ const ROWS: u64 = 43_008;
 static ALLOCATOR: Counting = Counting;
 
 /* === Macros === */
+
 thread_local! {
         static MEASURING: Cell<bool> = const { Cell::new(false) };
         static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
@@ -83,6 +87,7 @@ thread_local! {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Probe;
 
 struct Counting;
@@ -92,6 +97,7 @@ struct Counting;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Probe {
     type State = ();
     type Transaction = Never;
@@ -125,6 +131,7 @@ unsafe impl GlobalAlloc for Counting {
 }
 
 /* === Public Functions === */
+
 pub async fn streams_r004_publish_cost_is_independent_of_the_window_size() {
     let runtime = measured_runtime().await;
 
@@ -248,6 +255,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
 }
 
 /* === Private Functions === */
+
 fn measured<S: Stream<Probe>>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
     ALLOCATIONS.with(|allocations| allocations.set(0));
     MEASURING.with(|measuring| measuring.set(true));

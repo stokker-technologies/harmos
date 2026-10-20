@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -21,6 +22,7 @@ use harmos_domain::__private::decoding_add as add;
 use harmos_domain::MessageError;
 
 /* === Constants === */
+
 const DEPTH: usize = 32;
 
 /* === Macros === */
@@ -42,6 +44,7 @@ pub struct DecodeField<'a> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy)]
 enum Source<'a> {
     Bytes(&'a [u8]),
@@ -67,6 +70,7 @@ pub enum DecodeScalar {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<'a> DecodeInput<'a> {
     pub const fn new(bytes: &'a [u8]) -> Self {
         Self { source: Source::Bytes(bytes), depth: 0 }
@@ -206,6 +210,7 @@ impl<'a> DecodeField<'a> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn varint(bytes: &mut &[u8]) -> Result<u64, MessageError> {
     let mut value = 0u64;
     for shift in (0..70).step_by(7) {

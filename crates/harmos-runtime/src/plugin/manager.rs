@@ -8,12 +8,15 @@
  */
 
 /* === Modules === */
+
 mod retirement;
 
 /* === Re-Exports === */
+
 pub use retirement::{PluginCleanup, PluginCleanupStatus};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
@@ -29,16 +32,19 @@ use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Error, Result};
 
 /* === Constants === */
+
 const EVENTS: usize = 64;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Observer = dyn Fn(&str, Option<PluginStatus>) + Send + Sync;
 type CleanupOwner = Arc<Cleanup<Box<dyn Resource>>>;
 type Stop<G, S, E> = for<'a> fn(&'a PluginDefinition, &'a PluginScope, &'a mut PluginBackend<G, S, E>) -> Finalize<'a>;
 
 /* === Structs === */
+
 pub struct PluginManager<G, S, E> {
     definitions: BTreeMap<String, PluginDefinition>,
     instances: BTreeMap<String, PluginInstance<G, S, E>>,
@@ -102,6 +108,7 @@ pub struct PluginCleanupFailure {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginLifecyclePhase {
     Initialize,
@@ -125,24 +132,32 @@ enum FailureScope {
 pub enum PluginFailure {
     #[error(transparent)]
     Plan(#[from] super::Error),
+
     #[error(transparent)]
     Routing(#[from] DispatchError),
+
     #[error("reload plan revision {expected} is stale; manager revision is {actual}")]
     StalePlan { expected: u64, actual: u64 },
+
     #[error("the application could not fence affected plugin work: {0}")]
     Fence(#[source] Error),
+
     #[error("{} plugin cleanup operations failed", .0.len())]
     Cleanup(Vec<PluginCleanupFailure>),
+
     #[error("plugin `{artifact}` could not initialize: {source}")]
     Start {
         artifact: String,
+
         #[source]
         source: Error,
+
         cleanup: Vec<PluginCleanupFailure>,
     },
 }
 
 /* === Traits === */
+
 pub trait PluginLifecycle {
     type Guest: Send + 'static;
     type Sidecar: Send + 'static;
@@ -172,6 +187,7 @@ pub trait PluginLifecycle {
 }
 
 /* === Implementations === */
+
 impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> Resource for Retiring<G, S, E> {
     fn finalize(&mut self) -> Finalize<'_> {
         (self.stop)(&self.definition, &self.scope, &mut self.backend)
@@ -934,6 +950,7 @@ impl<G, S, E> Drop for PluginManager<G, S, E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 fn remote_failure(failure: crate::operations::FailureKind) -> PluginFailureClass {
     match failure {

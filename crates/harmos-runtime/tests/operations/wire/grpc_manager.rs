@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "grpc_network.rs"]
 mod grpc_network;
 
@@ -42,6 +43,7 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
+
 const WHO_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
@@ -60,6 +62,7 @@ const REJECTION_DETAILS: &[u8] = &[
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Principal(String);
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
@@ -145,6 +148,7 @@ struct Trace(Arc<Mutex<Vec<tonic::Code>>>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Authenticator for Sessions {
     type Principal = Principal;
     fn authenticate<'a>(&'a self, call: &'a Invocation) -> Authentication<'a, Principal> {
@@ -203,14 +207,15 @@ impl Operation for Read {
     }
 }
 impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
-    fn required(
+    fn authorize(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
-    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Required>> {
+    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
         use harmos_domain::plugin::Grant;
-        use harmos_runtime::operations::authorization::Required;
+        use harmos_runtime::operations::authorization::{Authorization, Required};
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);
         assert!(provider.generation.value() > 0);
+        assert!(!provider.plugin, "host registration cannot impersonate a plugin provider");
         let Some(principal) = context.get::<Principal>() else {
             return Ok(None);
         };
@@ -220,12 +225,17 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
-                        return Ok(Some(Required {
+                        return Ok(Some(Authorization::Restricted(Required {
                             contract: harmos_runtime::operations::WireDeclaration::of::<Descendant>().contract().unwrap(),
                             grants,
-                        }));
+                        })));
                     }
                     2 => panic!("authorizer panic fixture"),
+                    3 => {
+                        let contract = harmos_runtime::operations::WireDeclaration::of::<Descendant>().contract().unwrap();
+                        return Ok(Some(Authorization::Full(contract)));
+                    }
+                    4 => return Ok(Some(Authorization::Full(provider.contract.clone()))),
                     _ => (),
                 }
                 match principal.0.as_str() {
@@ -236,7 +246,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
             }
             _ => return Ok(None),
         }
-        Ok(Some(Required { contract: provider.contract.clone(), grants }))
+        Ok(Some(Authorization::Restricted(Required { contract: provider.contract.clone(), grants })))
     }
 }
 
@@ -567,6 +577,7 @@ impl Operation for Holding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn authored_rejection() -> tonic::Status {
     let mut metadata = tonic::metadata::MetadataMap::new();
     metadata.insert("x-fixture-rejection", "absent".parse().unwrap());

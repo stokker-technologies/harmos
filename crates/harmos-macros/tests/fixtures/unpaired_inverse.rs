@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "sheet.place", version = 1, inverse = Remove)]
 #[derive(Deserialize, Serialize)]
 struct Place;
@@ -43,6 +45,7 @@ struct Remove;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

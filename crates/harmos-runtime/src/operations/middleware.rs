@@ -30,9 +30,11 @@ use crate::{Error, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Enter<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub struct Invocation {
     operation: Definition,
     id: OperationInstanceId,
@@ -71,6 +73,7 @@ pub(super) struct Session {
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Middleware: Send + Sync + 'static {
     fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a>;
 
@@ -78,6 +81,7 @@ pub trait Middleware: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl Invocation {
     pub fn is_host_call(&self) -> bool {
         self.origin.identity == super::caller::Identity::Host
@@ -196,6 +200,7 @@ impl Drop for Session {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,

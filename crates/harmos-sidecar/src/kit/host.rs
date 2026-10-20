@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,7 @@ use harmos_domain::operations::instance::Id;
 use harmos_sdk::operations::{CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl};
 
 /* === Constants === */
+
 const PENDING_CALLS: usize = 256;
 // One Batched Call Claims No More Host Preparation Than One Maximal Row.
 const PUBLICATION_BATCH_BYTES: usize = 1024 * 1024;
@@ -33,6 +35,7 @@ const PUBLICATION_BATCH_BYTES: usize = 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct PendingCalls {
     state: Mutex<PendingState>,
     capacity: Semaphore,
@@ -63,6 +66,7 @@ pub struct Supervisor {
 }
 
 /* === Enums === */
+
 pub(crate) enum Outgoing {
     Frame(Frame),
     Started(u64),
@@ -78,17 +82,23 @@ pub enum CallError {
     #[error("{}", refused_line(*.code, .failure))]
     Refused {
         code: i64,
+
         #[source]
         failure: harmos_domain::Failure,
     },
+
     #[error("the host connection is unavailable")]
     Unavailable,
+
     #[error("the host returned a malformed reply for `{method}`: {message}")]
     Malformed { method: &'static str, message: String },
+
     #[error("the request for `{method}` requires {encoded} bytes; the frame limit is {limit}")]
     Oversized { method: &'static str, encoded: usize, limit: usize },
+
     #[error(transparent)]
     Publication(#[from] PublicationError),
+
     #[error("`{method}` needs process-local resources a connection cannot carry")]
     LocalResources { method: &'static str },
 }
@@ -97,8 +107,10 @@ pub enum CallError {
 pub enum PublicationError {
     #[error("publication sequence exhausted for stream `{stream}`")]
     SequenceExhausted { stream: &'static str },
+
     #[error("the observer did not declare stream `{stream}` in streams(...)")]
     Undeclared { stream: &'static str },
+
     #[error("the publication requires {encoded} bytes; the frame limit is {limit}")]
     Oversized { encoded: usize, limit: usize },
 }
@@ -106,6 +118,7 @@ pub enum PublicationError {
 /* === Traits === */
 
 /* === Implementations === */
+
 // A handler that returns a host refusal forwards its failure unchanged rather
 // than flattening the call error's own line into a new cause.
 impl From<CallError> for harmos_domain::Refusal {
@@ -473,6 +486,7 @@ impl Supervisor {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
         Some(operation) => format!("operation `{operation}` failed"),

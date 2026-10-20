@@ -5,11 +5,11 @@ The algorithms are deliberately small so the Harmos workflow stays visible.
 
 ## Run It
 
-From the repository root, after `mise install --locked`, `mise run sync` and `mise run build`:
+From the repository root, after `mise install --locked`, `mise run prepare:tools` and `mise run build`:
 
 ```sh
-target/debug/schematic-cli
-target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
+target/build/dev/linux-x86_64/bin/schematic-cli
+target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
 Read [walkthrough.rs](cli/src/walkthrough.rs) alongside the output. It creates a
@@ -83,14 +83,15 @@ package-relative `.proto` files, preserving imports. The native catalogs include
 start a gRPC server; runtime reflection describes the methods actually exposed
 by a running host, including dynamic plugins.
 
-GitHub Release archives contain only `cargo-harmos`, its README and license.
-Examples and test reports remain GitHub Actions artifacts.
+CI packages retain `cargo-harmos`, the schematic CLI and its native and guest plugins.
+Examples and test reports remain GitHub Actions artifacts; Rust crates publish to crates.io.
 
 ## Tests And Persistence
 
-This example is the system fixture of the Harmos test suite: the build stamps its
-CLI, sidecar and guest component under `target/fixtures/`, and the system stories
-in `crates/*/tests/system/` drive those artifacts.
+Product Build exports the CLI and plugins under `target/build/dev/<target>/bin/`.
+Tests Build stamps those exact Product bytes in
+`target/build/dev/<target>/fixtures/stamp.json`, and the system stories in
+`crates/*/tests/system/` drive those artifacts.
 
 The [JSONL adapter](storage/) is the example's persistence format. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime

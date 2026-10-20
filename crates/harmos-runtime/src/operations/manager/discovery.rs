@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::{self, Write};
 use std::ops::Bound;
@@ -28,6 +29,7 @@ use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 
 /* === Constants === */
+
 const MAX_ROWS: usize = 256;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const CURSOR_BYTES: usize = MAX_BYTES;
@@ -35,9 +37,11 @@ const CURSOR_BYTES: usize = MAX_BYTES;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type ProviderEntry = (String, String, Arc<Entry>);
 
 /* === Structs === */
+
 #[derive(Serialize)]
 struct Metadata<'a> {
     owner: &'a Identifier,
@@ -58,6 +62,7 @@ struct Bounded {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
@@ -110,8 +115,8 @@ impl OperationManager {
             let Some(contract) = &entry.contract else {
                 continue;
             };
-            let required = match self.required_external(&entry, &origin) {
-                Ok(required) => required,
+            let authorization = match self.authorize_external(&entry, &origin) {
+                Ok(authorization) => authorization,
                 Err(Error::OperationUnauthorized { .. } | Error::PermissionDenied) => continue,
                 Err(error) => return Err(error),
             };
@@ -135,7 +140,11 @@ impl OperationManager {
                     state.grpc.get(&binding.path()).is_some_and(|registered| registered.as_ptr() == Arc::as_ptr(&entry))
                 });
             drop(state);
-            let grants: &[Grant] = required.as_ref().map_or(&[], |selected| selected.grants.as_slice());
+            let required = match &authorization {
+                Some(crate::operations::authorization::Authorization::Restricted(required)) => Some(required),
+                _ => None,
+            };
+            let grants: &[Grant] = required.map_or(&[], |selected| selected.grants.as_slice());
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             let grants = origin
                 .scope
@@ -143,7 +152,7 @@ impl OperationManager {
                 .and_then(|caller| caller.requirement(&entry.definition.id))
                 .map_or(grants, |required| required.grants.as_slice());
             let selected_grants;
-            let grants = if let Some(required) = &required {
+            let grants = if let Some(required) = required {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                 let plugin_required = origin.scope.as_ref().and_then(|caller| caller.requirement(&entry.definition.id));
                 #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
@@ -202,6 +211,7 @@ impl OperationManager {
 }
 
 /* === Public Functions === */
+
 // The Row And Byte Bounds Of One Catalog Page, Shared By Every Kind.
 pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)> {
     let rows = request.rows.unwrap_or(64);

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[cfg(feature = "fft")]
 mod bounded;
 mod decibel;
@@ -18,6 +19,7 @@ mod indicator;
 mod taper;
 
 /* === Re-Exports === */
+
 #[cfg(feature = "fft")]
 pub use bounded::fft_in_place;
 pub use decibel::{Decibel, Scale};
@@ -28,6 +30,7 @@ pub use indicator::{band_energy, band_rms, centroid, occupied_bandwidth, papr, r
 pub use taper::{Band, Taper};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -41,6 +44,7 @@ pub use taper::{Band, Taper};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Spectrum {
     pub step: f64,
@@ -53,6 +57,7 @@ pub struct Spectrum {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Spectrum {
     #[must_use]
     pub fn rate(&self) -> f64 {
@@ -64,6 +69,7 @@ impl Spectrum {
 }
 
 /* === Public Functions === */
+
 #[must_use]
 pub fn magnitude(real: &[f64], imag: &[f64]) -> Vec<f64> {
     real.iter().zip(imag).map(|(real, imag)| real.hypot(*imag)).collect()

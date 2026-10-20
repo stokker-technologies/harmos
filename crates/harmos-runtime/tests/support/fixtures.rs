@@ -15,6 +15,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -39,6 +40,7 @@ use serde_json::Value;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn artifact(name: &str) -> PathBuf {
     let path = stamp()["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name}"));
     directory().join(path)
@@ -46,6 +48,13 @@ pub fn artifact(name: &str) -> PathBuf {
 
 pub fn component(name: &str) -> Vec<u8> {
     std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"))
+}
+
+// Tests Own These Inert Copies; Inspecting Them Never Loads Or Executes A Plugin.
+pub fn inspection(name: &str) -> Vec<u8> {
+    let path = stamp()["metadata"]["inspections"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name} inspection"));
+    let path = directory().join(path);
+    std::fs::read(path).unwrap_or_else(|error| panic!("inspection fixture {name} is unreadable: {error}"))
 }
 
 pub fn input(name: &str) -> PathBuf {
@@ -90,9 +99,13 @@ pub fn protoc() -> PathBuf {
 }
 
 /* === Private Functions === */
+
 fn directory() -> PathBuf {
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory");
-    manifest.ancestors().nth(2).expect("crates live two levels below the workspace").join("target/fixtures")
+    let root = manifest.ancestors().nth(2).expect("crates live two levels below the workspace");
+    let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
+    let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    root.join("target/build").join(profile).join(target).join("fixtures")
 }
 
 fn stamp() -> &'static Value {

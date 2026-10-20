@@ -32,6 +32,7 @@ use crate::Error;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Status {
     phase: Phase,
@@ -62,6 +63,7 @@ struct Dependency {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Queued,
@@ -85,11 +87,13 @@ pub enum Outcome {
 }
 
 /* === Traits === */
+
 trait Settlement: Send + Sync {
     fn settle(&self) -> Finalize<'_>;
 }
 
 /* === Implementations === */
+
 impl Status {
     pub fn phase(&self) -> Phase {
         self.phase

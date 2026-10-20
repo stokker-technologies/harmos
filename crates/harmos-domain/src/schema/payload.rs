@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -22,9 +23,13 @@ use crate::config::SchemaSettings;
 use crate::message::PostcardReader;
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Validator {
     root: usize,
@@ -39,6 +44,7 @@ struct Checked {
 }
 
 /* === Enums === */
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathElement<'schema> {
     Field { name: &'schema str, tag: u32 },
@@ -73,6 +79,7 @@ pub enum Event<'payload> {
 pub enum VisitError<E> {
     #[error(transparent)]
     Payload(#[from] PayloadError),
+
     #[error("Postcard visitor failed: {0}")]
     Consumer(#[source] E),
 }
@@ -95,7 +102,9 @@ enum Wire {
 pub struct PayloadError(#[from] MessageError);
 
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Validator {
     // Reuse The Checked Definitions For Another Root Without Recompiling Them.
     pub fn at(&self, root: usize) -> Result<Self, graph::Error> {
@@ -275,7 +284,9 @@ impl crate::MemorySize for Validator {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn graph_compilation_bytes(schema: &graph::Schema) -> Result<usize, graph::Error> {
     let mut bytes = std::mem::size_of::<Validator>()
         .checked_add(schema.definitions.len().checked_mul(std::mem::size_of::<Box<[Checked]>>()).ok_or(graph::Error::Budget)?)

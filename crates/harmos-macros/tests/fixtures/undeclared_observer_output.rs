@@ -9,12 +9,14 @@
 
 
 /* === Modules === */
+
 #[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +30,7 @@ mod controls;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Bridge;
 
 #[derive(Default)]
@@ -37,13 +40,16 @@ struct Watch;
 struct Output { value: u64 }
 
 /* === Enums === */
+
 #[harmos::catalog]
 enum Observers { Watch(Watch) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
+
 impl harmos::operations::lifecycle::Policy for Bridge {
     const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
@@ -61,6 +67,7 @@ impl ProductPlugin for Bridge {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

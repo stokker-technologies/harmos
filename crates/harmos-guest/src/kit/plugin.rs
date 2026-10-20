@@ -21,6 +21,7 @@ pub mod __bindings {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::cell::RefCell;
@@ -36,6 +37,7 @@ use harmos_sdk::plugin::{Declared, Owner, Plugin};
 /* === Constants === */
 
 /* === Macros === */
+
 thread_local! {
     static TABLE: RefCell<Option<Instance>> = const { RefCell::new(None) };
 }
@@ -64,10 +66,12 @@ macro_rules! export_plugin {
 }
 
 /* === Type Aliases === */
+
 type Table = Arc<Mutex<WireTable<Context>>>;
 type Refusal = __bindings::harmos::guest::capabilities::Refusal;
 
 /* === Structs === */
+
 struct Instance {
     owner: TypeId,
     capacity: NonZeroUsize,
@@ -163,6 +167,7 @@ where
 }
 
 /* === Private Functions === */
+
 fn supported_observers<P: Declared>() -> Result<(), String> {
     if harmos_domain::catalog::count(P::OBSERVERS) != 0 {
         return Err("guest observer callbacks are unsupported".into());
@@ -170,7 +175,6 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
     Ok(())
 }
 
-#[doc(hidden)]
 pub fn refusal(error: impl std::fmt::Display) -> Refusal {
     let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
     Refusal { code: refusal.code().to_string(), failure: refusal.failure().encode() }

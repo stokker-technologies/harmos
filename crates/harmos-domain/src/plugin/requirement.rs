@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 // Third Party Imports
@@ -27,6 +28,7 @@ use crate::operations::{Declares, OperationDeclaration, WireDeclaration};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Permission to call one operation. An operation whose request names a channel,
 // stream or source resolves it to `scope`; any other operation is granted by
 // its id alone, which holding its requirement already confers.
@@ -34,6 +36,7 @@ use crate::operations::{Declares, OperationDeclaration, WireDeclaration};
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct Grant {
     pub operation: Cow<'static, str>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<Cow<'static, str>>,
 }
@@ -50,6 +53,7 @@ pub struct Requirements;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Requirement {
     pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
         Self { declaration: WireDeclaration::of::<O>(), grants }

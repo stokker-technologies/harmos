@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -28,6 +29,7 @@ use harmos_runtime::{Error, services::Fault, services::Service, state::Entry, st
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct FinalDrain(StorageManager);
 
 /* === Enums === */
@@ -35,6 +37,7 @@ struct FinalDrain(StorageManager);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl JournalConsumer<Bank> for FinalDrain {
     fn resume(&self) -> Position {
         Position::ORIGIN
@@ -53,6 +56,7 @@ impl JournalConsumer<Bank> for FinalDrain {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn dormant() -> Fixture {
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).runtime().await.unwrap();
     let data = Arc::new(Data::new(history()));

@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
@@ -22,6 +23,7 @@ use crate::{Error, MemorySize, Result};
 /* === Constants === */
 
 /* === Macros === */
+
 crate::model::storage::codec::product!(ByteRange {
     offset: crate::model::storage::codec::Unsigned => 1,
     limit: crate::model::storage::codec::Optional<crate::model::storage::codec::Unsigned> => 2,
@@ -37,6 +39,7 @@ crate::model::storage::codec::product!(FileCompletion {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ByteRange {
     pub offset: u64,
@@ -57,6 +60,7 @@ pub struct FileCompletion {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ByteRange {
     pub fn end(self, length: u64) -> Result<u64> {
         let remaining = length

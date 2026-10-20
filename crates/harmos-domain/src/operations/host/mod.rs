@@ -8,12 +8,15 @@
  */
 
 /* === Modules === */
+
 mod payloads;
 
 /* === Re-Exports === */
+
 pub use payloads::*;
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -23,6 +26,7 @@ use crate::operations::{Contract, OperationPolicy, RestartPolicy, RetryPolicy, V
 use crate::plugin::Grant;
 
 /* === Constants === */
+
 pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
     attempt_timeout: Duration::from_secs(30),
@@ -31,6 +35,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+
 crate::declare!(Catalog {
     id: "host.catalog",
     version: 1,
@@ -45,6 +50,7 @@ crate::declare!(Catalog {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // A Live Provider Contract. Invocation Still Performs Request-Specific Authorization.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DiscoveredOperation {
@@ -61,6 +67,7 @@ pub struct DiscoveredOperation {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
 
 /* === Private Functions === */

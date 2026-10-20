@@ -28,6 +28,7 @@ use harmos_runtime::{Application, Runtime, state::Focus, state::ManagedState, st
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct State {
     value: i64,
 }
@@ -38,6 +39,7 @@ struct Plain;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Plain {
     type State = State;
     type Transaction = Never;

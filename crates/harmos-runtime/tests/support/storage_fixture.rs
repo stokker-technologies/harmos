@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 pub(crate) use std::sync::Arc;
@@ -35,6 +36,7 @@ pub(crate) use support::{Bank, Ledger, catalog};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Fixture {
     pub(crate) runtime: Runtime<Bank>,
     pub(crate) storage: StorageManager,
@@ -47,6 +49,7 @@ pub(crate) struct Fixture {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
         let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
@@ -70,6 +73,7 @@ impl Fixture {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSettings {
     harmos_runtime::storage::state::StorageStateSettings {
         max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
@@ -78,6 +82,7 @@ pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSe
 }
 
 /* === Private Functions === */
+
 pub(crate) fn config() -> StorageSettings {
     storage_settings()
 }
@@ -94,7 +99,6 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
     RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
 }
 
-/// Saved records of `schema` as (position, item), read through the Query operation contract.
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_runtime::storage::operations::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
@@ -128,7 +132,6 @@ pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &Schem
     records
 }
 
-/// Whether one poll of `future` leaves it pending, without waiting for anything.
 pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
     std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }

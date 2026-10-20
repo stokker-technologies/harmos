@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -47,6 +48,7 @@ pub struct Publication {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
     Call { id: u64, method: String, params: Vec<u8> },
@@ -59,6 +61,7 @@ pub enum Frame {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Frame {
     pub const REGISTER: &'static str = "harmos.register";
     pub const EXITING: &'static str = "harmos.exiting";
@@ -151,6 +154,7 @@ impl Frame {
 }
 
 /* === Public Functions === */
+
 // Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
@@ -175,6 +179,7 @@ pub(crate) fn varint_len(value: u64) -> usize {
 }
 
 /* === Private Functions === */
+
 fn binary_payload_growth(bytes: usize) -> usize {
     bytes.saturating_add(varint_len(bytes as u64).saturating_sub(1))
 }

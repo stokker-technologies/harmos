@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod capture;
 mod entry {
     pub use harmos_domain::state::{
@@ -26,6 +27,7 @@ mod transaction;
 mod writer;
 
 /* === Re-Exports === */
+
 pub use crate::error::Error;
 pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
@@ -53,6 +55,7 @@ pub(crate) use history::{ReadRequest, Reads, ReplayPayload, Tail, Undoable as Un
 pub(crate) use transaction::{Inverting, dispatch};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

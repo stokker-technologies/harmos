@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -30,6 +31,7 @@ use schematic_domain::operations::directories::list_directories::Directories;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct Listing;
 
 /* === Enums === */
@@ -37,6 +39,7 @@ pub(crate) struct Listing;
 /* === Traits === */
 
 /* === Implementations === */
+
 #[harmos_sidecar::operation]
 impl Listing {
     async fn initialize(_: Arc<crate::Resources>, _: &Supervisor) -> Self {

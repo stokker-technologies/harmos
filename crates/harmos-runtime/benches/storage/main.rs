@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[allow(dead_code, reason = "Reuse the controlled backend without its fault scenarios")]
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
@@ -24,6 +25,7 @@ mod waveforms;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -40,6 +42,7 @@ use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope};
 
 /* === Constants === */
+
 const PAYLOAD_BYTES: usize = 128;
 static STATE_CLONES: AtomicUsize = AtomicUsize::new(0);
 
@@ -48,6 +51,7 @@ static STATE_CLONES: AtomicUsize = AtomicUsize::new(0);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Model;
 
 #[harmos_runtime::message]
@@ -75,6 +79,7 @@ struct Observed {
 struct Projection;
 
 /* === Enums === */
+
 #[harmos_runtime::transactions(state = State, error = Infallible)]
 #[derive(Clone)]
 enum Transactions {
@@ -90,6 +95,7 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Clone for State {
     fn clone(&self) -> Self {
         STATE_CLONES.fetch_add(1, Ordering::Relaxed);
@@ -137,6 +143,7 @@ impl RecordProjection for Projection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {
     println!("{}", serde_json::json!({"kind":"storage_benchmark_provenance", "provenance": metrics::provenance()}));
     let executor = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();

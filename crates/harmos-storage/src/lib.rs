@@ -8,12 +8,11 @@
  */
 
 /* === Modules === */
+
 mod admissions;
-#[doc(hidden)]
+
 pub mod aggregate;
 pub mod arrow;
-#[cfg(test)]
-mod arrow_tests;
 mod backend;
 mod batch;
 mod batching;
@@ -30,8 +29,6 @@ mod manager;
 mod memory;
 mod object_admissions;
 mod objects;
-#[cfg(test)]
-mod policy_tests;
 pub mod query;
 mod queue;
 mod receipts;
@@ -45,6 +42,7 @@ mod worker;
 pub mod writes;
 
 /* === Re-Exports === */
+
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
 pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
@@ -65,12 +63,44 @@ pub use objects::ObjectGroup;
 pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
 pub use receipts::{MutationReceipt, MutationValue};
 pub use staging::StorageFile;
-#[doc(hidden)]
+
+pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 pub use staging::checkpoint::FileSave;
 pub use worker::Worker;
 pub use writes::StorageSchema;
 
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+extern crate self as harmos_storage;
+
+// Local Imports
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
 use crate as storage;
-extern crate self as harmos_storage;
-pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
+
+#[cfg(test)]
+#[allow(dead_code, reason = "capacity invariants use the shared in-memory storage backends")]
+#[path = "../tests/support/storage.rs"]
+mod test_backend;

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::{Arc, atomic::Ordering};
@@ -31,9 +32,11 @@ use harmos_runtime::{Builder, Runtime, state::Focus, state::Position, state::Pri
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Refusal = &'static str;
 
 /* === Structs === */
+
 struct Store {
     data: Arc<Data>,
     recovery: Arc<Recovery>,
@@ -60,6 +63,7 @@ struct Seen {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -75,6 +79,7 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Store {
     fn new() -> Self {
         Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
@@ -130,6 +135,7 @@ impl From<OldAdd> for Add {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn limits() -> ReadLimits {
     ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() }
 }

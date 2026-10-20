@@ -8,9 +8,11 @@
  */
 
 /* === Modules === */
+
 pub mod codec;
 
 /* === Re-Exports === */
+
 pub use codec::Key;
 
 /* === Imports === */
@@ -37,6 +39,7 @@ use crate::{MemorySize, Message, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectEntry {
@@ -74,6 +77,7 @@ pub struct ObjectReceipt {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectVersion {
     Latest,
@@ -83,6 +87,7 @@ pub enum ObjectVersion {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for ObjectEntry {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

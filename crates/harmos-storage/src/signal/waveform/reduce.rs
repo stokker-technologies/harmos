@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -33,6 +34,7 @@
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[must_use]
 pub fn lttb(x: &[f64], y: &[f64], count: usize) -> Vec<usize> {
     let length = x.len().min(y.len());
@@ -181,6 +183,7 @@ pub fn above_floor(values: &[f64], db_below_peak: f64) -> Vec<usize> {
 }
 
 /* === Private Functions === */
+
 fn positive(at: f64) -> f64 {
     at.max(f64::MIN_POSITIVE)
 }

@@ -8,17 +8,20 @@
  */
 
 /* === Modules === */
+
 pub mod contract;
 pub mod scalar;
 pub mod transform;
 
 /* === Re-Exports === */
+
 pub use contract::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
     StreamSelection,
 };
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

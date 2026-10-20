@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -30,6 +31,7 @@ use crate::schema::declaration::Named;
 use crate::schema::graph::Schema;
 
 /* === Constants === */
+
 const ENTRY_LIMIT: usize = 4096;
 const GRANT_LIMIT: usize = 256;
 
@@ -38,6 +40,7 @@ const GRANT_LIMIT: usize = 256;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Decoded")]
 pub struct Manifest {
@@ -52,6 +55,7 @@ pub struct Manifest {
 #[serde(deny_unknown_fields)]
 pub struct Required {
     pub contract: Contract,
+
     #[serde(default)]
     pub grants: Vec<Grant>,
 }
@@ -71,6 +75,7 @@ pub struct Identity {
 struct Decoded {
     #[serde(default)]
     kind: Option<String>,
+
     facility: String,
     owner: String,
     provides: Vec<Contract>,
@@ -87,10 +92,13 @@ pub struct NamedContract {
     pub codec: crate::operations::Codec,
     pub request: String,
     pub response: String,
+
     #[serde(default)]
     pub input: Option<String>,
+
     #[serde(default)]
     pub output: Option<String>,
+
     #[serde(default)]
     pub grpc: Option<crate::operations::Grpc>,
 }
@@ -99,6 +107,7 @@ pub struct NamedContract {
 #[serde(deny_unknown_fields)]
 pub struct NamedRequired {
     pub contract: NamedContract,
+
     #[serde(default)]
     pub grants: Vec<Grant>,
 }
@@ -119,32 +128,45 @@ pub(crate) struct Encoder<const N: usize> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("missing complete {facility} contract inventory for `{owner}`")]
     Missing { facility: String, owner: String },
+
     #[error("multiple {facility} contract inventories for `{owner}`")]
     Duplicate { facility: String, owner: String },
+
     #[error("contract inventory exceeds its entry or fragment budget")]
     Budget,
+
     #[error("contract inventory requires a guest or sidecar facility and a valid artifact owner")]
     Identity,
+
     #[error("contract inventory has an invalid fragment kind")]
     Kind,
+
     #[error("requirement `{id}` carries a duplicate or invalid grant")]
     Grant { id: String },
+
     #[error("duplicate ordinary operation `{id}` in {direction}")]
     OperationDuplicate { direction: &'static str, id: String },
+
     #[error("invalid ordinary operation metadata: {0}")]
     Operation(#[from] crate::Error),
+
     #[error("SDK lifecycle inventory must contain initialization then shutdown")]
     LifecycleOrder,
+
     #[error("invalid SDK lifecycle inventory: {0}")]
     Lifecycle(#[from] lifecycle::Error),
+
     #[error("invalid shared contract schema: {0}")]
     Schema(#[from] crate::schema::graph::Error),
+
     #[error("invalid resolved contract: {0}")]
     Contract(#[from] crate::operations::ContractError),
+
     #[error("invalid contract inventory JSON: {0}")]
     Decode(#[from] serde_json::Error),
 }
@@ -152,6 +174,7 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl NamedContract {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Contract, Error> {
         let mut roots = vec![("request", self.request.as_str()), ("response", self.response.as_str())];
@@ -245,6 +268,7 @@ impl<const N: usize> Encoder<N> {
 }
 
 /* === Public Functions === */
+
 pub fn decode(fragment: &[u8]) -> Result<Manifest, Error> {
     if fragment.len() > crate::FRAGMENT_LIMIT {
         return Err(Error::Budget);
@@ -405,6 +429,7 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
 }
 
 /* === Private Functions === */
+
 const fn encoded_identity<const N: usize>(facility: &str, id: &str, version: &str, description: &str, config: &str) -> Encoder<N> {
     assert!(valid_identity(facility, id));
     let mut out = Encoder { bytes: [0; N], cursor: 0 };

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::time::Duration;
@@ -68,11 +69,13 @@ pub struct Manifest {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Activation {
     #[default]
     Plugin,
+
     Demand,
 }
 
@@ -80,12 +83,16 @@ pub enum Activation {
 pub enum Error {
     #[error(transparent)]
     Contract(#[from] contracts::Error),
+
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
+
     #[error("the artifact carries no complete {facility} observer inventory for `{owner}`")]
     Missing { facility: String, owner: String },
+
     #[error("the artifact carries multiple {facility} observer inventories for `{owner}`")]
     Duplicate { facility: String, owner: String },
+
     #[error("observer `{id}` is invalid: {reason}")]
     Invalid { id: String, reason: &'static str },
 }
@@ -97,6 +104,7 @@ pub trait Declared {
 }
 
 /* === Implementations === */
+
 impl crate::catalog::Visitor for Descriptors {
     type Entry = Entry;
 }
@@ -149,6 +157,7 @@ impl<const N: usize> Encoder<N> {
 }
 
 /* === Public Functions === */
+
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, grants: &[StreamDeclaration]) -> Result<Vec<Declaration>, Error> {
     Ok(select_manifest(manifests, facility, owner, grants)?.observers)
 }
@@ -213,6 +222,7 @@ pub const fn encode_tree<const N: usize>(facility: &str, owner: &str, entries: &
 }
 
 /* === Private Functions === */
+
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry]) -> Encoder<N> {
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
     out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");

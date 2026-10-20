@@ -7,10 +7,33 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl OperationManager {
     pub(crate) fn new(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
@@ -54,9 +77,9 @@ impl OperationManager {
         self.admit::<O, P>((crate::operations::binding::Request::charged(request)?, endpoints), None, &[], &Source::Host.external()?, None)
     }
 
-    pub(in crate::operations) fn required_external(
+    pub(in crate::operations) fn authorize_external(
         &self, entry: &Entry, origin: &Origin,
-    ) -> Result<Option<harmos_domain::inventory::contracts::Required>> {
+    ) -> Result<Option<crate::operations::authorization::Authorization>> {
         #[cfg(feature = "grpc")]
         if matches!(origin.identity, crate::operations::caller::Identity::External(_)) {
             let Some(authorizer) = self.registry.middleware.authorizer() else {
@@ -69,11 +92,16 @@ impl OperationManager {
                 operation: entry.id().to_owned(),
             };
             let contract = entry.contract.as_ref().ok_or_else(denied)?;
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            let plugin = entry.plugin.is_some();
+            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            let plugin = false;
             let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                authorizer.required(
+                authorizer.authorize(
                     self.call_context(),
                     crate::operations::authorization::Provider {
                         owner: &entry.owner,
+                        plugin,
                         generation: entry.generation,
                         definition: &entry.definition,
                         contract,
@@ -82,7 +110,11 @@ impl OperationManager {
             }))
             .map_err(|_| Error::InvalidInput { field: "operation authorizer", reason: "authorization callback panicked" })??
             .ok_or_else(denied)?;
-            if !contract.compatible(&selected.contract) {
+            let selected_contract = match &selected {
+                crate::operations::authorization::Authorization::Full(contract) => contract,
+                crate::operations::authorization::Authorization::Restricted(required) => &required.contract,
+            };
+            if !contract.compatible(selected_contract) {
                 return Err(denied());
             }
             return Ok(Some(selected));
@@ -119,3 +151,9 @@ impl OperationManager {
             .map_err(|_| Error::ResourceExhausted { resource: "operation preparation bytes" })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

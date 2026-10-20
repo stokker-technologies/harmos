@@ -8,18 +8,19 @@
  */
 
 /* === Modules === */
+
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../storage/coordinator.rs"]
 mod coordinator;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;
+#[path = "../storage/manager.rs"]
+mod manager;
 #[path = "../storage/operations.rs"]
 mod operations;
 #[path = "../storage/runtime.rs"]
 mod runtime;
-#[path = "../storage/staging.rs"]
-mod staging;
 #[path = "../storage/state.rs"]
 mod state;
 #[path = "../support/mod.rs"]

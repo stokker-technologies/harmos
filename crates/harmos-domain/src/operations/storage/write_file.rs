@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(WriteFile {
     metadata: Nested<FileMetadata> => 1,
 });
@@ -45,6 +47,7 @@ crate::declare!(WriteFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Write One Finished File From Streamed Batches.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteFile {
@@ -56,6 +59,7 @@ pub struct WriteFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for WriteFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))

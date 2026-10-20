@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::config::DecodeSettings;
 
 /* === Imports === */
@@ -47,6 +48,7 @@ pub struct Decoder<W, T> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl DecodeSettings {
     pub(super) fn validate(&self) -> Result<(), Status> {
         if self.message_bytes.get() > u32::MAX as usize

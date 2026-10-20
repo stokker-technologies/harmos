@@ -18,6 +18,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -41,9 +42,11 @@ use crate::{Application, Error, Result, state::FactSource, state::SystemFact};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type HealthWait = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
+
 struct Health {
     credit: usize,
     failures: usize,
@@ -57,6 +60,7 @@ struct Deactivation<'a> {
 }
 
 /* === Enums === */
+
 enum AttemptEvent<T> {
     Completed(T),
     Ready,
@@ -67,6 +71,7 @@ enum AttemptEvent<T> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Health {
     fn under(restart: RestartPolicy) -> Self {
         Self { credit: restart.credit(), failures: 0, history: Vec::new() }
@@ -79,6 +84,7 @@ impl Health {
 }
 
 /* === Public Functions === */
+
 pub(super) async fn run<A: Application>(
     definition: &ServiceDefinition, resident: &mut dyn ErasedResident<A>, cleanup: &Cleanup<A>, report: &Report,
     operations: &OperationManager, stopping: watch::Sender<bool>,
@@ -189,6 +195,7 @@ pub(super) async fn run<A: Application>(
 }
 
 /* === Private Functions === */
+
 async fn next_event<F: Future + ?Sized>(
     mut attempt: Pin<&mut F>, readiness: &mut watch::Receiver<bool>, readiness_observed: bool, health_wait: &mut Option<HealthWait>,
 ) -> AttemptEvent<F::Output> {

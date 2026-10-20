@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::SystemTime;
 
@@ -33,6 +34,7 @@ use crate::{Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowSlice {
     pub offset: u64,
@@ -63,7 +65,7 @@ pub struct StreamSelection {
     pub stream: Option<Identifier>,
     pub source_start: Option<SystemTime>,
     pub source_end: Option<SystemTime>,
-    /// Only rows stored after this storage position, as `RecordRead::after`.
+
     pub after: u64,
 }
 
@@ -85,6 +87,7 @@ pub struct QueryCompletion {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObjectVersions {
     Latest,
@@ -109,6 +112,7 @@ pub enum QueryOutput {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ObjectSelection {
     pub fn follows_revisions(&self) -> bool {
         self.versions == ObjectVersions::Revisions
@@ -116,9 +120,6 @@ impl ObjectSelection {
 }
 
 impl Source {
-    /// Exact authorization resource for this selection. Prefixes separate source
-    /// kinds and stream identities from schema-wide selectors; `*` names an
-    /// unconstrained selection and does not introduce wildcard grant matching.
     pub fn grant_scope(&self) -> String {
         match self {
             Self::Objects(selection) => {
@@ -229,6 +230,7 @@ impl MemorySize for QueryOutput {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
     match (start, end) {
         (None, None) => Ok(()),

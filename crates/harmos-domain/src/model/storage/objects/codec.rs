@@ -26,6 +26,7 @@ use crate::model::storage::{ObjectKey, ObjectValue, SchemaKey, StorageCursor};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(ObjectValue {
     schema: Nested<SchemaKey> => 1,
     item: Key => 2,
@@ -42,9 +43,11 @@ product!(ObjectReceipt {
 });
 
 /* === Type Aliases === */
+
 type Result<T> = std::result::Result<T, MessageError>;
 
 /* === Structs === */
+
 pub struct Key;
 
 /* === Enums === */
@@ -52,6 +55,7 @@ pub struct Key;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Value for Key {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Key));
     crate::model::storage::codec::postcard_field!();

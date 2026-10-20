@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::mem::size_of;
@@ -27,6 +28,7 @@ use crate::schema::{Cardinality, Described, MAX_NAME_BYTES};
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! shape {
     ($ty:ty, $name:literal, $fields:expr) => {
         impl Described for $ty {
@@ -64,9 +66,11 @@ shape!(
 );
 
 /* === Type Aliases === */
+
 type Result<T> = std::result::Result<T, MessageError>;
 
 /* === Structs === */
+
 struct DefinitionShape;
 struct FieldShape;
 
@@ -89,6 +93,7 @@ struct Budget {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Budget {
     fn new() -> Self {
         Self { bytes: size_of::<Schema>(), work: 0, settings: SchemaSettings::default() }
@@ -279,6 +284,7 @@ impl PostcardValue for Schema {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 const fn described(name: &'static str, tag: u32, kind: declaration::Kind, cardinality: Cardinality) -> Field<Definition> {
     Field { name: Cow::Borrowed(name), tag, kind, cardinality }
 }

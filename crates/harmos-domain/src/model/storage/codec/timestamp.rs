@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::time::SystemTime;
@@ -31,6 +32,7 @@ use crate::schema::{Cardinality, Field, Kind};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Time;
 
 /* === Enums === */
@@ -38,6 +40,7 @@ pub struct Time;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Value for Time {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Time));
     fn postcard_write(value: &SystemTime, bytes: &mut Vec<u8>) {

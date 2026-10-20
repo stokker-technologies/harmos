@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::collections::VecDeque;
@@ -34,9 +35,11 @@ use crate::streams::BatchDefinition;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Next = Pin<Box<dyn Future<Output = (Cursor, Option<BatchItem>)> + Send>>;
 
 /* === Structs === */
+
 // One measured field of a batch. `statistics` is the field's running
 // summary, absent when no finite value arrived or a statistic overflowed.
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +98,7 @@ struct Accumulator {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum BatchItem {
     Summary(Arc<Summary>),
@@ -104,6 +108,7 @@ pub enum BatchItem {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Summary {
     pub fn complete(&self) -> bool {
         !self.partial && self.missed == 0

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(FinishFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
@@ -43,6 +45,7 @@ crate::declare!(FinishFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Finish A Producing File Session Into An Immutable Reference.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinishFile {
@@ -55,6 +58,7 @@ pub struct FinishFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for FinishFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

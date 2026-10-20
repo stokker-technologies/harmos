@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -26,16 +27,19 @@ use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolic
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
+
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 // The Callback Operation Is The Delivery Of Its Listener.
 type Observe = Delivery<Observed>;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Probe {
     total: AtomicUsize,
@@ -63,6 +67,7 @@ struct Observation {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Callbacks {
     Observe(Observe),
@@ -71,6 +76,7 @@ enum Callbacks {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Seed {
     fn new(probe: &Arc<Probe>) -> Self {
         let id = NEXT_SEED.try_update(Ordering::SeqCst, Ordering::SeqCst, |id| id.checked_add(1)).unwrap();
@@ -186,6 +192,7 @@ impl Operation for Observing {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn delivered(value: u32) -> Observe {
     Delivery::new(DeliveryContext::Record { position: harmos_runtime::state::Position(1) }, Observation { value }).unwrap()
 }

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use tokio::sync::watch;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The cursor each live feed has taken in. A plugin publication never evicts
 // a row past the slowest feed, and a sidecar publication waits for it.
 #[derive(Debug)]
@@ -46,6 +48,7 @@ pub(crate) struct Intake {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Ingest {
     pub(crate) fn new() -> Self {
         Self { taken: watch::channel(BTreeMap::new()).0, next: AtomicU64::new(0) }

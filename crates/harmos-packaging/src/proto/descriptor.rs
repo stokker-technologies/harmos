@@ -41,16 +41,21 @@ use harmos_domain::operations::Contract;
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum DescriptorError {
     #[error("invalid or duplicate gRPC method/service name")]
     Name,
+
     #[error("gRPC method `{method}` collides with a generated Rust name")]
     GeneratedName { method: String },
+
     #[error("operation identity appears more than once in the service")]
     DuplicateOperation,
+
     #[error(transparent)]
     Schema(#[from] reflection::Error),
+
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
 }
@@ -60,6 +65,7 @@ pub enum DescriptorError {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> Result<ServiceDescriptor, DescriptorError> {
     if !identifier(name) || !package.split('.').all(identifier) {
         return Err(DescriptorError::Name);
@@ -148,6 +154,7 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
 }
 
 /* === Private Functions === */
+
 fn identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')

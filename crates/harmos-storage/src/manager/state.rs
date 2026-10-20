@@ -7,8 +7,30 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::*;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -28,7 +50,6 @@ impl State {
         Ok(Target { index: entry.index, sequence: entry.operation.sequence() })
     }
 
-    /// Recompute the published pending and read totals from their owners.
     pub(crate) fn collect(&mut self) {
         let now = self.execution.now();
         self.receipts.purge(now);
@@ -93,3 +114,9 @@ impl Inner {
         })?
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

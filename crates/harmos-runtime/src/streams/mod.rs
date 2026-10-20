@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod batches;
 mod definition;
 mod demand;
@@ -29,6 +30,7 @@ mod staging;
 mod window;
 
 /* === Re-Exports === */
+
 pub use batches::{BatchItem, Batches, Measurement, Summary};
 pub use definition::Stream;
 pub use harmos_domain::streams::{Axial, BatchDefinition, Batched, Definition, Prefix, StreamCatalog, StreamRow, Track, Tracked};
@@ -58,6 +60,7 @@ pub(crate) use series::{Opened, Request, Tier};
 pub use window::{BeneathWindow, Item};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

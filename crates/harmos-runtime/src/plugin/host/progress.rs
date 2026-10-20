@@ -30,11 +30,13 @@ use crate::plugin::PluginGeneration;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Key = (String, PluginGeneration);
 type Poller = Arc<dyn Fn(&mut Context<'_>) + Send + Sync>;
 type Transports = Arc<Mutex<BTreeMap<Key, Poller>>>;
 
 /* === Structs === */
+
 #[derive(Clone, Default)]
 pub(crate) struct Driving {
     transports: Transports,
@@ -52,6 +54,7 @@ pub(crate) struct Lease {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Driving {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn retain(

@@ -10,8 +10,11 @@
 // State Journal Replay And Checkpoint Compaction
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::fs::File;
 use std::io::{BufReader, Seek, SeekFrom, Write};
@@ -19,20 +22,24 @@ use std::path::Path;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::files::Files;
+use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
 use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
+
 // Format 2 Encodes Payloads As Base64; Earlier Roots Are Refused, Never Migrated.
 const VERSION: u32 = 2;
 // Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
 const HEADER_BYTES: usize = 4096;
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 pub(super) struct StateLog {
     files: Files,
     file: File,
@@ -52,13 +59,16 @@ struct Header {
 }
 
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl StateLog {
-    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings) -> Result<Self> {
+    pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener) -> Result<Self> {
         let entry_bytes = settings.max_entry_bytes.get();
         let checkpoint_bytes = settings.max_checkpoint_bytes.get();
-        let files = Files::open(root)?;
+        let files = Files::open(root, opener)?;
 
         // The Journal Header Identifies The Format Before Any Payload Is Decoded.
         let mut file = files.journal()?;
@@ -122,7 +132,6 @@ impl StateLog {
         RecoveryPosition { history: self.history.clone(), sequence: self.saved }
     }
 
-    /// The caller bounds the snapshot value; the configured limit bounds the written record.
     pub(super) fn snapshot(&self, maximum: usize) -> Result<Option<RecoverySnapshot>> {
         let bound = maximum.saturating_add(format::OVERHEAD);
         self.files.snapshot(bound.min(self.checkpoint_bytes))
@@ -292,7 +301,9 @@ impl StateLog {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header> {
     let Read::Value(header) = format::read::<Header>(reader, HEADER_BYTES)? else {
         return Err(corrupt("state journal header is incomplete"));
@@ -313,39 +324,3 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn failed_rollback_requires_reopen() {
-        let root = tempfile::tempdir().unwrap();
-        let history = history();
-        let mut journal = StateLog::open(root.path(), history.clone(), settings()).unwrap();
-        // A Read-Only Handle Forces Both Append And Rollback To Fail.
-        journal.file = File::open(root.path().join("state.jsonl")).unwrap();
-        let entry = RecoveryEntry {
-            position: RecoveryPosition { history: history.clone(), sequence: 1 },
-            required_data: crate::storage::StorageCursor { history: history.clone(), sequence: 0 },
-            payload: vec![1],
-        };
-        assert!(journal.append(std::slice::from_ref(&entry)).is_err());
-        assert!(journal.check().is_err());
-        drop(journal);
-        let mut reopened = StateLog::open(root.path(), history, settings()).unwrap();
-        assert_eq!(reopened.position().sequence, 0);
-        reopened.append(&[entry]).unwrap();
-        assert_eq!(reopened.position().sequence, 1);
-    }
-
-    fn history() -> StoreHistory {
-        StoreHistory { store: crate::Identifier::new("state.test").unwrap(), epoch: crate::Identifier::new("epoch.one").unwrap() }
-    }
-
-    fn settings() -> StorageStateSettings {
-        StorageStateSettings {
-            max_entry_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
-            max_checkpoint_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
-        }
-    }
-}

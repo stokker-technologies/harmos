@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 pub mod progress;
 pub mod validated;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +29,7 @@ pub mod validated;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Point {
@@ -53,6 +56,7 @@ pub struct Snapshot {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Snapshot {
     pub fn diagnostics(&self) -> Vec<String> {
         let symbols: std::collections::BTreeSet<_> = self.symbols.iter().copied().collect();

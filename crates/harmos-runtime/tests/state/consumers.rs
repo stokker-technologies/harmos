@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,9 +30,11 @@ use harmos_runtime::{
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Asked = Arc<Mutex<Vec<&'static str>>>;
 
 /* === Structs === */
+
 struct Recorder {
     asked: Asked,
     resume: Position,
@@ -57,6 +60,7 @@ struct Networked {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Recorder {
     fn new() -> (Self, Asked) {
         let asked: Asked = Arc::new(Mutex::new(Vec::new()));

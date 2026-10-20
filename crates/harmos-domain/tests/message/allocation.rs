@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -24,10 +25,12 @@ use harmos_domain::message;
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
+
 #[global_allocator]
 static ALLOCATOR: Tracking = Tracking;
 
 /* === Macros === */
+
 thread_local! {
     static MEASURING: Cell<bool> = const { Cell::new(false) };
     static MEASURED: Cell<Measurement> = const { Cell::new(Measurement { allocations: 0, live: 0, peak: 0 }) };
@@ -56,6 +59,7 @@ layer!(Fifth, Fourth);
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Tracking;
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -109,6 +113,7 @@ struct BoxedLeaf {
 }
 
 /* === Enums === */
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum BoxedChoice {
@@ -126,6 +131,7 @@ enum Choice {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl harmos_domain::listeners::Listener for Selections {
     type Row = Selection;
     const CALLBACK: &'static str = "allocation.selections";
@@ -177,6 +183,7 @@ impl Drop for MeasurementGuard {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn account(released: usize, allocated: usize) {
     if !MEASURING.get() {
         return;

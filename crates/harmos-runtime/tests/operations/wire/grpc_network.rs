@@ -41,6 +41,7 @@ use super::*;
 /* === Private Functions === */
 
 /* === Tests === */
+
 #[tokio::test]
 async fn builtin_grpc_roundtrip() {
     use harmos_runtime::builtin::{Cancel, InstanceState, Status};
@@ -179,6 +180,17 @@ async fn external_authority_parity() {
         external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::InvalidArgument
     );
+    mode.store(3, std::sync::atomic::Ordering::Release);
+    let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
+    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
+    assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
+    mode.store(4, std::sync::atomic::Ordering::Release);
+    let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
+    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
+    assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
+    assert!(guarded.conditional_access);
+    assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");
     mode.store(0, std::sync::atomic::Ordering::Release);
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
@@ -224,7 +236,6 @@ async fn empty_manager_attaches() {
         let address = attached.local_addr();
         assert_ne!(address.port(), 0);
         assert_eq!(runtime.grpc().local_addr(), Some(address));
-        assert!(runtime.grpc().attach(settings()).await.is_err(), "one listener at a time");
         let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
         assert_eq!(call(channel.clone(), None).await.unwrap_err().code(), tonic::Code::Unimplemented);
         if round == 0 {
@@ -246,6 +257,84 @@ async fn empty_manager_attaches() {
     runtime.stop().await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(runtime.grpc().attach(settings()).await.is_err());
+}
+
+#[tokio::test]
+async fn independent_listeners() {
+    use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Read>("app", Lanes::Open, Arc::new(())).unwrap();
+    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
+    runtime
+        .grpc()
+        .register_service(Endpoint { authority: harmos_runtime::grpc::server::Authority::TrustedHost(runtime.operations.clone()) })
+        .unwrap();
+    let mut plain_settings = settings();
+    plain_settings.connections = NonZeroUsize::new(1).unwrap();
+    let mut tls_settings = settings();
+    tls_settings.tls = Some(ServerTlsConfig::new().identity(Identity::from_pem(
+        include_bytes!("../../fixtures/grpc/server.pem"),
+        include_bytes!("../../fixtures/grpc/server-key.pem"),
+    )));
+    let (plain, secure) = tokio::join!(runtime.grpc().attach(plain_settings), runtime.grpc().attach(tls_settings));
+    let plain = plain.unwrap();
+    let secure = secure.unwrap();
+    let address = plain.local_addr();
+    assert_ne!(address, secure.local_addr());
+    assert!(runtime.grpc().local_addr().is_none(), "multiple listeners have no singular address");
+
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap();
+    let plain_channel = endpoint.connect().await.unwrap();
+    let secure_endpoint = tonic::transport::Endpoint::from_shared(format!("https://{}", secure.local_addr())).unwrap();
+    let secure_endpoint = secure_endpoint
+        .tls_config(
+            ClientTlsConfig::new()
+                .domain_name("localhost")
+                .ca_certificate(Certificate::from_pem(include_bytes!("../../fixtures/grpc/ca.pem"))),
+        )
+        .unwrap();
+    let secure_channel = secure_endpoint.connect().await.unwrap();
+    assert_eq!(call(plain_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
+    assert_eq!(call(secure_channel.clone(), Some("Bearer bob")).await.unwrap(), "bob");
+
+    // A Full Connection Budget And Failed Bind Leave The Sibling Usable.
+    let waiting_channel = endpoint.connect().await.unwrap();
+    let mut blocked = Box::pin(call(waiting_channel, Some("Bearer alice")));
+    tokio::select! {
+        biased;
+        result = &mut blocked => panic!("the occupied listener admitted a call on another connection: {result:?}"),
+        result = call(secure_channel.clone(), Some("Bearer alice")) => assert_eq!(result.unwrap(), "alice"),
+    }
+    let mut conflicting = settings();
+    conflicting.address = address;
+    assert!(runtime.grpc().attach(conflicting).await.is_err());
+    assert_eq!(call(secure_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
+    assert_eq!(call(plain_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
+
+    // Detach And Rebind One Listener Without Closing The Other Connection.
+    plain.detach().await.unwrap();
+    assert!(blocked.await.is_err(), "detaching the saturated listener releases its waiting caller");
+    assert!(call(plain_channel, Some("Bearer alice")).await.is_err());
+    assert_eq!(runtime.grpc().local_addr(), Some(secure.local_addr()));
+    let mut replacement = settings();
+    replacement.address = address;
+    let replacement = runtime.grpc().attach(replacement).await.unwrap();
+    assert_eq!(replacement.local_addr(), address);
+    assert_eq!(call(secure_channel.clone(), Some("Bearer bob")).await.unwrap(), "bob");
+    drop(replacement);
+    let mut replacement = settings();
+    replacement.address = address;
+    let replacement = runtime.grpc().attach(replacement).await.unwrap();
+    let replacement_channel = endpoint.connect().await.unwrap();
+    assert_eq!(call(replacement_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
+
+    // Shutdown Cancels Both Before Draining Their Independent Residents.
+    runtime.stop().await.unwrap();
+    assert!(call(replacement_channel, Some("Bearer alice")).await.is_err());
+    assert!(call(secure_channel, Some("Bearer alice")).await.is_err());
+    assert!(runtime.grpc().local_addr().is_none());
+    assert!(runtime.grpc().attach(settings()).await.is_err());
+    drop((secure, replacement));
 }
 
 #[tokio::test]

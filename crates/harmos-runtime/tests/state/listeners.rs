@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -36,15 +37,18 @@ use harmos_runtime::{Error, Message, MessageError, Result, Runtime, state::Posit
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 type Seen = Vec<(bool, u32, Position)>;
 
 /* === Structs === */
+
 // Neither The Original Native Record Nor Its Decoded Callback Copy Is Clone.
 #[harmos_runtime::record(id = "listener.fact", version = 1)]
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
+
     #[serde(skip)]
     dropped: Arc<AtomicUsize>,
 }
@@ -94,6 +98,7 @@ struct Host {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::records]
 enum Rows {
     Fact(Fact),
@@ -115,6 +120,7 @@ enum Lanes {
 enum Failed {
     #[error("scripted original callback failure")]
     Scripted,
+
     #[error(transparent)]
     Runtime(#[from] Error),
 }
@@ -122,6 +128,7 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for Fact {
     fn drop(&mut self) {
         self.dropped.fetch_add(1, Ordering::SeqCst);
@@ -288,6 +295,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fact(value: u32) -> Fact {
     Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
 }

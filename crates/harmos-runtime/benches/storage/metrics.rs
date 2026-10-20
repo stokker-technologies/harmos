@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::process::Command;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -24,10 +27,14 @@ use sha2::{Digest, Sha256};
 // Local Imports
 
 /* === Constants === */
+
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(1);
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 #[derive(Default)]
 pub struct Observed {
     read_bytes: usize,
@@ -43,8 +50,11 @@ pub struct Probe {
     thread: Option<JoinHandle<Observed>>,
 }
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+
 impl Probe {
     pub fn start<C: 'static>(storage: StorageManager<C>) -> Self {
         Self::begin(move || {
@@ -138,6 +148,7 @@ impl Observed {
     }
 }
 /* === Public Functions === */
+
 pub fn provenance() -> &'static Value {
     static VALUE: OnceLock<Value> = OnceLock::new();
     VALUE.get_or_init(|| {
@@ -156,6 +167,7 @@ pub fn provenance() -> &'static Value {
     })
 }
 /* === Private Functions === */
+
 fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }

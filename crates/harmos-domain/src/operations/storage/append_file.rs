@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(AppendFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
@@ -45,6 +47,7 @@ crate::declare!(AppendFile {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Append Bytes At An Offset Of A Producing File Session.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppendFile {
@@ -59,6 +62,7 @@ pub struct AppendFile {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for AppendFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

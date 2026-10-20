@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -22,6 +23,7 @@ use crate::operations::common::payload::payload;
 /* === Constants === */
 
 /* === Macros === */
+
 payload! { Status,
     instance: u64 => (1, Kind::U64, Required),
 }

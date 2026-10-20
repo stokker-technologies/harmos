@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 // Third Party Imports
@@ -25,6 +26,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Position(pub u64);
@@ -34,6 +36,7 @@ pub struct Position(pub u64);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Position {
     pub const ORIGIN: Self = Self(0);
 }

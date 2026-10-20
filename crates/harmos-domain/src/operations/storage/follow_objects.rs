@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use crate::operations::Visibility;
 /* === Constants === */
 
 /* === Macros === */
+
 product!(FollowObjects {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<ObjectSelection> => 2,
@@ -43,7 +45,7 @@ crate::declare!(FollowObjects {
 /* === Type Aliases === */
 
 /* === Structs === */
-/// Follow every object revision accepted after `after` (from the start when absent).
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowObjects {
     pub after: Option<StorageCursor>,
@@ -55,6 +57,7 @@ pub struct FollowObjects {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for FollowObjects {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

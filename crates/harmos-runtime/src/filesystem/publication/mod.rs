@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[cfg(unix)]
 mod unix;
 
@@ -19,6 +20,7 @@ mod windows;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{
     fs::{self, File, OpenOptions},
@@ -41,13 +43,16 @@ use windows as platform;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Staging(PathBuf);
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfirmError<E> {
     #[error(transparent)]
     Filesystem(crate::filesystem::Error),
+
     #[error(transparent)]
     Checkpoint(E),
 }
@@ -55,6 +60,7 @@ pub enum ConfirmError<E> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Staging {
     fn file(directory: &Path) -> io::Result<(Self, File)> {
         let temporary = NamedTempFile::new_in(directory)?;
@@ -70,6 +76,7 @@ impl Drop for Staging {
 }
 
 /* === Public Functions === */
+
 pub fn create_dir_all(path: &Path) -> crate::filesystem::Result<()> {
     platform::create_dir_all(path).map_err(|error| crate::filesystem::Error::publication("create directory", path, error))
 }
@@ -148,6 +155,7 @@ pub fn write(path: &Path, bytes: &[u8]) -> crate::filesystem::Result<()> {
 }
 
 /* === Private Functions === */
+
 fn confirm_error<E>(path: &Path, error: io::Error) -> ConfirmError<E> {
     let error = crate::filesystem::Error::publication("confirm file durability", path, error);
     ConfirmError::Filesystem(error)

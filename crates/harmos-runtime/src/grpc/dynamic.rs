@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -33,6 +34,7 @@ use prost::Message;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct Operation {
     binding: Arc<Binding>,
@@ -76,6 +78,7 @@ struct Json {
 }
 
 /* === Enums === */
+
 #[derive(Debug, PartialEq)]
 pub enum Event {
     Item(serde_json::Value),
@@ -85,6 +88,7 @@ pub enum Event {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Operation {
     pub fn new(contract: &Contract, message_bytes: NonZeroUsize) -> Result<Self, Status> {
         let grpc = contract.grpc().ok_or_else(|| invalid("operation has no gRPC declaration"))?;
@@ -297,6 +301,7 @@ impl tonic::codec::Decoder for Decoder {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn direction(message: MessageDescriptor, field: &str, envelope: bool) -> Result<MessageDescriptor, Status> {
     if !envelope {
         return Ok(message);

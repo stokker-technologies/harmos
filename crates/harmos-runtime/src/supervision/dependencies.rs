@@ -30,6 +30,7 @@ use petgraph::graph::DiGraph;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Graph<K> {
     dependencies: BTreeMap<K, BTreeSet<K>>,
@@ -45,6 +46,7 @@ pub(crate) struct Retirement<K> {
 }
 
 /* === Enums === */
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Invalid<K> {
     Missing { owner: K, dependency: K },
@@ -54,6 +56,7 @@ pub(crate) enum Invalid<K> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<K: Clone + Ord> Graph<K> {
     pub(crate) fn new(dependencies: BTreeMap<K, BTreeSet<K>>) -> Result<Self, Invalid<K>> {
         let mut graph = DiGraph::<K, ()>::new();

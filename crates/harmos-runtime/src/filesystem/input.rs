@@ -40,6 +40,7 @@ use std::{
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub fn read(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
     let maximum = u64::try_from(limit)
         .ok()

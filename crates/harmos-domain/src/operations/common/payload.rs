@@ -11,6 +11,7 @@
 // Independent Of The Authored Field-Name Tags.
 
 /* === Modules === */
+
 pub(crate) mod prelude {
     pub(crate) use crate::MemorySize;
     pub(crate) use crate::schema::declaration::{Field, Kind};
@@ -21,6 +22,7 @@ pub(crate) mod prelude {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +32,7 @@ pub(crate) mod prelude {
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! payload {
     ($name:ident, $( $field:ident: $ty:ty => ($tag:literal, $kind:expr, $cardinality:ident)),* $(,)?) => {
         #[derive(Clone, Debug, Default, PartialEq)]
@@ -70,6 +73,7 @@ pub(crate) use payload;
 /* === Enums === */
 
 /* === Traits === */
+
 // Field Memory Excludes Inline Storage Already Charged By The Payload
 
 /* === Implementations === */

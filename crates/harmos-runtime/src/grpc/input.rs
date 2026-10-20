@@ -34,14 +34,17 @@ use crate::operations::{OperationInstance, StreamItem, StreamOutput};
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {
     #[error("operation failed while forwarding input")]
     Operation(#[source] Box<Error>),
+
     #[error("input forwarding failed")]
     Forward {
         #[source]
         source: Box<Error>,
+
         settlement: Option<Box<Error>>,
     },
 }
@@ -51,6 +54,7 @@ pub enum InputError {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub async fn open<R, I, S>(
     incoming: S,
 ) -> Result<(StreamItem<R>, impl Stream<Item = Result<StreamItem<I>, tonic::Status>> + Send), tonic::Status>

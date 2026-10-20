@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "dependency_routing.rs"]
 mod dependency_routing;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,17 +29,12 @@ use harmos_runtime::plugin::{
 };
 
 /* === Constants === */
+
 static NEXT_PROVIDER_SEED: AtomicUsize = AtomicUsize::new(1);
 static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Provider>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
-/* === Type Aliases === */
-type NoticeHandler = Box<dyn Fn(&Service<Bank>, Notice) + Send + Sync>;
-type Resident = Supervised<Bank, Attachment, NoticeHandler>;
-type Backends = PluginBackend<(), Resources, ()>;
-
-/* === Structs === */
 macro_rules! forward {
     ($name:ident, $id:literal) => {
         #[harmos_runtime::message]
@@ -58,6 +55,14 @@ macro_rules! forward {
 forward!(Forward, "caller.forward");
 
 forward!(UnauthorizedForward, "unauthorized.forward");
+
+/* === Type Aliases === */
+
+type NoticeHandler = Box<dyn Fn(&Service<Bank>, Notice) + Send + Sync>;
+type Resident = Supervised<Bank, Attachment, NoticeHandler>;
+type Backends = PluginBackend<(), Resources, ()>;
+
+/* === Structs === */
 
 struct Dependent {
     resources: Arc<()>,
@@ -173,7 +178,21 @@ struct Host {
     notices: Arc<NoticeLog>,
 }
 
+struct Amplifying {
+    resources: Arc<Provider>,
+}
+
+struct Retrying {
+    resources: Arc<Provider>,
+}
+
+struct Forwarding<F> {
+    _resources: Arc<Forwarder>,
+    forwarded: std::marker::PhantomData<fn() -> F>,
+}
+
 /* === Enums === */
+
 enum PublicationStart {
     Commit,
     Refuse,
@@ -207,12 +226,14 @@ enum UnauthorizedOperations {
 }
 
 /* === Traits === */
+
 // The Two Forwarding Operations Share One Handler Body.
 trait Forwarded: OperationDeclaration<Response = Amplified> {
     fn value(&self) -> i64;
 }
 
 /* === Implementations === */
+
 impl Drop for ProviderSeed {
     fn drop(&mut self) {
         PROVIDER_SEEDS.lock().unwrap().remove(&self.id);
@@ -436,10 +457,6 @@ impl Drop for DroppedHandler {
     }
 }
 
-struct Amplifying {
-    resources: Arc<Provider>,
-}
-
 impl harmos_runtime::operations::Operation for Amplifying {
     type Declaration = Amplify;
     type Resources = Provider;
@@ -464,10 +481,6 @@ impl harmos_runtime::operations::Operation for Amplifying {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-struct Retrying {
-    resources: Arc<Provider>,
 }
 
 impl harmos_runtime::operations::Operation for Retrying {
@@ -504,11 +517,6 @@ impl harmos_runtime::operations::Operation for Retrying {
     fn classify(_: &Refusal) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
-}
-
-struct Forwarding<F> {
-    _resources: Arc<Forwarder>,
-    forwarded: std::marker::PhantomData<fn() -> F>,
 }
 
 impl<F: Forwarded> harmos_runtime::operations::Operation for Forwarding<F> {
@@ -808,3 +816,5 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+/* === Tests === */

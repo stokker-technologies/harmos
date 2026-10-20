@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::TypeId;
 use std::fmt;
@@ -39,6 +40,7 @@ use crate::{Application, state::At, state::Position, storage::Batch, storage::Cu
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct StreamManager<A: Application> {
     pub(super) windows: Arc<Table>,
     pub(super) applied: watch::Receiver<Position>,
@@ -94,6 +96,7 @@ pub struct Seal<S> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<A: Application> StreamFeed<A> {
     pub async fn next(&mut self) -> Option<Batch<A>> {
         self.intake.took(self.cursor.0);
@@ -327,6 +330,7 @@ impl<S> IntoFuture for Seal<S> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn checked(kind: Aggregate) -> Aggregate {
     assert!(kind.answerable(), "a percentile rank is a percentage, and {kind:?} names none");
     kind

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,9 +29,11 @@ use crate::{Message, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Register<H> = fn(&mut Bindings<'_>, &'static str, Arc<H>) -> Result<()>;
 
 /* === Structs === */
+
 pub struct Implementations<R>(PhantomData<fn() -> R>);
 
 pub struct WireImplementations<R>(PhantomData<fn() -> R>);
@@ -44,6 +47,7 @@ pub struct Binding<H> {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl<R: Send + Sync + 'static> Visitor for Implementations<R> {
     type Entry = Binding<R>;
 }
@@ -79,6 +83,7 @@ impl<H> Binding<H> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn register_owned<T>(bindings: &mut Bindings<'_>, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
 where
     T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>,

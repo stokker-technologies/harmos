@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 #[path = "plugin_activation.rs"]
 mod plugin_activation;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -39,9 +41,11 @@ use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "fixture.selected_provider",
@@ -117,7 +121,6 @@ struct Host {
     cleanup: Option<Arc<CleanupOwner>>,
 }
 
-/// A Plugin Holding A Cleanup Callback And An Echo Callback Over One Preparation Budget.
 struct Credit {
     runtime: harmos_runtime::Runtime<super::Bank>,
     manager: PluginManager<Resources, Resources, Resources>,
@@ -127,7 +130,6 @@ struct Credit {
     echo: harmos_runtime::operations::PluginCallback,
 }
 
-/// A Plugin Whose Receipt Is Dropped At Shutdown While A Gated Compute Runs.
 struct Running {
     runtime: harmos_runtime::Runtime<super::Bank>,
     manager: PluginManager<Resources, Resources, Resources>,
@@ -137,6 +139,7 @@ struct Running {
 }
 
 /* === Enums === */
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -392,7 +395,6 @@ impl Credit {
         Self { runtime, manager, host, cleanup, target, echo }
     }
 
-    /// The Echo Callback Is Refused Before Encoding While The Cleanup Holds The Credit.
     fn assert_held(&self) {
         let encoded = AtomicBool::new(false);
         assert!(matches!(
@@ -405,7 +407,6 @@ impl Credit {
         assert!(!encoded.load(Ordering::SeqCst));
     }
 
-    /// Retried Cleanup Succeeds On Unregister And Returns The Credit To The Echo Callback.
     async fn settle(mut self) {
         self.cleanup.fail.store(false, Ordering::SeqCst);
         self.cleanup.release.notify_one();
@@ -437,6 +438,7 @@ impl Running {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
     let contract = WireDeclaration::of::<Selected>().contract().unwrap();
     let owners = if first { vec!["first", "second", "client"] } else { vec!["second", "client"] };

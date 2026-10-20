@@ -8,15 +8,18 @@
  */
 
 /* === Modules === */
+
 mod advanced;
 pub mod error;
 mod walkthrough;
 
 /* === Re-Exports === */
+
 pub use error::{Error, Result};
 pub use walkthrough::run;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports

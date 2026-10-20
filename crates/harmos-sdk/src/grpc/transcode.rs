@@ -22,6 +22,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -48,14 +49,13 @@ use harmos_domain::schema::declaration::{Definition, Field, Kind};
 /* === Implementations === */
 
 /* === Public Functions === */
-/// Append the protobuf form of one Postcard-encoded `definition` value.
+
 pub fn encode(definition: &Definition, postcard: &[u8], bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let mut input = Reader::new(postcard);
     message(definition, &mut input, bytes)?;
     input.finish()
 }
 
-/// The Postcard form of one protobuf `definition` message.
 pub fn decode(definition: &Definition, input: DecodeInput<'_>) -> Result<Vec<u8>, MessageError> {
     // Postcard Rarely Outgrows Its Protobuf Source, So The Bound Stays Near The Payload.
     let mut bytes = Vec::with_capacity(input.encoded_len()?);
@@ -64,6 +64,7 @@ pub fn decode(definition: &Definition, input: DecodeInput<'_>) -> Result<Vec<u8>
 }
 
 /* === Private Functions === */
+
 fn oneof(fields: &[Field]) -> bool {
     !fields.is_empty() && fields.iter().all(|field| field.cardinality == Cardinality::Variant)
 }

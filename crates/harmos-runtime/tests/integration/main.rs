@@ -13,13 +13,11 @@
 #![allow(clippy::duplicate_mod, reason = "domains retain their own support namespaces under one binary")]
 
 /* === Modules === */
+
 #[path = "../application/main.rs"]
 mod application;
 #[path = "../evidence/main.rs"]
 mod evidence;
-#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
-#[path = "../guest/main.rs"]
-mod guest;
 #[path = "../observers/main.rs"]
 mod observers;
 #[path = "../operations/main.rs"]

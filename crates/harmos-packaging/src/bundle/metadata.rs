@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::io::{self, Write};
@@ -29,6 +30,7 @@ use super::{Error, Executable, Identity, Limits, Source};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Count {
     size: usize,
     limit: usize,
@@ -43,6 +45,7 @@ struct Registrations(usize);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Write for Count {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > self.limit.saturating_sub(self.size) {
@@ -108,6 +111,7 @@ impl<'de> Visitor<'de> for Registrations {
 }
 
 /* === Public Functions === */
+
 pub(super) fn identity_size(identity: &Identity, limit: usize) -> Result<usize, Error> {
     let mut output = Count { size: 0, limit };
     output.write_all(b"{\"schema\":1,\"identity\":")?;
@@ -123,6 +127,7 @@ pub(super) fn file_size(source: &Source<'_>, sha256: &str, comma: bool, size: &m
         path: &'a str,
         size: u64,
         sha256: &'a str,
+
         #[serde(skip_serializing_if = "Option::is_none")]
         executable: Option<&'a Executable>,
     }

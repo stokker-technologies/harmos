@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +28,7 @@ use harmos_runtime::{Identifier, Message, message, schema::Described};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[message]
 #[derive(PartialEq)]
 struct Revision {
@@ -43,6 +45,7 @@ struct Seal {
 }
 
 /* === Enums === */
+
 #[message]
 #[derive(PartialEq)]
 enum Source {
@@ -57,6 +60,7 @@ enum Source {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn revision() -> Revision {
     let history = StoreHistory { store: Identifier::new("store").unwrap(), epoch: Identifier::new("epoch").unwrap() };
     let cursor = StorageCursor { history, sequence: 7 };

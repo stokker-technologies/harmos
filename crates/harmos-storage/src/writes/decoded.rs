@@ -7,12 +7,29 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::DataBatch;
 use crate::arrow::ArrowBatch;
 use crate::{MemorySize, Result};
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
 /* === Structs === */
+
 // A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
 pub struct DecodedBatch {
     pub destination: crate::Identifier,
@@ -20,7 +37,12 @@ pub struct DecodedBatch {
     pub data: ArrowBatch,
 }
 
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl DecodedBatch {
     pub fn of(batch: &DataBatch) -> Result<Self> {
         Ok(Self { data: ArrowBatch::from_ipc(batch.data.bytes())?, destination: batch.destination.clone(), schema: batch.schema.clone() })
@@ -35,3 +57,9 @@ impl MemorySize for DecodedBatch {
             .saturating_add(self.data.memory_size().saturating_sub(std::mem::size_of_val(&self.data)))
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

@@ -36,6 +36,7 @@ use super::HttpFuture;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone)]
 pub struct Calls {
     slots: Arc<Semaphore>,
@@ -51,6 +52,7 @@ struct Retained {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Calls {
     pub fn new(limit: NonZeroUsize) -> Result<Self, Status> {
         Self::validate(limit)?;

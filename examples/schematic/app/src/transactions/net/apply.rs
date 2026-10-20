@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +30,7 @@ use harmos::{state::Invert, state::Transaction};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "net.route", version = 1, inverse = Self)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApplyRoute {
@@ -41,6 +43,7 @@ pub struct ApplyRoute {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Schematic> for ApplyRoute {
     type Error = SchematicError;
 

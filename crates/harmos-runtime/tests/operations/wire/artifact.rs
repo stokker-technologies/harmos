@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-#[cfg(feature = "plugin-guest")]
 mod facade {
     pub use harmos_runtime as __harmos;
 }
@@ -17,6 +16,7 @@ mod facade {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -29,6 +29,7 @@ use harmos_runtime::operations::{
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! inert_plugin {
     ($name:ident, $id:literal, $context:ty, $provided:ty) => {
         impl harmos_runtime::operations::lifecycle::Policy for $name {
@@ -77,6 +78,7 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "fixture.selected",
@@ -134,6 +136,7 @@ struct EmptyNative;
 struct ExplicitEmptyNative;
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Leaves {
     Selected(Selected),
@@ -143,6 +146,7 @@ enum Leaves {
 enum Nested {
     #[nested]
     Empty(()),
+
     #[nested]
     Leaves(Leaves),
 }
@@ -156,6 +160,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 /* === Public Functions === */
 
 /* === Private Functions === */

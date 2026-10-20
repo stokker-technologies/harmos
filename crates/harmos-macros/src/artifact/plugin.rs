@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -32,6 +33,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Declaration {
     id: LitStr,
     context: Option<Type>,
@@ -54,6 +56,7 @@ struct Listed {
 }
 
 /* === Enums === */
+
 enum Required {
     Catalog(Box<Type>),
     Listed(Vec<Listed>),
@@ -64,6 +67,7 @@ enum Required {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, &item) {
         Ok(expanded) => expanded,
@@ -75,6 +79,7 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 }
 
 /* === Private Functions === */
+
 fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let span = attribute.span();
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;

@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,12 +27,14 @@ use crate::model::storage::codec::{Flag, Nested, Repeated, product};
 /* === Constants === */
 
 /* === Macros === */
+
 product!(Sort { keys: Repeated<SortKey> => 1 });
 product!(SortKey { field: Nested<FieldPath> => 1, descending: Flag => 2, nulls_first: Flag => 3 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Sort {
     pub keys: Vec<SortKey>,
@@ -48,6 +51,7 @@ pub struct SortKey {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl MemorySize for Sort {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.keys.memory_size().saturating_sub(std::mem::size_of_val(&self.keys))

@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -47,6 +48,7 @@ use schematic_app::{app, config::Settings, document::Document, services::Plugin,
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advanced: bool) -> Result<()> {
     // Create A Document And Its Recovery Journal
@@ -101,6 +103,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 }
 
 /* === Private Functions === */
+
 async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()> {
     let principal = PrincipalId::new("designer");
     let state = runtime.state.as_principal(principal.clone());

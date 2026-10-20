@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc, Mutex,
@@ -28,12 +29,14 @@ use harmos_runtime::operations::{
 use harmos_runtime::{Error, Refusal};
 
 /* === Constants === */
+
 const POLICY_NAME: &str = concat!(module_path!(), "::Policy");
 const POLICY_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
     { harmos_runtime::schema::declaration::encoded_len(POLICY_NAME, &[]) },
 >(POLICY_NAME, &[]);
 
 /* === Macros === */
+
 // A Policy Request Exposes Its Scripted Behavior To The Shared Handler.
 macro_rules! behaves {
     ($($ty:ident),* $(,)?) => {$(
@@ -62,6 +65,7 @@ macro_rules! behaves {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
 // So Every Policy Request Stays In Process.
 struct Policy<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> {
@@ -176,6 +180,7 @@ struct State {
 }
 
 /* === Enums === */
+
 enum Behavior {
     Fail { remaining: usize, kind: std::io::ErrorKind },
     Pending,
@@ -183,11 +188,13 @@ enum Behavior {
 }
 
 /* === Traits === */
+
 trait Behaves: OperationDeclaration<Response = u64> + From<Behavior> {
     fn behavior(&mut self) -> &mut Behavior;
 }
 
 /* === Implementations === */
+
 impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> OperationDeclaration
     for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
 {
@@ -320,6 +327,7 @@ impl Drop for State {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn failing<O: Behaves>(remaining: usize) -> O {
     O::from(Behavior::Fail { remaining, kind: std::io::ErrorKind::Interrupted })
 }

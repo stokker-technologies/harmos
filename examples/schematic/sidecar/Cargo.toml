@@ -6,7 +6,7 @@
 #
 # ***
 
-# === Package ===
+# === Package === #
 
 [package]
 publish = false
@@ -17,11 +17,11 @@ rust-version.workspace = true
 license.workspace = true
 version.workspace = true
 
-# === Package Targets ===
+# === Package Targets === #
 
-# === Features ===
+# === Features === #
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
@@ -60,7 +60,7 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
 [build-dependencies]
 # Local
@@ -96,25 +96,25 @@ schematic-domain = { path = "../domain" }
 
 # Testing
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
-# === Test Targets ===
+# === Test Targets === #
 
-# === Bench Targets ===
+# === Bench Targets === #
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

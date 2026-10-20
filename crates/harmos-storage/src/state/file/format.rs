@@ -10,8 +10,11 @@
 // Checksummed JSON Lines For State Persistence
 
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
+
 // Standard Library Imports
 use std::io::{BufRead, Write};
 // Third Party Imports
@@ -21,15 +24,20 @@ use sha2::{Digest, Sha256};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
+
 const PREFIX: &[u8] = b"{\"value\":";
 const TRAILER: &[u8] = b",\"sha256\":\"";
 const END: &[u8] = b"\"}\n";
 // Envelope Bytes Around One Value, Newline Included.
 pub(super) const OVERHEAD: usize = PREFIX.len() + TRAILER.len() + 64 + END.len();
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+
 /* === Enums === */
+
 pub(super) enum Read<T> {
     End,
     Incomplete,
@@ -37,10 +45,11 @@ pub(super) enum Read<T> {
 }
 
 /* === Traits === */
+
 /* === Implementations === */
+
 /* === Public Functions === */
-/// Encodes one complete JSON envelope containing a value and its SHA-256 digest.
-/// The limit covers every byte written, including the envelope and newline.
+
 pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
     let json = serde_json::to_vec(value).map_err(json)?;
     let length = json.len().checked_add(OVERHEAD).ok_or_else(|| invalid("state size overflow"))?;
@@ -60,14 +69,11 @@ pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>>
     Ok(line)
 }
 
-/// A newline is the commit delimiter; malformed complete lines are never skipped.
 pub(super) fn write<T: Serialize>(writer: &mut impl Write, value: &T, maximum: usize) -> Result<()> {
     let line = encode(value, maximum)?;
     writer.write_all(&line).map_err(io)
 }
 
-/// Reads at most one configured record, envelope included.
-/// An incomplete tail is distinguished from corruption in a committed line.
 pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usize) -> Result<Read<T>> {
     let mut line = Vec::new();
     loop {
@@ -108,6 +114,7 @@ pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usiz
 }
 
 /* === Private Functions === */
+
 fn hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -133,12 +140,13 @@ pub(super) fn invalid(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn complete_corruption_is_not_an_incomplete_tail() {
+    fn complete_corruption_refused() {
         let mut bytes = Vec::new();
         write(&mut bytes, &vec![1u8, 2, 3], 128).unwrap();
         let mut input = bytes.as_slice();
@@ -151,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_size_covers_the_whole_record() {
+    fn record_size_validated() {
         let line = encode(&"abc", usize::MAX).unwrap();
         assert_eq!(encode(&"abc", line.len()).unwrap(), line);
 

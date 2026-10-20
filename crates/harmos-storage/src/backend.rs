@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -36,22 +37,22 @@ use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub struct StorageBackends {
     pub primary: Arc<dyn StorageBackend>,
     pub state: Arc<dyn super::state::StateBackend>,
 }
 
-/// A pinned historical image of the primary store at one saved cursor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackendSnapshot {
     pub at: StorageCursor,
     pub token: Vec<u8>,
 }
 
-/// One bounded scan page: entries after `after`, within the row and byte bounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScanPage {
     pub after: u64,
@@ -59,7 +60,6 @@ pub struct ScanPage {
     pub bytes: NonZeroUsize,
 }
 
-/// Row and byte bounds of one recovery page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ReadLimits {
     pub rows: NonZeroUsize,
@@ -69,14 +69,7 @@ pub struct ReadLimits {
 /* === Enums === */
 
 /* === Traits === */
-/// The physical store behind a `StorageManager`.
-///
-/// Scans return entries strictly ascending by storage position within
-/// `(page.after, snapshot.at]` that match the selection. A page holds at least
-/// one entry while any remain, otherwise it stays within `page.rows` and
-/// `page.bytes` of encoded entries; an empty page means the scan is exhausted.
-/// Latest object selection returns each selected key's newest revision at the
-/// snapshot, ordered by that revision's position.
+
 pub trait StorageBackend: Send + Sync + 'static {
     // Lifecycle
     fn history(&self) -> &StoreHistory;
@@ -111,12 +104,10 @@ pub trait StorageBackend: Send + Sync + 'static {
     ) -> StorageFuture<'a, Vec<u8>>;
 
     // Object Lifecycle Retention
-    /// Persist a monotonic release frontier before its stale revisions may be
-    /// reclaimed. Repeating a covered release must not advance metadata.
     fn release_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()>;
-    /// Reclaim released revisions through `through`; `true` when nothing remains.
+
     fn prune_objects<'a>(&'a self, through: &'a StorageCursor, max_entries: NonZeroUsize) -> StorageFuture<'a, bool>;
 
     // Finished File Publication
@@ -166,18 +157,12 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn save_mutations<'a>(&'a self, _receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         unsupported("storage mutations")
     }
-    /// The unexpired receipts with the latest expiry that fit `limits`; older
-    /// receipts beyond the bound are omitted, as the in-memory ledger evicts them.
+
     fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")
     }
 
     // Stored Identity Catalog
-    /// Distinct stream or object identities durable at the snapshot, ordered by
-    /// the position where each first appeared, within the scan page contract.
-    /// Identities persist across restart in the backend's own metadata index;
-    /// a page costs O(page), never a scan of the rows or revisions behind it.
-    /// Backends without that index refuse rather than derive identities.
     fn read_identities<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a IdentitySelection, _page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredIdentity>> {
@@ -186,6 +171,7 @@ pub trait StorageBackend: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
 impl ReadLimits {
     pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
         if rows > self.rows.get() || bytes > self.bytes.get() {
@@ -198,6 +184,7 @@ impl ReadLimits {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
     Box::pin(async move { Err(Error::InvalidInput { field, reason: "backend does not support this capability" }) })
 }

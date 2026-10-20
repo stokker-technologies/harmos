@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{fmt, io};
 // Third Party Imports
@@ -25,6 +26,7 @@ use std::{fmt, io};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ActivationId([u8; 16]);
 
@@ -39,6 +41,7 @@ pub(super) struct Identity {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Identity {
     pub(super) fn new(observer: &'static str) -> io::Result<Self> {
         let mut bytes = [0; 16];

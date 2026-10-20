@@ -10,6 +10,7 @@
 // Parse Cargo Subcommand Arguments And Report One Command Outcome.
 
 /* === Modules === */
+
 mod commands;
 mod error;
 #[cfg(any(feature = "sidecar", feature = "guest"))]
@@ -35,6 +36,7 @@ use clap::Parser;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Parser)]
 #[command(name = "cargo harmos", version, about = "Build And Inspect Harmos Plugin Artifacts")]
 struct Arguments {
@@ -51,6 +53,7 @@ struct Arguments {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() -> std::process::ExitCode {
     let mut arguments: Vec<_> = std::env::args_os().collect();
     if arguments.get(1).is_some_and(|argument| argument == "harmos") {

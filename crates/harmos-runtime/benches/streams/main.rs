@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "../../tests/support/allocation.rs"]
 pub mod allocation;
 
@@ -21,6 +22,7 @@ mod native;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -30,6 +32,7 @@ mod native;
 /* === Constants === */
 
 /* === Macros === */
+
 criterion::criterion_group!(benches, benchmarks);
 
 /* === Type Aliases === */
@@ -45,6 +48,7 @@ criterion::criterion_group!(benches, benchmarks);
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     let mut group = c.benchmark_group("streams");

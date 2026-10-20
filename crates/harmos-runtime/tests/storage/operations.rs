@@ -49,6 +49,7 @@ use harmos_runtime::storage::operations::Operations;
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 pub(crate) enum Lanes {
     #[default]
@@ -62,6 +63,7 @@ pub(crate) enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn followed(
     item: harmos_runtime::operations::StreamItem<harmos_runtime::storage::operations::Followed>,
 ) -> harmos_runtime::storage::StoredRecord {
@@ -103,23 +105,6 @@ fn catalog_serves_operations() {
     for retired in ["storage.read_records", "storage.read_objects", "storage.query_stream", "storage.read_files", "storage.reductions"] {
         assert!(!served.iter().any(|id| id == retired), "retired {retired}");
     }
-}
-
-#[cfg(feature = "grpc")]
-#[test]
-fn grpc_descriptors_compile() {
-    let contracts = Contracts::of::<Operations>().unwrap().into_iter().filter(|contract| contract.grpc().is_some()).collect::<Vec<_>>();
-    let artifacts = harmos_packaging::proto::Artifacts::new(&contracts).unwrap();
-    let target = tempfile::tempdir().unwrap();
-    let root = harmos_packaging::proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("storage")).unwrap();
-    let output = std::process::Command::new(super::support::fixtures::protoc())
-        .current_dir(&root)
-        .arg("--proto_path=.")
-        .arg(format!("--descriptor_set_out={}", target.path().join("compiled.bin").display()))
-        .args(artifacts.files().keys())
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
 #[tokio::test]

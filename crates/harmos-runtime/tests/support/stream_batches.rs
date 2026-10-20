@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use harmos_runtime::{Application, Runtime, state::Never, streams::BatchItem};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Probe;
 
 #[harmos_runtime::stream(id = "raw", window = 4096)]
@@ -41,6 +43,7 @@ struct Raw {
 struct Measured {
     #[harmos(measure)]
     value: f64,
+
     #[harmos(measure)]
     other: f64,
 }
@@ -50,11 +53,13 @@ struct Measured {
 struct Grouped {
     #[harmos(measure)]
     value: f64,
+
     #[harmos(measure)]
     other: f64,
 }
 
 /* === Enums === */
+
 #[harmos_runtime::streams]
 enum Catalog {
     Raw(Raw),
@@ -65,6 +70,7 @@ enum Catalog {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Probe {
     type State = ();
     type Transaction = Never;
@@ -74,6 +80,7 @@ impl Application for Probe {
 }
 
 /* === Public Functions === */
+
 pub async fn raw_and_summary_delivery() {
     let runtime = runtime().await;
     let mut first = runtime.streams.batches::<Measured>();
@@ -140,6 +147,7 @@ pub async fn summary_cost() {
 }
 
 /* === Private Functions === */
+
 async fn runtime() -> Runtime<Probe> {
     Runtime::<Probe>::builder((), ()).register(Catalog::catalog()).runtime().await.unwrap()
 }

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::str::Utf8Error;
 use std::sync::Arc;
@@ -22,6 +23,7 @@ use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, graph};
 
 /* === Constants === */
+
 const DEPTH: usize = 32;
 
 /* === Macros === */
@@ -29,6 +31,7 @@ const DEPTH: usize = 32;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug)]
 pub struct Validator {
     root: usize,
@@ -43,6 +46,7 @@ struct Checked {
 }
 
 /* === Enums === */
+
 #[derive(Debug)]
 enum Wire {
     Varint,
@@ -57,10 +61,13 @@ enum Wire {
 pub enum PayloadError {
     #[error(transparent)]
     Codec(#[from] prost::DecodeError),
+
     #[error(transparent)]
     Utf8(#[from] Utf8Error),
+
     #[error("protobuf payload exceeds 32 nested message or group levels")]
     Depth,
+
     #[error("invalid protobuf payload: {0}")]
     Malformed(&'static str),
 }
@@ -68,6 +75,7 @@ pub enum PayloadError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Validator {
     // Reuse The Checked Definitions For Another Root Without Recompiling Them.
     pub fn at(&self, root: usize) -> Result<Self, graph::Error> {
@@ -208,6 +216,7 @@ impl Wire {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn take<'a>(bytes: &mut &'a [u8], length: usize) -> Result<&'a [u8], PayloadError> {
     if length > bytes.len() {
         return Err(malformed("truncated protobuf field"));

@@ -27,17 +27,17 @@ taplo = "0.10.0"
 gh = "2.102.0"
 git-cliff = "2.14.2"
 glab = "1.123.0"
-minisign = "0.12"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
+
+# Product Tools
+"aqua:cargo-bins/cargo-binstall" = "1.26.0"
 
 # === Environment === #
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
-# A Fresh Checkout Has No Target Yet; Loading The Environment Creates The Temporary Directory Portably.
-TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = Path('target/tmp'); p.mkdir(parents=True, exist_ok=True); print(p.resolve())"` )}}''', tools = true }
 
 # === Variables === #
 
@@ -47,10 +47,7 @@ TMPDIR = { value = '''{{exec(command=`python -c "from pathlib import Path; p = P
 
 [tasks."prepare:tools"]
 description = "Prepare Locked Repository Tools"
-run = [
-  "python -c \"from pathlib import Path; Path('target/tmp').mkdir(parents=True, exist_ok=True)\"",
-  "uv sync --locked --project tools/python --all-groups",
-]
+run = ["uv sync --locked --project tools/python --all-groups"]
 
 # === Format === #
 
@@ -90,7 +87,10 @@ depends = ["lint:rust", "lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
-run = "uv run --locked --project tools/python ruff check tools/python crates/harmos-packaging"
+run = [
+  "uv run --locked --project tools/python ruff check tools/python crates/harmos-packaging",
+  "uv run --locked --project tools/python ty check --project tools/python tools/python",
+]
 
 [tasks."lint:rust"]
 description = "Lint Rust"
@@ -103,12 +103,8 @@ run = [
 
 [tasks.check]
 description = "Check Every Language And Workflows"
-depends = ["check:rust", "check:python"]
+depends = ["check:rust"]
 run = "actionlint"
-
-[tasks."check:python"]
-description = "Check Python"
-run = "uv run --locked --project tools/python ty check --project tools/python tools/python"
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -124,9 +120,21 @@ run = [
 # === Build === #
 
 [tasks.build]
-description = "Build Binaries, Fixtures And The Test Archive"
+description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
-# Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --product --profile {{usage.profile}}"
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."build:bench"]
+description = "Build Benchmark Executables"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench -- --all-features"
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."build:tests"]
+description = "Build The Shared Test Archive And Fixtures"
+usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
 env = { CARGO_INCREMENTAL = "0" }
@@ -158,7 +166,6 @@ description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -174,7 +181,7 @@ description = "Test Integration Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category integration --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -190,9 +197,15 @@ description = "Test Acceptance Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
+env = { CARGO_INCREMENTAL = "0" }
+
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
 env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:system"]
@@ -206,7 +219,7 @@ description = "Test System Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
@@ -221,17 +234,10 @@ env = { CARGO_INCREMENTAL = "0" }
 description = "Test Generated Python"
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python ty check target/fixtures/generated/python/src",
-  # The Repository Lint Policy Applies To Harmos-Emitted Modules; Protoc's `_wire` Output Is Type Checked Only.
-  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/fixtures/generated/python/src",
-  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/fixtures/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/fixtures/generated/python/src'])]\"",
+  "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
 ]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:coverage"]
-description = "Measure Coverage Over Instrumented Lanes"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
 env = { CARGO_INCREMENTAL = "0" }
 
 # === Bench === #
@@ -240,9 +246,9 @@ env = { CARGO_INCREMENTAL = "0" }
 description = "Bench Every Layer"
 usage = 'flag "--refresh-baseline"'
 depends = [
-  "bench:unit{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:integration{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
-  "bench:system{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+  "bench:unit {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:integration {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:system {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
 ]
 
 [tasks."bench:unit"]
@@ -278,6 +284,8 @@ usage = 'flag "--refresh-baseline"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
+# === Docs === #
+
 # === Package === #
 
 [tasks.package]
@@ -299,17 +307,21 @@ usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format --check" },
   { task = "build --profile {{usage.profile}}" },
+  { task = "build:tests --profile {{usage.profile}}" },
   { task = "check" },
   { task = "lint" },
   { task = "test --profile {{usage.profile}}" },
+  { task = "package --profile {{usage.profile}}" },
+  { task = "release:publish:dry" },
 ]
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
 run = [
   { task = "build" },
+  { task = "build:tests" },
   { task = "test:coverage" },
-  { task = "build --profile bench" },
+  { task = "build:bench" },
   { task = "bench:unit --refresh-baseline" },
   { task = "bench:integration --refresh-baseline" },
   { task = "bench:system --refresh-baseline" },
@@ -327,15 +339,30 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 
 [tasks."release:publish"]
 description = "Publish A Tagged Release"
-run = [{ task = "release:publish:rust" }]
+run = [{ task = "release:publish:rust" }, { task = "release:publish:assets" }]
+
+[tasks."release:publish:assets"]
+description = "Publish Verified Release Assets"
+run = [
+  "uv run --locked --project tools/python python -m harmos_tools.release.run publish",
+  "uv run --locked --project tools/python python -m harmos_tools.release.run finalize",
+]
 
 [tasks."release:publish:dry"]
 description = "Verify Rust Registry Publication"
-run = "cargo publish --workspace --locked --dry-run"
+run = "uv run --locked --project tools/python python -m harmos_tools.test.publish --rust"
 
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
 run = "cargo publish --workspace --locked"
+
+[tasks."release:stage"]
+description = "Stage Native Release Assets"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run stage"
+
+[tasks."release:verify"]
+description = "Verify Published Release Assets And Opted-In Installers"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run verify"
 
 # === Housekeeping === #
 

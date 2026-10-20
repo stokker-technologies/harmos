@@ -7,16 +7,39 @@
  * ***
  */
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
 use super::{Contract, ContractError, Contracts, Declarations, Definition, Entry, WireDeclaration};
 use harmos_domain::Result;
 use harmos_domain::catalog::{Catalog, Member, Visitor};
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
 /* === Structs === */
+
 pub struct AuthoredDeclarations;
+
 pub struct AuthoredContracts;
 
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl Visitor for AuthoredDeclarations {
     type Entry = Entry;
 }
@@ -44,3 +67,9 @@ impl AuthoredContracts {
         Contracts::from_projection(&C::ENTRIES)
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

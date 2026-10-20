@@ -8,9 +8,11 @@
  */
 
 /* === Modules === */
+
 mod timestamp;
 
 /* === Re-Exports === */
+
 pub use timestamp::Time;
 
 /* === Imports === */
@@ -31,6 +33,7 @@ use crate::{Identifier, MemorySize, MessageError};
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! product {
     ($ty:ty { $($field:ident: $codec:ty => $tag:literal),* $(,)? }) => {
         crate::model::storage::codec::product!($ty { $($field: $codec => $tag),* }, check = |_: &$ty| Ok(()));
@@ -181,9 +184,11 @@ macro_rules! coded {
 pub(crate) use coded;
 
 /* === Type Aliases === */
+
 type Result<T, E = MessageError> = std::result::Result<T, E>;
 
 /* === Structs === */
+
 pub struct Repeated<T>(PhantomData<fn() -> T>);
 pub struct Nested<T>(PhantomData<fn() -> T>);
 pub struct Optional<T>(PhantomData<fn() -> T>);
@@ -207,6 +212,7 @@ pub struct Many<A>(PhantomData<fn() -> A>);
 /* === Enums === */
 
 /* === Traits === */
+
 pub trait Native: PostcardValue + MemorySize + Described {}
 impl<T: PostcardValue + MemorySize + Described> Native for T {}
 
@@ -241,6 +247,7 @@ pub trait Value: 'static {
 }
 
 /* === Implementations === */
+
 impl<T: Native> Value for Repeated<T> {
     const NAME: &'static str = declaration::Name::new(concat!(module_path!(), "::", stringify!(Repeated)), &[T::NAME]).as_str();
     postcard_field!();

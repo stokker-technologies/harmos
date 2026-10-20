@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -37,6 +38,7 @@ use harmos_sidecar::transport::{self, Connection, Io, Packet, Role};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn io(stream: DuplexStream) -> Io {
     let (read, write) = tokio::io::split(stream);
     (Box::new(read), Box::new(write))

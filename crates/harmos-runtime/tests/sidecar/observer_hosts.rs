@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::pin::Pin;
@@ -34,6 +35,7 @@ use harmos_runtime::sidecar::{
 };
 
 /* === Constants === */
+
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Settings>>> = Mutex::new(std::collections::BTreeMap::new());
 
@@ -42,6 +44,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Settings>>> = Mutex::
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct State {
     owner: Mutex<Option<ThreadId>>,
@@ -79,6 +82,7 @@ struct ReadValue;
 struct Watch<const N: u64>(Arc<State>);
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Observers {
     First(Watch<0>),
@@ -88,6 +92,7 @@ enum Observers {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Seed {
     fn new(resources: &Arc<Settings>) -> Self {
         let id = NEXT_SEED.fetch_add(1, Ordering::SeqCst);
@@ -225,6 +230,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 async fn exercise(panic_first: bool) {
     let resources = Arc::new(Settings { panic_first, ..Settings::default() });
     let state = resources.state.clone();

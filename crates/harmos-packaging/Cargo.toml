@@ -10,6 +10,7 @@
 
 [package]
 name = "harmos-packaging"
+description = "Harmos packaging: reusable Cargo builds, inert inspection and guest componentization."
 autotests = false
 version.workspace = true
 edition.workspace = true
@@ -80,13 +81,38 @@ process-wrap = { workspace = true, features = ["std", "job-object", "process-gro
 # === Dev Dependencies === #
 
 [dev-dependencies]
-harmos-sdk = { workspace = true, features = ["grpc"] }
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
+harmos-sdk = { workspace = true, features = ["grpc"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
 
 # Serialization
 protoc-bin-vendored = { workspace = true }
 
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Target Dependencies === #
 

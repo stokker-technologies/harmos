@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
@@ -29,6 +30,7 @@ use crate::{Error, MessageError, Result};
 /* === Constants === */
 
 /* === Macros === */
+
 crate::model::storage::codec::product!(super::FileSession {
     history: crate::model::storage::codec::Nested<crate::model::storage::StoreHistory> => 1,
     id: crate::model::storage::codec::Id => 2,
@@ -47,6 +49,7 @@ crate::model::storage::codec::product!(super::FileProgress {
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // Wire Values: Zero Producing, One Finished, Two Abandoned.
 struct Phase;
 
@@ -55,6 +58,7 @@ struct Phase;
 /* === Traits === */
 
 /* === Implementations === */
+
 impl crate::model::storage::codec::Value for Phase {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Phase));
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {

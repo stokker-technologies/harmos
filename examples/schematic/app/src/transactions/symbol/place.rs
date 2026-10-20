@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -29,6 +30,7 @@ use harmos::state::Transaction;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "symbol.place", version = 1, irreversible)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PlaceSymbol {
@@ -43,6 +45,7 @@ pub struct PlaceSymbol {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Schematic> for PlaceSymbol {
     type Error = SchematicError;
 

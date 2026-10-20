@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +25,7 @@ use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
 /* === Constants === */
+
 const SDK: [harmos_domain::operations::OperationPolicy; 2] = [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
 
 #[used]
@@ -48,6 +50,7 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])]
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Catalog;
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
 #[harmos_sidecar::operation(
@@ -66,6 +69,7 @@ struct Read {}
 /* === Traits === */
 
 /* === Implementations === */
+
 impl lifecycle::Policy for Catalog {
     const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::from_secs(30),
@@ -125,6 +129,7 @@ impl Declared for Catalog {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     harmos_sidecar::run_plugin::<Catalog>(std::num::NonZeroUsize::new(1).unwrap()).await

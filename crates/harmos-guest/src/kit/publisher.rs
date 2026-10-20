@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::marker::PhantomData;
 // Third Party Imports
@@ -28,16 +29,19 @@ use harmos_sdk::operations::Host;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Publisher<P> {
     context: Context,
     _plugin: PhantomData<fn() -> P>,
 }
 
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
     #[error("stream is not in the authored inventory")]
     UndeclaredStream,
+
     #[error(transparent)]
     Call(#[from] harmos_domain::Refusal),
 }
@@ -45,6 +49,7 @@ pub enum PublishError {
 /* === Traits === */
 
 /* === Implementations === */
+
 // A refused publication forwards the host's failure unchanged.
 impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {

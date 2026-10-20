@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -35,9 +36,11 @@ use harmos_runtime::{Error, Message, Result, operations::OperationManager};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     id = "fixture.host_control",
@@ -77,6 +80,7 @@ struct Host {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Controls {
     Control(Control),
@@ -205,6 +209,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn definitions(revision: &str) -> PluginDefinitions {
     let provider = PluginDefinition {
         id: "provider".into(),
@@ -239,6 +244,7 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
 }
 
 /* === Tests === */
+
 #[tokio::test]
 async fn host_requirements_route() {
     use harmos_runtime::operations::streams::Publish;

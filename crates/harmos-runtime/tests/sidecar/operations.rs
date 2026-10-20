@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "operation_lifecycle.rs"]
 mod operation_lifecycle;
 
@@ -17,12 +18,14 @@ mod streams;
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
+
 // Third Party Imports
 use tokio::sync::Notify;
 
@@ -41,6 +44,7 @@ use harmos_runtime::sidecar::{Attach, Attached, Notice, Supervised};
 use harmos_runtime::{services::Service, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
+
 const CAPACITY: usize = 2;
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
@@ -48,12 +52,14 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Counts>>> 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type RetirementGate = Arc<Mutex<Option<(Arc<Notify>, Arc<Notify>)>>>;
 type Source = Advertised<harmos_sidecar::PluginNative<Endpoint>>;
 pub(crate) type Resident<A> = Supervised<Bank, A, fn(&Service<Bank>, Notice)>;
 type Backends<A> = PluginBackend<(), Backend<A>, ()>;
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Counts {
     attached: AtomicUsize,
@@ -178,10 +184,12 @@ pub(crate) struct Managed<A: Attach> {
 pub(crate) struct Calling(pub(crate) harmos_runtime::operations::EncodedInvocation);
 
 /* === Enums === */
+
 #[harmos_runtime::lanes]
 pub(crate) enum Lanes {
     #[default]
     NativeOpen,
+
     #[lane(serial)]
     NativeSerial,
 }
@@ -198,6 +206,7 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for Seed {
     fn drop(&mut self) {
         SEEDS.lock().unwrap().remove(&self.id);
@@ -713,6 +722,7 @@ impl<S: Attach> Attach for Advertised<S> {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn inspected<A: Attach>(source: &A, configuration: Vec<u8>) -> PluginDefinitions {
     PluginDefinitions::new([definition(source, configuration)], []).unwrap()
 }
@@ -738,6 +748,7 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
 }
 
 /* === Private Functions === */
+
 fn notices(_: &Service<Bank>, _: Notice) {}
 
 // Drives submitted children through the sidecar binding of the host.
@@ -804,3 +815,5 @@ fn source(counts: Arc<Counts>) -> Source {
     let operations = source.operations().unwrap();
     Advertised { source, operations, counts, seed: Arc::new(Seed { id }) }
 }
+
+/* === Tests === */

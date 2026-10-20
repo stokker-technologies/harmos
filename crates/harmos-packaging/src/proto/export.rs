@@ -34,6 +34,7 @@ use prost_reflect::{
 use harmos_domain::operations::Contract;
 
 /* === Constants === */
+
 const MAX_METHODS: usize = 4096;
 const MAX_DESCRIPTOR_BYTES: usize = 16 * 1024 * 1024;
 
@@ -42,6 +43,7 @@ const MAX_DESCRIPTOR_BYTES: usize = 16 * 1024 * 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct Artifacts {
     files: BTreeMap<String, String>,
     descriptors: Vec<u8>,
@@ -52,6 +54,7 @@ pub struct Artifacts {
 #[serde(deny_unknown_fields)]
 struct Catalog {
     schema: u32,
+
     #[serde(deserialize_with = "bounded_contracts")]
     contracts: Vec<Contract>,
 }
@@ -60,22 +63,30 @@ struct MetadataWriter(Vec<u8>);
 
 struct ContractVisitor;
 /* === Enums === */
+
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
     #[error(transparent)]
     Descriptor(#[from] super::DescriptorError),
+
     #[error("conflicting generated protobuf file: {0}")]
     Collision(String),
+
     #[error("protobuf artifacts exceed their bounded export limit")]
     Limit,
+
     #[error("invalid artifact name")]
     Name,
+
     #[error("unsupported generated protobuf descriptor")]
     Unsupported,
+
     #[error("invalid canonical contract export: {0}")]
     Json(#[from] serde_json::Error),
+
     #[error("descriptor and canonical contract exports differ")]
     Incompatible,
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -83,6 +94,7 @@ pub enum ExportError {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl std::io::Write for MetadataWriter {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         let length = self
@@ -249,6 +261,7 @@ impl Artifacts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn bounded_contracts<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Vec<Contract>, D::Error> {
     input.deserialize_seq(ContractVisitor)
 }

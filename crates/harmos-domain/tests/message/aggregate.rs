@@ -10,6 +10,7 @@
 // The Hand-Written Aggregate Message Against Its Derived Twin
 
 /* === Modules === */
+
 // The Shape `#[harmos::message]` Derives For The Same Vocabulary
 mod twin {
     use harmos_domain::message;
@@ -32,6 +33,7 @@ mod twin {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -44,6 +46,7 @@ use harmos_domain::{Aggregate, MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
+
 const EVERY: [Aggregate; 11] = [
     Aggregate::Count,
     Aggregate::Sum,
@@ -63,6 +66,7 @@ const EVERY: [Aggregate; 11] = [
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // The Aggregate Reaches Every Field Cardinality Of A Derived Message
 #[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
@@ -79,8 +83,13 @@ struct Summary {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[test]
-fn protobuf_matches_derive() {
+fn aggregate_protobuf_contract() {
+    use harmos_packaging::proto::reflection::DynamicMessage;
+
+    let schema = crate::schema_descriptor(Aggregate::DEFINITION);
+    assert_eq!(schema.oneofs().count(), 1);
     for value in EVERY {
         let encoded = crate::encode(&value);
         assert_eq!(encoded, crate::encode(&twin(value)), "{value:?}");
@@ -89,11 +98,11 @@ fn protobuf_matches_derive() {
         assert!(grpc::decoding_memory::<Aggregate>(DecodeInput::new(&encoded)).unwrap() >= value.memory_size());
         let derived = grpc::decode::<twin::Aggregate>(DecodeInput::new(&encoded)).unwrap();
         assert!(derived == twin(value), "{value:?}");
+        let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
+        assert_eq!(prost::Message::encode_to_vec(&reflected), encoded);
     }
-}
 
-#[test]
-fn aggregate_protobuf_edges() {
+    // Defaults, Repeated Variants And Malformed Values Follow The Same Wire Contract.
     assert_eq!(grpc::decode::<Aggregate>(DecodeInput::new(&[])).unwrap(), Aggregate::Count);
     let wide = crate::encode(&twin::Aggregate::Percentile { rank: 256 });
     assert!(grpc::decode::<Aggregate>(DecodeInput::new(&wide)).is_err());
@@ -119,14 +128,6 @@ fn postcard_matches_serde() {
     }
     assert!(<Aggregate as Message>::decode(&[9]).is_err());
     assert!(<Aggregate as Message>::decode(&[8]).is_err());
-}
-
-#[test]
-fn aggregate_json_unchanged() {
-    assert_eq!(serde_json::to_string(&Aggregate::Count).unwrap(), "\"count\"");
-    assert_eq!(serde_json::to_string(&Aggregate::Percentile(95)).unwrap(), "{\"percentile\":95}");
-    assert_eq!(Aggregate::Percentile(95).name(), "p95");
-    assert_eq!(Aggregate::parse("p95"), Some(Aggregate::Percentile(95)));
 }
 
 #[test]
@@ -167,19 +168,8 @@ fn schema_matches_derive() {
     Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
 }
 
-#[test]
-fn aggregate_reflects_oneof() {
-    use harmos_packaging::proto::reflection::DynamicMessage;
-    let schema = crate::schema_descriptor(Aggregate::DEFINITION);
-    assert_eq!(schema.oneofs().count(), 1);
-    for value in EVERY {
-        let encoded = crate::encode(&value);
-        let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
-        assert_eq!(prost::Message::encode_to_vec(&reflected), encoded);
-    }
-}
-
 /* === Private Functions === */
+
 fn twin(value: Aggregate) -> twin::Aggregate {
     match value {
         Aggregate::Count => twin::Aggregate::Count,

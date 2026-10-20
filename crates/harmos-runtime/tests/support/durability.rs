@@ -9,12 +9,14 @@
 
 #![allow(dead_code)]
 /* === Modules === */
+
 #[path = "journal.rs"]
 pub mod journal;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::fmt;
 use std::sync::Arc;
@@ -34,9 +36,11 @@ use journal::Wire;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 pub type Dispatched = (Arc<AtomicU64>, Arc<std::sync::Mutex<Vec<u64>>>);
 
 /* === Structs === */
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Ledger {
     pub balance: i64,
@@ -105,6 +109,7 @@ pub struct Payouts {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -130,6 +135,7 @@ pub enum Fact {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -366,6 +372,7 @@ impl JournalConsumer<Bank> for Payouts {
 }
 
 /* === Public Functions === */
+
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
 }
@@ -399,6 +406,7 @@ pub fn alice() -> PrincipalId {
 }
 
 /* === Private Functions === */
+
 fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, DefinitionId, u32)> {
     match catalog.register() {
         Catalog::Transactions { definitions, .. } => definitions,

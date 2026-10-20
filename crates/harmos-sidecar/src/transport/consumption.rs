@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 use std::sync::{Arc, Mutex};
@@ -29,6 +30,7 @@ use crate::Frame;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct ReceiveCredit {
     ledger: Mutex<Ledger>,
     released: watch::Sender<u64>,
@@ -54,6 +56,7 @@ pub struct Consumption {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl ReceiveCredit {
     pub fn new() -> Arc<Self> {
         Arc::new(Self { ledger: Mutex::new(Ledger::default()), released: watch::channel(0).0, closed: watch::channel(false).0 })

@@ -32,6 +32,7 @@
 /* === Structs === */
 
 /* === Enums === */
+
 #[harmos::catalog]
 enum Operations {
     #[operation(request = (), response = (), policy = ())]
@@ -46,6 +47,7 @@ enum Operations {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

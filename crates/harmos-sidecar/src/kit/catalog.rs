@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::ffi::OsString;
 use std::io::{self, Write};
@@ -21,6 +22,7 @@ use std::io::{self, Write};
 use crate::{Plugin, Registrar, Registration, RegistrationError};
 
 /* === Constants === */
+
 pub const CATALOG_EXPORT_FLAG: &str = "--harmos-export-catalog-v1";
 
 pub const CATALOG_EXPORT_LIMIT: usize = crate::Frame::LIMIT;
@@ -30,6 +32,7 @@ pub const CATALOG_EXPORT_LIMIT: usize = crate::Frame::LIMIT;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Bounded(Vec<u8>);
 
 /* === Enums === */
@@ -37,6 +40,7 @@ struct Bounded(Vec<u8>);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > CATALOG_EXPORT_LIMIT - self.0.len() {
@@ -52,6 +56,7 @@ impl Write for Bounded {
 }
 
 /* === Public Functions === */
+
 pub(super) fn requested(mut args: impl Iterator<Item = OsString>) -> bool {
     args.next().is_some_and(|arg| arg == CATALOG_EXPORT_FLAG) && args.next().is_none()
 }

@@ -12,6 +12,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::config::*;
 
 /* === Imports === */
@@ -37,6 +38,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[cfg(feature = "grpc")]
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeSettings {

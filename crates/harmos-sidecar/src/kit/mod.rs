@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod carrier;
 mod catalog;
 mod connection;
@@ -30,6 +31,7 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
+
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
@@ -40,6 +42,7 @@ pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
 pub use publisher::{Batch, PublishError, Publisher};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -54,17 +57,20 @@ use harmos_domain::{Refusal, UNKNOWN, UNREADABLE, reserved};
 use host::Outgoing;
 
 /* === Constants === */
+
 const INCOMING_REQUESTS: usize = 128;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
 type Table = Arc<Mutex<crate::operations::WireTable<Supervisor>>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
 type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
 
 /* === Structs === */
+
 struct Incoming {
     frame: Frame,
     cancelled: Option<oneshot::Receiver<()>>,
@@ -83,6 +89,7 @@ pub(crate) struct Opening {
 }
 
 /* === Enums === */
+
 enum Answered {
     Nothing,
     Frame(Frame),
@@ -92,6 +99,7 @@ enum Answered {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         self.0.disconnected();
@@ -116,7 +124,9 @@ impl Opening {
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 async fn exchange(
     opening: SharedOpening, inbound: &mut Input, outgoing: &Sender, completed: oneshot::Sender<()>,
     mut stopping: tokio::sync::watch::Receiver<bool>, clock: fn() -> Option<i64>,

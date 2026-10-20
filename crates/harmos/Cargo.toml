@@ -1,7 +1,8 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos"
+description = "Harmos facade: stateful Rust applications with history, live data and plugins."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

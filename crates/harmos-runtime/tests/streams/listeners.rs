@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -36,14 +37,17 @@ use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Backends = PluginBackend<Resources, Resources, Resources>;
 type Seen = Vec<(bool, u32, DeliveryContext)>;
 
 /* === Structs === */
+
 // Clone Panics To Prove The Listener Borrows The Original Native Stream Row.
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
+
     #[serde(skip)]
     dropped: Arc<AtomicUsize>,
 }
@@ -97,6 +101,7 @@ struct Host {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::streams]
 enum Rows {
     Fact(Fact),
@@ -118,6 +123,7 @@ enum Lanes {
 enum Failed {
     #[error("scripted original callback failure")]
     Scripted,
+
     #[error(transparent)]
     Runtime(#[from] Error),
 }
@@ -125,6 +131,7 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
     fn definition() -> harmos_runtime::streams::Definition {
@@ -322,6 +329,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn fact(value: u32) -> Fact {
     Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
 }
@@ -488,18 +496,32 @@ async fn sources_never_commit() {
 }
 
 #[tokio::test]
-async fn failure_fences_side() {
-    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-    host.owner.fail_attempt.store(true, Ordering::SeqCst);
-    manager.initialize(&mut host).await.unwrap();
-    observed(&host.owner, 1).await;
-    fenced(&host).await;
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
-    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
-    assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+async fn listener_failure_fences() {
+    {
+        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+        host.owner.fail_attempt.store(true, Ordering::SeqCst);
+        manager.initialize(&mut host).await.unwrap();
+        observed(&host.owner, 1).await;
+        fenced(&host).await;
+        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
+        assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
+        assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
+    {
+        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+        manager.initialize(&mut host).await.unwrap();
+        observed(&host.owner, 2).await;
+        runtime.streams.publish(fact(u32::MAX));
+        fenced(&host).await;
+        assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationPanicked { .. })));
+        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
+        assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -553,48 +575,48 @@ async fn runtime_signals_listener() {
 }
 
 #[tokio::test]
-async fn shutdown_retains_callback() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    host.owner.started.notified().await;
-    for value in 1..=512 {
-        runtime.streams.publish(fact(value));
+async fn finalizer_retains_owner() {
+    {
+        let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+        manager.initialize(&mut host).await.unwrap();
+        host.owner.started.notified().await;
+        for value in 1..=512 {
+            runtime.streams.publish(fact(value));
+        }
+        let owner = host.owner.clone();
+        let mut closing = Box::pin(manager.shutdown(&mut host));
+        tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
+        let pending = std::future::poll_fn(|context| std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())).await;
+        assert!(pending, "shutdown waits on the held finalizer");
+        drop(closing);
+        assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
+        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+        host.owner.release.notify_one();
+        manager.shutdown(&mut host).await.unwrap();
+        assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+        assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+        runtime.stop().await.unwrap();
     }
-    let owner = host.owner.clone();
-    let mut closing = Box::pin(manager.shutdown(&mut host));
-    tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    let pending = std::future::poll_fn(|context| std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())).await;
-    assert!(pending, "shutdown waits on the held finalizer");
-    drop(closing);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cleanup_retries_finalizer() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    host.owner.started.notified().await;
-    for value in 1..=512 {
-        runtime.streams.publish(fact(value));
+    {
+        let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+        manager.initialize(&mut host).await.unwrap();
+        host.owner.started.notified().await;
+        for value in 1..=512 {
+            runtime.streams.publish(fact(value));
+        }
+        host.owner.fail_cleanup.store(true, Ordering::SeqCst);
+        assert!(manager.shutdown(&mut host).await.is_err());
+        assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
+        let before = host.owner.finalizations.load(Ordering::SeqCst);
+        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+        host.owner.fail_cleanup.store(false, Ordering::SeqCst);
+        host.owner.release.notify_one();
+        manager.shutdown(&mut host).await.unwrap();
+        assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+        assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
+        assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+        runtime.stop().await.unwrap();
     }
-    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
-    assert!(manager.shutdown(&mut host).await.is_err());
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    let before = host.owner.finalizations.load(Ordering::SeqCst);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -668,20 +690,6 @@ async fn receipt_cleans_replacement() {
     assert!(current.is_ready());
     assert!(runtime.streams.shutdown_listeners_for(&old).await.is_err());
     assert!(current.is_ready());
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn codec_panic_fences() {
-    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-    manager.initialize(&mut host).await.unwrap();
-    observed(&host.owner, 2).await;
-    runtime.streams.publish(fact(u32::MAX));
-    fenced(&host).await;
-    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationPanicked { .. })));
-    assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }

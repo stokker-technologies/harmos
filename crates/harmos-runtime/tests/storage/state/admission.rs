@@ -34,9 +34,11 @@ use harmos_runtime::state::Envelope;
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Refusal = std::convert::Infallible;
 
 /* === Structs === */
+
 struct Model;
 
 #[harmos_runtime::transaction(id = "admission.advance", version = 1, irreversible)]
@@ -52,6 +54,7 @@ struct Observed {
 struct Projection;
 
 /* === Enums === */
+
 #[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
@@ -67,6 +70,7 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Application for Model {
     type State = u64;
     type Transaction = Transactions;
@@ -104,6 +108,7 @@ impl RecordProjection for Projection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
 fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::Query {
     harmos_runtime::storage::operations::Query {

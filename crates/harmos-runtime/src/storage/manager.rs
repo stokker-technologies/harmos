@@ -7,45 +7,71 @@
  * ***
  */
 
+/* === Modules === */
+
 /* === Re-Exports === */
+
 pub use harmos_storage::ErasedCatalog;
 pub(crate) use harmos_storage::encoded_size;
 
 /* === Imports === */
+
+// Standard Library Imports
+use std::sync::{Arc, Mutex};
+
+// Third Party Imports
+
+// Local Imports
 use super::{StorageBackends, StorageSettings};
 use crate::operations::{OperationManager, resident::Lease};
 use crate::services::{Fault, Once, Resident, Service, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Result};
-use std::sync::{Arc, Mutex};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
 
 /* === Structs === */
+
 pub struct StorageManager<C = ()> {
     engine: harmos_storage::StorageManager<C>,
 }
+
 struct Worker(harmos_storage::Worker);
+
 struct Owner {
     leases: Mutex<Vec<Lease>>,
 }
 
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
+
 impl<C> std::ops::Deref for StorageManager<C> {
     type Target = harmos_storage::StorageManager<C>;
     fn deref(&self) -> &Self::Target {
         &self.engine
     }
 }
+
 impl<C: super::ObjectCatalog> StorageManager<C> {
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         let execution = harmos_storage::execution::Execution::new(executor::now, |duration| Box::pin(executor::sleep(duration)));
         Ok(Self { engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)? })
     }
 }
+
 impl<C> StorageManager<C> {
     pub(crate) fn claim_owner(&self, owner: Arc<()>) -> Result<()> {
         self.engine.claim_owner(owner).map_err(Into::into)
@@ -80,6 +106,7 @@ impl<C> StorageManager<C> {
             .map_err(Into::into)
     }
 }
+
 impl<A: Application> Resident<A> for Worker {
     type Error = Error;
     async fn cleanup(&mut self) -> Result<()> {
@@ -90,6 +117,7 @@ impl<A: Application> Resident<A> for Worker {
         context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| Fault::Environmental(error.into()))
     }
 }
+
 impl harmos_storage::WorkerOwner for Owner {
     fn stop(&self) -> harmos_storage::StorageFuture<'_, ()> {
         Box::pin(async move {
@@ -106,3 +134,9 @@ impl harmos_storage::WorkerOwner for Owner {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

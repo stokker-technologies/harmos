@@ -15,6 +15,7 @@
 
 // Standard Library Imports
 use std::{
+    collections::BTreeMap,
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -42,14 +43,17 @@ use crate::services::{Fault, Resident, Service, ServiceDefinition};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
+
 const SERVICE: &str = "harmos.grpc";
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /* === Structs === */
+
 pub(super) struct Resources {
     settings: Settings,
     routes: tonic::service::Routes,
@@ -63,15 +67,21 @@ pub(super) struct Owner<A: Application> {
     application: std::marker::PhantomData<fn() -> A>,
     closing: AtomicBool,
     generation: AtomicU64,
-    current: Mutex<Option<Current<A>>>,
+    current: Mutex<BTreeMap<u64, Current>>,
     transitions: tokio::sync::Mutex<()>,
 }
 
-struct Current<A: Application> {
-    generation: u64,
+#[derive(Clone)]
+struct Current {
+    service: String,
     resources: Arc<Resources>,
     lease: Option<Arc<OperationInstance<Activation>>>,
-    application: std::marker::PhantomData<fn() -> A>,
+}
+
+struct Starting<'a, A: Application> {
+    owner: &'a Owner<A>,
+    generation: u64,
+    ready: bool,
 }
 
 struct Listener {
@@ -89,6 +99,7 @@ struct Connection {
 /* === Enums === */
 
 /* === Traits === */
+
 pub(super) trait Host: Send + Sync {
     fn attach(&self, resources: Arc<Resources>) -> Pending<'_, (u64, SocketAddr)>;
     fn detach(&self, generation: u64) -> Pending<'_, ()>;
@@ -100,6 +111,7 @@ pub(super) trait Host: Send + Sync {
 }
 
 /* === Implementations === */
+
 impl Resources {
     pub(super) fn new(settings: Settings, routes: tonic::service::Routes, middleware: Vec<Arc<dyn Middleware>>) -> Self {
         Self { settings, routes, middleware: middleware.into(), stopping: watch::channel(false).0, address: Mutex::new(None) }
@@ -113,25 +125,39 @@ impl<A: Application> Owner<A> {
             application: std::marker::PhantomData,
             closing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
-            current: Mutex::new(None),
+            current: Mutex::new(BTreeMap::new()),
             transitions: tokio::sync::Mutex::new(()),
         }
     }
 
-    async fn retire(&self, current: Current<A>) -> Result<()> {
+    async fn retire(&self, generation: u64) -> Result<()> {
+        let Some(current) = self.current().get(&generation).cloned() else {
+            return Ok(());
+        };
         current.resources.stopping.send_replace(true);
         if let Some(lease) = &current.lease {
             lease.cancel();
         }
         drop(current.lease);
-        match self.operations.unregister_resident(SERVICE).await {
-            Ok(()) | Err(Error::NotRegistered { .. }) => Ok(()),
+        match self.operations.unregister_resident(&current.service).await {
+            Ok(()) | Err(Error::NotRegistered { .. }) => {
+                self.current().remove(&generation);
+                Ok(())
+            }
             Err(error) => Err(error),
         }
     }
 
-    fn current(&self) -> std::sync::MutexGuard<'_, Option<Current<A>>> {
+    fn current(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, Current>> {
         self.current.lock().expect("gRPC listener lock is healthy")
+    }
+}
+
+impl<A: Application> Drop for Starting<'_, A> {
+    fn drop(&mut self) {
+        if !self.ready {
+            self.owner.cancel(self.generation);
+        }
     }
 }
 
@@ -142,24 +168,23 @@ impl<A: Application> Host for Owner<A> {
             if self.closing.load(Ordering::Acquire) {
                 return Err(Error::Closing { domain: "gRPC listener" });
             }
-            // A Dropped Attachment Is Cancelled But Still Owns Its Service
+            // Reap Dropped Or Cancelled Attachments Without Touching Live Siblings.
             let retiring = {
-                let mut current = self.current();
-                match current.as_ref() {
-                    Some(attached) if !*attached.resources.stopping.borrow() => {
-                        return Err(Error::AlreadyRegistered { domain: "gRPC listener", name: SERVICE.into() });
-                    }
-                    Some(_) => current.take(),
-                    None => None,
-                }
+                let current = self.current();
+                current.iter().filter(|(_, current)| *current.resources.stopping.borrow()).map(|(id, _)| *id).collect::<Vec<_>>()
             };
-            if let Some(retiring) = retiring {
-                self.retire(retiring).await?;
+            for generation in retiring {
+                self.retire(generation).await?;
             }
-            let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+            let generation = self
+                .generation
+                .try_update(Ordering::AcqRel, Ordering::Acquire, |current| current.checked_add(1))
+                .map_err(|_| Error::ResourceExhausted { resource: "gRPC listener generations" })?
+                + 1;
+            let service = format!("{SERVICE}.{generation}");
             self.operations.register_service::<A, _, _, _>(
                 ServiceDefinition {
-                    id: SERVICE.into(),
+                    id: service.clone(),
                     policy: OperationPolicy {
                         timeout: resources.settings.shutdown_timeout,
                         restart: RestartPolicy::Never,
@@ -168,12 +193,16 @@ impl<A: Application> Host for Owner<A> {
                 },
                 |resources: Arc<Resources>| Listener { resources, task: None },
             )?;
-            *self.current() =
-                Some(Current { generation, resources: resources.clone(), lease: None, application: std::marker::PhantomData });
+            self.current().insert(generation, Current { service: service.clone(), resources: resources.clone(), lease: None });
+            let mut starting = Starting { owner: self, generation, ready: false };
+            if self.closing.load(Ordering::Acquire) {
+                self.retire(generation).await?;
+                return Err(Error::Closing { domain: "gRPC listener" });
+            }
             let started = async {
-                let lease = self.operations.submit_with_resources_at(SERVICE, resources.clone()).await?;
+                let lease = self.operations.submit_with_resources_at(&service, resources.clone()).await?;
                 let lease = Arc::new(lease);
-                if let Some(current) = self.current().as_mut() {
+                if let Some(current) = self.current().get_mut(&generation) {
                     current.lease = Some(lease.clone());
                 }
                 if *resources.stopping.borrow() {
@@ -183,12 +212,12 @@ impl<A: Application> Host for Owner<A> {
                 resources.address.lock().expect("gRPC address lock is healthy").ok_or(Error::NotReady { domain: "gRPC listener" })
             };
             match started.await {
-                Ok(address) => Ok((generation, address)),
+                Ok(address) => {
+                    starting.ready = true;
+                    Ok((generation, address))
+                }
                 Err(error) => {
-                    let failed = self.current().take();
-                    if let Some(failed) = failed {
-                        self.retire(failed).await?;
-                    }
+                    self.retire(generation).await?;
                     Err(error)
                 }
             }
@@ -198,20 +227,13 @@ impl<A: Application> Host for Owner<A> {
     fn detach(&self, generation: u64) -> Pending<'_, ()> {
         Box::pin(async move {
             let _transition = self.transitions.lock().await;
-            let retiring = {
-                let mut current = self.current();
-                if current.as_ref().is_some_and(|current| current.generation == generation) { current.take() } else { None }
-            };
-            match retiring {
-                Some(retiring) => self.retire(retiring).await,
-                None => Ok(()),
-            }
+            self.retire(generation).await
         })
     }
 
     fn cancel(&self, generation: u64) {
         let current = self.current();
-        let Some(current) = current.as_ref().filter(|current| current.generation == generation) else {
+        let Some(current) = current.get(&generation) else {
             return;
         };
         current.resources.stopping.send_replace(true);
@@ -221,14 +243,16 @@ impl<A: Application> Host for Owner<A> {
     }
 
     fn attached(&self) -> bool {
-        self.current().as_ref().is_some_and(|current| !*current.resources.stopping.borrow())
+        self.current().values().any(|current| !*current.resources.stopping.borrow())
     }
 
     fn close(&self) {
         self.closing.store(true, Ordering::Release);
-        let generation = self.current().as_ref().map(|current| current.generation);
-        if let Some(generation) = generation {
-            self.cancel(generation);
+        for current in self.current().values() {
+            current.resources.stopping.send_replace(true);
+            if let Some(lease) = &current.lease {
+                lease.cancel();
+            }
         }
     }
 
@@ -236,18 +260,25 @@ impl<A: Application> Host for Owner<A> {
         Box::pin(async move {
             self.close();
             let _transition = self.transitions.lock().await;
-            let retiring = self.current().take();
-            match retiring {
-                Some(retiring) => self.retire(retiring).await,
-                None => Ok(()),
+            let retiring = self.current().keys().copied().collect::<Vec<_>>();
+            let mut failure = None;
+            for generation in retiring {
+                if let Err(error) = self.retire(generation).await {
+                    failure.get_or_insert(error);
+                }
             }
+            failure.map_or(Ok(()), Err)
         })
     }
 
     fn local_addr(&self) -> Option<SocketAddr> {
         let current = self.current();
-        let current = current.as_ref().filter(|current| !*current.resources.stopping.borrow())?;
-        *current.resources.address.lock().expect("gRPC address lock is healthy")
+        let mut attached = current.values().filter(|current| !*current.resources.stopping.borrow());
+        let first = attached.next()?;
+        if attached.next().is_some() {
+            return None;
+        }
+        *first.resources.address.lock().expect("gRPC address lock is healthy")
     }
 }
 
@@ -395,6 +426,7 @@ impl AsyncWrite for Connection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed { domain: "gRPC listener", source: Arc::new(source) }
 }

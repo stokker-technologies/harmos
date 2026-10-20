@@ -10,21 +10,40 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use harmos_domain::state::{DefinitionId, Envelope, FactSource, Kind, SystemFact};
 
 /* === Imports === */
-use crate::Application;
+
+// Standard Library Imports
 use std::any::Any;
 use std::sync::Arc;
 
+// Third Party Imports
+
+// Local Imports
+use crate::Application;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
 /* === Enums === */
+
 pub enum Recorded<A: Application> {
     Transaction(Arc<A::Transaction>),
     Record(A::Record),
     System(SystemFact),
 }
 
+/* === Traits === */
+
 /* === Implementations === */
+
 impl<A: Application> Clone for Recorded<A>
 where
     A::Record: Clone,
@@ -58,3 +77,9 @@ impl<A: Application> Recorded<A> {
         }
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod history {
     use harmos::state::Transaction;
     use serde::Deserialize;
@@ -37,6 +38,7 @@ mod history {
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -54,6 +56,7 @@ use harmos::{state::Invert, state::Transaction};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(
     id = "net.rename",
     version = 2,
@@ -71,6 +74,7 @@ pub struct RenameNet {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Transaction<Schematic> for RenameNet {
     type Error = SchematicError;
 

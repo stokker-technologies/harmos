@@ -26,6 +26,7 @@ use harmos_sdk::grpc::{DecodeInput, prost};
 /* === Constants === */
 
 /* === Macros === */
+
 macro_rules! envelope {
     ($name:ident, $first:ident, $second:ident) => {
         impl<A: MemorySize, B: MemorySize> $name<A, B> {
@@ -83,11 +84,16 @@ macro_rules! envelope {
     };
 }
 
+envelope!(InputEnvelope, Request, Item);
+
+envelope!(OutputEnvelope, Item, Response);
+
 /* === Type Aliases === */
 
 /* === Structs === */
 
 /* === Enums === */
+
 #[derive(Debug, PartialEq)]
 pub enum InputEnvelope<R, I> {
     Request(R),
@@ -103,12 +109,9 @@ pub enum OutputEnvelope<I, R> {
 /* === Traits === */
 
 /* === Implementations === */
-envelope!(InputEnvelope, Request, Item);
-envelope!(OutputEnvelope, Item, Response);
 
 /* === Public Functions === */
 
-/* === Private Functions === */
 // Frame One Length-Delimited Field Around A Payload Written Into Scratch.
 pub(super) fn delimited(
     tag: u32, bytes: &mut Vec<u8>, write: impl FnOnce(&mut Vec<u8>) -> Result<(), MessageError>,
@@ -120,3 +123,7 @@ pub(super) fn delimited(
     bytes.extend_from_slice(&payload);
     Ok(())
 }
+
+/* === Private Functions === */
+
+/* === Tests === */

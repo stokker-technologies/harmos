@@ -38,6 +38,7 @@ use harmos_runtime::{DefinitionId, Identified, Identifier, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
 struct Document {
@@ -52,6 +53,7 @@ struct DocumentV2 {
 }
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Objects {
     Document(Document),
@@ -61,6 +63,7 @@ enum Objects {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Identified for Document {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new("test.document"), 1)
@@ -90,6 +93,7 @@ impl StoredObject for DocumentV2 {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn value(key: &str, text: &str) -> ObjectValue {
     Objects::encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
 }

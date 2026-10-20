@@ -20,15 +20,20 @@ product boundaries determine where Harmos behavior belongs.
 | `harmos-packaging` | Artifact collection, receipt verification, bundles, bindings and generated-project authoring. |
 | `harmos-macros` | Inert declaration fragments and compiler-facing authoring diagnostics. |
 
-Each crate has at most one integration binary (storage names it `integration-engine`);
-its modules retain their domain fixtures. Layers are capped per crate in `stkr.toml`
-(`[conventions.testing.limits]`: unit 512, integration 256, acceptance 128, system 64).
-Runtime domains enter through `tests/integration/main.rs`. Storage engine stories
-live in `tests/engine/`, sharing the controllable backend in `tests/support/`.
+Each crate has at most one integration binary. Layers share the project-wide caps
+in `stkr.toml` (`[conventions.testing.limits]`: unit 512, integration 256,
+acceptance 128, system 64). Integration domains mirror production modules beneath
+`tests/integration/main.rs`; shared controllable backends live in `tests/support/`.
+Storage manager stories exercise its public engine boundary.
 Their real `WorkerOwner` runs the canonical worker and joins it on close; a host
 runtime is needed only when the story proves host composition. Runtime storage
 stories own managed journal projection, operation dispatch and host lifecycle.
 Keep source-private kernel invariants beside their production owner.
+
+File journal fault stories use the public `FileBackend` integration boundary.
+`with_journal_opener` supplies controlled real file access while the backend
+retains journal parsing, rollback, exclusive leasing and close/reopen ownership.
+Keep filesystem faults out of unit tests.
 
 ## Cross-Artifact Compositions
 
@@ -39,8 +44,8 @@ behavior through those real artifacts; do not add a shipped operation solely to
 inject a test fault.
 
 The dedicated sandbox guest retains guest-specific policy and cleanup behavior
-that schematic does not declare. Loading that component inside Wasmtime is an
-in-process integration boundary. Keep pure native command construction beside
+that schematic does not declare. Loading that built component inside Wasmtime is
+a system boundary because it composes a host and a plugin artifact. Keep pure native command construction beside
 the sidecar owner. The schematic sidecar system scene owns effective environment
 clearing, pre-readiness process failure, cleanup, withdrawal and fresh-generation
 recovery. Its host runs with a poisoned worker-count variable; a valid multithread
@@ -49,12 +54,28 @@ Do not claim this startup failure proves a crash after readiness.
 
 ## Fixture Inputs
 
-`build` owns the root nextest archive and standalone native/Wasm compilation.
-`tools/python/src/harmos_tools/build/fixtures.py` compiles the standalone
-selections, records the Cargo messages, metadata and byte stamps `cargo harmos`
-collection requires, stages the outputs under `target/fixtures/` and writes the
-fixture stamp. Product selectors live in its `metadata`; `files` names every
-staged artifact a lane consumes with its hash.
+`build` produces packageable native/Wasm outputs under
+`target/build/<profile>/<target>/`; Product selectors and byte hashes live in
+`product/examples/catalog.json`. `build:tests` consumes those matching Product
+bytes, builds test harnesses and compile-contract inputs, exports
+`tests/archive.tar.zst` and stages test-only inputs under `fixtures/`.
+`tools/python/src/harmos_tools/build/fixtures.py` records the Cargo messages,
+metadata and byte stamps `cargo harmos` collection requires. The Tests producer
+writes `fixtures/stamp.json`: its `metadata` selects artifacts, libraries and
+offline inputs, while `files` names every stamped input with its hash. Inert
+macro inventory inspection uses hash-verified copies of the two Product plugin
+artifacts under `fixtures/inspection/`; integration does not execute them or
+download Product hosts.
+Guest SDK integration inspects those inert component declarations and WIT worlds;
+its sandbox inspection reuses the existing Tests-owned sandbox bytes. Stories
+that instantiate either component with Wasmtime live in the guest system target.
+
+Unit consumes the shared Rust archive. Integration consumes the archive and its
+Tests-owned fixtures. Acceptance declares the Cargo subcommand and both plugin
+Product files; system declares the Schematic CLI and both plugins. The native
+runner verifies matching selected hashes and archive inputs. Project preflight
+prepares only the selected lane's metadata and executable modes; compiler
+libraries and offline inputs belong to acceptance preparation.
 
 Use `harmos-runtime/tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
 Resolve package-owned executables at run time through `NEXTEST_BIN_EXE_<name>`,

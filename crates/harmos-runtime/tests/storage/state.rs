@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 #[path = "state/admission.rs"]
 mod admission;
 #[path = "state/boot.rs"]
@@ -52,6 +53,7 @@ mod snapshots;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 // A Dropped Boot Joins Its Cleanup Before Storage Reports Closed.
 async fn closed(storage: &harmos_runtime::storage::StorageManager, cleanup: &harmos_runtime::runtime::BootstrapCleanup) {
     cleanup.wait().await.unwrap();

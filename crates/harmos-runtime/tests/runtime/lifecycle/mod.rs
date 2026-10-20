@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 mod shutdown;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::pin::pin;
 use std::sync::Arc;
@@ -36,6 +38,7 @@ use harmos_runtime::{Error, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // A flush held open until the story releases it, announcing when it is entered.
 #[derive(Clone)]
 struct Held {
@@ -48,6 +51,7 @@ struct Held {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Default for Held {
     fn default() -> Self {
         Self { entered: Arc::default(), release: Arc::new(Semaphore::new(0)) }

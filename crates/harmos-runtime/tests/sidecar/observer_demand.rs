@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 use std::sync::{
@@ -31,6 +32,7 @@ use harmos_runtime::sidecar::{
 };
 
 /* === Constants === */
+
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
@@ -41,6 +43,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::ne
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Default)]
 struct Counts {
     prepared: AtomicUsize,
@@ -79,6 +82,7 @@ struct RecordOnly(Arc<Counts>);
 struct Mixed(Arc<Counts>);
 
 /* === Enums === */
+
 #[harmos_runtime::catalog]
 enum Observers {
     RecordOnly(RecordOnly),
@@ -88,6 +92,7 @@ enum Observers {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Seed {
     fn new(counts: &Arc<Counts>) -> Self {
         let id = NEXT_SEED.fetch_add(1, SeqCst);
@@ -220,6 +225,7 @@ impl Mixed {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn observers(runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
     runtime.operations.residents().into_iter().filter(|(_, status)| status.kind == Kind::Observer).collect()
 }

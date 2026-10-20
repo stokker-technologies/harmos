@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use crate::{state::At, state::Position, storage::Cursor};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy, Debug)]
 pub struct ReadLimits {
     pub rows: usize,
@@ -74,6 +76,7 @@ pub struct RowReader<S> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadCut {
     Window { delivered: Cursor },
@@ -84,25 +87,34 @@ pub enum ReadCut {
 pub enum ReadError {
     #[error("the active row reader budget is exhausted")]
     Busy,
+
     #[error("row read exceeds its {0} limit")]
     Limit(&'static str),
+
     #[error("the attached series adapter does not support bounded reads")]
     Unsupported,
+
     #[error("bounded row decoding does not support {0}")]
     EncodingUnsupported(&'static str),
+
     #[error("no series adapter is attached")]
     Unserved,
+
     #[error("row history is retained only above {floor:?}")]
     Retained { floor: Position },
+
     #[error("selected stream capture is incomplete or uncertified")]
     IncompleteCapture,
+
     #[error("row source is unreadable: {0}")]
     Unreadable(String),
+
     #[error("row reader is closed")]
     Closed,
 }
 
 /* === Traits === */
+
 pub trait RowSource: Send {
     fn cut(&self) -> ReadCut;
 
@@ -111,6 +123,7 @@ pub trait RowSource: Send {
 }
 
 /* === Implementations === */
+
 impl Default for ReadLimits {
     fn default() -> Self {
         Self {
@@ -279,6 +292,7 @@ impl<S: Clone + serde::Serialize + Send + Sync + 'static> super::Query<S> {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn encoded_size<S: serde::Serialize>(row: &S, limit: usize) -> Result<usize, ReadError> {
     struct Count {
         size: usize,

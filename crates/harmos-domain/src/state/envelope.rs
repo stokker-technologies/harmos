@@ -10,9 +10,11 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+
 pub use crate::DefinitionId;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -27,6 +29,7 @@ use super::entry::{Metadata, Position};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemFact {
     pub source: FactSource,
@@ -46,6 +49,7 @@ pub struct Envelope<P> {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Kind {
     Transaction,
@@ -62,6 +66,7 @@ pub enum FactSource {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl SystemFact {
     pub fn identify(&self) -> (DefinitionId, u32) {
         let id = match &self.source {
@@ -96,6 +101,7 @@ impl SystemFact {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn system_identity(id: &DefinitionId) -> Result<Option<(FactSource, String)>, &'static str> {
     if let Some(namespaced) = id.as_str().strip_prefix("harmos:work/") {
         let (service, name) = namespaced.split_once('/').ok_or("a work fact id must contain its local fact name")?;
