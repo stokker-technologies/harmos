@@ -7,19 +7,16 @@
  * ***
  */
 
-
 // Plugin Composition And Explicit Lifecycle Ownership.
 
 /* === Modules === */
 pub mod domain;
 mod operations;
 
-
 /* === Re-Exports === */
 
 /* === Imports === */
 use std::sync::Arc;
-
 
 // Standard Library Imports
 
@@ -27,18 +24,17 @@ use std::sync::Arc;
 
 // Local Imports
 
-
 /* === Constants === */
 
 /* === Macros === */
 harmos_guest::export_plugin!(Plugin, capacity = 4);
 
-
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Plugin { resources: Arc<()> }
-
+pub struct Plugin {
+    resources: Arc<()>,
+}
 
 /* === Enums === */
 
@@ -56,16 +52,27 @@ impl harmos_guest::Plugin for Plugin {
     type Error = std::io::Error;
     type Context = harmos_guest::Context;
     type Resources = ();
-    fn prepare(_: ()) -> Result<Self, Self::Error> { Ok(Self { resources: Arc::new(()) }) }
-    fn resources(&self) -> Arc<()> { Arc::clone(&self.resources) }
-    fn bind_operations(&self, table: &mut harmos_guest::operations::WireTable<Self::Context>) -> Result<(), harmos_guest::operations::ServingError> {
+    fn prepare(_: ()) -> Result<Self, Self::Error> {
+        Ok(Self { resources: Arc::new(()) })
+    }
+    fn resources(&self) -> Arc<()> {
+        Arc::clone(&self.resources)
+    }
+    fn bind_operations(
+        &self, table: &mut harmos_guest::operations::WireTable<Self::Context>,
+    ) -> Result<(), harmos_guest::operations::ServingError> {
         table.bind_operation::<operations::greeting::Greeting>(self.resources())
     }
-    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { Ok(()) }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> { Ok(()) }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
-
 
 /* === Public Functions === */
 

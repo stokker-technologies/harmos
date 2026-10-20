@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Bind Greeting Behavior To The Original SDK Runtime.
 
 /* === Modules === */
@@ -15,16 +14,14 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use std::sync::Arc;
 use crate::domain::operations::greeting::Greet;
-
+use std::sync::Arc;
 
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -35,7 +32,6 @@ use crate::domain::operations::greeting::Greet;
 /* === Structs === */
 pub struct Greeting;
 
-
 /* === Enums === */
 
 /* === Traits === */
@@ -43,12 +39,15 @@ pub struct Greeting;
 /* === Implementations === */
 #[harmos_guest::operation]
 impl Greeting {
-    async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self { Self }
-    async fn run(&mut self, _: &harmos_guest::Context, request: &mut Greet) -> Result<crate::domain::model::greeting::Greeting, std::io::Error> {
+    async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {
+        Self
+    }
+    async fn run(
+        &mut self, _: &harmos_guest::Context, request: &mut Greet,
+    ) -> Result<crate::domain::model::greeting::Greeting, std::io::Error> {
         Ok(crate::domain::model::greeting::Greeting::for_name(&request.name))
     }
 }
-
 
 /* === Public Functions === */
 
