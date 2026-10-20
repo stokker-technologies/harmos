@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-macros"
+description = "Procedural macros for Harmos artifacts, catalogs and identities."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true

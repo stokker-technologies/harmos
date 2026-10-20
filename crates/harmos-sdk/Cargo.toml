@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-sdk"
+description = "Harmos SDK for authoring plugins and operations over the Harmos runtime."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

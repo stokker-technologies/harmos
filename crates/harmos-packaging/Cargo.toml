@@ -10,6 +10,7 @@
 
 [package]
 name = "harmos-packaging"
+description = "Harmos packaging: reusable Cargo builds, inert inspection and guest componentization."
 autotests = false
 version.workspace = true
 edition.workspace = true

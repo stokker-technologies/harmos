@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-runtime"
+description = "Harmos runtime: managed state, undo, recovery, background work and typed streams."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

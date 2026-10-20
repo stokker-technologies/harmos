@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-domain"
+description = "Harmos domain model: identifiers, contracts, catalogs and storage identities."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true

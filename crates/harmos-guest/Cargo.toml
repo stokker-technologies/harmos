@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-guest"
+description = "Harmos guest kit for WebAssembly component plugins."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true

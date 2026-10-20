@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-storage"
+description = "Harmos storage: durable journals, snapshots and Arrow-backed stream storage."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true

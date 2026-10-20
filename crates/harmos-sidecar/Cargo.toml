@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-sidecar"
+description = "Harmos sidecar transport and kit for out-of-process plugins."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
