@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:fb4e836b1be6e5992f5be2d4d08338a27c1fafb798e10cfd62212f4720f7f5cd
+# Rendered by stkr project update from templates/python/release/run.py; sha256:d8ff19cc5d07a15352bbbdc7a63312b7e561924f81e3ec9af3a73ef9a082982b
 # ***
 #
 # Harmos
@@ -30,9 +30,9 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 # isort: split
-from ..test import archive
-from ..package import run as packages
 from .. import temporary
+from ..package import run as packages
+from ..test import archive
 from . import policy, registry, screenshots, version
 
 # Type Checking Imports

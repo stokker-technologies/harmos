@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/report.py; sha256:7e497ae18bfa08dd5c20d67f271d5f18a4c6a067683be0a781db465f90999525
+# Rendered by stkr project update from templates/python/test/report.py; sha256:97ed42f1e9c0de92a2f103350f89af6ab9d48858745c3db1ca7c1be01ba6067a
 # ***
 #
 # Harmos
@@ -24,10 +24,9 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 # Third Party Imports
-
 # Local Imports
-from . import policy
 from ..build import paths
+from . import policy
 
 # Type Checking Imports
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:3e85ccd47d940a1babcfec563d25b59e54ff07f7dc8ad41c150755e918edca99
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:70d57543f2a4c9fd54229e1bb21cea37095926a9928536e568c8664984ac1417
 # ***
 #
 # Harmos
@@ -23,11 +23,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
-from . import policy
-from ..build import paths
 from .. import temporary
+from ..build import paths
+from . import policy
 
 # Type Checking Imports
 

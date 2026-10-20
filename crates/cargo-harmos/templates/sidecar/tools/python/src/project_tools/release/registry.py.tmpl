@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:a8492dc56d2b48103dafb543161c16fd62d0e3ff5793a9f07c3e11813b7eb718
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:a8737a17e78eaf71902415e0979f67f04fb0e7151a34e905c40516ec5128bb3f
 # ***
 #
 # __PRODUCT_NAME__
@@ -12,9 +12,9 @@
 # === Imports === #
 
 # Standard Library Imports
+import email.utils
 import hashlib
 import io
-import email.utils
 import json
 import os
 import re
@@ -31,9 +31,9 @@ from typing import Any
 # Third Party Imports
 # Local Imports
 # isort: split
-from . import policy
 from .. import temporary
 from ..package import run as packages
+from . import policy
 
 # Type Checking Imports
 

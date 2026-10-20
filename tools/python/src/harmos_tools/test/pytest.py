@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/pytest.py; sha256:3f0302ef2cea859ea69f2307b95d3410126274a0e8a2bdab126f039ca4b68065
+# Rendered by stkr project update from templates/python/test/pytest.py; sha256:91680e1d08f78d94dad037dbe54aa98b38453152c6a5dd1d2669543c37b5afd2
 # ***
 #
 # Harmos
@@ -23,7 +23,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import policy
 
