@@ -31,6 +31,11 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 # === CI === #
 
 # Measured Cold Windows Build With Fixtures And Unit Tests (26 Minutes); Pull Requests Never Restore A Warm Target.
+[ci.build]
+# The Tests build compiles from source in parallel with the Product build: it needs no Product bytes, and the serial
+# chain put the Windows Tests build (24 minutes) behind the Windows Product build (15 minutes) on the critical path.
+tests_product = false
+
 [ci.budgets]
 build = 6600
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:4c7e8235786a79e7961a54d746a38c1b73a6389d9c961c59f69a6c399a8ff97e
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:37fb2d52c2358e5da56bca8c3a150521761fa03f3e5480359bdda201c3f7723e
 name: Build
 "on":
   workflow_call:
@@ -162,8 +162,6 @@ jobs:
     name: Tests (${{ inputs.platform }})
     runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
     timeout-minutes: ${{ fromJSON(inputs.budgets).build_tests }}
-    needs:
-    - build_product
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -223,19 +221,6 @@ jobs:
     - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
       with:
         version: v0.18.0
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-product-${{ env.PROFILE }}-${{ inputs.platform }}
-    - name: Extract Build
-      shell: bash
-      run: tar --zstd -xf "build-product-${{ env.PROFILE }}-${{ inputs.platform }}.tar.zst"
-      if: inputs.platform != 'windows'
-    - name: Extract Build
-      shell: pwsh
-      run: |-
-        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-product-${{ env.PROFILE }}-${{ inputs.platform }}.tar.zst" --force-local --use-compress-program "zstd -d"
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      if: inputs.platform == 'windows'
     - run: mise run build:tests --profile ${{ env.PROFILE }}
     - name: Archive Build
       if: inputs.platform != 'windows'
