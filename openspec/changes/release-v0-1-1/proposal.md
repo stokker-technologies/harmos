@@ -8,8 +8,8 @@ The partially published v0.1.0 cannot be reused. Publish the corrected workspace
 
 - Preserve PR19's path-only sibling development dependencies.
 - Align package versions, sibling requirements and locks at 0.1.1.
-- Adopt the repaired, published Hub linear-release generator, replacing legacy workflows, tracked changelog and release manifests through their owner.
-- Verify the exact release review on Linux and Windows, squash it into dev, then let Release / Tag tag that commit and fast-forward main before publication verification.
+- Release through the existing rendered flow: rehearsal on the release branch, merge-commit review into main, signed stable tag, approved publication, incorporation into dev.
+- Keep the managed-workflow migration out of the candidate; it waits on the Hub release on branch ci/managed-workflows.
 
 ## Capabilities
 
@@ -17,8 +17,8 @@ The partially published v0.1.0 cannot be reused. Publish the corrected workspace
 
 ### Modified Capabilities
 
-No runtime contract changes; this change records release tooling and delivery work.
+No runtime contract changes; this change records release delivery work.
 
 ## Impact
 
-Workspace and fixture manifests/locks, stkr.toml, legacy release notes/tooling/provenance, managed native workflows, provider protection/credential reconciliation and registry/assets publication. README claims receive review; documentation expansion and HTTP/2 tuning are excluded.
+Workspace and fixture manifests/locks, stkr.toml and the tracked changelog. README claims receive review; documentation expansion and HTTP/2 tuning are excluded.
