@@ -102,7 +102,8 @@ impl Project {
         // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
         let inherited = std::env::vars_os().filter_map(|(name, _)| {
             let value = name.to_str()?;
-            let isolated = value.starts_with("NEXTEST") || matches!(value, "VIRTUAL_ENV" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS");
+            let isolated = value.starts_with("NEXTEST")
+                || matches!(value, "VIRTUAL_ENV" | "UV_PROJECT_ENVIRONMENT" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS");
             isolated.then_some(name)
         });
         for name in inherited {
@@ -110,9 +111,11 @@ impl Project {
         }
         command
             .current_dir(&self.root)
+            // Acceptance Preflight Installs The Starter Tools Once Before Parallel Stories Read Them.
+            .env("MISE_AUTO_INSTALL", "false")
+            .env("MISE_TASK_RUN_AUTO_INSTALL", "false")
             .env("CARGO_TARGET_DIR", self.root.join("target"))
             .env("CARGO_NET_OFFLINE", "true")
-            .env("UV_PROJECT_ENVIRONMENT", self.root.join(".venv"))
             .env("UV_CACHE_DIR", self.directory.path().join("uv-cache"))
             .env("UV_OFFLINE", "1")
             .env("UV_CONFIG_FILE", self.directory.path().join("uv.toml"))
@@ -300,7 +303,7 @@ fn dev_rebuilds(kind: &str) {
     // A Build Script Owns A Python Descendant Until Product Cancellation Reaps Both.
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let address = listener.local_addr().unwrap();
-    let python = project.root.join(".venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
+    let python = project.root.join("tools/python/.venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
     let program = format!(
         "import json,os,socket; s=socket.create_connection(('127.0.0.1',{})); s.sendall(json.dumps([os.getppid(),os.getpid()]).encode()+b'\\n'); s.recv(1)",
         address.port()

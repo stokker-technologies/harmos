@@ -9,7 +9,7 @@
 
 // Export Generated Python Packages And Consume Them From The Repository
 // Interpreter. Prerequisite: `uv sync --locked --project tools/python --group test`
-// provisions `.venv` with protobuf, build and ty.
+// provisions `tools/python/.venv` with protobuf, build and ty.
 
 /* === Modules === */
 
@@ -244,7 +244,7 @@ fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 // Run One Consumer Scene; `pure` Selects The Pure-Python Protobuf Runtime
 fn scene(name: &str, arguments: &[&Path], pure: bool, input: &[u8]) -> Vec<u8> {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let interpreter = repository.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
+    let interpreter = repository.join("tools/python/.venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
     assert!(interpreter.is_file(), "{} is missing; run `uv sync --locked --project tools/python --group test`", interpreter.display());
     let mut command = Command::new(interpreter);
     command

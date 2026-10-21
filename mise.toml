@@ -39,7 +39,6 @@ glab = "1.123.0"
 # === Environment === #
 
 [env]
-UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 
 # === Variables === #
 

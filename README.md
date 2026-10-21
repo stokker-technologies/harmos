@@ -89,8 +89,8 @@ your application defines what each change means.
 
 ## Quick Start
 
-Harmos is pre-1.0. APIs may change. Stable releases publish the Harmos crates
-to crates.io. Windows and Linux are the supported development platforms.
+Harmos is pre-1.0. APIs may change, and the crate is not yet published to
+crates.io. Windows and Linux are the supported development platforms.
 
 Try the diagram-editor walkthrough with the repository's pinned toolchain:
 
@@ -189,21 +189,21 @@ cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path example
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
-Stable releases publish raw
+The upcoming release is configured to publish raw
 `cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
 After publication, download the matching asset, verify it against `SHA256SUMS`,
 rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
 `PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
 installation. Cargo-binstall and mise installation are verified against those
 same published bytes before release completion. Harmos crates, including the
-CLI, are published to crates.io.
+CLI, are configured for crates.io publication.
 
 The release also declares `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
 checks run both backends from an isolated extraction. Release downloads include
-`SHA256SUMS`; test reports and fixtures remain CI artifacts.
+`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use
@@ -702,7 +702,7 @@ milestone. GitHub hosts the
 authoritative repository and native CI; GitLab retains a one-way mirror.
 
 Follow [issues](https://github.com/stokker-technologies/harmos/issues)
-for development discussions and [releases](https://github.com/stokker-technologies/harmos/releases) for recorded changes.
+for development discussions and [release notes](https://github.com/stokker-technologies/harmos/releases) for recorded changes.
 
 Dynamic clients consume discovered canonical contracts through
 `harmos::grpc::dynamic::Operation` or a generated Python package's
