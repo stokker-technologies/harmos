@@ -44,8 +44,6 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 
 # Serialization
-serde = { workspace = true, default-features = true }
-serde_json = { workspace = true, default-features = true }
 
 # Configuration
 
