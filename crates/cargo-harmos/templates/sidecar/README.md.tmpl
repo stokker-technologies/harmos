@@ -1,0 +1,18 @@
+# __PRODUCT_NAME__
+
+A Harmos sidecar plugin exposing `__PACKAGE_NAME__.greet` from its request type.
+`domain/` owns portable declarations and pure behavior; `operations/` owns SDK handlers.
+
+```sh
+mise install
+mise run prepare
+cargo generate-lockfile
+mise run check
+mise run build
+mise run build:tests
+mise run test:unit
+```
+
+The scaffold uses the explicitly selected Harmos source revision or local checkout.
+Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
+Keep generated tooling current with `stkr project update` when adopting company tooling changes.

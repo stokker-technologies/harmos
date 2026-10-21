@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -22,6 +23,7 @@ use syn::{Error, Meta, Path};
 // Local Imports
 
 /* === Constants === */
+
 pub(crate) const KEY: &str = "harmos_path";
 
 /* === Macros === */
@@ -29,6 +31,7 @@ pub(crate) const KEY: &str = "harmos_path";
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(crate) struct HarmosPath(Path);
 
 /* === Enums === */
@@ -36,29 +39,35 @@ pub(crate) struct HarmosPath(Path);
 /* === Traits === */
 
 /* === Implementations === */
+
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        for package in ["harmos", "dokime"] {
+        for package in [
+            "harmos",
+            "dokime",
+            // The Host Runtime Hosts Guest And Sidecar Kits; It Resolves Before Them.
+            "harmos-runtime",
+            "harmos-guest",
+            "harmos-sidecar",
+            "harmos-sdk",
+            "harmos-domain",
+        ] {
             if let Ok(found) = proc_macro_crate::crate_name(package) {
                 let name = match found {
-                    proc_macro_crate::FoundCrate::Itself => package.to_owned(),
+                    proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
                     proc_macro_crate::FoundCrate::Name(name) => name,
                 };
                 let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
 
-                return Self(if package == "dokime" {
-                    syn::parse_quote!(::#name::__harmos)
-                } else {
-                    syn::parse_quote!(::#name)
-                });
+                return Self(if package == "dokime" { syn::parse_quote!(::#name::__harmos) } else { syn::parse_quote!(::#name) });
             }
         }
 
-        Self::resolve(None)
+        Self(syn::parse_quote!(::harmos))
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
-        Self(explicit.unwrap_or_else(|| syn::parse_quote!(::harmos)))
+        explicit.map(Self).unwrap_or_else(Self::catalog)
     }
 }
 
@@ -69,6 +78,7 @@ impl ToTokens for HarmosPath {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
     let Meta::NameValue(named) = meta else {
         return None;
@@ -77,16 +87,9 @@ pub(crate) fn declared(meta: &Meta) -> Option<Result<Path, Error>> {
         return None;
     }
 
-    Some(
-        syn::parse2::<Path>(named.value.to_token_stream()).map_err(|error| {
-            Error::new(
-                named.value.span(),
-                format!(
-                    "`{KEY}` names the crate path generated code resolves harmos through: {error}"
-                ),
-            )
-        }),
-    )
+    Some(syn::parse2::<Path>(named.value.to_token_stream()).map_err(|error| {
+        Error::new(named.value.span(), format!("`{KEY}` names the crate path generated code resolves harmos through: {error}"))
+    }))
 }
 
 /* === Private Functions === */

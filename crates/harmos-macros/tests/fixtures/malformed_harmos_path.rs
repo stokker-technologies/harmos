@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+
 // A facade crate names its own path with `harmos_path = …`, which every
 // path-emitting attribute accepts and parses as a crate path. A value that is
 // not one — a string, here — is refused where it is written.
@@ -41,6 +43,7 @@ struct Pulse;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

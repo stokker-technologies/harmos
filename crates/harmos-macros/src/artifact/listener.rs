@@ -8,11 +8,13 @@
  */
 
 /* === Modules === */
+
 mod declaration;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -35,6 +37,7 @@ use quote::quote;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match declaration::expand(attribute, item.clone()) {
         Ok(expanded) => expanded,

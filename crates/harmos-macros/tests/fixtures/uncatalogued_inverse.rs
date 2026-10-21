@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::convert::Infallible;
 // Third Party Imports
@@ -26,6 +27,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Sheet;
 
 #[harmos::transaction(id = "sheet.place", version = 1, inverse = Remove)]
@@ -37,6 +39,7 @@ struct Place;
 struct Remove;
 
 /* === Enums === */
+
 #[harmos::transactions(state = Sheet)]
 enum Change {
     Place(Place),
@@ -45,7 +48,8 @@ enum Change {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Transaction<Sheet> for Place {
+
+impl harmos::state::Transaction<Sheet> for Place {
     type Error = Infallible;
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -55,13 +59,13 @@ impl harmos::Transaction<Sheet> for Place {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for Place {
+impl harmos::state::Invert<Sheet> for Place {
     fn invert(&self, _sheet: &Sheet) -> Remove {
         Remove
     }
 }
 
-impl harmos::Transaction<Sheet> for Remove {
+impl harmos::state::Transaction<Sheet> for Remove {
     type Error = Infallible;
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -71,7 +75,7 @@ impl harmos::Transaction<Sheet> for Remove {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for Remove {
+impl harmos::state::Invert<Sheet> for Remove {
     fn invert(&self, _sheet: &Sheet) -> Place {
         Place
     }
@@ -80,6 +84,7 @@ impl harmos::Invert<Sheet> for Remove {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

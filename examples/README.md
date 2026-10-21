@@ -1,20 +1,17 @@
 # Harmos Examples
 
-The examples are executable architecture checks, not starter templates.
+Start with the [schematic walkthrough](./schematic/README.md). It creates a document,
+places and connects symbols, asks a plugin for advice, applies a route, and saves
+and reopens the result.
 
-| Example | Command | Boundary Proven |
+| Backend | Command | Reach |
 |---|---|---|
-| [Minischematic](./minischematic/README.md) | `mise run run:minischematic` | Journal, persistence, streams, and simulation |
-| [Autoroute Guest](./minischematic/README.md#autoroute-guest) | `mise run run:minischematic:guest` | Static Wasm metadata, declared capability edges, bounded initialization, and recovery without the guest |
-| [Minibench](./minibench/README.md) | `mise run run:minibench` | Static executable metadata and a supervised native device sidecar over gRPC |
+| Native Sidecar | `target/build/dev/linux-x86_64/bin/schematic-cli` | Shared analysis and routing, plus native directory access |
+| Sandboxed Guest | `target/build/dev/linux-x86_64/bin/schematic-cli --guest` | The same analysis and routing, with no filesystem access |
 
-Each application example is a `<name>-app` crate and a `<name>-contract` crate with
-its shell and its plugin beside them: the app is what the application is and how
-a runtime runs it, compiled for the host only. The contract declares what the host
-and its plugins exchange, compiled for the host and for wasm32 alike. That is a crate
-boundary rather than a folder because it is the only kind a compiler enforces —
-neither half carries a `cfg(target_arch)` gate, and nothing depends on a plugin
-crate.
+Run `mise run build` first; it builds the example once beside the workspace.
+On Windows, use `windows-x86_64` and the `.exe` suffix for native executables.
 
-All artifact definitions live with the artifact that implements them. There are
-no contracts crates, manifests, archives, or packaging tasks.
+The portable contract, host app, CLI, guest, and sidecar have separate crates under
+`schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed
+analysis and cancellation. The example's JSONL persistence adapter is `schematic/storage/`.

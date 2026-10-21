@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::{future::Future, io, sync::mpsc, thread};
 // Third Party Imports
@@ -34,13 +35,9 @@ use tracing::{Instrument, instrument::WithSubscriber};
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn spawn(
-    name: String,
-    work: impl Future<Output = ()> + Send + 'static,
-) -> io::Result<JoinHandle<()>> {
-    let work = work
-        .instrument(tracing::Span::current())
-        .with_current_subscriber();
+
+pub fn spawn(name: String, work: impl Future<Output = ()> + Send + 'static) -> io::Result<JoinHandle<()>> {
+    let work = work.instrument(tracing::Span::current()).with_current_subscriber();
     let (started, ready) = mpsc::sync_channel(1);
     thread::Builder::new().name(name).spawn(move || {
         let runtime = match Builder::new_current_thread().enable_all().build() {

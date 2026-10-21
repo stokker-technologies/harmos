@@ -1,35 +1,32 @@
-# === Workspace ===
+# === Workspace === #
 
 [workspace]
 resolver = "3"
-members = [
-  "crates/*",
-  "tests/fixtures/grpc",
-  "examples/jsonl-adapter",
-  "examples/standalone-sidecar",
-  "examples/minibench/*",
-  "examples/minischematic/*",
-]
+members = ["crates/*"]
+exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 
-# === Workspace Package ===
+# === Workspace Package === #
 
 [workspace.package]
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 publish = true
 
-# === Workspace Dependencies ===
+# === Workspace Dependencies === #
 
 [workspace.dependencies]
 # Local
-harmos = { path = "crates/harmos" }
-harmos-contract = { path = "crates/harmos-contract", default-features = false }
-harmos-guest = { path = "crates/harmos-guest", default-features = false }
-harmos-macros = { path = "crates/harmos-macros" }
-harmos-sidecar = { path = "crates/harmos-sidecar", default-features = false }
-harmos-signal = { path = "crates/harmos-signal", default-features = false }
+harmos = { path = "crates/harmos", version = "0.1.0" }
+harmos-domain = { path = "crates/harmos-domain", version = "0.1.0", default-features = false }
+harmos-guest = { path = "crates/harmos-guest", version = "0.1.0", default-features = false }
+harmos-macros = { path = "crates/harmos-macros", version = "0.1.0" }
+harmos-packaging = { path = "crates/harmos-packaging", version = "0.1.0", default-features = false }
+harmos-runtime = { path = "crates/harmos-runtime", version = "0.1.0", default-features = false }
+harmos-sdk = { path = "crates/harmos-sdk", version = "0.1.0", default-features = false }
+harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.1.0", default-features = false }
+harmos-storage = { path = "crates/harmos-storage", version = "0.1.0", default-features = false }
 
 # Git
 
@@ -65,6 +62,14 @@ windows-sys = { version = "0.61", default-features = false, features = [
 ] }
 
 # Serialization
+arrow-array = { version = "=59.3.0", default-features = false }
+arrow-buffer = { version = "=59.3.0", default-features = false }
+arrow-data = { version = "=59.3.0", default-features = false }
+arrow-ipc = { version = "=59.3.0", default-features = false }
+arrow-schema = { version = "=59.3.0", default-features = false }
+arrow-select = { version = "=59.3.0", default-features = false }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+flatbuffers = { version = "=25.12.19", default-features = false }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 prost = { version = "0.14", default-features = false }
 prost-reflect = { version = "0.16", default-features = false }
@@ -78,6 +83,7 @@ wit-component = { version = "=0.261.0", default-features = false }
 clap = { version = "4", default-features = false }
 
 # Filesystem
+notify = { version = "8.2.0", default-features = false }
 tar = { version = "0.4.46", default-features = false }
 tempfile = { version = "3", default-features = false }
 
@@ -89,6 +95,8 @@ quote = { version = "1", default-features = false }
 syn = { version = "3", default-features = false, features = ["full"] }
 
 # Concurrency
+ctrlc = { version = "3.5.2", default-features = false }
+process-wrap = { version = "10.0.1", default-features = false }
 
 # Async
 futures-core = { version = "0.3", default-features = false }
@@ -106,6 +114,7 @@ tonic-prost-build = { version = "0.14.6", default-features = false }
 tonic-reflection = { version = "0.14.6", default-features = false }
 tonic-web = { version = "0.14.6", default-features = false }
 tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.7", default-features = false, features = ["cors"] }
 
 # Storage
 
@@ -114,7 +123,7 @@ tower = { version = "0.5", default-features = false, features = ["util"] }
 # Testing
 criterion = { version = "0.8.2", default-features = false }
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -122,36 +131,39 @@ unsafe_code = "warn"
 [workspace.lints.clippy]
 all = "warn"
 
-# === Lints ===
+# === Lints === #
 
-# === Profiles ===
+# === Profiles === #
 
-# Guest Tests Compile Real Components With The Native JIT Compiler.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Measured 2026-10-17: guest stories compile components with Cranelift; unoptimized it costs 25 s per story, optimized 1.7 s.
 [profile.dev.package.cranelift-codegen]
-opt-level = 3
-
-[profile.dev.package.cranelift-frontend]
 opt-level = 3
 
 [profile.dev.package.regalloc2]
 opt-level = 3
 
-[profile.dev.package.wasmtime]
-opt-level = 3
-
-[profile.dev.package.wasmtime-environ]
-opt-level = 3
-
 [profile.dev.package.wasmtime-internal-cranelift]
 opt-level = 3
 
-# Artifact Admission Scans And Hashes Full Executables, Including Debug Builds.
-[profile.dev.package.memchr]
-opt-level = 3
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
-[profile.dev.package.sha2]
-opt-level = 3
+[profile.bench]
+inherits = "release"
+lto = false
+incremental = false
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

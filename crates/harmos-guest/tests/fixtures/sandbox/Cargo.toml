@@ -1,0 +1,101 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Workspace === #
+
+# A Fixture Outside The Root Workspace, Built Once For wasm32-unknown-unknown
+[workspace]
+
+# === Workspace Package === #
+
+# === Workspace Dependencies === #
+
+# === Package === #
+
+[package]
+name = "harmos-sandbox-guest"
+description = "The guest the host harness drives through every sandbox behaviour"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+version = "0.1.0"
+publish = false
+
+# === Package Targets === #
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-domain = { path = "../../../../harmos-domain", default-features = false, features = ["derive"] }
+harmos-guest = { path = "../../..", default-features = false, features = ["derive", "kit"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# Guest Fuel Counts Wasm Instructions, Generated Schema Decoding Included: Keep Dev
+# Assertions But Optimize Enough That Initialization Fits The Host's Fuel Budget
+[profile.dev]
+opt-level = 1
+debug = false
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# === Patches === #
+
+# === Other === #

@@ -8,41 +8,41 @@
  */
 
 /* === Modules === */
-mod capabilities;
+
 mod carrier;
 mod catalog;
 mod connection;
 mod host;
 mod identity;
+mod instance;
 mod local;
 mod observer;
+mod observer_host;
 mod plugin;
 mod publisher;
 mod task;
 
 pub mod __private {
-    pub use super::observer::{
-        Declarations as ObserverDeclarations, Inventory as ObserverInventory,
-        Outputs as ObserverOutputs,
-    };
+    pub use super::observer::{Declarations as ObserverDeclarations, Inventory as ObserverInventory, Outputs as ObserverOutputs};
     pub use super::task::spawn as spawn_observer;
-    pub use harmos_contract::__private::*;
-    pub use harmos_contract::{qualified, qualified_len, qualify};
+    pub use crate as sidecar;
+    pub use harmos_domain::{qualified, qualified_len, qualify};
+    pub use harmos_sdk::__private::*;
 }
 
 /* === Re-Exports === */
-pub use capabilities::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
+
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
-pub use observer::{
-    Activation, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverExit,
-    ObserverStatus, ObserverTask, Tick,
-};
+pub use instance::OperationInstance;
+pub use observer::{Activation, Activity, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverError, Tick};
+pub use observer_host::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
 pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
-pub use publisher::{PublishError, Publisher};
+pub use publisher::{Batch, PublishError, Publisher};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -53,22 +53,24 @@ use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Frame;
 use carrier::{Failure, Input, Sender};
-use harmos_contract::{Refusal, UNKNOWN, UNREADABLE, reserved};
+use harmos_domain::{Refusal, UNKNOWN, UNREADABLE, reserved};
 use host::Outgoing;
 
 /* === Constants === */
+
 const INCOMING_REQUESTS: usize = 128;
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
 type Table = Arc<Mutex<crate::operations::WireTable<Supervisor>>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
-type Retirement =
-    Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
+type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
 
 /* === Structs === */
+
 struct Incoming {
     frame: Frame,
     cancelled: Option<oneshot::Receiver<()>>,
@@ -87,6 +89,7 @@ pub(crate) struct Opening {
 }
 
 /* === Enums === */
+
 enum Answered {
     Nothing,
     Frame(Frame),
@@ -96,6 +99,7 @@ enum Answered {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         self.0.disconnected();
@@ -113,26 +117,19 @@ impl Opening {
         let settlement = self.operations.lock().map_err(Refusal::of)?.close();
         settlement.await.map_err(Refusal::of)?;
         (self.retirement)().await?;
-        let retired = self
-            .operations
-            .lock()
-            .map_err(Refusal::of)?
-            .release()
-            .map_err(Refusal::of)?;
+        let retired = self.operations.lock().map_err(Refusal::of)?.release().map_err(Refusal::of)?;
         drop(retired);
         Ok(())
     }
 }
 
 /* === Public Functions === */
+
 /* === Private Functions === */
+
 async fn exchange(
-    opening: SharedOpening,
-    inbound: &mut Input,
-    outgoing: &Sender,
-    completed: oneshot::Sender<()>,
-    mut stopping: tokio::sync::watch::Receiver<bool>,
-    clock: fn() -> Option<i64>,
+    opening: SharedOpening, inbound: &mut Input, outgoing: &Sender, completed: oneshot::Sender<()>,
+    mut stopping: tokio::sync::watch::Receiver<bool>, clock: fn() -> Option<i64>,
 ) -> Result<(), Refusal> {
     let (to_host, mut outbound) = mpsc::channel(1024);
     let host = Supervisor::new(to_host.clone(), clock);
@@ -140,14 +137,8 @@ async fn exchange(
     let (requests_tx, requests_rx) = mpsc::channel(INCOMING_REQUESTS);
     let cancellations: Cancellations = Arc::new(Mutex::new(BTreeMap::new()));
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let mut worker = Worker(tokio::spawn(dispatch_requests(
-        opening,
-        host.clone(),
-        requests_rx,
-        cancellations.clone(),
-        to_host.clone(),
-        shutdown_rx,
-    )));
+    let mut worker =
+        Worker(tokio::spawn(dispatch_requests(opening, host.clone(), requests_rx, cancellations.clone(), to_host.clone(), shutdown_rx)));
     let mut abandoned = false;
     let mut active_requests = std::collections::BTreeSet::new();
     let mut exit_after_request = None;
@@ -160,9 +151,7 @@ async fn exchange(
             let sending = {
                 let worker_done = async {
                     if worker_finished {
-                        std::future::pending::<Result<Result<(), Refusal>, tokio::task::JoinError>>(
-                        )
-                        .await
+                        std::future::pending::<Result<Result<(), Refusal>, tokio::task::JoinError>>().await
                     } else {
                         (&mut worker.0).await
                     }
@@ -175,8 +164,8 @@ async fn exchange(
                                 if let Some(receipt) = consumption { let _ = receipt.consumed(); }
                                 continue;
                             }
-                            Frame::Refusal { id, code, message } => {
-                                host.receive_refusal(id, code, message);
+                            Frame::Refusal { id, refusal } => {
+                                host.receive_refusal(id, refusal);
                                 if let Some(receipt) = consumption { let _ = receipt.consumed(); }
                                 continue;
                             }
@@ -217,8 +206,7 @@ async fn exchange(
                                             let refusal = Refusal::of("the sidecar request queue is full");
                                             if to_host.try_send(Outgoing::Frame(Frame::Refusal {
                                                 id,
-                                                code: refusal.code(),
-                                                message: refusal.message().to_owned(),
+                                                refusal,
                                             })).is_err() {
                                                 break;
                                             }
@@ -267,9 +255,7 @@ async fn exchange(
                     if send(outgoing, frame).await.is_err() {
                         break;
                     }
-                    if answered.is_some_and(|id| active_requests.remove(&id))
-                        && active_requests.is_empty()
-                    {
+                    if answered.is_some_and(|id| active_requests.remove(&id)) && active_requests.is_empty() {
                         if abandon_after_request {
                             abandoned = true;
                             break;
@@ -325,22 +311,15 @@ async fn exchange(
     drop(requests_tx);
     let _ = shutdown_tx.send(abandoned);
     if !worker_finished {
-        outcome = (&mut worker.0)
-            .await
-            .map_err(Refusal::of)
-            .and_then(|result| result);
+        outcome = (&mut worker.0).await.map_err(Refusal::of).and_then(|result| result);
     }
     let _ = completed.send(());
     outcome
 }
 
 async fn dispatch_requests(
-    opening: SharedOpening,
-    host: Supervisor,
-    mut requests: mpsc::Receiver<Incoming>,
-    cancellations: Cancellations,
-    outgoing: mpsc::Sender<Outgoing>,
-    mut shutdown: oneshot::Receiver<bool>,
+    opening: SharedOpening, host: Supervisor, mut requests: mpsc::Receiver<Incoming>, cancellations: Cancellations,
+    outgoing: mpsc::Sender<Outgoing>, mut shutdown: oneshot::Receiver<bool>,
 ) -> Result<(), Refusal> {
     let mut abandoned = false;
     let mut replies = tokio::task::JoinSet::new();
@@ -360,12 +339,7 @@ async fn dispatch_requests(
             }
             request = requests.recv() => request,
         };
-        let Some(Incoming {
-            frame: request,
-            mut cancelled,
-            consumption,
-        }) = request
-        else {
+        let Some(Incoming { frame: request, mut cancelled, consumption }) = request else {
             break;
         };
         let id = match &request {
@@ -385,15 +359,11 @@ async fn dispatch_requests(
                 let _ = receipt.consumed();
             }
             if let Some(id) = id {
-                cancellations
-                    .lock()
-                    .expect("request cancellation lock")
-                    .remove(&id);
+                cancellations.lock().expect("request cancellation lock").remove(&id);
                 let _ = outgoing
                     .send(Outgoing::Frame(Frame::Refusal {
                         id,
-                        code: UNKNOWN,
-                        message: "carrier reply capacity exhausted".to_owned(),
+                        refusal: Refusal::new(UNKNOWN, "carrier reply capacity exhausted".to_owned()),
                     }))
                     .await;
             }
@@ -426,10 +396,7 @@ async fn dispatch_requests(
         }
         if let Some(id) = id {
             if !matches!(&answered, Some(Answered::Deferred(_))) {
-                cancellations
-                    .lock()
-                    .expect("request cancellation lock")
-                    .remove(&id);
+                cancellations.lock().expect("request cancellation lock").remove(&id);
             }
             if was_cancelled {
                 if outgoing.send(Outgoing::Finished(id)).await.is_err() {
@@ -461,10 +428,7 @@ async fn dispatch_requests(
                         let _ = outgoing.send(response).await;
                     }
                     if let Some(id) = id {
-                        cancellations
-                            .lock()
-                            .expect("request cancellation lock")
-                            .remove(&id);
+                        cancellations.lock().expect("request cancellation lock").remove(&id);
                     }
                 });
             }
@@ -479,10 +443,7 @@ async fn dispatch_requests(
 
     replies.abort_all();
     while replies.join_next().await.is_some() {}
-    cancellations
-        .lock()
-        .expect("request cancellation lock")
-        .clear();
+    cancellations.lock().expect("request cancellation lock").clear();
 
     // Abandon represents process death. Every other ending joins work and
     // cleans up the state, including a handler cancelled when its connection
@@ -506,55 +467,33 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
     if method == Frame::REGISTER {
         return match serde_json::to_vec(&opening.catalog) {
             Ok(result) => Answered::Frame(Frame::Answer { id, result }),
-            Err(error) => Answered::Frame(Frame::Refusal {
-                id,
-                code: UNREADABLE,
-                message: error.to_string(),
-            }),
+            Err(error) => Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) }),
         };
     }
     if method == crate::operations::WIRE_METHOD {
         let command = match crate::operations::WireCommand::decode(&params) {
             Ok(command) => command,
             Err(error) => {
-                return Answered::Frame(Frame::Refusal {
-                    id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
-                });
+                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
             }
         };
         let table = &opening.operations;
         let operation_host = match &command {
-            crate::operations::WireCommand::Initialize { context, .. } => {
-                Ok(host.for_operation(*context))
-            }
-            crate::operations::WireCommand::Attempt {
-                context, values, ..
-            }
-            | crate::operations::WireCommand::StreamAttempt {
-                context, values, ..
-            } => host.for_attempt(*context, values.clone()),
+            crate::operations::WireCommand::Initialize { context, .. } => Ok(host.for_operation(*context)),
+            crate::operations::WireCommand::Attempt { context, values, .. }
+            | crate::operations::WireCommand::StreamAttempt { context, values, .. } => host.for_attempt(*context, values.clone()),
             _ => Ok(host.clone()),
         };
         let operation_host = match operation_host {
             Ok(operation_host) => operation_host,
             Err(error) => {
-                return Answered::Frame(Frame::Refusal {
-                    id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
-                });
+                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
             }
         };
         let phase = match table.lock() {
             Ok(mut table) => table.begin(command, Arc::new(operation_host)),
             Err(error) => {
-                return Answered::Frame(Frame::Refusal {
-                    id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
-                });
+                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
             }
         };
         return Answered::Deferred(Box::pin(async move {
@@ -563,39 +502,31 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             // Binary Envelopes Add Framing Bytes To The Unchanged Payload.
             let minimum = match &answer {
                 crate::operations::WireAnswer::Ready { payload } => payload.len(),
-                crate::operations::WireAnswer::Stream { payload, .. } => {
-                    payload.as_ref().map_or(0, Vec::len)
-                }
-                crate::operations::WireAnswer::Failed { message, .. } => message.len(),
+                crate::operations::WireAnswer::Stream { payload, .. } => payload.as_ref().map_or(0, Vec::len),
+                crate::operations::WireAnswer::Failed { failure } => failure.cause().len(),
             };
             if minimum >= Frame::LIMIT {
                 return oversized_reply(id);
             }
             match answer.encode() {
                 Ok(result) => Frame::Answer { id, result },
-                Err(harmos_contract::operations::WireCodecError::Oversized) => oversized_reply(id),
-                Err(error) => Frame::Refusal {
-                    id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
-                },
+                Err(harmos_sdk::operations::WireCodecError::Oversized) => oversized_reply(id),
+                Err(error) => Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) },
             }
         }));
     }
     if reserved(&method) {
         return Answered::Frame(Frame::Refusal {
             id,
-            code: UNKNOWN,
-            message: format!("this sidecar does not serve the reserved `{method}`"),
+            refusal: Refusal::new(UNKNOWN, format!("this sidecar does not serve the reserved `{method}`")),
         });
     }
 
     Answered::Frame(Frame::Refusal {
         id,
-        code: UNKNOWN,
-        message: format!(
-            "operation work must use the `{}` phase contract; received `{method}`",
-            crate::operations::WIRE_METHOD
+        refusal: Refusal::new(
+            UNKNOWN,
+            format!("operation work must use the `{}` phase contract; received `{method}`", crate::operations::WIRE_METHOD),
         ),
     })
 }
@@ -603,11 +534,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
 fn oversized_reply(id: u64) -> Frame {
     Frame::Refusal {
         id,
-        code: Frame::OVERSIZED,
-        message: format!(
-            "the route reply exceeds the {}-byte sidecar frame limit",
-            Frame::LIMIT
-        ),
+        refusal: Refusal::new(Frame::OVERSIZED, format!("the route reply exceeds the {}-byte sidecar frame limit", Frame::LIMIT)),
     }
 }
 

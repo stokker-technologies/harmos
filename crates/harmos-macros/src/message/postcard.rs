@@ -38,27 +38,27 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
+    if let Item::Struct(item) = item {
+        let name = &item.ident;
+        let fields = item.fields.iter().map(|field| {
+            let name = field.ident.as_ref().expect("validated named message field");
+            let ty = &field.ty;
+            quote!(#name: #ty)
+        });
+        return quote!(#sdk::__private::postcard_product!(#name { #(#fields),* }););
+    }
     let mut writes = Vec::new();
     let mut sizes = Vec::new();
     let mut memories = Vec::new();
     let mut reads = Vec::new();
-    let (name, variants) = match item {
-        Item::Struct(item) => (&item.ident, vec![(quote!(Self), &item.fields)]),
-        Item::Enum(item) => (
-            &item.ident,
-            item.variants
-                .iter()
-                .map(|variant| {
-                    let name = &variant.ident;
-                    (quote!(Self::#name), &variant.fields)
-                })
-                .collect(),
-        ),
-        _ => unreachable!("validated message shape"),
-    };
-    let enumeration = matches!(item, Item::Enum(_));
-    for (index, (variant, fields)) in variants.into_iter().enumerate() {
+    let Item::Enum(item) = item else { unreachable!("validated message shape") };
+    let name = &item.ident;
+    for (index, variant) in item.variants.iter().enumerate() {
+        let name = &variant.ident;
+        let variant_name = quote!(Self::#name);
+        let fields = &variant.fields;
         let index = index as u32;
         let mut members = Vec::new();
         let mut bindings = Vec::new();
@@ -81,38 +81,18 @@ pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
             bindings.push(binding);
         }
         let (pattern, value) = match fields {
-            Fields::Unit => (quote!(#variant), quote!(#variant)),
-            Fields::Named(_) => (
-                quote!(#variant { #(#members: #bindings),* }),
-                quote!(#variant { #(#members: #decoded),* }),
-            ),
-            Fields::Unnamed(_) => (
-                quote!(#variant(#(#bindings),*)),
-                quote!(#variant(#(#decoded),*)),
-            ),
+            Fields::Unit => (quote!(#variant_name), quote!(#variant_name)),
+            Fields::Named(_) => (quote!(#variant_name { #(#members: #bindings),* }), quote!(#variant_name { #(#members: #decoded),* })),
+            Fields::Unnamed(_) => (quote!(#variant_name(#(#bindings),*)), quote!(#variant_name(#(#decoded),*))),
         };
-        let prefix = if enumeration {
-            quote!(#sdk::__private::PostcardValue::write(&#index, bytes);)
-        } else {
-            quote!()
-        };
-        let initial_size = if enumeration {
-            quote!(#sdk::__private::PostcardValue::size(&#index))
-        } else {
-            quote!(0usize)
-        };
+        let prefix = quote!(#sdk::__private::PostcardValue::write(&#index, bytes););
+        let initial_size = quote!(#sdk::__private::PostcardValue::size(&#index));
         writes.push(quote!(#pattern => { #prefix #(#encoded)* }));
         sizes.push(quote!(#pattern => { let bytes = #initial_size; #(let bytes = bytes.saturating_add(#lengths);)* bytes }));
-        memories.push(
-            quote!(#index => { let bytes = ::std::mem::size_of::<Self>(); #(#memory)* Ok(bytes) }),
-        );
+        memories.push(quote!(#index => { let bytes = ::std::mem::size_of::<Self>(); #(#memory)* Ok(bytes) }));
         reads.push(quote!(#index => Ok(#value)));
     }
-    let select = if enumeration {
-        quote!(let variant: u32 = input.value()?;)
-    } else {
-        quote!(let variant = 0u32;)
-    };
+    let select = quote!(let variant: u32 = input.value()?;);
     quote! {
         impl #sdk::__private::PostcardValue for #name {
             fn write(&self, bytes: &mut ::std::vec::Vec<u8>) { match self { #(#writes),* } }

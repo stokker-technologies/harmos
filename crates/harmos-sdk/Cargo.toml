@@ -1,0 +1,127 @@
+# === Package === #
+
+[package]
+name = "harmos-sdk"
+description = "Harmos SDK for authoring plugins and operations over the Harmos runtime."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoring attributes, on by default the way serde ships its derives. Every
+# trait beneath them is an ordinary public contract, so a crate that turns this
+# off writes the implementations by hand and links no proc-macro chain at all.
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = ["derive"]
+derive = ["harmos-domain/derive"]
+grpc = ["dep:prost"]
+streaming = ["dep:tokio"]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-domain = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+
+# Utilities
+
+# Serialization
+postcard = { workspace = true }
+prost = { workspace = true, default-features = true, optional = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, optional = true }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+criterion = { workspace = true, default-features = false }
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+[[bench]]
+name = "unit-operations"
+path = "benches/operations/main.rs"
+harness = false
+required-features = ["derive"]
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

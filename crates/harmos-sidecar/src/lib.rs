@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+
 mod error;
 
 #[cfg(feature = "transport")]
@@ -18,48 +19,52 @@ pub mod transport;
 
 #[cfg(feature = "kit")]
 pub mod kit;
-#[cfg(all(feature = "packaging", not(target_arch = "wasm32")))]
-pub mod packaging;
 
 #[cfg(feature = "transport")]
 mod wire;
 
 /* === Re-Exports === */
+
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
-pub use harmos_contract::inventory;
-pub use harmos_contract::observers::{Exit as ObserverExit, State as ObserverStatus};
-pub use harmos_contract::operations::{
-    CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
+pub use harmos_domain::inventory;
+pub use harmos_domain::{
+    ConfigError, Failure, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec, UNKNOWN, UNREADABLE, encode_config,
+    reserved, validate_config,
 };
-pub use harmos_contract::{
-    ConfigError, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
-    UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
-};
-pub use harmos_contract::{catalog, operations};
+pub use harmos_domain::{catalog, failure, listeners};
+pub use harmos_sdk::Plugin;
+pub use harmos_sdk::operations;
+pub use harmos_sdk::operations::Host;
+pub use harmos_sdk::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 
-pub use harmos_contract::StreamDeclaration;
+pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
 pub use kit::{
-    Activation, ActivationId, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey,
-    Instance, Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost,
-    ObserverPublisher, ObserverStreamPublisher, ObserverTask, PluginNative, PublicationError,
-    PublishError, Publisher, Supervisor, Tick, run_plugin, serve_plugin_channels,
+    Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey, Instance, Observer,
+    ObserverAttachment, ObserverCaller, ObserverContext, ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
+    OperationInstance, PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, serve_plugin_channels,
 };
 
 #[cfg(feature = "transport")]
-pub use wire::{Frame, ObserverControl, ObserverUpdate, PluginCatalog, Publication};
+pub use wire::{Frame, PluginCatalog, Publication};
 
-pub use harmos_contract::schema;
-pub use harmos_contract::{MemorySize, Message, MessageError, RowMetadata, Storable};
 #[cfg(feature = "derive")]
-pub use harmos_contract::{message, operation};
+pub use harmos_domain::observer;
+pub use harmos_domain::schema;
+pub use harmos_domain::streams;
+pub use harmos_domain::{Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked};
+pub use harmos_domain::{MemorySize, Message, MessageError, RowMetadata, Storable};
+#[cfg(feature = "derive")]
+pub use harmos_domain::{listener, message, operation, stream};
+pub use harmos_sdk::plugin;
 
 #[cfg(feature = "kit")]
 pub use kit::__private;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -79,6 +84,11 @@ pub use kit::__private;
 /* === Traits === */
 
 /* === Implementations === */
+
+#[cfg(feature = "kit")]
+impl harmos_domain::__private::CarrierContext for Supervisor {
+    const FACILITY: &'static str = "sidecar";
+}
 
 /* === Public Functions === */
 

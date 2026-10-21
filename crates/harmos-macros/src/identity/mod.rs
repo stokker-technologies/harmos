@@ -8,12 +8,14 @@
  */
 
 /* === Modules === */
+
 pub(crate) mod batch;
 pub(crate) mod stream;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -33,6 +35,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Declaration {
     id: Option<LitStr>,
     version: LitInt,
@@ -42,6 +45,7 @@ struct Declaration {
 }
 
 /* === Enums === */
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {
     Transaction,
@@ -56,11 +60,12 @@ enum Undo {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Sort {
     pub(crate) fn kind(self, harmos: &HarmosPath) -> TokenStream {
         match self {
-            Self::Transaction => quote!(#harmos::Kind::Transaction),
-            Self::Record => quote!(#harmos::Kind::Record),
+            Self::Transaction => quote!(#harmos::state::Kind::Transaction),
+            Self::Record => quote!(#harmos::state::Kind::Record),
         }
     }
 
@@ -82,6 +87,7 @@ impl Undo {
 }
 
 /* === Public Functions === */
+
 pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
     match expand(attribute, &item, sort) {
         Ok(stamped) => stamped,
@@ -94,11 +100,12 @@ pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
 }
 
 /* === Private Functions === */
+
 fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
     match undo {
         Undo::Inverse(inverse) => quote! {
             #[automatically_derived]
-            impl #harmos::Undoable for #name {
+            impl #harmos::state::Undoable for #name {
                 type Inverse = #inverse;
             }
 
@@ -110,7 +117,7 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
                 fn mutual<A, B: #harmos::__private::Mutual<A>>() {}
 
                 fn pairs() {
-                    mutual::<#name, <#inverse as #harmos::Undoable>::Inverse>();
+                    mutual::<#name, <#inverse as #harmos::state::Undoable>::Inverse>();
                 }
             };
 
@@ -118,11 +125,11 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
 
                 pub fn __harmos_inverse<S, C>(&self, before: &S) -> ::core::option::Option<C>
                 where
-                    Self: #harmos::Invert<S>,
+                    Self: #harmos::state::Invert<S>,
                     #inverse: #harmos::__private::Catalogued<C>,
                 {
                     ::core::option::Option::Some(#harmos::__private::Catalogued::catalogued(
-                        #harmos::Invert::invert(self, before),
+                        #harmos::state::Invert::invert(self, before),
                     ))
                 }
             }
@@ -185,29 +192,22 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
     let harmos = &declared.harmos;
     let kind = sort.kind(harmos);
     let count = declared.history.len();
-    let history = declared
-        .history
-        .iter()
-        .map(|historical| quote!((#kind, #id, <#historical>::VERSION)));
+    let history = declared.history.iter().map(|historical| quote!((#kind, #id, <#historical>::VERSION)));
     let restore = restore(&declared, sort);
-    let undoing = declared
-        .undo
-        .as_ref()
-        .map(|undo| undoing(name, undo, harmos))
-        .unwrap_or_default();
+    let undoing = declared.undo.as_ref().map(|undo| undoing(name, undo, harmos)).unwrap_or_default();
 
     let historical_apply = &declared.history;
     let record_marker = match sort {
-        Sort::Record => quote! { impl #harmos::Record for #name {} },
+        Sort::Record => quote! { impl #harmos::state::Record for #name {} },
         Sort::Transaction => quote! {
-            impl<S> #harmos::TransactionCatalog<S> for #name
-            where Self: #harmos::Transaction<S>, S: 'static, #(#historical_apply: #harmos::Transaction<S>,)* {
-                fn replay(&self, prepared: &#harmos::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::DecodeError> {
-                    let refusal = || #harmos::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
+            impl<S> #harmos::state::TransactionCatalog<S> for #name
+            where Self: #harmos::state::Transaction<S>, S: 'static, #(#historical_apply: #harmos::state::Transaction<S>,)* {
+                fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
+                    let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
                     if prepared.id.as_str() != Self::DEFINITION.1 { return Err(refusal()); }
                     let (value, applying) = Self::restore::<S, _>(prepared.version, &prepared.payload)
                         .map_err(|_| refusal())?.ok_or_else(refusal)?;
-                    if let Some(apply) = applying { apply(state); } else { #harmos::Transaction::apply(&value, state); }
+                    if let Some(apply) = applying { apply(state); } else { #harmos::state::Transaction::apply(&value, state); }
                     Ok(())
                 }
             }
@@ -222,10 +222,10 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
         impl #name {
 
-            pub const DEFINITION: (#harmos::Kind, &'static str, u32) = (#kind, #id, #version);
+            pub const DEFINITION: (#harmos::state::Kind, &'static str, u32) = (#kind, #id, #version);
 
 
-            pub const HISTORY: [(#harmos::Kind, &'static str, u32); #count] = [#(#history),*];
+            pub const HISTORY: [(#harmos::state::Kind, &'static str, u32); #count] = [#(#history),*];
 
             #restore
         }
@@ -265,7 +265,7 @@ fn restore(declared: &Declaration, sort: Sort) -> TokenStream {
             where
                 D: ::serde::Deserializer<'de> + ::core::marker::Copy,
                 S: 'static,
-                #(#historical: #harmos::Transaction<S>,)*
+                #(#historical: #harmos::state::Transaction<S>,)*
             {
                 if version == #version {
                     // The stored version is the one this build writes, so the
@@ -286,7 +286,7 @@ fn restore(declared: &Declaration, sort: Sort) -> TokenStream {
                             ::core::convert::From::from(carried),
                             ::core::option::Option::Some(::std::boxed::Box::new(
                                 move |state: &mut S| {
-                                    #harmos::Transaction::apply(&applying, state)
+                                    #harmos::state::Transaction::apply(&applying, state)
                                 },
                             )),
                         )));
@@ -355,9 +355,7 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
             }
             Meta::NameValue(named) if named.path.is_ident("inverse") => {
                 answered(&undo, named.span())?;
-                undo = Some(Undo::Inverse(syn::parse2::<Path>(
-                    named.value.to_token_stream(),
-                )?));
+                undo = Some(Undo::Inverse(syn::parse2::<Path>(named.value.to_token_stream())?));
             }
             Meta::Path(marker) if marker.is_ident("irreversible") => {
                 answered(&undo, marker.span())?;
@@ -393,33 +391,16 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
     }
 
     let Some(version) = version else {
-        return Err(Error::new(
-            span,
-            format!("a {} declares the version it is written with", sort.noun()),
-        ));
+        return Err(Error::new(span, format!("a {} declares the version it is written with", sort.noun())));
     };
     if id.is_none() && !history.is_empty() {
-        return Err(Error::new(
-            span,
-            "a historical shape carries no history of its own; the family root owns the catalog",
-        ));
+        return Err(Error::new(span, "a historical shape carries no history of its own; the family root owns the catalog"));
     }
 
-    Ok(Declaration {
-        id,
-        version,
-        history,
-        undo,
-        harmos: HarmosPath::resolve(harmos_path),
-    })
+    Ok(Declaration { id, version, history, undo, harmos: HarmosPath::resolve(harmos_path) })
 }
 
-fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }
@@ -444,9 +425,7 @@ fn catalogued(listed: &syn::MetaList) -> Result<Vec<Path>, Error> {
         // A `::` separator is two colon tokens, the first joined to the second.
         // A colon that neither joins the token after it nor follows one that
         // did is a lone `:`, which no path spelling produces.
-        TokenTree::Punct(punctuation) if punctuation.as_char() == ':' => {
-            punctuation.spacing() == Spacing::Alone && !separates(&tokens, at)
-        }
+        TokenTree::Punct(punctuation) if punctuation.as_char() == ':' => punctuation.spacing() == Spacing::Alone && !separates(&tokens, at),
         TokenTree::Punct(punctuation) => matches!(punctuation.as_char(), '-' | '>' | '=' | '|'),
         _ => false,
     });
@@ -458,10 +437,7 @@ fn catalogued(listed: &syn::MetaList) -> Result<Vec<Path>, Error> {
         ));
     }
 
-    Ok(Punctuated::<Path, Token![,]>::parse_terminated
-        .parse2(listed.tokens.clone())?
-        .into_iter()
-        .collect())
+    Ok(Punctuated::<Path, Token![,]>::parse_terminated.parse2(listed.tokens.clone())?.into_iter().collect())
 }
 
 fn separates(tokens: &[TokenTree], at: usize) -> bool {
@@ -476,10 +452,7 @@ fn named(item: &Item) -> Result<&Ident, Error> {
     match item {
         Item::Struct(shape) => Ok(&shape.ident),
         Item::Enum(shape) => Ok(&shape.ident),
-        other => Err(Error::new(
-            other.span(),
-            "an authoring attribute belongs on the struct or enum the definition is",
-        )),
+        other => Err(Error::new(other.span(), "an authoring attribute belongs on the struct or enum the definition is")),
     }
 }
 

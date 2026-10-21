@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -36,6 +37,7 @@ use syn::{Error, FnArg, ImplItem, ImplItemFn, ItemImpl, ReturnType, Type};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn block(item: TokenStream, verb: &str) -> Result<ItemImpl, Error> {
     let block: ItemImpl = syn::parse2(item)?;
     if let Some((path, _)) = &block.trait_ {
@@ -58,20 +60,13 @@ pub(crate) fn declared<'a>(block: &'a ItemImpl, verb: &str) -> Option<&'a ImplIt
     })
 }
 
-pub(crate) fn required<'a>(
-    block: &'a ItemImpl,
-    verb: &str,
-    shape: &str,
-) -> Result<&'a ImplItemFn, Error> {
+pub(crate) fn required<'a>(block: &'a ItemImpl, verb: &str, shape: &str) -> Result<&'a ImplItemFn, Error> {
     declared(block, verb).ok_or_else(|| Error::new(block.span(), format!("declare `{shape}`")))
 }
 
 pub(crate) fn asynchronous(function: &ImplItemFn, reason: &str) -> Result<(), Error> {
     if function.sig.asyncness.is_none() {
-        return Err(Error::new(
-            function.sig.fn_token.span,
-            format!("`{}` is `async fn`: {reason}", function.sig.ident),
-        ));
+        return Err(Error::new(function.sig.fn_token.span, format!("`{}` is `async fn`: {reason}", function.sig.ident)));
     }
 
     Ok(())
@@ -94,22 +89,14 @@ pub(crate) fn returned(function: &ImplItemFn) -> Result<Type, Error> {
 pub(crate) fn parameter(argument: &FnArg) -> Result<Type, Error> {
     match argument {
         FnArg::Typed(typed) => Ok((*typed.ty).clone()),
-        other => Err(Error::new(
-            other.span(),
-            "a contribution's parameters are values and borrows, never a receiver here",
-        )),
+        other => Err(Error::new(other.span(), "a contribution's parameters are values and borrows, never a receiver here")),
     }
 }
 
 pub(crate) fn borrowed(declared: &Type, what: &str) -> Result<Type, Error> {
     match declared {
-        Type::Reference(reference) if reference.mutability.is_none() => {
-            Ok((*reference.elem).clone())
-        }
-        other => Err(Error::new(
-            other.span(),
-            format!("{what} is borrowed: write `&{}`", other.to_token_stream()),
-        )),
+        Type::Reference(reference) if reference.mutability.is_none() => Ok((*reference.elem).clone()),
+        other => Err(Error::new(other.span(), format!("{what} is borrowed: write `&{}`", other.to_token_stream()))),
     }
 }
 

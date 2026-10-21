@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -31,6 +32,7 @@ use crate::path::{self, HarmosPath};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Member {
     definition: Type,
 }
@@ -42,6 +44,7 @@ struct Member {
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
     match expand(attribute, item.clone()) {
         Ok(closed) => closed,
@@ -54,6 +57,7 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /* === Private Functions === */
+
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let harmos = harmos_path(attribute)?;
 
@@ -95,12 +99,12 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
 
         impl #name {
 
-            #visibility fn catalog() -> ::std::vec::Vec<#harmos::Definition> {
+            #visibility fn catalog() -> ::std::vec::Vec<#harmos::streams::Definition> {
                 ::std::vec![#(#registrations),*]
             }
 
 
-            #visibility fn definition(id: &str) -> ::core::option::Option<#harmos::Definition> {
+            #visibility fn definition(id: &str) -> ::core::option::Option<#harmos::streams::Definition> {
                 #(#dispatch)*
 
                 ::core::option::Option::None
@@ -114,28 +118,17 @@ fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
 
     for variant in &catalog.variants {
         let syn::Fields::Unnamed(fields) = &variant.fields else {
-            return Err(Error::new(
-                variant.span(),
-                "a stream catalog variant names exactly one row type",
-            ));
+            return Err(Error::new(variant.span(), "a stream catalog variant names exactly one row type"));
         };
         let [field] = &fields.unnamed.iter().collect::<Vec<_>>()[..] else {
-            return Err(Error::new(
-                variant.span(),
-                "a stream catalog variant names exactly one row type",
-            ));
+            return Err(Error::new(variant.span(), "a stream catalog variant names exactly one row type"));
         };
 
-        members.push(Member {
-            definition: field.ty.clone(),
-        });
+        members.push(Member { definition: field.ty.clone() });
     }
 
     if members.is_empty() {
-        return Err(Error::new(
-            catalog.span(),
-            "a stream catalog declares at least one row type",
-        ));
+        return Err(Error::new(catalog.span(), "a stream catalog declares at least one row type"));
     }
 
     Ok(members)
@@ -162,12 +155,7 @@ fn harmos_path(attribute: TokenStream) -> Result<HarmosPath, Error> {
     Ok(HarmosPath::resolve(harmos_path))
 }
 
-fn set_once<T>(
-    place: &mut Option<T>,
-    value: T,
-    span: proc_macro2::Span,
-    name: &str,
-) -> Result<(), Error> {
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
     if place.replace(value).is_some() {
         return Err(Error::new(span, format!("`{name}` is declared only once")));
     }

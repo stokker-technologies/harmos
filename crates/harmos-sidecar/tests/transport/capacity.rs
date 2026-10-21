@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
@@ -20,6 +21,7 @@ use std::time::Duration;
 use super::protocol::Start;
 
 /* === Constants === */
+
 pub const MIB: usize = 1024 * 1024;
 pub const WARMUP_MIB: u64 = 64;
 
@@ -28,6 +30,7 @@ pub const WARMUP_MIB: u64 = 64;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[derive(Clone, Copy)]
 pub struct Case {
     pub name: &'static str,
@@ -59,6 +62,7 @@ pub struct Observation {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Settings {
     pub fn load() -> Result<Self, String> {
         Self::parse(|name| match std::env::var(name) {
@@ -72,27 +76,16 @@ impl Settings {
         let list = |name, default: &str, max| -> Result<Vec<u64>, String> {
             let value = read(name)?.unwrap_or_else(|| default.to_owned());
             if value.split(',').count() > 8 {
-                return Err(format!(
-                    "{name}: at most 8 comma-separated values are allowed"
-                ));
+                return Err(format!("{name}: at most 8 comma-separated values are allowed"));
             }
-            let mut values = value
-                .split(',')
-                .map(|value| number(name, value.trim(), max))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut values = value.split(',').map(|value| number(name, value.trim(), max)).collect::<Result<Vec<_>, _>>()?;
             values.sort_unstable();
             if values.windows(2).any(|pair| pair[0] == pair[1]) {
                 return Err(format!("{name}: duplicate values are not allowed"));
             }
             Ok(values)
         };
-        let scalar = |name, default: &str, max| {
-            number(
-                name,
-                &read(name)?.unwrap_or_else(|| default.to_owned()),
-                max,
-            )
-        };
+        let scalar = |name, default: &str, max| number(name, &read(name)?.unwrap_or_else(|| default.to_owned()), max);
         let settings = Self {
             sizes: list("HARMOS_BENCH_SIZES", "16384,65536", 1024 * 1024)?,
             rates: list("HARMOS_BENCH_RATES", "100,300,500,700", 4096)?,
@@ -100,24 +93,12 @@ impl Settings {
             repetitions: scalar("HARMOS_BENCH_REPETITIONS", "3", 10)?,
             burst_mib: scalar("HARMOS_BENCH_BURST_MIB", "256", 4096)?,
         };
-        let cases =
-            settings.sizes.len() as u64 * (settings.rates.len() as u64 + 1) * settings.repetitions;
+        let cases = settings.sizes.len() as u64 * (settings.rates.len() as u64 + 1) * settings.repetitions;
         if cases > 256 {
-            return Err(
-                "HARMOS_BENCH_SIZES/RATES/REPETITIONS: at most 256 recorded cases are allowed"
-                    .into(),
-            );
+            return Err("HARMOS_BENCH_SIZES/RATES/REPETITIONS: at most 256 recorded cases are allowed".into());
         }
-        if settings.sizes.len() as u64
-            * settings.rates.len() as u64
-            * settings.repetitions
-            * settings.seconds
-            > 600
-        {
-            return Err(
-                "HARMOS_BENCH_SECONDS/REPETITIONS: nominal sustained work exceeds 600 seconds"
-                    .into(),
-            );
+        if settings.sizes.len() as u64 * settings.rates.len() as u64 * settings.repetitions * settings.seconds > 600 {
+            return Err("HARMOS_BENCH_SECONDS/REPETITIONS: nominal sustained work exceeds 600 seconds".into());
         }
         let mut bytes = 0_u64;
         for &size in &settings.sizes {
@@ -131,9 +112,7 @@ impl Settings {
             }
         }
         if bytes > 96 * 1024 * MIB as u64 {
-            return Err(
-                "HARMOS_BENCH settings exceed the 96 GiB total useful transfer bound".into(),
-            );
+            return Err("HARMOS_BENCH settings exceed the 96 GiB total useful transfer bound".into());
         }
         Ok(settings)
     }
@@ -143,27 +122,11 @@ impl Settings {
     }
 
     pub fn case(&self, size: u64, rate: u64, burst_mib: u64) -> Result<Case, String> {
-        let bytes = if rate == 0 {
-            burst_mib
-        } else {
-            rate * self.seconds
-        } * MIB as u64;
-        let samples = u32::try_from(bytes.div_ceil(size))
-            .map_err(|_| "HARMOS_BENCH_SIZES/RATES/SECONDS: sample count exceeds u32")?;
-        let start = Start {
-            samples,
-            payload_bytes: size as u32,
-            pace_bytes_per_second: rate * MIB as u64,
-        };
-        start
-            .validate()
-            .map_err(|error| format!("HARMOS_BENCH_SIZES/RATES/SECONDS/BURST_MIB: {error}"))?;
-        Ok(Case {
-            name: "capacity",
-            samples,
-            payload_bytes: start.payload_bytes,
-            pace_bytes_per_second: start.pace_bytes_per_second,
-        })
+        let bytes = if rate == 0 { burst_mib } else { rate * self.seconds } * MIB as u64;
+        let samples = u32::try_from(bytes.div_ceil(size)).map_err(|_| "HARMOS_BENCH_SIZES/RATES/SECONDS: sample count exceeds u32")?;
+        let start = Start { samples, payload_bytes: size as u32, pace_bytes_per_second: rate * MIB as u64, batch: 1 };
+        start.validate().map_err(|error| format!("HARMOS_BENCH_SIZES/RATES/SECONDS/BURST_MIB: {error}"))?;
+        Ok(Case { name: "capacity", samples, payload_bytes: start.payload_bytes, pace_bytes_per_second: start.pace_bytes_per_second })
     }
 
     pub fn timeout(&self, case: Case) -> Duration {
@@ -180,42 +143,30 @@ impl Observation {
 }
 
 /* === Public Functions === */
+
 pub fn range(values: impl Iterator<Item = f64>) -> String {
     let mut values: Vec<_> = values.collect();
     values.sort_by(f64::total_cmp);
     let middle = values.len() / 2;
-    let median = if values.len().is_multiple_of(2) {
-        (values[middle - 1] + values[middle]) / 2.0
-    } else {
-        values[middle]
-    };
-    format!(
-        "{median:.3} [{:.3}, {:.3}]",
-        values[0],
-        values[values.len() - 1]
-    )
+    let median = if values.len().is_multiple_of(2) { (values[middle - 1] + values[middle]) / 2.0 } else { values[middle] };
+    format!("{median:.3} [{:.3}, {:.3}]", values[0], values[values.len() - 1])
 }
 
 pub fn highest_met(cases: &[(u64, Vec<Observation>)]) -> Option<u64> {
     cases
         .iter()
-        .filter(|(rate, trials)| {
-            !trials.is_empty() && trials.iter().all(|trial| trial.keeps_pace(*rate))
-        })
+        .filter(|(rate, trials)| !trials.is_empty() && trials.iter().all(|trial| trial.keeps_pace(*rate)))
         .map(|(rate, _)| *rate)
         .max()
 }
 
 /* === Private Functions === */
+
 fn number(name: &str, value: &str, max: u64) -> Result<u64, String> {
     if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(format!(
-            "{name}: expected a positive integer of at most 20 decimal digits"
-        ));
+        return Err(format!("{name}: expected a positive integer of at most 20 decimal digits"));
     }
-    let number = value
-        .parse::<u64>()
-        .map_err(|_| format!("{name}: `{value}` must be a positive integer"))?;
+    let number = value.parse::<u64>().map_err(|_| format!("{name}: `{value}` must be a positive integer"))?;
     if !(1..=max).contains(&number) {
         return Err(format!("{name}: expected 1..={max}, received {number}"));
     }

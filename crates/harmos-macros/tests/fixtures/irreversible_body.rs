@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Sheet;
 
 #[harmos::transaction(id = "report.send", version = 1, irreversible)]
@@ -37,7 +39,8 @@ struct SendReport;
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Transaction<Sheet> for SendReport {
+
+impl harmos::state::Transaction<Sheet> for SendReport {
     type Error = ();
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -47,7 +50,7 @@ impl harmos::Transaction<Sheet> for SendReport {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for SendReport {
+impl harmos::state::Invert<Sheet> for SendReport {
     fn invert(&self, _sheet: &Sheet) -> SendReport {
         SendReport
     }
@@ -56,6 +59,7 @@ impl harmos::Invert<Sheet> for SendReport {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

@@ -8,40 +8,41 @@
  */
 
 /* === Modules === */
-mod error;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
-pub mod component;
+mod error;
 
 #[cfg(feature = "kit")]
 pub mod kit;
 
 /* === Re-Exports === */
-pub use error::{Error, Result};
-pub use harmos_contract::operations::{
-    CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
-};
-pub use harmos_contract::{catalog, operations};
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
-pub use component::componentize;
-pub use harmos_contract::inventory;
-pub use harmos_contract::{
-    ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, encode_config,
-    reserved, validate_config,
+pub use error::{Error, Result};
+pub use harmos_domain::{catalog, listeners};
+pub use harmos_sdk::Plugin;
+pub use harmos_sdk::operations;
+pub use harmos_sdk::operations::Host;
+pub use harmos_sdk::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+
+pub use harmos_domain::inventory;
+pub use harmos_domain::{
+    ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
 };
 
 #[cfg(feature = "kit")]
-pub use kit::{Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
+pub use kit::{Context, OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
 
-pub use harmos_contract::__private;
+pub use harmos_sdk::__private;
 
-pub use harmos_contract::schema;
-pub use harmos_contract::{MemorySize, Message, MessageError, RowMetadata, Storable};
+pub use harmos_domain::schema;
+pub use harmos_domain::streams;
+pub use harmos_domain::{Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked};
+pub use harmos_domain::{MemorySize, Message, MessageError, RowMetadata, Storable};
 #[cfg(feature = "derive")]
-pub use harmos_contract::{message, operation};
+pub use harmos_domain::{listener, message, operation, stream};
+pub use harmos_sdk::plugin;
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -61,6 +62,11 @@ pub use harmos_contract::{message, operation};
 /* === Traits === */
 
 /* === Implementations === */
+
+#[cfg(feature = "kit")]
+impl harmos_domain::__private::CarrierContext for Context {
+    const FACILITY: &'static str = "guest";
+}
 
 /* === Public Functions === */
 

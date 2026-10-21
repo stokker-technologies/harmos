@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,6 +27,7 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 #[harmos::transaction(id = "sheet.rename", version = 1)]
 #[derive(Deserialize, Serialize)]
 struct Rename {
@@ -41,6 +43,7 @@ struct Rename {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

@@ -1,0 +1,89 @@
+# === Package === #
+
+[package]
+publish = false
+name = "schematic-app"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+simulation = ["harmos/simulation"]
+
+# === Dependencies === #
+
+# Compiled for the host and nothing else, which is what lets the adapter, the
+# JSON codec and the guest host sit in one unconditional list. The domain crate is
+# here because `services/` is where an autorouter's request is held to the
+# transaction it is decoded as.
+[dependencies]
+# Local
+harmos = { workspace = true, default-features = true, features = ["plugin-guest", "plugin-sidecar"] }
+schematic-domain = { path = "../domain" }
+schematic-storage = { path = "../storage" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+sha2 = { workspace = true, default-features = true }
+
+# Serialization
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, default-features = true, features = ["time"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

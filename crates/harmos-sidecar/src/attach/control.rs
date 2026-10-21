@@ -25,6 +25,7 @@ use tokio::process::Command;
 use crate::transport::Io;
 
 /* === Constants === */
+
 const DESCRIPTOR: i32 = 198;
 const VARIABLE: &str = "HARMOS_CONTROL_V2";
 const VALUE: &str = "unix-fd:198";
@@ -42,6 +43,7 @@ const VALUE: &str = "unix-fd:198";
 /* === Implementations === */
 
 /* === Public Functions === */
+
 #[allow(unsafe_code)]
 pub(super) fn prepare(command: &mut Command) -> io::Result<Io> {
     let (parent, child) = UnixStream::pair()?;
@@ -70,10 +72,7 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
         return Ok(None);
     };
     if value != VALUE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "unsupported inherited control channel",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "unsupported inherited control channel"));
     }
     let descriptor = duplicate(DESCRIPTOR, 0)?;
     // SAFETY: The Successful Duplication Validated The Reserved Descriptor. The Executable
@@ -87,6 +86,7 @@ pub(crate) fn inherited() -> io::Result<Option<Io>> {
 }
 
 /* === Private Functions === */
+
 #[allow(unsafe_code)]
 fn duplicate(descriptor: i32, minimum: i32) -> io::Result<OwnedFd> {
     // SAFETY: fcntl Validates The Input; On Success It Returns A New Exclusively Owned FD.

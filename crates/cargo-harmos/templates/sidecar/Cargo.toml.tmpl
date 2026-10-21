@@ -1,0 +1,65 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "__PACKAGE_NAME__"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+
+# === Package Targets === #
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Async
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Harmos Sub-Tables Keep Their Layout When cargo-harmos new Substitutes A Local Path
+[dependencies.harmos-domain]
+git = "https://github.com/stokker-technologies/harmos"
+rev = "__HARMOS_REVISION__"
+default-features = false
+features = ["derive"]
+
+[dependencies.harmos-sidecar]
+git = "https://github.com/stokker-technologies/harmos"
+rev = "__HARMOS_REVISION__"
+default-features = false
+features = ["derive", "kit"]
+
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
+
+# A Standalone Plugin Is Its Own Workspace Root, Even Inside Another Checkout
+[workspace]

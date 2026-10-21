@@ -1,0 +1,139 @@
+# === Package === #
+
+[package]
+name = "harmos-storage"
+description = "Harmos storage: durable journals, snapshots and Arrow-backed stream storage."
+autotests = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoring attributes, on by default the way serde ships its derives. Every
+# trait beneath them is an ordinary public contract, so a crate that turns this
+# off writes the implementations by hand and links no proc-macro chain at all.
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+fft = ["dep:rustfft"]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-domain = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+# Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
+getrandom = { workspace = true, features = ["std", "wasm_js"] }
+rustfft = { workspace = true, default-features = true, optional = true }
+sha2 = { workspace = true, default-features = true }
+
+# Serialization
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-data = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+base64 = { workspace = true }
+flatbuffers = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+harmos-domain = { workspace = true, features = ["derive"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

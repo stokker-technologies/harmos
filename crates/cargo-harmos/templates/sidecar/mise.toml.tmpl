@@ -1,0 +1,230 @@
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:10c5afdc05383e1ce391d81ab51d0cc574bc3cc37043c366a39bcd216bad272c
+# === Settings === #
+
+[settings]
+lockfile = true
+
+# === Tools === #
+
+[tools]
+# Languages And Runtimes
+python = "3.15.0"
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal" }
+
+# Package Managers
+uv = "0.13.0"
+
+# Rust Toolchain
+"aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+sccache = "0.18.0"
+
+# Formatting And Linting
+"aqua:rhysd/actionlint" = "1.7.12"
+taplo = "0.10.0"
+
+# Release And Signing
+gh = "2.102.0"
+git-cliff = "2.14.2"
+glab = "1.123.0"
+
+# Project Statistics
+"aqua:boyter/scc" = "4.1.0"
+
+# === Environment === #
+
+[env]
+UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
+
+# === Variables === #
+
+[vars]
+
+# === Prepare === #
+
+[tasks.prepare]
+description = "Prepare Tools And Inputs"
+run = "uv sync --locked --project tools/python --all-groups"
+
+# === Format === #
+
+[tasks.format]
+description = "Format Every Language"
+usage = 'flag "--check"'
+depends = [
+  "format:toml {% if usage.check %}--check{% endif %}",
+  "format:rust {% if usage.check %}--check{% endif %}",
+  "format:python {% if usage.check %}--check{% endif %}",
+]
+
+[tasks."format:python"]
+description = "Format Python"
+usage = 'flag "--check"'
+run = 'uv run --locked --project tools/python ruff format "tools/python"{% if usage.check %} --check{% endif %}'
+
+[tasks."format:rust"]
+description = "Format Rust"
+usage = 'flag "--check"'
+run = "cargo fmt --all{% if usage.check %} --check{% endif %}"
+
+[tasks."format:toml"]
+description = "Format TOML"
+usage = 'flag "--check"'
+run = "git ls-files -z -- '*.toml' | xargs -0 taplo fmt --option column_width=140{% if usage.check %} --check{% endif %}"
+
+# === Lint === #
+
+[tasks.lint]
+description = "Lint Every Language"
+depends = ["lint:rust", "lint:python"]
+
+[tasks."lint:python"]
+description = "Lint Python"
+run = ['uv run --locked --project tools/python ruff check "tools/python"', 'uv run --locked --project tools/python ty check "tools/python"']
+
+[tasks."lint:rust"]
+description = "Lint Rust"
+run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+
+# === Check === #
+
+[tasks.check]
+description = "Check Every Language And Conventions"
+run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
+
+[tasks."check:python"]
+description = "Check Python"
+run = [{ task = "format:python --check" }, { task = "lint:python" }]
+
+[tasks."check:repository"]
+description = "Check Repository Configuration And Conventions"
+run = [{ task = "format:toml --check" }]
+
+[tasks."check:rust"]
+description = "Check Rust"
+run = [
+  { task = "format:rust --check" },
+  { task = "lint:rust" },
+  "cargo check --workspace --all-targets --all-features",
+  "cargo check --workspace --all-targets --no-default-features",
+]
+
+# === Build === #
+
+[tasks.build]
+description = "Build Packageable Products"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.build.run rust --profile {{usage.profile}}"
+
+[tasks."build:tests"]
+description = "Build Test Binaries And Fixtures"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
+
+# === Dev === #
+
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+
+[tasks.dev]
+description = "Watch And Rebuild The Plugin"
+run = "cargo harmos sidecar dev"
+
+# === Test === #
+
+[tasks.test]
+description = "Test Every Layer"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit --profile {{usage.profile}}"]
+
+[tasks."test:coverage"]
+description = "Measure Coverage Over Instrumented Lanes"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust --profile {{usage.profile}}"
+
+[tasks."test:unit"]
+description = "Test Unit Layer"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit:rust --profile {{usage.profile}}"]
+
+[tasks."test:unit:rust"]
+description = "Test Unit Rust"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
+
+# === Bench === #
+
+# === Docs === #
+
+# === Package === #
+
+[tasks.package]
+description = "Package Every Language"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["package:rust --profile {{usage.profile}}"]
+
+[tasks."package:rust"]
+description = "Package Rust"
+usage = """
+flag "--profile <profile>" default="dev"
+flag "--target <target>" default="native""""
+run = "uv run --locked --project tools/python python -m project_tools.package.run rust --profile {{usage.profile}} --target {{usage.target}}"
+
+# === CI === #
+
+[tasks.ci]
+description = "Run The CI Flow Locally"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  { task = "check" },
+  { task = "build --profile {{usage.profile}}" },
+  { task = "build:tests --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
+]
+
+[tasks."ci:nightly"]
+description = "Run The Nightly Coverage And Bench Flow"
+run = [{ task = "build" }, { task = "build:tests" }, { task = "test:coverage" }]
+
+# === Release === #
+
+[tasks.release]
+description = "Prepare And Validate A Release"
+run = [{ task = "release:prepare" }, { task = "ci" }, { task = "release:publish:dry" }]
+
+[tasks."release:prepare"]
+description = "Prepare The Release Branch"
+run = "uv run --locked --project tools/python python -m project_tools.release.run prepare"
+
+[tasks."release:publish"]
+description = "Publish A Tagged Release"
+run = [{ task = "release:publish:rust" }]
+
+[tasks."release:publish:dry"]
+description = "Dry-Run Every Publication"
+run = "uv run --locked --project tools/python python -m project_tools.test.publish --rust"
+
+[tasks."release:publish:rust"]
+description = "Publish Rust Crates"
+run = "uv run --locked --project tools/python python -m project_tools.release.run crates"
+
+# === Housekeeping === #
+
+[tasks.housekeeping]
+description = "Clean Owned Build Outputs And State"
+run = "stkr project housekeeping"
+
+[tasks."housekeeping:stats"]
+description = "Count Source Lines"
+run = "scc"

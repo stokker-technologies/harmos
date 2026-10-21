@@ -8,11 +8,11 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -37,6 +37,7 @@ use harmos_sidecar::Executable;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn refused(path: impl AsRef<std::path::Path>, why: &str) -> String {
     match Executable::at(path) {
         Ok(_) => panic!("{why}"),
@@ -47,19 +48,12 @@ fn refused(path: impl AsRef<std::path::Path>, why: &str) -> String {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("invalid_path_refused", || {
-            // Absolute on every platform: a bare `/` is relative to Windows.
-            let temporary = tempfile::tempdir().unwrap();
-            let directory = temporary.path();
-            let missing = directory.join("harmos-nonexistent").join("recorder");
-            assert!(
-                refused("relative/recorder", "a relative path is refused")
-                    .contains("not an absolute path")
-            );
-            assert!(refused(&missing, "a missing path is refused").contains("cannot be read"));
-            assert!(refused(directory, "a directory is refused").contains("not a file"));
-        });
-    }
+fn invalid_path_refused() {
+    // Absolute on every platform: a bare `/` is relative to Windows.
+    let temporary = tempfile::tempdir().unwrap();
+    let directory = temporary.path();
+    let missing = directory.join("harmos-nonexistent").join("recorder");
+    assert!(refused("relative/recorder", "a relative path is refused").contains("not an absolute path"));
+    assert!(refused(&missing, "a missing path is refused").contains("cannot be read"));
+    assert!(refused(directory, "a directory is refused").contains("not a file"));
 }

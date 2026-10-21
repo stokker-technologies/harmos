@@ -7,51 +7,47 @@
  * ***
  */
 
+// An observer is a resident body with the shared lifecycle verbs: it
+// initializes (retrying each cadence until it succeeds), observes once per
+// declared interval for as long as its activation runs, and stops and cleans
+// up when that activation is cancelled. `Activity` is that body for one
+// activation; whoever runs the activation owns its lifecycle.
+
 /* === Modules === */
+
 mod attachment;
-mod control;
-mod lifecycle;
 
 /* === Re-Exports === */
+
 pub use attachment::ObserverAttachment;
-pub(crate) use control::Controlled;
-pub use harmos_contract::inventory::observers::{Activation, DemandKey};
-pub use lifecycle::{ObserverExit, ObserverStatus};
+pub use harmos_domain::inventory::observers::{Activation, DemandKey};
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::any::Any;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 // Third Party Imports
 use futures_util::FutureExt;
-use tokio::sync::{oneshot, watch};
-use tokio::task::JoinHandle;
 use tokio::time::{Instant, MissedTickBehavior, interval};
-use tracing::Instrument;
 // Local Imports
 use super::identity::{ActivationId, Identity};
-use super::{
-    ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError,
-    Supervisor,
-};
-use harmos_contract::inventory::publications;
+use super::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError, Supervisor};
+use harmos_domain::inventory::publications;
 
 /* === Constants === */
 
 /* === Macros === */
 
 /* === Type Aliases === */
+
 type ContextFactory<H> = Arc<dyn Fn(&H) -> Arc<dyn Any + Send + Sync> + Send + Sync>;
-type HostFactory<H> = Box<dyn FnOnce() -> H + Send>;
-type Start<R, H> = fn(
-    Arc<R>,
-    HostFactory<H>,
-    Option<ContextFactory<H>>,
-    Identity,
-) -> std::io::Result<ObserverTask>;
+type Open<R, H> = fn(Arc<R>, H, Option<ContextFactory<H>>, Identity) -> Result<Activity, ObserverError>;
+type Step<'a> = Pin<Box<dyn Future<Output = Result<(), ObserverError>> + Send + 'a>>;
 
 /* === Structs === */
 
@@ -71,30 +67,72 @@ pub struct ObserverContext<'a, R, H = Supervisor> {
     identity: Identity,
     resources: &'a R,
     tick: &'a Tick,
-    capabilities: &'a H,
+    host: &'a H,
     streams: &'static [publications::Entry],
     extension: Option<&'a (dyn Any + Send + Sync)>,
 }
 
 pub struct Instance<R, H = Supervisor> {
-    entry: harmos_contract::inventory::observers::Entry,
-    open: Start<R, H>,
+    entry: harmos_domain::inventory::observers::Entry,
+    open: Open<R, H>,
     context: Option<ContextFactory<H>>,
 }
 
-#[must_use = "dropping an observer task requests cancellation"]
-pub struct ObserverTask {
+// One activation of one observer: its resources, bound host and, once
+// initialized, the observer itself. Dropping an `observe` future interrupts the
+// activation; `stop` and `cleanup` then release whatever it acquired.
+pub struct Activity {
     identity: Identity,
-    status: watch::Sender<ObserverStatus>,
-    control: Arc<lifecycle::Control>,
-    ending: Option<oneshot::Sender<()>>,
-    task: Option<JoinHandle<()>>,
-    interrupted: Option<Arc<tokio::task::JoinError>>,
+    body: Box<dyn Body>,
+}
+
+struct Bound<S: Observer<H>, H: Send + Sync + 'static> {
+    identity: Identity,
+    resources: Arc<S::Resources>,
+    host: H,
+    extension: Option<Arc<dyn Any + Send + Sync>>,
+    observer: Option<S>,
+    stopped: bool,
 }
 
 /* === Enums === */
 
+#[derive(Debug, thiserror::Error)]
+pub enum ObserverError {
+    #[error("the observer host or context factory panicked")]
+    BindingPanicked,
+
+    #[error("the observer activation identity could not be drawn: {0}")]
+    Identity(#[source] std::io::Error),
+
+    #[error("the observer callback panicked")]
+    CallbackPanicked,
+
+    #[error("the observer tick ordinal is exhausted")]
+    TickExhausted,
+
+    #[error("the observer refused to stop: {0}")]
+    StopFailed(#[source] Arc<dyn std::error::Error + Send + Sync>),
+
+    #[error("the observer panicked while stopping")]
+    StopPanicked,
+
+    #[error("the observer refused to clean up: {0}")]
+    CleanupFailed(#[source] Arc<dyn std::error::Error + Send + Sync>),
+
+    #[error("the observer panicked while cleaning up")]
+    CleanupPanicked,
+}
+
 /* === Traits === */
+
+trait Body: Send {
+    fn observe<'a>(&'a mut self, ready: &'a (dyn Fn() + Send + Sync)) -> Step<'a>;
+    fn stop(&mut self) -> Step<'_>;
+    fn cleanup(&mut self) -> Step<'_>;
+    fn is_initialized(&self) -> bool;
+}
+
 pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'static {
     type Resources: Send + Sync + 'static;
 
@@ -112,71 +150,57 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const INTERVAL: Duration;
 
-    fn new(resources: &Self::Resources) -> Result<Self, Self::Error>;
+    fn initialize(resources: &Self::Resources) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
-    fn initialize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        std::future::ready(Ok(()))
-    }
-
-    fn observe(
-        &mut self,
-        ctx: &ObserverContext<'_, Self::Resources, H>,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn observe(&mut self, ctx: &ObserverContext<'_, Self::Resources, H>) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         std::future::ready(Ok(()))
     }
 
-    fn finalize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         std::future::ready(Ok(()))
     }
 }
 
 /* === Implementations === */
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_contract::catalog::Visitor
-    for Declarations<R, H>
-{
+
+impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Declarations<R, H> {
     type Entry = fn() -> Instance<R, H>;
 }
 
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static, S: Observer<H, Resources = R>>
-    harmos_contract::catalog::Member<S> for Declarations<R, H>
+impl<R: Send + Sync + 'static, H: Send + Sync + 'static, S: Observer<H, Resources = R>> harmos_domain::catalog::Member<S>
+    for Declarations<R, H>
 {
     const ENTRY: fn() -> Instance<R, H> = Instance::of::<S>;
 }
 
-impl<H: Send + Sync + 'static> harmos_contract::catalog::Visitor for Outputs<H> {
+impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Outputs<H> {
     type Entry = &'static [publications::Entry];
 }
 
-impl<H: Send + Sync + 'static, S: Observer<H>> harmos_contract::catalog::Member<S> for Outputs<H> {
+impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S> for Outputs<H> {
     const ENTRY: &'static [publications::Entry] = S::STREAMS;
 }
 
-impl<H: Send + Sync + 'static> harmos_contract::catalog::Visitor for Inventory<H> {
-    type Entry = harmos_contract::inventory::observers::Entry;
+impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Inventory<H> {
+    type Entry = harmos_domain::inventory::observers::Entry;
 }
 
-impl<H: Send + Sync + 'static, S: Observer<H>> harmos_contract::catalog::Member<S>
-    for Inventory<H>
-{
-    const ENTRY: harmos_contract::inventory::observers::Entry =
-        harmos_contract::inventory::observers::Entry {
-            id: S::ID,
-            description: S::DESCRIPTION,
-            interval: S::INTERVAL,
-            activation: S::ACTIVATION,
-            streams: S::STREAMS,
-            demand_keys: S::DEMAND_KEYS,
-        };
+impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S> for Inventory<H> {
+    const ENTRY: harmos_domain::inventory::observers::Entry = harmos_domain::inventory::observers::Entry {
+        id: S::ID,
+        description: S::DESCRIPTION,
+        interval: S::INTERVAL,
+        activation: S::ACTIVATION,
+        streams: S::STREAMS,
+        demand_keys: S::DEMAND_KEYS,
+    };
 }
 
 impl Tick {
-    fn advance(&mut self, elapsed: Duration) -> Result<(), ObserverExit> {
-        let ordinal = self
-            .ordinal
-            .checked_add(1)
-            .ok_or(ObserverExit::TickExhausted)?;
+    fn advance(&mut self, elapsed: Duration) -> Result<(), ObserverError> {
+        let ordinal = self.ordinal.checked_add(1).ok_or(ObserverError::TickExhausted)?;
         self.ordinal = ordinal;
         self.elapsed = elapsed;
         Ok(())
@@ -208,19 +232,18 @@ impl<R, H> ObserverContext<'_, R, H> {
         self.tick
     }
 
-    pub fn capabilities(&self) -> &H {
-        self.capabilities
+    pub fn host(&self) -> &H {
+        self.host
     }
 
     pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
-        self.extension
-            .and_then(|extension| extension.downcast_ref())
+        self.extension.and_then(|extension| extension.downcast_ref())
     }
 }
 
 impl<R> ObserverContext<'_, R, Supervisor> {
     pub fn supervisor(&self) -> &Supervisor {
-        self.capabilities
+        self.host
     }
 }
 
@@ -232,34 +255,27 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         if let Some(stream) = H::STREAM {
             self.check_stream(stream.id, stream.schema)?;
         }
-        self.capabilities.publish(self, value).await
+        self.host.publish(self, value).await
     }
 
-    pub async fn publish_on<S: harmos_contract::StreamSpec>(
-        &self,
-        row: &S::Row,
-    ) -> Result<(), H::Error>
+    pub async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<(), H::Error>
     where
         S::Row: Sync,
         H: ObserverStreamPublisher<R, S>,
     {
         self.check_stream(S::ID, S::VERSION)?;
-        self.capabilities.publish_on(self, row).await
+        self.host.publish_on(self, row).await
     }
 
     pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
     where
         H: ObserverCaller<R, C>,
     {
-        self.capabilities.call(self, request).await
+        self.host.call(self, request).await
     }
 
     fn check_stream(&self, id: &'static str, version: u32) -> Result<(), PublicationError> {
-        if self
-            .streams
-            .iter()
-            .any(|entry| entry.id == id && entry.schema == version)
-        {
+        if self.streams.iter().any(|entry| entry.id == id && entry.schema == version) {
             Ok(())
         } else {
             Err(PublicationError::Undeclared { stream: id })
@@ -273,42 +289,25 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
             !S::ID.trim().is_empty() && !S::ID.chars().any(char::is_control),
             "an observer identity must be nonempty and contain no control characters"
         );
+        assert!(!S::INTERVAL.is_zero(), "an observer interval must be nonzero");
         assert!(
-            !S::INTERVAL.is_zero(),
-            "an observer interval must be nonzero"
-        );
-        assert!(
-            S::ACTIVATION != Activation::Demand
-                || !S::STREAMS.is_empty()
-                || !S::DEMAND_KEYS.is_empty(),
+            S::ACTIVATION != Activation::Demand || !S::STREAMS.is_empty() || !S::DEMAND_KEYS.is_empty(),
             "a demand observer must declare streams or demand keys"
         );
 
         for key in S::DEMAND_KEYS {
-            assert!(
-                !S::STREAMS.iter().any(|entry| entry.id == key.name()),
-                "demand keys must differ from publication identities"
-            );
+            assert!(!S::STREAMS.iter().any(|entry| entry.id == key.name()), "demand keys must differ from publication identities");
         }
 
-        Self {
-            entry: <Inventory<H> as harmos_contract::catalog::Member<S>>::ENTRY,
-            open: |resources, host, extension, identity| {
-                ObserverTask::open::<S, H>(resources, host, extension, identity)
-            },
-            context: None,
-        }
+        Self { entry: <Inventory<H> as harmos_domain::catalog::Member<S>>::ENTRY, open: Activity::open::<S, H>, context: None }
     }
 
-    pub fn with_context<T: Send + Sync + 'static>(
-        mut self,
-        factory: impl Fn(&H) -> T + Send + Sync + 'static,
-    ) -> Self {
+    pub fn with_context<T: Send + Sync + 'static>(mut self, factory: impl Fn(&H) -> T + Send + Sync + 'static) -> Self {
         self.context = Some(Arc::new(move |host| Arc::new(factory(host))));
         self
     }
 
-    pub fn declaration(&self) -> harmos_contract::inventory::observers::Declaration {
+    pub fn declaration(&self) -> harmos_domain::inventory::observers::Declaration {
         self.entry.declaration()
     }
 
@@ -332,21 +331,29 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
         self.entry.interval
     }
 
-    pub fn start(&self, resources: Arc<R>, capabilities: H) -> std::io::Result<ObserverTask> {
-        self.start_with(resources, move || capabilities)
-    }
-
-    pub fn start_with(
-        &self,
-        resources: Arc<R>,
-        factory: impl FnOnce() -> H + Send + 'static,
-    ) -> std::io::Result<ObserverTask> {
-        let identity = Identity::new(self.entry.id)?;
-        (self.open)(resources, Box::new(factory), self.context.clone(), identity)
+    // Open one activation over its resources and bound host. Nothing runs
+    // until the caller drives `observe`.
+    pub fn activate(&self, resources: Arc<R>, host: H) -> Result<Activity, ObserverError> {
+        let identity = Identity::new(self.entry.id).map_err(ObserverError::Identity)?;
+        (self.open)(resources, host, self.context.clone(), identity)
     }
 }
 
-impl ObserverTask {
+impl Activity {
+    fn open<S: Observer<H>, H: Send + Sync + 'static>(
+        resources: Arc<S::Resources>, host: H, context: Option<ContextFactory<H>>, identity: Identity,
+    ) -> Result<Self, ObserverError> {
+        let extension = std::panic::catch_unwind(AssertUnwindSafe(|| context.map(|factory| factory(&host)))).map_err(|_| {
+            tracing::error!(
+                observer = identity.observer, activation_id = %identity.activation,
+                "observer context factory panicked; activation refused"
+            );
+            ObserverError::BindingPanicked
+        })?;
+        let bound = Bound::<S, H> { identity, resources, host, extension, observer: None, stopped: false };
+        Ok(Self { identity, body: Box::new(bound) })
+    }
+
     pub fn observer_id(&self) -> &'static str {
         self.identity.observer
     }
@@ -355,323 +362,147 @@ impl ObserverTask {
         self.identity.activation
     }
 
-    fn open<S: Observer<H>, H: Send + Sync + 'static>(
-        resources: Arc<S::Resources>,
-        factory: HostFactory<H>,
-        context: Option<ContextFactory<H>>,
-        identity: Identity,
-    ) -> std::io::Result<Self> {
-        let (ending, ended) = oneshot::channel();
-        let (lifecycle, control) = lifecycle::Lifecycle::new();
-        let status = control.state.clone();
-
-        let name = identity.observer;
-        let span = tracing::info_span!("observer_activation", observer = name, activation_id = %identity.activation);
-        let task = super::task::spawn(
-            name.to_owned(),
-            async move {
-                let exit = async {
-                    let (host, extension) = match std::panic::catch_unwind(AssertUnwindSafe(|| {
-                        let host = factory();
-                        let extension = context.map(|factory| factory(&host));
-                        (host, extension)
-                    })) {
-                        Ok(bound) => bound,
-                        Err(_) => {
-                            tracing::error!(
-                                observer = name, activation_id = %identity.activation,
-                                "observer host or context factory panicked; activation refused"
-                            );
-                            return ObserverExit::BindingPanicked;
-                        }
-                    };
-
-                    drive::<S, H>(resources, host, extension, identity, ended, &lifecycle).await
-                }
-                .await;
-                lifecycle.finish(exit);
-            }
-            .instrument(span),
-        )?;
-
-        Ok(Self {
-            identity,
-            status,
-            control,
-            ending: Some(ending),
-            task: Some(task),
-            interrupted: None,
-        })
+    pub fn is_initialized(&self) -> bool {
+        self.body.is_initialized()
     }
 
-    pub fn status(&self) -> ObserverStatus {
-        *self.status.borrow()
-    }
-
-    pub fn subscribe(&self) -> watch::Receiver<ObserverStatus> {
-        self.status.subscribe()
-    }
-
-    pub fn cancel(&mut self) {
-        if let Some(ending) = self.ending.take() {
-            lifecycle::stopping(&self.status);
-            let _ = ending.send(());
+    // Initialize at the declared cadence until it succeeds, report readiness,
+    // then observe once per interval. Returns only when the activation can no
+    // longer continue; dropping the future interrupts it.
+    pub async fn observe(&mut self, ready: impl Fn() + Send + Sync) -> ObserverError {
+        match self.body.observe(&ready).await {
+            Ok(()) => unreachable!("observation runs until it is interrupted or fails"),
+            Err(failure) => failure,
         }
     }
 
-    pub fn is_finished(&self) -> bool {
-        self.task.is_none() && self.interrupted.is_none()
+    pub async fn stop(&mut self) -> Result<(), ObserverError> {
+        self.body.stop().await
     }
 
-    pub async fn join(&mut self) -> std::io::Result<()> {
-        let mut changed = self.subscribe();
-        loop {
-            if let Some(failure) = &self.interrupted {
-                return Err(std::io::Error::other(failure.clone()));
-            }
-            if let Some(failure) = self.control.failure() {
-                return Err(failure);
-            }
-            let Some(task) = self.task.as_mut() else {
-                return Ok(());
-            };
-            tokio::select! {
-                result = task => {
-                    self.task = None;
-                    return result.map_err(|failure| {
-                        let failure = Arc::new(failure);
-                        self.interrupted = Some(failure.clone());
-                        std::io::Error::other(failure)
-                    });
-                }
-                _ = changed.changed() => {}
-            }
-        }
-    }
-
-    pub async fn recover(&mut self) -> std::io::Result<()> {
-        self.cancel();
-        self.control.recover();
-        self.join().await
-    }
-
-    pub async fn stop(&mut self) -> std::io::Result<()> {
-        self.cancel();
-        self.join().await
+    pub async fn cleanup(&mut self) -> Result<(), ObserverError> {
+        self.body.cleanup().await
     }
 }
 
-impl Drop for ObserverTask {
-    fn drop(&mut self) {
-        self.cancel();
+impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
+    fn observe<'a>(&'a mut self, ready: &'a (dyn Fn() + Send + Sync)) -> Step<'a> {
+        Box::pin(async move {
+            let name = self.identity.observer;
+            let activation = self.identity.activation;
+            let mut clock = interval(S::INTERVAL);
+            clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+            // Initialization Owns Its Partial Acquisitions; Only Success Is Cleaned Up
+            while self.observer.is_none() {
+                clock.tick().await;
+                match AssertUnwindSafe(S::initialize(&self.resources)).catch_unwind().await {
+                    Ok(Ok(observer)) => self.observer = Some(observer),
+                    Ok(Err(error)) => tracing::warn!(
+                        observer = name, activation_id = %activation, error = %harmos_domain::failure::Report(&error),
+                        "observer initialization failed; retrying next cadence"
+                    ),
+                    Err(_) => tracing::error!(
+                        observer = name, activation_id = %activation,
+                        "observer initialization panicked; retrying next cadence"
+                    ),
+                }
+            }
+            ready();
+
+            // Observe Once Per Declared Interval
+            let opened = Instant::now();
+            clock.reset();
+            let mut tick = Tick { ordinal: 0, elapsed: Duration::ZERO };
+            let observer = self.observer.as_mut().expect("initialized observer");
+            loop {
+                clock.tick().await;
+                if let Err(exhausted) = tick.advance(opened.elapsed()) {
+                    tracing::error!(observer = name, activation_id = %activation,
+                        "observer tick ordinal exhausted; activation stopping");
+                    return Err(exhausted);
+                }
+                let context = ObserverContext {
+                    identity: self.identity,
+                    resources: self.resources.as_ref(),
+                    tick: &tick,
+                    host: &self.host,
+                    extension: self.extension.as_deref(),
+                    streams: S::STREAMS,
+                };
+                let observed = AssertUnwindSafe(async { observer.observe(&context).await }).catch_unwind().await;
+                match observed {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => tracing::warn!(
+                        observer = name, activation_id = %activation, tick = tick.ordinal(), error = %harmos_domain::failure::Report(&error),
+                        "observer callback refused"
+                    ),
+                    Err(_) => {
+                        tracing::error!(
+                            observer = name, activation_id = %activation, tick = tick.ordinal(),
+                            "observer callback panicked; activation stopping"
+                        );
+                        return Err(ObserverError::CallbackPanicked);
+                    }
+                }
+            }
+        })
+    }
+
+    fn stop(&mut self) -> Step<'_> {
+        Box::pin(async move {
+            let Some(observer) = self.observer.as_mut() else {
+                return Ok(());
+            };
+            if self.stopped {
+                return Ok(());
+            }
+            guarded(async { observer.stop().await }, ObserverError::StopFailed, ObserverError::StopPanicked).await?;
+            self.stopped = true;
+            Ok(())
+        })
+    }
+
+    fn cleanup(&mut self) -> Step<'_> {
+        Box::pin(async move {
+            let Some(observer) = self.observer.as_mut() else {
+                return Ok(());
+            };
+            guarded(async { observer.cleanup().await }, ObserverError::CleanupFailed, ObserverError::CleanupPanicked).await?;
+            self.observer = None;
+            Ok(())
+        })
+    }
+
+    fn is_initialized(&self) -> bool {
+        self.observer.is_some()
     }
 }
 
 /* === Public Functions === */
-pub(super) fn validate_outputs<R, H>(
-    instances: &[Instance<R, H>],
-    grants: &[publications::Entry],
-) -> Result<(), String> {
+
+pub(super) fn validate_outputs<R, H>(instances: &[Instance<R, H>], grants: &[publications::Entry]) -> Result<(), String> {
     for output in instances.iter().flat_map(|instance| instance.entry.streams) {
-        if !grants.iter().any(|grant| {
-            grant.id == output.id
-                && grant.schema == output.schema
-                && grant.window == output.window
-                && grant.fields == output.fields
-        }) {
-            return Err(format!(
-                "observer output `{}` differs from the artifact publication grant",
-                output.id
-            ));
+        if !grants
+            .iter()
+            .any(|grant| grant.id == output.id && grant.schema == output.schema && grant.window == output.window && grant.row == output.row)
+        {
+            return Err(format!("observer output `{}` differs from the artifact publication grant", output.id));
         }
     }
     Ok(())
 }
 
 /* === Private Functions === */
-async fn drive<S: Observer<H>, H: Send + Sync + 'static>(
-    resources: Arc<S::Resources>,
-    host: H,
-    extension: Option<Arc<dyn Any + Send + Sync>>,
-    identity: Identity,
-    mut ended: oneshot::Receiver<()>,
-    lifecycle: &lifecycle::Lifecycle,
-) -> ObserverExit {
-    let name = identity.observer;
-    let mut clock = interval(S::INTERVAL);
-    clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-    // Each failed attempt releases its partial owner before the next cadence.
-    let mut observer = loop {
-        tokio::select! {
-            biased;
-            _ = &mut ended => return ObserverExit::Cancelled,
-            _ = clock.tick() => {}
-        }
-        let mut observer = match std::panic::catch_unwind(AssertUnwindSafe(|| S::new(&resources))) {
-            Ok(Ok(observer)) => observer,
-            Ok(Err(error)) => {
-                tracing::warn!(observer = name, activation_id = %identity.activation, %error,
-                    "observer construction failed; retrying next cadence");
-                continue;
-            }
-            Err(_) => {
-                tracing::error!(observer = name, activation_id = %identity.activation,
-                    "observer construction panicked; retrying next cadence");
-                continue;
-            }
-        };
-        let result = tokio::select! {
-            biased;
-            _ = &mut ended => None,
-            result = AssertUnwindSafe(async { observer.initialize().await }).catch_unwind() => Some(result),
-        };
-        let cancelled = result.is_none();
-        match result {
-            Some(Ok(Ok(()))) => break observer,
-            Some(Ok(Err(error))) => {
-                tracing::warn!(observer = name, activation_id = %identity.activation, %error,
-                    "observer initialization failed; cleaning up before retry")
-            }
-            Some(Err(_)) => tracing::error!(
-                observer = name, activation_id = %identity.activation,
-                "observer initialization panicked; cleaning up before retry"
-            ),
-            None => lifecycle.stopping(),
-        }
-        if let Some(exit) = cleanup::<S, H>(&mut observer, identity, lifecycle, cancelled).await {
-            return exit;
-        }
-        if cancelled {
-            return ObserverExit::Cancelled;
-        }
-    };
-    let opened = Instant::now();
-    clock.reset();
-    lifecycle.running();
-    let mut tick = Tick {
-        ordinal: 0,
-        elapsed: Duration::ZERO,
-    };
-
-    let exit = loop {
-        tokio::select! {
-            biased;
-            _ = &mut ended => break ObserverExit::Cancelled,
-            _ = clock.tick() => {}
-        }
-
-        if let Err(exit) = tick.advance(opened.elapsed()) {
-            tracing::error!(observer = name, activation_id = %identity.activation,
-                "observer tick ordinal exhausted; activation stopping");
-            break exit;
-        }
-        let ordinal = tick.ordinal();
-        let context = ObserverContext {
-            identity,
-            resources: resources.as_ref(),
-            tick: &tick,
-            capabilities: &host,
-            extension: extension.as_deref(),
-            streams: S::STREAMS,
-        };
-        let result = tokio::select! {
-            biased;
-            _ = &mut ended => break ObserverExit::Cancelled,
-            result = AssertUnwindSafe(async { observer.observe(&context).await }).catch_unwind() => result,
-        };
-        match result {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                tracing::warn!(observer = name, activation_id = %identity.activation, tick = ordinal, %error, "observer callback refused")
-            }
-            Err(_) => {
-                tracing::error!(
-                    observer = name, activation_id = %identity.activation,
-                    tick = ordinal,
-                    "observer callback panicked; activation stopping"
-                );
-                break ObserverExit::CallbackPanicked;
-            }
-        }
-    };
-    lifecycle.stopping();
-
-    cleanup::<S, H>(&mut observer, identity, lifecycle, true)
-        .await
-        .unwrap_or(exit)
-}
-
-async fn cleanup<S: Observer<H>, H: Send + Sync + 'static>(
-    observer: &mut S,
-    identity: Identity,
-    lifecycle: &lifecycle::Lifecycle,
-    closing: bool,
-) -> Option<ObserverExit> {
-    let mut stopped = false;
-    let mut outcome = None;
-    loop {
-        let result = {
-            let work = async {
-                if !stopped {
-                    if closing || outcome.is_some() {
-                        lifecycle.stopping();
-                    }
-                    guarded(
-                        async { observer.stop().await },
-                        ObserverExit::StopFailed,
-                        ObserverExit::StopPanicked,
-                    )
-                    .await?;
-                    stopped = true;
-                }
-                if closing || outcome.is_some() {
-                    lifecycle.finalizing();
-                }
-                guarded(
-                    async { observer.finalize().await },
-                    ObserverExit::FinalizeFailed,
-                    ObserverExit::FinalizePanicked,
-                )
-                .await
-            };
-            tokio::pin!(work);
-            match tokio::time::timeout(Duration::from_secs(1), &mut work).await {
-                Ok(result) => result,
-                Err(_) => {
-                    tracing::warn!(observer = identity.observer, activation_id = %identity.activation,
-                    "observer cleanup exceeded one second; retaining until completion");
-                    work.await
-                }
-            }
-        };
-        match result {
-            Ok(()) => return outcome,
-            Err(failure) => {
-                tracing::error!(observer = identity.observer, activation_id = %identity.activation,
-                    %failure, "observer cleanup failed; retaining original owner");
-                outcome = Some(failure.exit);
-                lifecycle.retained(failure).await;
-            }
-        }
-    }
-}
 
 async fn guarded<E: std::error::Error + Send + Sync + 'static>(
-    work: impl Future<Output = Result<(), E>>,
-    refused: ObserverExit,
-    panicked: ObserverExit,
-) -> Result<(), lifecycle::Failure> {
+    work: impl Future<Output = Result<(), E>>, refused: fn(Arc<dyn std::error::Error + Send + Sync>) -> ObserverError,
+    panicked: ObserverError,
+) -> Result<(), ObserverError> {
     match AssertUnwindSafe(work).catch_unwind().await {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(source)) => Err(lifecycle::Failure {
-            exit: refused,
-            source: Some(Arc::new(source)),
-        }),
-        Err(_) => Err(lifecycle::Failure {
-            exit: panicked,
-            source: None,
-        }),
+        Ok(Err(source)) => Err(refused(Arc::new(source))),
+        Err(_) => Err(panicked),
     }
 }
 

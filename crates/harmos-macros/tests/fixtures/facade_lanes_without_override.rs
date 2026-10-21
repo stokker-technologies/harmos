@@ -13,6 +13,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,11 +29,13 @@
 /* === Structs === */
 
 /* === Enums === */
+
 // The regression half of facade_lanes_with_override.rs.
 #[facade::lanes]
 enum Lanes {
     #[default]
     Open,
+
     #[lane(serial)]
     Workflow,
 }
@@ -44,6 +47,7 @@ enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {
     let _ = Lanes::catalog();
 }

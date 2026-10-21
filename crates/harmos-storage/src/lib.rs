@@ -1,0 +1,106 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+mod admissions;
+
+pub mod aggregate;
+pub mod arrow;
+mod backend;
+mod batch;
+mod batching;
+mod capacity;
+pub mod config;
+mod deletion;
+mod error;
+pub mod execution;
+mod file_checkpoint;
+mod file_follow;
+mod file_reads;
+pub mod follow;
+mod manager;
+mod memory;
+mod object_admissions;
+mod objects;
+pub mod query;
+mod queue;
+mod receipts;
+mod schema_encoding;
+mod selection;
+pub mod signal;
+mod snapshot;
+mod staging;
+pub mod state;
+mod worker;
+pub mod writes;
+
+/* === Re-Exports === */
+
+pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
+pub use batch::{StorageBatch, StorageEntry, StoragePart};
+pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use error::{BackendFailure, Error, Result};
+pub use file_checkpoint::FileCheckpoint;
+pub use file_follow::FileFollower;
+pub use file_reads::FileReader;
+pub use harmos_domain::model::storage::files;
+pub use harmos_domain::model::storage::{
+    ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress, FileReference, FileSession, IdentityKind,
+    IdentitySelection, MutationId, MutationWindow, ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint,
+    ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput,
+    RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory,
+    StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
+};
+pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
+pub use objects::ObjectGroup;
+pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
+pub use receipts::{MutationReceipt, MutationValue};
+pub use staging::StorageFile;
+
+pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
+pub use staging::checkpoint::FileSave;
+pub use worker::Worker;
+pub use writes::StorageSchema;
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+extern crate self as harmos_storage;
+
+// Local Imports
+// Internal Paths Refer To This Crate's One Canonical Engine Namespace.
+use crate as storage;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
+
+#[cfg(test)]
+#[allow(dead_code, reason = "capacity invariants use the shared in-memory storage backends")]
+#[path = "../tests/support/storage.rs"]
+mod test_backend;

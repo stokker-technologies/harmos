@@ -8,23 +8,21 @@
  */
 
 /* === Modules === */
+
 mod composition;
-mod decoding;
 mod enumeration;
 mod postcard;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser,
-    punctuated::Punctuated, spanned::Spanned,
-};
+use syn::{Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 // Local Imports
 use crate::path::{self, HarmosPath};
 
@@ -43,6 +41,7 @@ use crate::path::{self, HarmosPath};
 /* === Implementations === */
 
 /* === Public Functions === */
+
 pub(crate) fn declare(attributes: TokenStream, item: TokenStream) -> TokenStream {
     expand(attributes, item).unwrap_or_else(Error::into_compile_error)
 }
@@ -55,12 +54,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             crate::artifact::set_once(&mut skip_debug, true, meta.span(), "skip_debug")?;
             continue;
         }
-        let value = path::declared(&meta).ok_or_else(|| {
-            Error::new(
-                meta.span(),
-                "message accepts only harmos_path and skip_debug",
-            )
-        })??;
+        let value = path::declared(&meta).ok_or_else(|| Error::new(meta.span(), "message accepts only harmos_path and skip_debug"))??;
         crate::artifact::set_once(&mut explicit, value, meta.span(), path::KEY)?;
     }
     let skip_debug = skip_debug.unwrap_or(false);
@@ -69,41 +63,19 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         return enumeration::expand(item, HarmosPath::resolve(explicit), skip_debug);
     }
     let syn::Item::Struct(mut item) = parsed else {
-        return Err(Error::new(
-            parsed.span(),
-            "message requires a struct or enum",
-        ));
+        return Err(Error::new(parsed.span(), "message requires a struct or enum"));
     };
     if !matches!(item.fields, Fields::Named(_)) || !item.generics.params.is_empty() {
-        return Err(Error::new(
-            item.span(),
-            "a message requires a non-generic struct with named fields (use {} for an empty message)",
-        ));
-    }
-    if item
-        .attrs
-        .iter()
-        .any(|attribute| attribute.path().is_ident("prost"))
-    {
-        return Err(Error::new(
-            item.span(),
-            "message owns protobuf attributes and tags",
-        ));
+        return Err(Error::new(item.span(), "a message requires a non-generic struct with named fields (use {} for an empty message)"));
     }
     let harmos = HarmosPath::resolve(explicit);
     let row_metadata = crate::presentation::fields(&mut item.fields)?;
     let mut tags = BTreeMap::new();
     let mut fields = Vec::new();
     for field in &mut item.fields {
-        if field
-            .attrs
-            .iter()
-            .any(|attribute| attribute.path().is_ident("prost"))
-        {
-            return Err(Error::new(
-                field.span(),
-                "remove prost attributes: message derives tags from field names",
-            ));
+        // Macro-Forwarded Types Carry Invisible Delimiter Groups
+        while let Type::Group(group) = &field.ty {
+            field.ty = (*group.elem).clone();
         }
         let name = field.ident.as_ref().expect("named field").to_string();
         let name = name.strip_prefix("r#").unwrap_or(&name);
@@ -111,27 +83,21 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         if let Some(previous) = tags.insert(number, name.to_owned()) {
             return Err(Error::new(
                 field.span(),
-                format!(
-                    "message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"
-                ),
+                format!("message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"),
             ));
         }
-        let (encoding, kind, cardinality) = encoding(&field.ty, &harmos)?;
+        let (_, kind, cardinality) = encoding(&field.ty, &harmos)?;
         fields.push(quote! {
-            #harmos::schema::Field {
+            #harmos::schema::graph::Field {
                 name: ::std::borrow::Cow::Borrowed(#name), tag: #number,
                 kind: #kind, cardinality: #cardinality,
             }
         });
-        let number = syn::LitStr::new(&number.to_string(), field.span());
-        field
-            .attrs
-            .push(syn::parse_quote!(#[prost(#encoding, tag = #number)]));
     }
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
     let declaration = composition::declare(&mut item, &harmos, skip_debug)?;
     let name = &item.ident;
-    let fields = fields.into_iter();
+    let schema = described(name, quote!(&[#(#fields),*]), quote!(), &harmos);
     let owned_fields = item.fields.iter().map(|field| {
         let name = field.ident.as_ref().expect("named field");
         quote! {
@@ -161,9 +127,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             const ROW_METADATA_JSON: &'static str = #row_metadata;
         }
 
-        impl #harmos::schema::Described for #name {
-            const FIELDS: &'static [#harmos::schema::Field] = &[#(#fields),*];
-        }
+        #schema
     })
 }
 
@@ -173,30 +137,41 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
     };
     matches!(item.fields, Fields::Named(_))
         && item.generics.params.is_empty()
-        && item
-            .fields
-            .iter()
-            .all(|field| common(&field.ty) && encoding(&field.ty, harmos).is_ok())
+        && item.fields.iter().all(|field| common(&field.ty) && encoding(&field.ty, harmos).is_ok())
 }
 
 /* === Private Functions === */
+
+fn described(name: &syn::Ident, fields: TokenStream, extra: TokenStream, harmos: &HarmosPath) -> TokenStream {
+    quote! {
+        impl #harmos::schema::Described for #name {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
+            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = #fields;
+            const MARKER: &'static [u8] = &#harmos::schema::declaration::encode::<{
+                #harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+            #extra
+        }
+    }
+}
+
 fn tag(name: &str) -> u32 {
-    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| {
-        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
-    });
+    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| (hash ^ u32::from(byte)).wrapping_mul(16_777_619));
     let tag = 1 + hash % (536_870_911 - 1_000);
     if tag >= 19_000 { tag + 1_000 } else { tag }
 }
 
-fn encoding(
-    ty: &Type,
-    harmos: &HarmosPath,
-) -> Result<(TokenStream, TokenStream, TokenStream), Error> {
+fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
     let Type::Path(path) = ty else {
         return Err(unsupported(ty));
     };
     let segment = path.path.segments.last().ok_or_else(|| unsupported(ty))?;
     let name = segment.ident.to_string();
+    // Box Changes Ownership Only: The Field Keeps The Plain Nested Message Wire Shape
+    if matches!(name.as_str(), "Box" | "Rc" | "Arc") {
+        let inner = boxed(ty).ok_or_else(|| unsupported_box(ty))?;
+        return Ok((true, message_kind(inner, harmos), quote!(#harmos::schema::Cardinality::Required)));
+    }
     if name == "Option" || name == "Vec" {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return Err(unsupported(ty));
@@ -212,88 +187,91 @@ fn encoding(
             _ => None,
         };
         if name == "Vec" && inner_name.as_deref() == Some("u8") {
-            return Ok((
-                quote!(bytes = "vec"),
-                quote!(#harmos::schema::Kind::Bytes),
-                quote!(#harmos::schema::Cardinality::Required),
-            ));
+            return Ok((false, quote!(#harmos::schema::graph::Kind::Bytes), quote!(#harmos::schema::Cardinality::Required)));
+        }
+        if matches!(inner_name.as_deref(), Some("Box" | "Rc" | "Arc")) {
+            return Err(unsupported_box(ty));
         }
         if matches!(inner_name.as_deref(), Some("Option" | "Vec")) {
             return Err(unsupported(ty));
         }
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
-        let is_scalar = scalar.is_some();
-        let (wire, kind) = scalar
-            .map(|(wire, kind)| (wire, quote!(#harmos::schema::Kind::#kind)))
-            .unwrap_or_else(|| (quote!(message), message_kind(inner, harmos)));
-        return Ok(if name == "Option" {
-            (
-                quote!(#wire, optional),
-                kind,
-                quote!(#harmos::schema::Cardinality::Optional),
-            )
-        } else if is_scalar && inner_name.as_deref() != Some("String") {
-            (
-                quote!(#wire, repeated, packed = "true"),
-                kind,
-                quote!(#harmos::schema::Cardinality::Repeated),
-            )
-        } else {
-            (
-                quote!(#wire, repeated),
-                kind,
-                quote!(#harmos::schema::Cardinality::Repeated),
-            )
-        });
+        let kind = scalar.map(|kind| quote!(#harmos::schema::graph::Kind::#kind)).unwrap_or_else(|| message_kind(inner, harmos));
+        let cardinality =
+            if name == "Option" { quote!(#harmos::schema::Cardinality::Optional) } else { quote!(#harmos::schema::Cardinality::Repeated) };
+        return Ok((false, kind, cardinality));
     }
-    if let Some((wire, kind)) = scalar(&name) {
-        return Ok((
-            wire,
-            quote!(#harmos::schema::Kind::#kind),
-            quote!(#harmos::schema::Cardinality::Required),
-        ));
+    if let Some(kind) = scalar(&name) {
+        return Ok((false, quote!(#harmos::schema::graph::Kind::#kind), quote!(#harmos::schema::Cardinality::Required)));
     }
     if !matches!(segment.arguments, PathArguments::None)
-        || matches!(
-            name.as_str(),
-            "u8" | "i8"
-                | "u16"
-                | "i16"
-                | "usize"
-                | "isize"
-                | "u128"
-                | "i128"
-                | "char"
-                | "HashMap"
-                | "BTreeMap"
-                | "Box"
-        )
+        || matches!(name.as_str(), "u8" | "i8" | "u16" | "i16" | "usize" | "isize" | "u128" | "i128" | "char" | "HashMap" | "BTreeMap")
     {
         return Err(unsupported(ty));
     }
-    Ok((
-        quote!(message, required),
-        message_kind(ty, harmos),
-        quote!(#harmos::schema::Cardinality::Required),
-    ))
+    Ok((true, message_kind(ty, harmos), quote!(#harmos::schema::Cardinality::Required)))
+}
+
+// Return The Nested Message Owned By A Direct `Box<T>` Field
+fn boxed(ty: &Type) -> Option<&Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if path.qself.is_some() || segment.ident != "Box" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let (1, Some(GenericArgument::Type(inner))) = (arguments.args.len(), arguments.args.first()) else {
+        return None;
+    };
+    let Type::Path(inner_path) = inner else {
+        return None;
+    };
+    let inner_segment = inner_path.path.segments.last()?;
+    let inner_name = inner_segment.ident.to_string();
+    let reserved = matches!(
+        inner_name.as_str(),
+        "u8" | "i8"
+            | "u16"
+            | "i16"
+            | "usize"
+            | "isize"
+            | "u128"
+            | "i128"
+            | "char"
+            | "str"
+            | "HashMap"
+            | "BTreeMap"
+            | "Box"
+            | "Rc"
+            | "Arc"
+            | "Option"
+            | "Vec"
+    );
+    let nested =
+        inner_path.qself.is_none() && matches!(inner_segment.arguments, PathArguments::None) && scalar(&inner_name).is_none() && !reserved;
+    nested.then_some(inner)
 }
 
 fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
-    quote!(#harmos::schema::Kind::Message {
-        fields: ::std::borrow::Cow::Borrowed(<#ty as #harmos::schema::Described>::FIELDS),
+    quote!(#harmos::schema::graph::Kind::Message {
+        definition: <#ty as #harmos::schema::Described>::DEFINITION,
     })
 }
 
-fn scalar(name: &str) -> Option<(TokenStream, TokenStream)> {
+fn scalar(name: &str) -> Option<TokenStream> {
     Some(match name {
-        "bool" => (quote!(bool), quote!(Bool)),
-        "u32" => (quote!(uint32), quote!(U32)),
-        "u64" => (quote!(uint64), quote!(U64)),
-        "i32" => (quote!(int32), quote!(I32)),
-        "i64" => (quote!(int64), quote!(I64)),
-        "f32" => (quote!(float), quote!(F32)),
-        "f64" => (quote!(double), quote!(F64)),
-        "String" => (quote!(string), quote!(String)),
+        "bool" => quote!(Bool),
+        "u32" => quote!(U32),
+        "u64" => quote!(U64),
+        "i32" => quote!(I32),
+        "i64" => quote!(I64),
+        "f32" => quote!(F32),
+        "f64" => quote!(F64),
+        "String" => quote!(String),
         _ => return None,
     })
 }
@@ -301,7 +279,14 @@ fn scalar(name: &str) -> Option<(TokenStream, TokenStream)> {
 fn unsupported(ty: &Type) -> Error {
     Error::new(
         ty.span(),
-        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Option<T>, or Vec<T> of supported scalars/messages; maps, aliases and recursive containers require an explicit message shape",
+        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Box<T> of a nested message, Option<T>, or Vec<T> of supported scalars/messages; maps, aliases and recursive containers require an explicit message shape",
+    )
+}
+
+fn unsupported_box(ty: &Type) -> Error {
+    Error::new(
+        ty.span(),
+        "unsupported boxed message field: use Box<T> directly as the field type, where T is a nested message; Box of scalars, strings, bytes or containers, Box<Box<T>>, Option<Box<T>>, Vec<Box<T>>, Rc<T> and Arc<T> are unsupported",
     )
 }
 
@@ -320,10 +305,29 @@ fn common(ty: &Type) -> bool {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return false;
         };
-        return arguments.args.len() == 1
-            && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if common(inner));
+        return arguments.args.len() == 1 && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if common(inner));
     }
     false
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proc_macro2::{Delimiter, Group};
+
+    #[test]
+    fn forwarded_field_shapes() {
+        let supported = Group::new(Delimiter::None, quote!(Option<i64>));
+        let supported = TokenStream::from(proc_macro2::TokenTree::Group(supported));
+        let expanded = expand(quote!(), quote!(struct Row { value: #supported }));
+        assert!(expanded.is_ok());
+
+        let unsupported = Group::new(Delimiter::None, quote!(Option<Vec<String>>));
+        let unsupported = TokenStream::from(proc_macro2::TokenTree::Group(unsupported));
+        let expanded = expand(quote!(), quote!(struct Row { value: #unsupported }));
+        let error = expanded.expect_err("forwarding must not admit recursive containers");
+        assert!(error.to_string().contains("unsupported message field"));
+    }
+}

@@ -1,202 +1,47 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos"
+description = "Harmos facade: stateful Rust applications with history, live data and plugins."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 autotests = false
 
-# One binary per pillar, so a failure names the pillar it belongs to, a
-# filter compiles one pillar rather than all of them, and no pillar's
-# failure hides another's. The floor is the host core and the durable ports
-# every pillar commits against; the carriers `boundaries` aggregates stay
-# gated inside it, so a build that names no carrier still compiles it.
-
-# The census names both carriers in type position — that is how a renamed or
-# deleted loader surface breaks the build rather than passing unwatched — so
-# unlike its siblings it cannot be compiled without them.
 version = { workspace = true }
 
-# === Package Targets ===
+# === Package Targets === #
 
-[[bin]]
-name = "harmos-sidecar-fixture"
-path = "tests/fixtures/sidecar.rs"
-required-features = ["sidecar", "guest"]
+# === Features === #
 
-[[bin]]
-name = "harmos-admission-fixture"
-path = "tests/fixtures/admission.rs"
-required-features = ["sidecar", "derive"]
-
-[[bin]]
-name = "harmos-process-fixture"
-path = "tests/fixtures/routing.rs"
-required-features = ["sidecar", "derive"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-core-fixture"
-path = "tests/fixtures/process_core.rs"
-required-features = ["runtime", "sidecar", "derive"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-provider-fixture"
-path = "tests/fixtures/process_provider_main.rs"
-required-features = ["runtime", "sidecar", "derive"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-client-fixture"
-path = "tests/fixtures/process_client_main.rs"
-required-features = ["runtime", "sidecar", "derive"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-stream-consumer-fixture"
-path = "tests/fixtures/stream_consumer.rs"
-required-features = ["runtime", "sidecar", "derive"]
-test = false
-bench = false
-
-# === Features ===
-
-# One feature per facility a consumer reaches through this crate, so a product
-# names `harmos` and nothing beneath it. Storage ports and implementation share
-# the runtime feature. A default build is a host with authoring macros and none
-# of the direct carrier boundaries.
 [features]
-default = ["runtime", "derive"]
-# The authoring attributes, on by default the way serde ships its derives.
-# Every trait they generate an implementation of is an ordinary public contract
-# — `Plugin`, operation providers, observers and catalogs — so a crate that
-# turns this off writes those implementations by hand against the same paths and
-# links no proc-macro chain. `__private` stays open either way, because that is
-# where a hand-written implementation names what it cannot spell.
-derive = [
-  "dep:harmos-macros",
-  "harmos-contract/derive",
-  "harmos-guest?/derive",
-  "harmos-sidecar?/derive",
-]
-# The host core: the journal, and everything derived from it — streams, work,
-# evidence, recovery, and the assembly that boots them. An author who only
-# declares — a native sidecar, a packaging tool — compiles the kit and the
-# declaration types and none of this, which is what makes it a feature rather
-# than the crate.
-runtime = [
-  "harmos-contract/streaming",
-  "dep:getrandom",
-  "dep:futures-core",
-  "dep:futures-util",
-  "dep:sha2",
-  "dep:tokio",
-  "tokio/macros",
-]
-# The declaration surface both plugin carriers name: routes, refusals, the
-# registrar an artifact declares through, and the artifact scan a host reads
-# before it loads anything. No optional dependency — the contract is already
-# linked, and the feature is what decides whether a product may name it.
-artifact = []
-# The measurement kernels. They name no runtime and this crate names them
-# nowhere: the feature is a hand-out, not a layer the read path gained.
-signal = ["dep:harmos-signal"]
-fft = ["signal", "harmos-signal/fft"]
-sim = ["runtime", "tokio/macros", "tokio/test-util"]
-# In-process providers use the shared planner and lifecycle without a process
-# transport or WebAssembly engine. Existing artifact hosts expose it as well.
-load = ["runtime", "dep:petgraph", "dep:semver", "tokio/macros"]
-# Native authoring selects the SDK without supervising child processes.
-grpc = [
-  "dep:tonic-reflection",
-  "dep:http-body",
-  "dep:heck",
-  "dep:bytes",
-  "dep:tonic",
-  "dep:prost-reflect",
-  "harmos-contract/reflection",
-]
-grpc-tls = ["grpc", "tonic/tls-ring"]
-# Serves gRPC-Web (HTTP/1.1 and HTTP/2) On The Same Listener As gRPC.
-grpc-web = ["grpc", "dep:tonic-web"]
-sidecar = ["dep:harmos-sidecar", "harmos-sidecar/kit"]
-# Supervision selects the original runtime and its native transport explicitly.
-sidecar-host = [
-  "runtime",
-  "dep:harmos-sidecar",
-  "harmos-sidecar/transport",
-  "dep:getrandom",
-  "dep:petgraph",
-  "dep:semver",
-  "tokio/io-util",
-  "tokio/process",
-  "tokio/macros",
-]
-# Portable guest authoring never selects the host runtime or native engine.
-guest = ["dep:harmos-guest", "harmos-guest/kit"]
-# Native execution exposes metadata without selecting the guest authoring kit.
-guest-host = [
-  "runtime",
-  "dep:harmos-guest",
-  "dep:futures-util",
-  "dep:getrandom",
-  "dep:petgraph",
-  "dep:semver",
-  "dep:wasmtime",
-  "tokio/macros",
-]
-# The world's build side without its host side. Wrapping a core module into a
-# component takes an encoder; running one takes a virtual-memory JIT. A
-# packaging tool needs the first and must not be made to link the second, which
-# is why this is its own feature rather than part of `guest`.
-componentize = ["dep:harmos-guest", "harmos-guest/componentize"]
-plugin = [
-  "dep:harmos-sidecar",
-  "dep:harmos-guest",
-  "dep:semver",
-  "semver/serde",
-  "dep:tar",
-  "dep:sha2",
-  "dep:tempfile",
-]
+default = []
+plugin = ["harmos-runtime/plugin"]
+plugin-sidecar = ["harmos-runtime/plugin-sidecar"]
+plugin-guest = ["harmos-runtime/plugin-guest"]
+grpc = ["harmos-runtime/grpc"]
+generate-proto = ["harmos-runtime/generate-proto"]
+signal = ["harmos-runtime/signal"]
+signal-fft = ["harmos-runtime/signal-fft"]
+simulation = ["harmos-runtime/simulation"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
-harmos-contract = { workspace = true }
-harmos-guest = { workspace = true, optional = true }
-harmos-macros = { workspace = true, default-features = true, optional = true }
-harmos-signal = { workspace = true, default-features = false, optional = true }
+harmos-domain = { workspace = true }
+harmos-runtime = { workspace = true }
 
 # Git
 
 # Error Handling
-thiserror = { workspace = true, default-features = true }
 
 # Logging
-tracing = { workspace = true, default-features = true }
 
 # Utilities
-bytes = { workspace = true, optional = true }
-# Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
-getrandom = { workspace = true, features = ["std", "wasm_js"], optional = true }
-heck = { workspace = true, optional = true }
-petgraph = { workspace = true, default-features = true, optional = true }
-semver = { workspace = true, default-features = true, optional = true }
-sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization
-prost-reflect = { workspace = true, optional = true }
-serde = { workspace = true, default-features = true }
-serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 
 # Configuration
 
@@ -207,110 +52,6 @@ serde_json = { workspace = true, default-features = true, features = ["raw_value
 # Concurrency
 
 # Async
-futures-core = { workspace = true, default-features = true, optional = true }
-futures-util = { workspace = true, optional = true }
-tokio = { workspace = true, default-features = true, features = [
-  "rt",
-  "sync",
-  "time",
-], optional = true }
-
-# Networking
-http-body = { workspace = true, optional = true }
-tonic = { workspace = true, default-features = true, optional = true }
-tonic-reflection = { workspace = true, features = ["server"], optional = true }
-tonic-web = { workspace = true, optional = true }
-
-# Storage
-
-# UI
-
-# Testing
-
-# === Build Dependencies ===
-
-# === Dev Dependencies ===
-
-[dev-dependencies]
-# Local
-harmos-guest = { workspace = true, features = ["componentize"] }
-jsonl-adapter = { path = "../../examples/jsonl-adapter" }
-
-# Git
-
-# Error Handling
-
-# Logging
-tracing-subscriber = { workspace = true }
-
-# Utilities
-
-# Serialization
-protoc-bin-vendored = { workspace = true }
-
-# Configuration
-
-# Filesystem
-tempfile = { workspace = true, default-features = true }
-
-# Parsing
-syn = { workspace = true, default-features = true, features = ["visit"] }
-
-# Concurrency
-
-# Async
-tokio = { workspace = true, default-features = true, features = [
-  "io-util",
-  "macros",
-  "process",
-  "rt",
-  "rt-multi-thread",
-  "test-util",
-  "time",
-] }
-
-# Networking
-http-body-util = { workspace = true }
-
-# Storage
-
-# UI
-
-# Testing
-criterion = { workspace = true, default-features = true }
-
-# === Target Dependencies ===
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Local
-harmos-sidecar = { workspace = true, optional = true }
-
-# Git
-
-# Error Handling
-
-# Logging
-
-# Utilities
-wasmtime = { workspace = true, optional = true }
-
-# Serialization
-
-# Configuration
-
-# Filesystem
-tar = { workspace = true, optional = true }
-tempfile = { workspace = true, default-features = true, optional = true }
-
-# Parsing
-
-# Concurrency
-
-# Async
-# The executable throughput fixture owns four native runtime workers.
-tokio = { workspace = true, default-features = true, features = [
-  "rt-multi-thread",
-], optional = true }
 
 # Networking
 
@@ -320,159 +61,27 @@ tokio = { workspace = true, default-features = true, features = [
 
 # Testing
 
-# === Test Targets ===
+# === Build Dependencies === #
 
-[[test]]
-name = "census"
-path = "tests/runtime/lifecycle/census.rs"
-required-features = ["runtime", "sidecar-host", "sidecar", "guest-host", "guest"]
+# === Dev Dependencies === #
 
-[[test]]
-name = "load"
-path = "tests/load/main.rs"
-required-features = ["load"]
+# === Target Dependencies === #
 
-[[test]]
-name = "runtime_boot"
-path = "tests/runtime/lifecycle/main.rs"
-required-features = ["runtime"]
+# === Test Targets === #
 
-[[test]]
-name = "state"
-path = "tests/state/main.rs"
-required-features = ["runtime"]
+# === Bench Targets === #
 
-[[test]]
-name = "streams"
-path = "tests/streams/main.rs"
-required-features = ["runtime"]
+# === Example Targets === #
 
-[[test]]
-name = "storage"
-path = "tests/storage/main.rs"
-required-features = ["runtime"]
+# === Workspace Lints === #
 
-[[test]]
-name = "storage_recovery"
-path = "tests/storage/recovery/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "storage_reads"
-path = "tests/storage/reads/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "storage_files"
-path = "tests/storage/files/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "storage_objects"
-path = "tests/storage/objects/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "storage_operations"
-path = "tests/storage/operations/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "storage_frame"
-path = "tests/storage/frame/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "operations_wire"
-path = "tests/operations/wire/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "observers"
-path = "tests/observers/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "services"
-path = "tests/services/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "operations"
-path = "tests/operations/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "evidence"
-path = "tests/evidence/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "durability"
-path = "tests/state/durable.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "authoring"
-path = "tests/application/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "boundaries"
-path = "tests/runtime/main.rs"
-required-features = ["runtime"]
-
-[[test]]
-name = "sim"
-path = "tests/sim/main.rs"
-required-features = ["sim"]
-
-[[test]]
-name = "streams_allocation"
-path = "tests/streams/allocation.rs"
-required-features = ["runtime"]
-
-# === Bench Targets ===
-
-# Both carriers, because the fixture is a sidecar program that co-links a guest
-# declaration into its own artifact — the one shape that proves a single binary
-# can carry two declarations. Declaring only `sidecar` left it built against a
-# `harmos::guest` that the selected features had not opened.
-[[bench]]
-name = "runtime"
-path = "benches/runtime/main.rs"
-harness = false
-required-features = ["runtime"]
-
-[[bench]]
-name = "operations"
-path = "benches/operations/main.rs"
-harness = false
-required-features = ["runtime", "derive"]
-
-[[bench]]
-name = "storage"
-path = "benches/storage/main.rs"
-harness = false
-required-features = ["runtime", "derive"]
-
-[[bench]]
-name = "streams"
-path = "benches/streams/main.rs"
-harness = false
-required-features = ["runtime"]
-
-# === Example Targets ===
-
-# === Workspace Lints ===
-
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

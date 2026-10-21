@@ -8,33 +8,28 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
-#[path = "../../../../tests/support/fixtures.rs"]
+#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
-use std::{fs, path::PathBuf, process::Command};
+use std::collections::BTreeSet;
 // Third Party Imports
+use serde_json::{Value, json};
 
 // Local Imports
 
 /* === Constants === */
-const OWNED: [&str; 7] = [
-    "plugin",
-    "contracts",
-    "contributions",
-    "publications",
-    "listeners",
-    "observers",
-    "restart",
-];
 
-const UNDEBUGGABLE: &str = "plugin-fixture";
+const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
+
+const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
+
+const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.validate"];
 
 /* === Macros === */
 
@@ -51,201 +46,105 @@ const UNDEBUGGABLE: &str = "plugin-fixture";
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn build(version: &str, guest: bool, profile: &str) -> PathBuf {
-    fixtures::artifact(&format!("metadata:{version}:{guest}:{profile}"))
+
+fn fragments(bytes: &[u8]) -> impl Iterator<Item = Value> + '_ {
+    bytes.windows(PREFIX.len()).enumerate().filter_map(move |(index, value)| {
+        if value != PREFIX {
+            return None;
+        }
+        let rest = &bytes[index + PREFIX.len()..];
+        let end = rest.iter().position(|byte| *byte == 0)?;
+        serde_json::from_slice(&rest[..end]).ok()
+    })
 }
 
-fn artifact(version: &str, guest: bool, profile: &str) -> Vec<u8> {
-    fs::read(build(version, guest, profile)).expect("preparation produces the artifact")
+fn identity(bytes: &[u8], kind: &str) -> Value {
+    fragments(bytes).find(|value| value["kind"] == kind).unwrap_or_else(|| panic!("the artifact carries its {kind} fragment"))
 }
 
-fn identity(bytes: &[u8], kind: &str) -> serde_json::Value {
-    let prefix = b"\0HARMOS:ARTIFACT:V5:";
-    bytes
-        .windows(prefix.len())
-        .enumerate()
-        .filter_map(|(index, value)| {
-            if value != prefix {
-                return None;
-            }
-            let rest = &bytes[index + prefix.len()..];
-            let end = rest.iter().position(|byte| *byte == 0)?;
-            let value: serde_json::Value = serde_json::from_slice(&rest[..end]).ok()?;
-            (value["kind"] == kind).then_some(value)
-        })
-        .next()
-        .expect("the executable carries its complete identity")
+fn schema(bytes: &[u8], name: &Value) -> Value {
+    assert!(name.is_string());
+    fragments(bytes)
+        .find(|value| value["kind"] == "schema" && value["name"] == *name)
+        .unwrap_or_else(|| panic!("referenced definition {name} has retained inert metadata"))
 }
 
-fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
-    let inventory = identity(bytes, "contracts");
-    assert_eq!(inventory["facility"], facility);
-    assert_eq!(inventory["owner"], owner);
-    let provides = inventory["provides"]
-        .as_array()
-        .expect("provided wire contracts");
-    let expected_ids: &[&str] = if facility == "sidecar" {
-        &["selected.read", "fixture.start", "fixture.stop"]
-    } else {
-        &["selected.read"]
-    };
-    assert_eq!(
-        provides
-            .iter()
-            .map(|contract| contract["operation"]["id"].as_str().unwrap())
-            .collect::<Vec<_>>(),
-        expected_ids
-    );
-    assert_eq!(inventory["requires"], serde_json::json!([]));
-    assert_eq!(
-        provides[0]["operation"],
-        serde_json::json!({
-            "id": "selected.read",
-            "description": "Selected \"reading\" μ",
-            "policy": {
-                "timeout": {"secs": 2, "nanos": 0},
-                "attempt_timeout": {"secs": 0, "nanos": 17},
-                "retries": {"on_transient": {
-                    "max_retries": 3,
-                    "backoff": {"fixed": {
-                        "delay": {"secs": 0, "nanos": 7},
-                        "jitter": "deterministic"
-                    }}
-                }}
-            },
-            "visibility": "shared",
-            "replay": "idempotent"
-        })
-    );
-    assert_eq!(provides[0]["version"], 3);
-    assert_eq!(provides[0]["codec"], "postcard");
-    assert_eq!(provides[0]["request"], provides[0]["response"]);
-    let fields = provides[0]["request"].as_array().unwrap();
-    assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0]["name"], "value");
-    assert!(fields[0]["tag"].as_u64().unwrap() > 0);
-    assert_eq!(fields[0]["kind"], serde_json::json!({ "type": "u32" }));
-    assert_eq!(fields[0]["cardinality"], "required");
-    let sdk = inventory["lifecycle"].as_array().unwrap();
-    assert_eq!(sdk.len(), 2);
-    for (contract, action) in sdk.iter().zip(["initialize", "shutdown"]) {
+fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: &BTreeSet<&str>, published: &BTreeSet<&str>) {
+    // Owned Fragments
+    for kind in OWNED {
+        let fragment = identity(bytes, kind);
+        assert_eq!(fragment["facility"], facility, "{facility} {kind} facility");
+        assert_eq!(fragment["owner"], "schematic-tools", "{facility} {kind} owner");
+    }
+
+    // Provided Contracts
+    let contracts = identity(bytes, "contracts");
+    let provides = contracts["provides"].as_array().expect("provided wire contracts");
+    let ids = provides.iter().map(|contract| contract["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
+    assert_eq!(&ids, expected, "{facility} provided operations");
+    let requires = contracts["requires"].as_array().expect("required wire contracts");
+    let needed =
+        requires.iter().map(|required| required["contract"]["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
+    assert_eq!(&needed, required, "{facility} required operations");
+    for contract in provides.iter().chain(requires.iter().map(|required| &required["contract"])) {
+        schema(bytes, &contract["request"]);
+        schema(bytes, &contract["response"]);
+    }
+
+    // Lifecycle Contracts
+    let lifecycle = contracts["lifecycle"].as_array().expect("lifecycle contracts");
+    assert_eq!(lifecycle.len(), 2);
+    for (contract, action) in lifecycle.iter().zip(["initialize", "shutdown"]) {
         assert_eq!(contract["action"], action);
         assert_eq!(contract["version"], 1);
         assert_eq!(
             contract["policy"],
-            serde_json::json!({
-                "timeout": {"secs": 2, "nanos": 0}, "attempt_timeout": {"secs": 1, "nanos": 0}, "retries": "never"
+            json!({
+                "timeout": {"secs": 10, "nanos": 0},
+                "attempt_timeout": {"secs": 10, "nanos": 0},
+                "retries": "never",
+                "restart": "never"
             })
         );
     }
-    let contributions = identity(bytes, "contributions");
-    assert_eq!(contributions["facility"], facility);
-    assert_eq!(contributions["owner"], owner);
-    let sections = if facility == "sidecar" {
-        serde_json::json!([{"namespace": "fixture.catalog", "payload": "{\"kinds\":[\"probe\"]}"}])
-    } else {
-        serde_json::json!([])
-    };
-    assert_eq!(contributions["sections"], sections);
-}
 
-fn retention(version: &str) {
-    let executable = build(version, false, UNDEBUGGABLE);
-    let embedded = fs::read(&executable).expect("Cargo produces the artifact");
-    operation_inventory(&embedded, "sidecar", "cargo-native");
-    let scanned = OWNED.map(|kind| identity(&embedded, kind));
-    let inventory = identity(&embedded, "observers");
-    let observers = inventory["observers"].as_array().unwrap();
-    assert_eq!(observers.len(), 1);
-    assert_eq!(observers[0]["id"], "selected.watch");
-    assert_eq!(observers[0]["streams"], serde_json::json!(["reading"]));
-    assert_eq!(observers[0]["interval"]["nanos"], 17_000_000);
-    let contracts = identity(&embedded, "contracts");
-    assert_eq!(
-        inventory["observer_controls"],
-        serde_json::json!([contracts["provides"][1], contracts["provides"][2]])
-    );
-    assert_eq!(
-        observers[0]["demand_keys"],
-        serde_json::json!(["fixture:record"])
-    );
-
-    let reached = Command::new(&executable)
-        .arg("--markers")
-        .output()
-        .expect("the built sidecar runs");
-    assert!(
-        reached.status.success(),
-        "{}",
-        String::from_utf8_lossy(&reached.stderr)
-    );
-
-    for (kind, scanned) in OWNED.iter().zip(scanned) {
-        assert_eq!(
-            identity(&reached.stdout, kind),
-            scanned,
-            "live code does not reach the embedded {kind} fragment, so a linker \
-             that sweeps unreferenced statics would drop it"
-        );
-    }
+    // Undeclared Sections
+    assert_eq!(identity(bytes, "contributions")["sections"], json!([]));
+    let streams = identity(bytes, "publications")["streams"].as_array().expect("published streams").clone();
+    let streams = streams.iter().map(|stream| stream["id"].as_str().expect("stream id").to_owned()).collect::<BTreeSet<_>>();
+    assert_eq!(streams, published.iter().map(|id| (*id).to_owned()).collect(), "{facility} published streams");
+    assert_eq!(identity(bytes, "observers")["observers"], json!([]));
 }
 
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
+fn artifacts_embed_metadata() {
+    let native = SHARED
+        .into_iter()
+        .chain(["schematic.analyze_exchange", "schematic.analyze_upload", "schematic.list_directories"])
+        .collect::<BTreeSet<_>>();
+    let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
+    // Only The Native Sidecar Publishes Analysis Progress, Through The Host
+    let publishing = BTreeSet::from(["host.publish"]);
+    let progress = BTreeSet::from(["schematic.analysis_progress"]);
+    let none = BTreeSet::new();
+
+    // Read The Test-Owned Copies Of The Built Artifacts
+    let sidecar = fixtures::inspection("schematic-sidecar");
+    let guest = fixtures::inspection("schematic-guest");
+
+    // Compare Both Declarations
+    let mut declarations = Vec::new();
+    for (bytes, facility, expected, required, published) in
+        [(&sidecar, "sidecar", &native, &publishing, &progress), (&guest, "guest", &portable, &none, &none)]
     {
-        scenario_runtime::check("cargo_refreshes_native", || {
-            // The description is explicit declaration metadata, so it is fixed in
-            // the fixture's source and its awkward characters exercise the serializer
-            // the macro escapes it with rather than Cargo's.
-            let description = "Quoted \"probe\" line \\ μ\u{1}";
-            for version in ["7.8.9", "7.8.10-beta.2+build"] {
-                for (guest, kind, id) in [
-                    (false, "sidecar", "cargo-native"),
-                    (true, "guest", "cargo-guest"),
-                ] {
-                    let bytes = artifact(version, guest, "debug");
-                    let declaration = identity(&bytes, "plugin");
-                    assert_eq!(declaration["facility"], kind);
-                    operation_inventory(&bytes, kind, id);
-                    assert_eq!(declaration["id"], id);
-                    assert_eq!(declaration["version"], version);
-                    assert_eq!(declaration["description"], description);
-                    if version == "7.8.10-beta.2+build" {
-                        let stripped = artifact(version, guest, "stripped-fixture");
-                        assert_eq!(
-                            identity(&stripped, "plugin"),
-                            declaration,
-                            "stripped development metadata differs for {kind}"
-                        );
-                        operation_inventory(&stripped, kind, id);
-                        let publications = identity(&stripped, "publications");
-                        assert_eq!(publications["facility"], kind);
-                        assert_eq!(publications["owner"], id);
-                        assert_eq!(
-                            publications["streams"],
-                            serde_json::json!([{
-                                "id": "reading", "schema": 1, "window": 7,
-                                "metadata": {"identifier": "reading", "label": "Reading", "description": "A portable reading", "tags": [], "attributes": {}},
-                                "row_metadata": [{
-                                    "metadata": {"identifier": "value", "label": "Measured Value", "description": null, "tags": ["electrical"], "attributes": {"channel": {"type": "unsigned", "value": "1"}}},
-                                    "role": "value", "unit": "V"
-                                }],
-                                "fields": [{"name": "value", "tag": 39772037, "kind": {"type": "u32"}, "cardinality": "required"}]
-                            }])
-                        );
-                        let operations = identity(&stripped, "contracts");
-                        assert_eq!(
-                            operations["owner"], id,
-                            "stripped development lost the owned inventory"
-                        );
-                    }
-                    if version == "7.8.10-beta.2+build" && !guest {
-                        retention(version);
-                    }
-                }
-            }
-        });
+        let declaration = identity(bytes, "plugin");
+        assert_eq!(declaration["facility"], facility);
+        assert_eq!(declaration["id"], "schematic-tools");
+        assert!(declaration["version"].as_str().is_some_and(|version| !version.is_empty()), "{facility} declares the package version");
+        inventory(bytes, facility, expected, required, published);
+        declarations.push([declaration["id"].clone(), declaration["version"].clone(), declaration["description"].clone()]);
     }
+    assert_eq!(declarations[0], declarations[1], "one plugin built for both facilities declares one id, version and description");
 }

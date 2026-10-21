@@ -1,67 +1,50 @@
-# === Package ===
+# === Package === #
 
 [package]
 name = "harmos-sidecar"
+description = "Harmos sidecar transport and kit for out-of-process plugins."
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 version = { workspace = true }
 
-# === Package Targets ===
-
-[[bin]]
-name = "harmos-sidecar-export"
-path = "src/bin/harmos-sidecar-export.rs"
-required-features = ["packaging"]
+# === Package Targets === #
 
 [[bin]]
 name = "harmos-sidecar-catalog-fixture"
 path = "tests/fixtures/catalog_sidecar.rs"
-required-features = ["kit"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 
 [[bin]]
 name = "harmos-sidecar-throughput-fixture"
 path = "tests/fixtures/throughput_sidecar.rs"
-required-features = ["kit"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 
-[[bin]]
-name = "harmos-sidecar-attach-fixture"
-path = "tests/fixtures/attach_sidecar.rs"
-required-features = ["transport"]
-test = false
-bench = false
-
-# === Features ===
+# === Features === #
 
 [features]
 default = ["derive", "kit"]
 kit = ["transport", "dep:getrandom"]
 # The Shared Process Boundary Without Plugin Authoring Or Callback Runners
-transport = [
-  "dep:getrandom",
-  "dep:libc",
-  "dep:postcard",
-  "dep:futures-util",
-  "dep:tokio",
-  "dep:windows-sys",
-]
+transport = ["dep:sha2", "dep:getrandom", "dep:libc", "dep:postcard", "dep:futures-util", "dep:tokio", "dep:windows-sys"]
 
-derive = ["harmos-contract/derive"]
-packaging = ["harmos-contract/reflection"]
+derive = ["harmos-domain/derive"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
-grpc = ["harmos-contract/grpc"]
-streaming = ["harmos-contract/streaming"]
+grpc = ["harmos-sdk/grpc"]
+streaming = ["harmos-sdk/streaming"]
 
-# === Dependencies ===
+# === Dependencies === #
 
 [dependencies]
 # Local
-harmos-contract = { workspace = true }
+harmos-domain = { workspace = true }
+harmos-sdk = { workspace = true }
 
 # Git
 
@@ -74,6 +57,7 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 getrandom = { workspace = true, features = ["std"], optional = true }
 semver = { workspace = true, default-features = true }
+sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization
 postcard = { workspace = true, optional = true }
@@ -109,7 +93,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 # Testing
 
-# === Build Dependencies ===
+# === Build Dependencies === #
 
 [build-dependencies]
 # Local
@@ -142,7 +126,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 # Testing
 
-# === Dev Dependencies ===
+# === Dev Dependencies === #
 
 [dev-dependencies]
 # Local
@@ -177,9 +161,9 @@ tokio = { workspace = true, default-features = true, features = ["time", "test-u
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = true }
+criterion = { workspace = true, default-features = false }
 
-# === Target Dependencies ===
+# === Target Dependencies === #
 
 [target.'cfg(unix)'.dependencies]
 # Local
@@ -245,42 +229,31 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 
 # Testing
 
-# === Test Targets ===
+# === Test Targets === #
 
 [[test]]
-name = "packaging"
-path = "tests/packaging/main.rs"
-required-features = ["kit", "packaging"]
+name = "integration"
+path = "tests/integration/main.rs"
 
-[[test]]
-name = "attach"
-path = "tests/attach/main.rs"
-required-features = ["transport"]
-
-[[test]]
-name = "transport"
-path = "tests/transport/main.rs"
-required-features = ["kit"]
-
-# === Bench Targets ===
+# === Bench Targets === #
 
 [[bench]]
-name = "transport"
+name = "system-transport"
 path = "benches/transport/main.rs"
 required-features = ["kit"]
 harness = false
 
-# === Example Targets ===
+# === Example Targets === #
 
-# === Workspace Lints ===
+# === Workspace Lints === #
 
-# === Lints ===
+# === Lints === #
 
 [lints]
 workspace = true
 
-# === Profiles ===
+# === Profiles === #
 
-# === Patches ===
+# === Patches === #
 
-# === Other ===
+# === Other === #

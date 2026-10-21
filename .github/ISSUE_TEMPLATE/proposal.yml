@@ -1,0 +1,32 @@
+name: Change Proposal
+description: Propose a feature, API improvement, or simplification.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem And Use Case
+      description: What application are you building, and what does Harmos prevent or make unnecessarily difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired Outcome
+      description: Describe the behavior you need, with a small usage example where helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed Approach
+      description: Suggest an API or implementation if you have one.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Which existing approaches have you tried, and what are their limitations?
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: Describe known effects on callers, persisted data, wire contracts, or plugin interoperability.

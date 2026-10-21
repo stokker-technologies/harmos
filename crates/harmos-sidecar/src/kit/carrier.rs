@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::io;
 // Third Party Imports
@@ -25,6 +26,7 @@ use crate::{Frame, transport};
 /* === Type Aliases === */
 
 /* === Structs === */
+
 pub(super) struct Arrival {
     pub frame: Frame,
     pub cancelled: bool,
@@ -32,6 +34,7 @@ pub(super) struct Arrival {
 }
 
 /* === Enums === */
+
 pub(super) enum Failure {
     Invalid(String),
     Capacity,
@@ -49,6 +52,7 @@ pub(super) enum Sender {
 /* === Traits === */
 
 /* === Implementations === */
+
 impl Input {
     pub async fn receive(&mut self) -> io::Result<Option<Arrival>> {
         let Self::Binary(input) = self;

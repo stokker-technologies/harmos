@@ -1,0 +1,39 @@
+# Project Policy Owned By The Hub
+# Native manifests own package metadata; mise owns executable recipes.
+# Defaults stay implicit. Commented sections do not declare configuration.
+
+# === Project === #
+
+[project]
+name = "__PRODUCT_NAME__"
+visibility = "public"
+profile = "guest"
+platforms = ["linux", "windows"]
+
+# === Languages === #
+
+[languages.rust]
+roots = ["src"]
+
+[languages.python]
+roots = ["tools/python"]
+
+# === Repository === #
+
+# === CI === #
+
+# === Agents === #
+
+# === Hooks === #
+
+# === Conventions === #
+
+# === Templates === #
+
+# === Release === #
+
+# === Documentation === #
+
+# === Screenshots === #
+
+# === PyO3 === #

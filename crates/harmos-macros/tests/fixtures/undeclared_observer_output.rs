@@ -9,12 +9,14 @@
 
 
 /* === Modules === */
-#[path = "observer_controls.rs"]
+
+#[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +30,7 @@ mod controls;
 /* === Type Aliases === */
 
 /* === Structs === */
+
 struct Bridge;
 
 #[derive(Default)]
@@ -37,16 +40,19 @@ struct Watch;
 struct Output { value: u64 }
 
 /* === Enums === */
+
 #[harmos::catalog]
 enum Observers { Watch(Watch) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
+
 impl harmos::operations::lifecycle::Policy for Bridge {
-    const INITIALIZATION_POLICY: harmos::OperationPolicy = controls::POLICY;
-    const SHUTDOWN_POLICY: harmos::OperationPolicy = controls::POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
+    const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
 }
 
 #[harmos::observer(interval_ms = 5, streams(Output))]
@@ -55,13 +61,13 @@ impl Watch {
 }
 
 #[harmos::plugin(id = "missing-output", context = harmos::sidecar::Supervisor, config = (),
-    provides = controls::Operations, requires = (), observers = Observers,
-    observer_controls(controls::Start, controls::Stop), restart = "never")]
+    provides = (), requires = (), observers = Observers, restart = "never")]
 impl ProductPlugin for Bridge {}
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

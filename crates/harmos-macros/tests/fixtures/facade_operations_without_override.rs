@@ -9,6 +9,7 @@
 
 
 /* === Modules === */
+
 mod relative {
     #[facade::message]
     pub struct WireReply { pub value: String }
@@ -19,10 +20,11 @@ mod rows { pub use facade::Reading; }
 /* === Re-Exports === */
 
 /* === Imports === */
+
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
-use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 // Local Imports
 
 /* === Constants === */
@@ -30,38 +32,38 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryP
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Request = WireRequest;
 
 /* === Structs === */
-#[facade::message]
-pub struct WireRequest { pub value: String }
 
 pub struct State;
 
-pub struct Echo;
+#[facade::message]
+#[facade::operation(
+    response = relative::Reply,
+    id = "alias.echo",
+    policy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+},
+    version = 1,
+)]
+pub struct Echo { pub value: String }
 
 pub struct Guest;
 
 /* === Enums === */
+
 #[facade::catalog]
 pub enum Operations { Echo(Echo) }
 
 /* === Traits === */
+
 trait ProductPlugin {}
 
 /* === Implementations === */
-impl OperationDeclaration for Echo {
-    type Request = Request;
-    type Response = relative::Reply;
-    const ID: &'static str = "alias.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-    };
-}
 
-impl facade::__harmos::operations::WireOperation for Echo { const VERSION: u32 = 1; }
 
 impl facade::__harmos::operations::lifecycle::Policy for State {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
@@ -84,6 +86,7 @@ impl ProductPlugin for State {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+
 fn main() {}
 
 /* === Tests === */

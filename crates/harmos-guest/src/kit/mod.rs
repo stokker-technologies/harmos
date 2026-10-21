@@ -8,19 +8,24 @@
  */
 
 /* === Modules === */
+
 mod context;
+mod instance;
 mod publisher;
 
 pub mod plugin;
 
 /* === Re-Exports === */
+
 pub use crate::export_plugin;
 pub use context::Context;
-pub use harmos_contract::Refusal as OperationRefusal;
-pub use harmos_contract::{UNKNOWN, UNREADABLE};
+pub use harmos_domain::Refusal as OperationRefusal;
+pub use harmos_domain::{UNKNOWN, UNREADABLE};
+pub use instance::OperationInstance;
 pub use publisher::{PublishError, Publisher};
 
 /* === Imports === */
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -28,6 +33,7 @@ pub use publisher::{PublishError, Publisher};
 // Local Imports
 
 /* === Constants === */
+
 pub const WIT: &str = include_str!("../../wit/harmos.wit");
 
 /* === Macros === */

@@ -1,0 +1,1631 @@
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:8fd2816c0c540b76b968b92297604c362451fa4eec9ca6bed1e0d0f4eb441e92
+name: CI
+"on":
+  push:
+    branches:
+    - dev
+    - main
+    - release/v*
+    tags:
+    - v*
+  pull_request: {}
+  workflow_dispatch: {}
+  schedule:
+  - cron: 0 2 * * *
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+env:
+  MISE_LOCKED: "1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+jobs:
+  source:
+    name: Check / Repository
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run check:repository
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+  check_python:
+    name: Check / Python
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run check:python
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  check_rust:
+    name: Check / Rust
+    runs-on: ${{ fromJSON('{"linux":["ubuntu-latest"],"windows":[]}')[matrix.os] }}
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run check:rust
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: ${{ matrix.os }}
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  validate_coverage:
+    name: Validate / Coverage
+    runs-on:
+    - self-hosted
+    - linux
+    timeout-minutes: 180
+    needs:
+    - build_product_dev_linux
+    - build_product_release_linux
+    - build_tests_dev_linux
+    - build_tests_release_linux
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-linux
+    - name: Extract Build
+      shell: bash
+      run: >-
+        tar --zstd -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}-linux.tar.zst"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-linux
+    - name: Extract Build
+      shell: bash
+      run: >-
+        tar --zstd -xf "build-tests-${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}-linux.tar.zst"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-fixtures-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-linux
+    - name: Extract Build
+      shell: bash
+      run: >-
+        tar --zstd -xf "build-fixtures-${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}-linux.tar.zst"
+    - run: >-
+        mise run test:coverage --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: >-
+          junit-coverage-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-linux
+        path: >-
+          target/tests/${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}/*/coverage/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    if: >-
+      always() && ((startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_product_release_linux.result == 'success') && (needs.build_tests_release_linux.result ==
+      'success')) || (!startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_product_dev_linux.result == 'success') && (needs.build_tests_dev_linux.result == 'success')))
+      && github.event_name == 'schedule' && !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+  build_product_dev_windows:
+    name: Build / Product / Dev (windows)
+    runs-on: []
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build --profile dev
+    - name: Archive Build
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/dev/${native}/", "target/build/dev/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-dev-windows
+        path: target/ci/build-product-dev-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-product-diagnostics-dev-windows
+        path: target/build/dev/*/product/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: "!startsWith(github.ref, 'refs/tags/v')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: windows
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_tests_dev_windows:
+    name: Build / Tests / Dev (windows)
+    runs-on: []
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build:tests --profile dev
+    - name: Archive Build
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/dev/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-dev-windows
+        path: target/ci/build-tests-dev-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - name: Archive Fixtures
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force "target/build/dev/${native}/fixtures" | Out-Null
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/dev/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-fixtures-dev-windows
+        path: target/ci/build-fixtures-dev-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-tests-diagnostics-dev-windows
+        path: target/build/dev/*/tests/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: "!startsWith(github.ref, 'refs/tags/v')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: windows
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_product_release_windows:
+    name: Build / Product / Release (windows)
+    runs-on: []
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build --profile release
+    - name: Archive Build
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/release/${native}/", "target/build/release/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-release-windows
+        path: target/ci/build-product-release-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-product-diagnostics-release-windows
+        path: target/build/release/*/product/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: windows
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_tests_release_windows:
+    name: Build / Tests / Release (windows)
+    runs-on: []
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build:tests --profile release
+    - name: Archive Build
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/release/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-release-windows
+        path: target/ci/build-tests-release-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - name: Archive Fixtures
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force "target/build/release/${native}/fixtures" | Out-Null
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        [string[]]$outputs = @("target/build/release/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+        if (!$outputs) { throw 'No build outputs found' }
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      shell: pwsh
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-fixtures-release-windows
+        path: target/ci/build-fixtures-release-windows.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-tests-diagnostics-release-windows
+        path: target/build/release/*/tests/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: windows
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  package_rust:
+    name: Package / Rust
+    runs-on: ${{ fromJSON('{"linux":["ubuntu-latest"],"windows":[]}')[matrix.os] }}
+    timeout-minutes: 30
+    needs:
+    - source
+    - check_python
+    - check_rust
+    - validate_test_unit_rust_linux
+    - validate_test_unit_rust_windows
+    - build_product_dev_linux
+    - build_product_dev_windows
+    - build_product_release_linux
+    - build_product_release_windows
+    - build_tests_release_linux
+    - build_tests_release_windows
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-${{ matrix.os }}
+    - name: Extract Build
+      shell: bash
+      run: >-
+        tar --zstd -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}-${{ matrix.os }}.tar.zst"
+      if: matrix.os != 'windows'
+    - name: Extract Build
+      shell: pwsh
+      run: |-
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-product-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-${{ matrix.os }}.tar.zst" --force-local --use-compress-program "zstd -d"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      if: matrix.os == 'windows'
+    - run: >-
+        mise run package:rust --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
+    - name: Archive Package
+      shell: bash
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths package --profile ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }})"
+        native="${native##*/}"
+        mkdir -p target/ci
+        tar -cf "target/ci/package-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-rust-${{ matrix.os }}.tar" -- "target/package/${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}/${native}/rust"
+      if: matrix.os != 'windows'
+    - name: Archive Package
+      shell: pwsh
+      run: |-
+        $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths package --profile ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }})
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        New-Item -ItemType Directory -Force target/ci | Out-Null
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/package-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-rust-${{ matrix.os }}.tar" --force-local -- "target/package/${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}/${native}/rust"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      if: matrix.os == 'windows'
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: >-
+          package-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-rust-${{ matrix.os }}
+        path: >-
+          target/ci/package-${{ startsWith(github.ref, 'refs/tags/v') && 'release' ||
+          'dev' }}-rust-${{ matrix.os }}.tar
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && (github.event_name == 'pull_request' || startsWith(github.ref,
+      'refs/tags/v') || ((github.event_name == 'push' || github.event_name ==
+      'workflow_dispatch') && (github.ref == 'refs/heads/dev' || startsWith(github.ref,
+      'refs/heads/release/v')))) && (!startsWith(github.ref, 'refs/tags/v') ||
+      (needs.source.result == 'success' && needs.check_python.result == 'success' &&
+      needs.check_rust.result == 'success' && (needs.validate_test_unit_rust_linux.result == 'success' &&
+      needs.validate_test_unit_rust_windows.result == 'success') &&
+      (needs.build_product_release_linux.result == 'success' && needs.build_product_release_windows.result
+      == 'success') && (needs.build_tests_release_linux.result == 'success' &&
+      needs.build_tests_release_windows.result == 'success')))
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - linux
+        - windows
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: ${{ matrix.os }}
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  publish_dry:
+    name: Publish / Dry
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run release:publish:dry
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: >-
+      github.event_name == 'pull_request' || ((github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/dev' ||
+      startsWith(github.ref, 'refs/heads/release/v')))
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab
+  publish_release:
+    name: Publish / Release
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - package_rust
+    - source
+    - check_python
+    - check_rust
+    - validate_test_unit_rust_linux
+    - validate_test_unit_rust_windows
+    - build_product_release_linux
+    - build_product_release_windows
+    - build_tests_release_linux
+    - build_tests_release_windows
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: package-release-*
+        merge-multiple: true
+        path: target/ci
+    - name: Extract Packages
+      shell: bash
+      run: for archive in target/ci/*.tar; do tar -xf "$archive"; done
+    - id: crates
+      uses: rust-lang/crates-io-auth-action@v1
+    - run: mise run release:publish
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CARGO_REGISTRY_TOKEN: ${{ steps.crates.outputs.token }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: >-
+      always() && (startsWith(github.ref, 'refs/tags/v')) &&
+      needs.package_rust.result == 'success' && needs.source.result == 'success' && needs.check_python.result
+      == 'success' && needs.check_rust.result == 'success' &&
+      (needs.validate_test_unit_rust_linux.result == 'success' && needs.validate_test_unit_rust_windows.result ==
+      'success') && (needs.build_product_release_linux.result == 'success' &&
+      needs.build_product_release_windows.result == 'success') &&
+      (needs.build_tests_release_linux.result == 'success' && needs.build_tests_release_windows.result == 'success')
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab
+  build_product_dev_linux:
+    name: Build / Product / Dev (linux)
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build --profile dev
+    - name: Archive Build
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+        native="${native##*/}"
+        mkdir -p target/ci
+        candidates=("target/build/dev/${native}/" "target/build/dev/any/" "target/generated/")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-product-dev-linux.tar.zst" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-dev-linux
+        path: target/ci/build-product-dev-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-product-diagnostics-dev-linux
+        path: target/build/dev/*/product/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: "!startsWith(github.ref, 'refs/tags/v')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_tests_dev_linux:
+    name: Build / Tests / Dev (linux)
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build:tests --profile dev
+    - name: Archive Build
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+        native="${native##*/}"
+        mkdir -p target/ci
+        candidates=("target/build/dev/${native}/tests")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-tests-dev-linux.tar.zst"  -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-dev-linux
+        path: target/ci/build-tests-dev-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - name: Archive Fixtures
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+        native="${native##*/}"
+        mkdir -p "target/build/dev/${native}/fixtures"
+        mkdir -p target/ci
+        candidates=("target/build/dev/${native}/fixtures")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-fixtures-dev-linux.tar.zst"  -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-fixtures-dev-linux
+        path: target/ci/build-fixtures-dev-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-tests-diagnostics-dev-linux
+        path: target/build/dev/*/tests/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: "!startsWith(github.ref, 'refs/tags/v')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_product_release_linux:
+    name: Build / Product / Release (linux)
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build --profile release
+    - name: Archive Build
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+        native="${native##*/}"
+        mkdir -p target/ci
+        candidates=("target/build/release/${native}/" "target/build/release/any/" "target/generated/")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-product-release-linux.tar.zst" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-product-release-linux
+        path: target/ci/build-product-release-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-product-diagnostics-release-linux
+        path: target/build/release/*/product/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  build_tests_release_linux:
+    name: Build / Tests / Release (linux)
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run build:tests --profile release
+    - name: Archive Build
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+        native="${native##*/}"
+        mkdir -p target/ci
+        candidates=("target/build/release/${native}/tests")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-tests-release-linux.tar.zst"  -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-tests-release-linux
+        path: target/ci/build-tests-release-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - name: Archive Fixtures
+      run: |-
+        native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+        native="${native##*/}"
+        mkdir -p "target/build/release/${native}/fixtures"
+        mkdir -p target/ci
+        candidates=("target/build/release/${native}/fixtures")
+        outputs=()
+        for path in "${candidates[@]}"; do
+          if [ -e "$path" ]; then outputs+=("$path"); fi
+        done
+        [ ${#outputs[@]} -gt 0 ]
+        tar --zstd -cf "target/ci/build-fixtures-release-linux.tar.zst"  -- "${outputs[@]}"
+      shell: bash
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-fixtures-release-linux
+        path: target/ci/build-fixtures-release-linux.tar.zst
+        if-no-files-found: error
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: build-tests-diagnostics-release-linux
+        path: target/build/release/*/tests/compiler.json
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+  validate_test_unit_rust_linux:
+    name: Validate / Unit / Rust (linux)
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 10
+    needs:
+    - build_tests_dev_linux
+    - build_tests_release_linux
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-linux
+    - name: Extract Build
+      shell: bash
+      run: >-
+        tar --zstd -xf "build-tests-${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}-linux.tar.zst"
+    - run: >-
+        mise run test:unit:rust --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: >-
+          junit-test_unit_rust-${{ startsWith(github.ref, 'refs/tags/v') && 'release' ||
+          'dev' }}-linux
+        path: >-
+          target/tests/${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}/*/unit-rust/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: >-
+      always() && ((startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_tests_release_linux.result == 'success')) || (!startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_tests_dev_linux.result == 'success')))
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: linux
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  validate_test_unit_rust_windows:
+    name: Validate / Unit / Rust (windows)
+    runs-on: []
+    timeout-minutes: 10
+    needs:
+    - build_tests_dev_windows
+    - build_tests_release_windows
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: >-
+          build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}-windows
+    - name: Extract Build
+      shell: pwsh
+      run: |-
+        & "$env:ProgramFiles\Git\usr\bin\tar.exe" -xf "build-tests-${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}-windows.tar.zst" --force-local --use-compress-program "zstd -d"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - run: >-
+        mise run test:unit:rust --profile ${{ startsWith(github.ref, 'refs/tags/v') &&
+        'release' || 'dev' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: >-
+          junit-test_unit_rust-${{ startsWith(github.ref, 'refs/tags/v') && 'release' ||
+          'dev' }}-windows
+        path: >-
+          target/tests/${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev'
+          }}/*/unit-rust/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    if: >-
+      always() && ((startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_tests_release_windows.result == 'success')) || (!startsWith(github.ref, 'refs/tags/v') &&
+      (needs.build_tests_dev_windows.result == 'success')))
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: windows
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
