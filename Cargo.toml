@@ -18,15 +18,15 @@ publish = true
 
 [workspace.dependencies]
 # Local
-harmos = { path = "crates/harmos", version = "0.1.0" }
-harmos-domain = { path = "crates/harmos-domain", version = "0.1.0", default-features = false }
-harmos-guest = { path = "crates/harmos-guest", version = "0.1.0", default-features = false }
-harmos-macros = { path = "crates/harmos-macros", version = "0.1.0" }
-harmos-packaging = { path = "crates/harmos-packaging", version = "0.1.0", default-features = false }
-harmos-runtime = { path = "crates/harmos-runtime", version = "0.1.0", default-features = false }
-harmos-sdk = { path = "crates/harmos-sdk", version = "0.1.0", default-features = false }
-harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.1.0", default-features = false }
-harmos-storage = { path = "crates/harmos-storage", version = "0.1.0", default-features = false }
+harmos = { path = "crates/harmos", version = "0.1.1" }
+harmos-domain = { path = "crates/harmos-domain", version = "0.1.1", default-features = false }
+harmos-guest = { path = "crates/harmos-guest", version = "0.1.1", default-features = false }
+harmos-macros = { path = "crates/harmos-macros", version = "0.1.1" }
+harmos-packaging = { path = "crates/harmos-packaging", version = "0.1.1", default-features = false }
+harmos-runtime = { path = "crates/harmos-runtime", version = "0.1.1", default-features = false }
+harmos-sdk = { path = "crates/harmos-sdk", version = "0.1.1", default-features = false }
+harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.1.1", default-features = false }
+harmos-storage = { path = "crates/harmos-storage", version = "0.1.1", default-features = false }
 
 # Git
 
