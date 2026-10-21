@@ -32,7 +32,7 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 
 # Measured Cold Windows Build With Fixtures And Unit Tests (26 Minutes); Pull Requests Never Restore A Warm Target.
 [ci.budgets]
-build = 1800
+build = 3000
 
 [ci.runners]
 linux = ["ubuntu-24.04"]
