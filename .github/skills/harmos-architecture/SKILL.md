@@ -2,19 +2,25 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:781d30eba92bea3528375b9050ff3c119a8c391ca7e86e30b93251d47bedbff8 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:b0dc63f7c983c6d06abfb98afe63e6c151e2f8324f7fc5898a2fea4bee6bf006 -->
 
 # Harmos Architecture
 
 Project contracts take precedence over generic architecture defaults. Read current source for exact signatures.
+
+The project skills are `harmos-architecture`, `harmos-authoring` and
+`harmos-testing`. Conventions belong to the company `stkr-*` skills, including
+`stkr-conventions` and the applicable language skills.
 
 ## Application And Contract Layout
 
 - `contract/` owns shared message types, operation declarations and portable
   catalogs used by the application and plugins. Because guests compile it to
   WebAssembly, it depends on `harmos-domain` rather than the host facade;
-  declarations need no Tokio, async execution or host engine. Domain messages are
-  codec-free: the SDK, sidecar, guest and runtime `grpc` features own protobuf
+  declarations need no Tokio, async execution or host engine. Domain declarations
+  are host-independent and free of protobuf transcoding; `harmos-domain::Message`
+  owns Postcard encoding and decoding in `crates/harmos-domain/src/message/mod.rs`.
+  The SDK, sidecar, guest and runtime `grpc` features own protobuf
   transcoding, and `harmos-packaging` owns schema and binding generation.
 - `app/` owns application state, resource-bound implementations and `app.rs`
   composition. CLI and GUI crates are shells. Plugins depend on the contract,
