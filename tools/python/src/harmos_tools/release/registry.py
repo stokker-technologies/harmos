@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:455adddb76ce7e2705b5e2800af33702700b6e0f1b9b14dba93c3ed1a4edf9b9
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:ad46fd2d97ebcf26e07b9d6897795a0e94aae76ade3ca11db36a619e1993d7af
 # ***
 #
 # Harmos
@@ -7,32 +7,28 @@
 #
 # ***
 
-"""Verify Native Release Authorization And Durable Provider Publication"""
+"""Talk To The Release Provider And The Package Registries"""
 
 # === Imports === #
 
 # Standard Library Imports
+import base64
 import email.utils
 import hashlib
-import io
 import json
 import os
 import re
 import subprocess
-import tarfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
 from pathlib import Path
 from typing import Any
 
 # Third Party Imports
 # Local Imports
 # isort: split
-from .. import temporary
-from ..package import run as packages
 from . import policy
 
 # Type Checking Imports
@@ -46,7 +42,9 @@ CRATES_INDEX = "https://index.crates.io"
 RATE_INTERVAL = 600
 RATE_BUDGET = 5400
 REHEARSAL = "rehearsal-"
-GITLAB_REHEARSAL = "rehearsal not rendered for GitLab: it has no draft releases, and release creation tags and package files persist"
+REHEARSAL_CHECK = "Release / Rehearsal"
+RELEASE_BRANCH = "release/"
+GITLAB_REHEARSAL_JOB = "Release / Rehearsal"
 
 # === Types === #
 
@@ -60,10 +58,7 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
         destination = urllib.parse.urlsplit(newurl)
         if destination.scheme != "https":
             raise policy.ToolError("release download redirect must use HTTPS")
-        if redirected is not None and (origin.scheme, origin.netloc) != (
-            destination.scheme,
-            destination.netloc,
-        ):
+        if redirected is not None and (origin.scheme, origin.netloc) != (destination.scheme, destination.netloc):
             for name in ["Authorization", "PRIVATE-TOKEN", "JOB-TOKEN"]:
                 redirected.remove_header(name)
         return redirected
@@ -74,11 +69,11 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -> None:
     """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
-    packages = _publishable(directory)
+    packages = publishable(directory)
     deadline = clock() + RATE_BUDGET
     for name in _publication_order(packages):
         version = packages[name]["version"]
-        if _crate_published(name, version):
+        if crate_published(name, version):
             print(f"{name} {version}: already published")
             continue
         while True:
@@ -106,31 +101,80 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
             sleep(wait)
 
 
-def rehearse_crates(directory: Path) -> None:
-    """Dry-Run The Unpublished Crates Together, In Publication Order, As The Real Leaf Would Publish Them."""
-    packages = _publishable(directory)
-    pending = []
-    for name in _publication_order(packages):
-        version = packages[name]["version"]
-        if _crate_published(name, version):
-            print(f"{name} {version}: already published; the real leaf skips it")
-        else:
-            pending.append(name)
-    if not pending:
-        return
-    # Each crate alone cannot resolve an unpublished sibling at the candidate version; one invocation stages them.
-    command = ["cargo", "publish", "--dry-run", "--locked"]
-    for name in pending:
-        command.extend(["--package", name])
-    policy.execute(directory, command)
+def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
+    """Dry-Run Each Unpublished Crate Alone, In Publication Order, Seeing Only The Siblings Published Before It."""
+    packages = publishable(directory)
+    target = Path(
+        json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True))["target_directory"]
+    )
+    lock = directory / "Cargo.lock"
+    original = lock.read_bytes() if lock.is_file() else None
+    staged = []
+    try:
+        for name in _publication_order(packages):
+            version = packages[name]["version"]
+            if skip_published and crate_published(name, version):
+                print(f"{name} {version}: already published; the real leaf skips it")
+                continue
+            # A sibling resolves from its packaged sources only once the real leaf would have published it, so a
+            # crate ordered before something its published manifest requires fails here, before any tag exists.
+            command = ["cargo", "publish", "--dry-run", "--package", name]
+            for sibling, release in staged:
+                command += ["--config", f'patch.crates-io.{sibling}.path="{(target / "package" / f"{sibling}-{release}").as_posix()}"']
+            policy.execute(directory, command)
+            staged.append((name, version))
+    finally:
+        # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
+        if original is not None:
+            lock.write_bytes(original)
 
 
-def rehearse_python(directory: Path) -> None:
-    """Validate The Release Python Packages The Real Leaf Uploads, Without Credentials Or Upload."""
+def publishable(directory: Path) -> dict:
+    """Publishable Workspace Members By Name."""
+    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
+    members = set(metadata["workspace_members"])
+    return {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
+
+
+def crate_published(name: str, version: str | None = None) -> bool:
+    """Whether The Sparse Index Lists This Crate, Or This Exact Crate Version."""
+    lower = name.lower()
+    prefix = {1: "1", 2: "2", 3: "3/" + lower[0]}.get(len(lower), f"{lower[0:2]}/{lower[2:4]}")
+    try:
+        with urllib.request.urlopen(f"{CRATES_INDEX}/{prefix}/{lower}", timeout=60) as response:
+            lines = response.read().decode("utf-8").splitlines()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, FileNotFoundError):
+            return False
+        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
+    entries = [json.loads(line) for line in lines if line.strip()]
+    return bool(entries) if version is None else any(entry.get("vers") == version for entry in entries)
+
+
+def python(directory: Path, settings: dict, *, rehearse: bool) -> None:
+    """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
     selected = sorted(str(path.relative_to(directory)) for path in directory.glob("target/package/release/*/python/*") if path.is_file())
     if not selected:
-        raise policy.ToolError("release:publish:python has no release Python packages to rehearse")
-    policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
+        raise policy.ToolError("release:publish:python has no release Python packages")
+    if rehearse:
+        # Build and check only: uv validates every file without credentials or upload.
+        policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
+        return
+    if settings["provider"] == "github":
+        policy.execute(directory, ["uv", "publish", "--trusted-publishing", "always", *selected])
+        return
+    base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
+    project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
+    token = os.environ.get("CI_JOB_TOKEN")
+    if not token or not project:
+        raise policy.ToolError("GitLab Python publication requires the native CI_JOB_TOKEN")
+    destination = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/packages/pypi"
+    command = ["uv", "publish", "--publish-url", destination, "--username", "gitlab-ci-token", "--password", token, *selected]
+    policy.execute(directory, command)
 
 
 def request(
@@ -150,10 +194,7 @@ def request(
         token = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN"))
         if not repository or not token:
             raise policy.ToolError("GitHub repository and native token required")
-        headers = {
-            "Authorization": "Bearer " + token,
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
+        headers = {"Authorization": "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28"}
         if upload:
             base = settings.get("upload_url", "https://uploads.github.com")
         url = (
@@ -161,61 +202,59 @@ def request(
             if graphql
             else f"{base}/repos/{repository}/{endpoint}"
         )
+        # Release assets return their bytes only for octet-stream; every other REST call accepts only the REST
+        # media type and answers 415 otherwise.
+        headers["Accept"] = (
+            "application/octet-stream" if binary and endpoint.startswith("releases/assets/") else "application/vnd.github+json"
+        )
     elif provider == "gitlab":
         base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
         if not isinstance(base, str) or not base:
             raise policy.ToolError("GitLab API URL required")
         project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
-        token = os.environ.get("GITLAB_TOKEN")
+        token = os.environ.get("RELEASE_TOKEN") or os.environ.get("GITLAB_TOKEN")
         job_token = os.environ.get("CI_JOB_TOKEN")
         if not project or not (token or job_token):
             raise policy.ToolError("GitLab project and protected native token required")
         if graphql:
             if not token or not base.rstrip("/").endswith("/api/v4"):
-                raise policy.ToolError("GitLab policy read requires GITLAB_TOKEN and a native /api/v4 URL")
+                raise policy.ToolError("GitLab policy read requires RELEASE_TOKEN and a native /api/v4 URL")
             headers = {"Authorization": "Bearer " + token}
             url = base.rstrip("/").removesuffix("/v4") + "/graphql"
         else:
-            if method == "GET":
+            # Tagging and everything a rehearsal creates and deletes again need the release token.
+            rehearsal = method == "POST" and endpoint == "releases" and json.loads(data or b"{}").get("tag_name", "").startswith(REHEARSAL)
+            cleanup = method == "DELETE" and (
+                endpoint.startswith(("releases/" + REHEARSAL, "repository/tags/" + REHEARSAL))
+                or re.fullmatch(r"packages/[0-9]+", endpoint) is not None
+            )
+            tagging = method == "POST" and endpoint == "repository/tags" or rehearsal or cleanup
+            if (
+                method != "GET"
+                and not tagging
+                and not ((method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases"))
+            ):
+                raise policy.ToolError("GitLab release write endpoint is not allowed")
+            if tagging:
                 if not token:
-                    raise policy.ToolError("GitLab reads require GITLAB_TOKEN with read_api access")
+                    raise policy.ToolError("GitLab tagging and rehearsals require the RELEASE_TOKEN project access token")
+                headers = {"Authorization": "Bearer " + token}
+            elif method == "GET":
+                if not token:
+                    raise policy.ToolError("GitLab reads require RELEASE_TOKEN with read_api access")
+                headers = {"Authorization": "Bearer " + token}
+            elif job_token:
+                headers = {"JOB-TOKEN": job_token}
+            elif os.environ.get("GITLAB_CI"):
+                raise policy.ToolError("GitLab CI publication requires CI_JOB_TOKEN")
+            elif token:
                 headers = {"Authorization": "Bearer " + token}
             else:
-                allowed = (method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases")
-                authoring = method == "POST" and endpoint in (
-                    "merge_requests",
-                    "repository/tags",
-                )
-                if not allowed and not authoring:
-                    raise policy.ToolError("GitLab release write endpoint is not allowed")
-                ci_project = os.environ.get("CI_PROJECT_ID")
-                if authoring:
-                    identity = document(settings, "")
-                    if not token or not ci_project or not isinstance(identity, dict) or str(identity.get("id")) != ci_project:
-                        raise policy.ToolError("candidate authoring requires the native protected project token")
-                    headers = {"Authorization": "Bearer " + token}
-                elif job_token:
-                    identity = document(settings, "")
-                    if not ci_project or not isinstance(identity, dict) or str(identity.get("id")) != ci_project:
-                        raise policy.ToolError("GitLab job-token publication requires the same CI project")
-                    headers = {"JOB-TOKEN": job_token}
-                elif ci_project or os.environ.get("GITLAB_CI"):
-                    raise policy.ToolError("GitLab CI publication requires CI_JOB_TOKEN")
-                elif token:
-                    headers = {"Authorization": "Bearer " + token}
-                else:
-                    raise policy.ToolError("GitLab local publication requires GITLAB_TOKEN")
+                raise policy.ToolError("GitLab local publication requires RELEASE_TOKEN")
             url = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/{endpoint}"
+        headers["Accept"] = "application/octet-stream" if binary else "application/json"
     else:
         raise policy.ToolError("release.provider must be github or gitlab")
-    if provider == "github":
-        # Release assets return their bytes only for octet-stream; every other REST call, artifact archives
-        # included, accepts only the REST media type and answers 415 otherwise.
-        headers["Accept"] = (
-            "application/octet-stream" if binary and endpoint.startswith("releases/assets/") else "application/vnd.github+json"
-        )
-    else:
-        headers["Accept"] = "application/octet-stream" if binary else "application/json"
     if data is not None:
         headers["Content-Type"] = "application/octet-stream" if binary else "application/json"
     native = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -229,50 +268,8 @@ def request(
 
 
 def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None) -> Any:
-    value = request(
-        settings,
-        endpoint,
-        method,
-        json.dumps(body).encode() if body is not None else None,
-    )
-    return json.loads(value) if value is not None else None
-
-
-def verify_duplicate_policy(settings: dict) -> None:
-    # Job Tokens Cannot Read GraphQL Or The Complete Native Validation APIs.
-    if not os.environ.get("GITLAB_TOKEN"):
-        raise policy.ToolError(
-            "GitLab publication requires protected GITLAB_TOKEN with read_api and namespace read access; CI_JOB_TOKEN alone is insufficient"
-        )
-    project = document(settings, "")
-    if not isinstance(project, dict):
-        raise policy.ToolError("GitLab project identity is unavailable")
-    path = project.get("path_with_namespace")
-    owner = project.get("namespace")
-    namespace = owner.get("full_path") if isinstance(owner, dict) else None
-    if not isinstance(path, str) or not isinstance(namespace, str):
-        raise policy.ToolError("GitLab group namespace identity is unavailable")
-    query = "query ReleasePolicy($project: ID!) { project(fullPath: $project) { fullPath group { fullPath packageSettings { genericDuplicatesAllowed genericDuplicateExceptionRegex } } } }"
-    body = json.dumps({"query": query, "variables": {"project": path}}).encode()
-    raw = request(settings, "graphql", "POST", body, graphql=True)
-    result = json.loads(raw) if raw is not None else {}
-    if not isinstance(result, dict) or result.get("errors"):
-        raise policy.ToolError("GitLab duplicate policy query failed")
-    data = result.get("data")
-    selected = data.get("project") if isinstance(data, dict) else None
-    group = selected.get("group") if isinstance(selected, dict) else None
-    package = group.get("packageSettings") if isinstance(group, dict) else None
-    if (
-        not isinstance(selected, dict)
-        or selected.get("fullPath") != path
-        or not isinstance(group, dict)
-        or group.get("fullPath") != namespace
-        or not isinstance(package, dict)
-        or package.get("genericDuplicatesAllowed") is not False
-        or package.get("genericDuplicateExceptionRegex") != ""
-        or "genericDuplicateExceptionRegex" not in package
-    ):
-        raise policy.ToolError("GitLab generic package duplicate protection must be verified for the project's group")
+    value = request(settings, endpoint, method, json.dumps(body).encode() if body is not None else None)
+    return json.loads(value) if value else None
 
 
 def pages(settings: dict, endpoint: str, key: str | None = None) -> list:
@@ -290,160 +287,42 @@ def pages(settings: dict, endpoint: str, key: str | None = None) -> list:
         page += 1
 
 
-def job_identity(settings: dict) -> str:
-    if settings["provider"] == "gitlab":
-        return os.environ.get("CI_JOB_ID", "")
-    run = os.environ.get("GITHUB_RUN_ID")
-    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
-    name = os.environ.get("RELEASE_JOB_NAME")
-    if not run or not name:
-        raise policy.ToolError("GitHub stage requires run and exact RELEASE_JOB_NAME")
-    matches = [job for job in pages(settings, f"actions/runs/{run}/attempts/{attempt}/jobs", "jobs") if job["name"] == name]
-    if len(matches) != 1:
-        raise policy.ToolError("GitHub job name does not identify exactly one native job")
-    return str(matches[0]["id"])
+def verify_duplicate_policy(settings: dict) -> None:
+    """Read Back The Group's Generic Package Duplicate Protection; Publication Never Changes It."""
+    project = document(settings, "")
+    if not isinstance(project, dict):
+        raise policy.ToolError("GitLab project identity is unavailable")
+    path = project.get("path_with_namespace")
+    owner = project.get("namespace")
+    namespace = owner.get("full_path") if isinstance(owner, dict) else None
+    if not isinstance(path, str) or not isinstance(namespace, str):
+        raise policy.ToolError("GitLab group namespace identity is unavailable")
+    query = "query ReleasePolicy($project: ID!) { project(fullPath: $project) { fullPath group { fullPath packageSettings { genericDuplicatesAllowed genericDuplicateExceptionRegex } } } }"
+    raw = request(settings, "graphql", "POST", json.dumps({"query": query, "variables": {"project": path}}).encode(), graphql=True)
+    result = json.loads(raw) if raw else {}
+    if not isinstance(result, dict) or result.get("errors"):
+        raise policy.ToolError("GitLab duplicate policy query failed")
+    data = result.get("data")
+    selected = data.get("project") if isinstance(data, dict) else None
+    group = selected.get("group") if isinstance(selected, dict) else None
+    package = group.get("packageSettings") if isinstance(group, dict) else None
+    if (
+        not isinstance(selected, dict)
+        or selected.get("fullPath") != path
+        or not isinstance(group, dict)
+        or group.get("fullPath") != namespace
+        or not isinstance(package, dict)
+        or package.get("genericDuplicatesAllowed") is not False
+        or package.get("genericDuplicateExceptionRegex") != ""
+    ):
+        raise policy.ToolError("GitLab generic package duplicate protection must be verified for the project's group")
 
 
-def verify_jobs(settings: dict, receipt: dict, *, require_artifact: bool = True) -> None:
-    if receipt["provider"] != settings["provider"]:
-        raise policy.ToolError("native provider differs from release policy")
-    if settings["provider"] == "gitlab" and not os.environ.get("GITLAB_TOKEN"):
-        raise policy.ToolError("GitLab native job/pipeline verification requires GITLAB_TOKEN; CI_JOB_TOKEN cannot read these endpoints")
-    sha = receipt["sha"]
-    run_id = receipt["run_id"]
-    if settings["provider"] == "github":
-        run = document(settings, f"actions/runs/{run_id}")
-        if not isinstance(run, dict) or run.get("head_sha") != sha:
-            raise policy.ToolError("GitHub run SHA differs")
-        for job_id in [receipt["build_job"]]:
-            job = document(settings, f"actions/jobs/{job_id}")
-            if (
-                not isinstance(job, dict)
-                or str(job.get("run_id")) != str(run_id)
-                or job.get("head_sha") != sha
-                or job.get("conclusion") != "success"
-                or job.get("status") != "completed"
-            ):
-                raise policy.ToolError("required GitHub job missing, failed, skipped, cancelled or mismatched")
-        if not require_artifact:
-            return
-        name = receipt["artifact_name"]
-        artifacts = [
-            value
-            for value in pages(settings, f"actions/runs/{run_id}/artifacts", "artifacts")
-            if value["name"] == name and not value["expired"]
-        ]
-        if len(artifacts) != 1:
-            raise policy.ToolError("release artifact missing, expired or ambiguous")
-        artifact = artifacts[0]
-        data = request(settings, f"actions/artifacts/{artifact['id']}/zip", binary=True)
-        if data is None or artifact.get("digest") != "sha256:" + hashlib.sha256(data).hexdigest():
-            raise policy.ToolError("native GitHub artifact archive checksum differs")
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            payload = archive.read(receipt["artifact_name"] + ".tar")
-        with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
-            prefix = f"target/release-assets/{receipt['target']}/"
-            original = archive.extractfile(prefix + "platform.json")
-            expected = {name: value for name, value in receipt.items() if name != "artifact"}
-            if original is None or json.load(original) != expected:
-                raise policy.ToolError("downloaded native release receipt differs")
-            for asset in receipt["assets"]:
-                file = archive.extractfile(prefix + asset["name"])
-                value = file.read() if file else b""
-                if len(value) != asset["size"] or hashlib.sha256(value).hexdigest() != asset["sha256"]:
-                    raise policy.ToolError("downloaded native asset checksum differs")
-        receipt["artifact"] = {key: artifact[key] for key in ["id", "name", "digest"]}
-    else:
-        run = document(settings, f"pipelines/{run_id}")
-        if not isinstance(run, dict) or run.get("sha") != sha:
-            raise policy.ToolError("GitLab pipeline SHA differs")
-        for job_id in [receipt["build_job"]]:
-            job = document(settings, f"jobs/{job_id}")
-            if (
-                not isinstance(job, dict)
-                or str(job.get("pipeline", {}).get("id")) != str(run_id)
-                or job.get("commit", {}).get("id") != sha
-                or job.get("status") != "success"
-            ):
-                raise policy.ToolError("required GitLab job missing, failed, skipped, cancelled or mismatched")
-        if not require_artifact:
-            return
-        data = request(settings, f"jobs/{receipt['build_job']}/artifacts", binary=True)
-        if data is None:
-            raise policy.ToolError("native GitLab release archive missing or expired")
-        verify_archive(receipt, data, f"target/release-assets/{receipt['target']}/")
-        receipt["artifact"] = {
-            "job_id": receipt["build_job"],
-            "run_id": run_id,
-            "archive_sha256": hashlib.sha256(data).hexdigest(),
-        }
-
-
-def verify_archive(receipt: dict, data: bytes, prefix: str) -> None:
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        original = json.loads(archive.read(prefix + "platform.json"))
-        expected = {name: value for name, value in receipt.items() if name != "artifact"}
-        if original != expected:
-            raise policy.ToolError("downloaded native release receipt differs")
-        for asset in receipt["assets"]:
-            value = archive.read(prefix + asset["name"])
-            if len(value) != asset["size"] or hashlib.sha256(value).hexdigest() != asset["sha256"]:
-                raise policy.ToolError("downloaded native asset checksum differs")
-
-
-def route(directory: Path, settings: dict, source: str, destination: str, base_sha: str) -> None:
-    if destination == "dev" and not source.startswith("release/") and source not in ["main", "dev"]:
-        return
-    if destination == "dev" and (source == "main" or source.startswith("release/")):
-        return
-    if destination == "main" and source == f"release/{settings['tag']}":
-        return
-    if destination == "main" and source.startswith("fix/"):
-        context = settings.get("hotfix", {})
-        tag = context.get("tag", "")
-        from .run import tag_version
-
-        tag_version(tag)
-        published = document(
-            settings,
-            "releases/tags/" + tag if settings["provider"] == "github" else "releases/" + tag,
-        )
-        if not published:
-            raise policy.ToolError("hotfix base must be an actual published release")
-        tagged = policy.execute(directory, ["git", "rev-parse", tag + "^{commit}"], capture=True).strip()
-        if tagged != context.get("sha"):
-            raise policy.ToolError("hotfix base tag SHA differs from declared context")
-        remote_tag = document(
-            settings,
-            "git/ref/tags/" + tag if settings["provider"] == "github" else "repository/tags/" + tag,
-        )
-        remote_sha = remote_tag.get("object", {}).get("sha") if settings["provider"] == "github" else remote_tag.get("commit", {}).get("id")
-        if remote_sha != tagged:
-            raise policy.ToolError("published hotfix tag differs from fetched tag")
-        development = policy.execute(
-            directory,
-            [
-                "git",
-                "rev-list",
-                settings.get("remote", "origin") + "/dev",
-                "^" + tagged,
-            ],
-            capture=True,
-        ).splitlines()
-        candidate = policy.execute(directory, ["git", "rev-list", "HEAD", "^" + tagged], capture=True).splitlines()
-        if set(candidate) & set(development):
-            raise policy.ToolError("hotfix contains unrelated integrated development; start from the published tag")
-        for descendant in [base_sha, "HEAD"]:
-            policy.execute(directory, ["git", "merge-base", "--is-ancestor", tagged, descendant])
-        return
-    raise policy.ToolError("forbidden branch route; main requires release/v<version> or verified hotfix context")
-
-
-def require_tag(directory: Path, settings: dict) -> None:
-    tag = settings["tag"]
+def require_tag(directory: Path, tag: str) -> None:
+    """The Protected Push Of Exactly This Stable Tag, Checked Out At Its Commit."""
     if re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag) is None:
         raise policy.ToolError("release requires a stable release tag")
-    if settings["provider"] == "github":
+    if os.environ.get("GITHUB_ACTIONS"):
         allowed = (
             os.environ.get("GITHUB_EVENT_NAME") == "push"
             and os.environ.get("GITHUB_REF") == "refs/tags/" + tag
@@ -458,245 +337,64 @@ def require_tag(directory: Path, settings: dict) -> None:
         )
         sha = os.environ.get("CI_COMMIT_SHA")
     if not allowed:
-        raise policy.ToolError("release packaging requires a protected stable release-tag push")
+        raise policy.ToolError(f"publication requires the protected push of {tag}; an unprotected tag means the tag ruleset is missing")
     actual = policy.execute(directory, ["git", "rev-parse", "HEAD"], capture=True).strip()
     tagged = policy.execute(directory, ["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], capture=True).strip()
     if actual != sha or tagged != actual:
         raise policy.ToolError("release tag SHA differs from checkout")
 
 
-def require_candidate(directory: Path, settings: dict) -> None:
-    """The Protected Release Tag, Or Its release/<tag> Candidate Branch Before Any Tag Exists."""
-    tag = settings["tag"]
-    if settings["provider"] == "github":
-        ref = os.environ.get("GITHUB_REF")
-        branch = os.environ.get("GITHUB_EVENT_NAME") in {"push", "workflow_dispatch"} and ref == "refs/heads/release/" + tag
-        sha = os.environ.get("GITHUB_SHA")
-    else:
-        branch = os.environ.get("CI_PIPELINE_SOURCE") in {"push", "web"} and os.environ.get("CI_COMMIT_BRANCH") == "release/" + tag
-        sha = os.environ.get("CI_COMMIT_SHA")
-    if not branch:
-        require_tag(directory, settings)
-        return
-    actual = policy.execute(directory, ["git", "rev-parse", "HEAD"], capture=True).strip()
-    if actual != sha:
-        raise policy.ToolError("candidate SHA differs from checkout")
-
-
-def check_route(directory: Path, settings: dict) -> None:
-    if settings["provider"] == "github":
-        event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
-        proposal = event.get("pull_request")
-        if not isinstance(proposal, dict):
-            require_tag(directory, settings)
-            authorize(directory, settings, {"sha": os.environ["GITHUB_SHA"]})
-            return
-        route(
-            directory,
-            settings,
-            proposal["head"]["ref"],
-            proposal["base"]["ref"],
-            proposal["base"]["sha"],
-        )
-    else:
-        if os.environ.get("CI_PIPELINE_SOURCE") == "merge_request_event":
-            route(
-                directory,
-                settings,
-                os.environ["CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"],
-                os.environ["CI_MERGE_REQUEST_TARGET_BRANCH_NAME"],
-                os.environ["CI_MERGE_REQUEST_DIFF_BASE_SHA"],
-            )
-        else:
-            require_tag(directory, settings)
-            authorize(directory, settings, {"sha": os.environ["CI_COMMIT_SHA"]})
-
-
-def merged_review(directory: Path, settings: dict, sha: str) -> None:
-    """Require The Existing Approved Main Merge And Preserved Release Ancestry."""
-    if settings["provider"] == "github":
-        branch = document(settings, "branches/main")
-        if not isinstance(branch, dict) or not branch.get("protected"):
-            raise policy.ToolError("publication main protection cannot be verified")
-        proposals = pages(settings, f"commits/{sha}/pulls")
-        matches = [
-            item
-            for item in proposals
-            if item.get("merged_at") and item.get("merge_commit_sha") == sha and item.get("base", {}).get("ref") == "main"
-        ]
-        if len(matches) != 1:
-            raise policy.ToolError("main SHA must identify one approved merged release PR")
-        proposal = matches[0]
-        route(
-            directory,
-            settings,
-            proposal["head"]["ref"],
-            "main",
-            proposal["base"]["sha"],
-        )
-    else:
-        branch = document(settings, "repository/branches/main")
-        if not isinstance(branch, dict) or not branch.get("protected"):
-            raise policy.ToolError("main protection cannot be verified")
-        proposals = pages(settings, f"repository/commits/{sha}/merge_requests")
-        matches = [
-            item
-            for item in proposals
-            if item.get("state") == "merged"
-            and gitlab_merged_revision(item) == sha
-            and item.get("target_branch") == "main"
-            and not item.get("squash_commit_sha")
-            and not item.get("squash")
-        ]
-        if len(matches) != 1:
-            raise policy.ToolError("main SHA must identify one ancestry-preserving merged release MR")
-        proposal = document(settings, f"merge_requests/{matches[0]['iid']}")
-        if (
-            not proposal
-            or gitlab_merged_revision(proposal) != sha
-            or proposal.get("state") != "merged"
-            or proposal.get("target_branch") != "main"
-            or proposal.get("squash_commit_sha")
-            or proposal.get("squash")
-        ):
-            raise policy.ToolError("release MR authorization changed")
-        route(
-            directory,
-            settings,
-            proposal["source_branch"],
-            "main",
-            proposal["diff_refs"]["base_sha"],
-        )
-    # A Release Tag Selects An Approved Merge; Ancestry Must Survive Promotion.
-    source_sha = proposal["head"]["sha"] if settings["provider"] == "github" else proposal["sha"]
-    policy.execute(directory, ["git", "merge-base", "--is-ancestor", source_sha, sha])
-
-
-def authorize(directory: Path, settings: dict, manifest: dict) -> None:
-    require_tag(directory, settings)
-    sha = manifest["sha"]
-    if settings["provider"] == "github":
-        if (
-            os.environ.get("GITHUB_EVENT_NAME") != "push"
-            or os.environ.get("GITHUB_REF") != "refs/tags/" + settings["tag"]
-            or os.environ.get("GITHUB_SHA") != sha
-        ):
-            raise policy.ToolError("publication requires the protected release-tag push")
-    elif (
-        os.environ.get("CI_PIPELINE_SOURCE") != "push"
-        or os.environ.get("CI_COMMIT_TAG") != settings["tag"]
-        or os.environ.get("CI_COMMIT_SHA") != sha
-        or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"
-    ):
-        raise policy.ToolError("publication requires the protected release-tag push")
-    merged_review(directory, settings, sha)
-
-
-def files(root: Path, manifest: dict) -> list[dict]:
-    result = list(manifest["files"])
-    for name in ["SHA256SUMS", "release.json"]:
-        data = (root / name).read_bytes()
-        result.append(
-            {
-                "name": name,
-                "path": name,
-                "sha256": hashlib.sha256(data).hexdigest(),
-                "size": len(data),
-            }
-        )
-    return result
-
-
-def verify_download(settings: dict, endpoint: str, item: dict) -> bytes:
-    data = request(settings, endpoint, binary=True)
-    if data is None or len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
-        raise policy.ToolError(f"remote release download differs: {item['name']}")
-    return data
-
-
-def published_state(root: Path, manifest: dict) -> dict:
-    path = root / "published.json"
-    previous = (
-        json.loads(path.read_text())
-        if path.exists()
-        else {
-            "sha": manifest["sha"],
-            "tag": manifest["tag"],
-            "files": {},
-            "visible": False,
-        }
-    )
-    if previous["sha"] != manifest["sha"] or previous["tag"] != manifest["tag"]:
-        raise policy.ToolError("partial publication belongs to a different release")
-    return previous
-
-
-def publish(directory: Path, settings: dict, root: Path, manifest: dict) -> None:
-    state = published_state(root, manifest)
-    tag = urllib.parse.quote(manifest["tag"], safe="")
-    if settings["provider"] == "github":
-        # List includes drafts visible to the authorized publishing token.
-        releases = [item for item in pages(settings, "releases") if item["tag_name"] == manifest["tag"]]
-        if len(releases) > 1:
-            raise policy.ToolError("release tag identity ambiguous")
-        remote = releases[0] if releases else None
-        if remote and not remote["draft"]:
-            raise policy.ToolError("published release cannot be replaced; use a new patch version")
-        if remote is None:
-            remote = document(
-                settings,
-                "releases",
-                "POST",
-                {
-                    "tag_name": manifest["tag"],
-                    "target_commitish": manifest["sha"],
-                    "name": manifest["tag"],
-                    "body": policy.inside(directory, settings["notes"]).read_text(),
-                    "draft": True,
-                    "prerelease": False,
-                },
-            )
-        state["release_id"] = remote["id"]
-        state["draft"] = True
-        policy.write_json(root / "published.json", state)
-        available = pages(settings, f"releases/{remote['id']}/assets")
-    else:
-        if document(settings, "releases/" + tag):
-            raise policy.ToolError("published release cannot be replaced; use a new patch version")
-        available = []
-        verify_duplicate_policy(settings)
-    for item in files(root, manifest):
-        data = policy.inside(root, item["path"]).read_bytes()
-        if hashlib.sha256(data).hexdigest() != item["sha256"]:
-            raise policy.ToolError("local release bytes changed during publication")
-        if settings["provider"] == "github":
-            endpoint = _github_upload(settings, state["release_id"], available, item, data)
-            link = {"name": item["name"], "url": endpoint}
-        else:
-            package = urllib.parse.quote(settings.get("package", manifest["product"]), safe="")
-            endpoint = f"packages/generic/{package}/{tag}/{urllib.parse.quote(item['name'], safe='')}"
-            existing = request(settings, endpoint, binary=True)
-            if existing is not None and existing != data:
-                raise policy.ToolError("partial upload conflict; use a new patch version")
-            if existing is None:
-                request(settings, endpoint, "PUT", data, binary=True)
-            verify_download(settings, endpoint, item)
-            base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
-            project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
-            link = {
-                "name": item["name"],
-                "url": f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/{endpoint}",
-            }
-        state["files"][item["name"]] = {
-            "sha256": item["sha256"],
-            "endpoint": endpoint,
-            "link": link,
-        }
-        policy.write_json(root / "published.json", state)
-
-
 def rehearsal_name(sha: str) -> str:
     return REHEARSAL + sha[:12]
+
+
+def draft(settings: dict, tag: str, sha: str, body: str, *, rehearsal: bool) -> dict:
+    """The GitHub Draft For This Tag: Reused While Still A Draft, Never Replacing A Published Release."""
+    releases = [item for item in pages(settings, "releases") if item["tag_name"] == tag]
+    if len(releases) > 1:
+        raise policy.ToolError("release tag identity ambiguous")
+    if releases and not releases[0]["draft"]:
+        raise policy.ToolError("published release cannot be replaced; use a new patch version")
+    if releases:
+        return releases[0]
+    created = document(
+        settings,
+        "releases",
+        "POST",
+        {"tag_name": tag, "target_commitish": sha, "name": tag, "body": body, "draft": True, "prerelease": rehearsal},
+    )
+    if not isinstance(created, dict) or not created.get("draft") or created.get("tag_name") != tag:
+        raise policy.ToolError("release draft was not created as a draft")
+    return created
+
+
+def upload(settings: dict, release: int, item: dict, data: bytes) -> str:
+    """Upload One Asset To A Draft Unless Present, Then Verify Its Remote Bytes."""
+    available = [value for value in pages(settings, f"releases/{release}/assets") if value["name"] == item["name"]]
+    if len(available) > 1:
+        raise policy.ToolError("duplicate draft asset")
+    if available:
+        endpoint = f"releases/assets/{available[0]['id']}"
+    else:
+        name = urllib.parse.quote(item["name"], safe="")
+        uploaded = request(settings, f"releases/{release}/assets?name={name}", "POST", data, binary=True, upload=True)
+        endpoint = f"releases/assets/{json.loads(uploaded or b'{}')['id']}"
+    verify_download(settings, endpoint, item)
+    return endpoint
+
+
+def upload_generic(settings: dict, package: str, tag: str, item: dict, data: bytes) -> dict:
+    """Upload One Asset To The Duplicate-Protected GitLab Generic Package Version."""
+    endpoint = f"packages/generic/{urllib.parse.quote(package, safe='')}/{urllib.parse.quote(tag, safe='')}/{urllib.parse.quote(item['name'], safe='')}"
+    existing = request(settings, endpoint, binary=True)
+    if existing is not None and existing != data:
+        raise policy.ToolError("partial upload conflict; use a new patch version")
+    if existing is None:
+        request(settings, endpoint, "PUT", data, binary=True)
+    verify_download(settings, endpoint, item)
+    base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
+    project = urllib.parse.quote(str(settings.get("project_id", os.environ.get("CI_PROJECT_ID"))), safe="")
+    return {"endpoint": endpoint, "link": {"name": item["name"], "url": f"{base}/projects/{project}/{endpoint}"}}
 
 
 def discard(settings: dict, name: str) -> int:
@@ -719,248 +417,161 @@ def discard(settings: dict, name: str) -> int:
     return removed
 
 
-def rehearse(
-    directory: Path,
-    settings: dict,
-    root: Path,
-    manifest: dict,
-    leaves: list[str],
-    *,
-    signed: bool,
-    crates=rehearse_crates,
-    python=rehearse_python,
-) -> None:
-    """Drive The Publication Chain Against A Disposable Draft Pre-Release, Then Delete It."""
-    if settings["provider"] != "github":
-        raise policy.ToolError(GITLAB_REHEARSAL)
-    name = rehearsal_name(manifest["sha"])
-    if discard(settings, name):
-        print(f"{name}: deleted a stale rehearsal draft")
-    remote = document(
-        settings,
-        "releases",
-        "POST",
-        {
-            "tag_name": name,
-            "target_commitish": manifest["sha"],
-            "name": f"Rehearsal {manifest['tag']} ({name})",
-            "body": policy.inside(directory, settings["notes"]).read_text(),
-            "draft": True,
-            "prerelease": True,
-        },
-    )
+def verify_download(settings: dict, endpoint: str, item: dict) -> bytes:
+    data = request(settings, endpoint, binary=True)
+    if data is None or len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
+        raise policy.ToolError(f"remote release download differs: {item['name']}")
+    return data
+
+
+def verify_signatures(directory: Path, settings: dict, root: Path, names: list[str]) -> None:
+    """Run Product-Owned Signature Checks Over Hash-Verified Bytes With RELEASE_ASSET_ROOT Pointing At Them."""
+    previous = os.environ.get("RELEASE_ASSET_ROOT")
+    os.environ["RELEASE_ASSET_ROOT"] = str(root)
     try:
-        if not isinstance(remote, dict) or not remote.get("draft") or remote.get("tag_name") != name:
-            raise policy.ToolError("rehearsal draft was not created as a draft")
-        selected = files(root, manifest)
-        endpoints = {}
-        for leaf in leaves:
-            if leaf == "release:publish:assets":
-                for item in selected:
-                    data = policy.inside(root, item["path"]).read_bytes()
-                    if hashlib.sha256(data).hexdigest() != item["sha256"]:
-                        raise policy.ToolError("local release bytes changed during rehearsal")
-                    endpoints[item["name"]] = _github_upload(settings, remote["id"], [], item, data)
-            elif leaf == "release:publish:rust":
-                crates(directory)
-            elif leaf == "release:publish:python":
-                python(directory)
-            elif leaf == "release:publish:finalize":
-                if set(endpoints) != {item["name"] for item in selected}:
-                    raise policy.ToolError("rehearsal finalize requires every uploaded asset")
-                current = document(settings, f"releases/{remote['id']}")
-                if not isinstance(current, dict) or not current.get("draft") or current.get("tag_name") != name:
-                    raise policy.ToolError("rehearsal release is no longer a draft")
-                listed = {item["name"] for item in pages(settings, f"releases/{remote['id']}/assets")}
-                if listed != set(endpoints):
-                    raise policy.ToolError("rehearsal draft assets differ from the manifest")
-                for item in selected:
-                    verify_download(settings, endpoints[item["name"]], item)
-                if signed:
-                    verify_signatures(directory, settings, root, selected)
-                elif settings.get("signature_checks"):
-                    print("note: candidate packages are unsigned; signature checks run on the stable tag only")
-                if document(settings, "git/ref/tags/" + urllib.parse.quote(name, safe="")) is not None:
-                    raise policy.ToolError("a rehearsal must not create a tag object")
-            else:
-                print(f"note: {leaf} is project-authored and not rehearsed")
+        for name in names:
+            if not policy.inside(root, name).is_file():
+                raise policy.ToolError(f"signature check input missing: {name}")
+        for command in settings.get("signature_checks", []):
+            policy.execute(directory, policy.command(command, "release.signature_checks"))
     finally:
-        discard(settings, name)
-    print(f"{name}: rehearsal passed and its draft was deleted")
+        if previous is None:
+            os.environ.pop("RELEASE_ASSET_ROOT", None)
+        else:
+            os.environ["RELEASE_ASSET_ROOT"] = previous
 
 
-def finalize(directory: Path, settings: dict, root: Path, manifest: dict) -> None:
-    if settings["provider"] == "gitlab":
-        verify_duplicate_policy(settings)
-    state = published_state(root, manifest)
-    selected = files(root, manifest)
-    if set(state["files"]) != {item["name"] for item in selected}:
-        raise policy.ToolError("partial publication: required files remain missing")
-    for item in selected:
-        previous = state["files"][item["name"]]
-        if previous["sha256"] != item["sha256"]:
-            raise policy.ToolError("partial publication hash differs")
-        verify_download(settings, previous["endpoint"], item)
-    verify_signatures(directory, settings, root, selected)
-    tag = urllib.parse.quote(manifest["tag"], safe="")
+def release_review(settings: dict, sha: str) -> dict | None:
+    """The Merged Release Review Whose Merge Commit Is This Revision, If Any."""
     if settings["provider"] == "github":
-        existing_tag = document(settings, "git/ref/tags/" + tag)
-        resolved = document(settings, "commits/" + tag) if existing_tag else None
-        if not resolved or resolved.get("sha") != manifest["sha"]:
-            raise policy.ToolError("existing release tag is absent or differs")
-        remote = document(settings, f"releases/{state['release_id']}")
-        if not remote or not remote.get("draft"):
-            raise policy.ToolError("release visibility already changed; verify manually")
-        document(settings, f"releases/{state['release_id']}", "PATCH", {"draft": False})
-        remote = document(settings, "releases/tags/" + tag)
-        if not remote or remote.get("draft") or remote.get("prerelease"):
-            raise policy.ToolError("published release visibility cannot be verified")
-    else:
-        existing_tag = document(settings, "repository/tags/" + tag)
-        if not existing_tag or existing_tag.get("commit", {}).get("id") != manifest["sha"]:
-            raise policy.ToolError("existing release tag differs")
-        created = document(
-            settings,
-            "releases",
-            "POST",
-            {
-                "tag_name": manifest["tag"],
-                "ref": manifest["sha"],
-                "name": manifest["tag"],
-                "description": policy.inside(directory, settings["notes"]).read_text(),
-                "assets": {"links": [value["link"] for value in state["files"].values()]},
-            },
-        )
-        remote = document(settings, "releases/" + tag)
-        tagged = document(settings, "repository/tags/" + tag)
-        if (
-            not isinstance(created, dict)
-            or created.get("tag_name") != manifest["tag"]
-            or not isinstance(created.get("commit"), dict)
-            or created["commit"].get("id") != manifest["sha"]
-            or not isinstance(remote, dict)
-            or remote.get("tag_name") != manifest["tag"]
-            or not isinstance(remote.get("commit"), dict)
-            or remote["commit"].get("id") != manifest["sha"]
-            or not isinstance(tagged, dict)
-            or not isinstance(tagged.get("commit"), dict)
-            or tagged["commit"].get("id") != manifest["sha"]
-        ):
-            raise policy.ToolError("published release tag identity cannot be verified")
-    for item in selected:
-        verify_download(settings, state["files"][item["name"]]["endpoint"], item)
-    state["visible"] = True
-    policy.write_json(root / "published.json", state)
+        matches = [
+            item
+            for item in pages(settings, f"commits/{sha}/pulls")
+            if item.get("merged_at")
+            and item.get("merge_commit_sha") == sha
+            and item.get("base", {}).get("ref") == "dev"
+            and item.get("head", {}).get("ref", "").startswith(RELEASE_BRANCH)
+        ]
+        if len(matches) > 1:
+            raise policy.ToolError("the revision identifies several merged release pull requests")
+        return {"head": matches[0]["head"]["sha"], "number": matches[0]["number"]} if matches else None
+    matches = [
+        item
+        for item in pages(settings, f"repository/commits/{sha}/merge_requests")
+        if item.get("state") == "merged"
+        and sha in {item.get("merge_commit_sha"), item.get("squash_commit_sha"), item.get("sha")}
+        and item.get("target_branch") == "dev"
+        and item.get("source_branch", "").startswith(RELEASE_BRANCH)
+    ]
+    if len(matches) > 1:
+        raise policy.ToolError("the revision identifies several merged release merge requests")
+    return {"head": matches[0]["sha"], "number": matches[0]["iid"]} if matches else None
 
 
-def verify_publication(directory: Path, settings: dict) -> None:
-    if settings["provider"] == "gitlab":
-        verify_duplicate_policy(settings)
-    tag = urllib.parse.quote(settings["tag"], safe="")
+def rehearsed(settings: dict, review: dict, sha: str) -> None:
+    """The Release Review Head Passed Its Rehearsal And Its Tree Is Exactly The Merged Tree."""
+    head = review["head"]
     if settings["provider"] == "github":
-        remote = document(settings, "releases/tags/" + tag)
-        if not isinstance(remote, dict) or remote.get("draft") or remote.get("prerelease"):
-            raise policy.ToolError("release is not published")
-        downloads = {item["name"]: f"releases/assets/{item['id']}" for item in pages(settings, f"releases/{remote['id']}/assets")}
-        data = request(settings, downloads["release.json"], binary=True)
-        tagged = document(settings, "git/ref/tags/" + tag)
-        resolved = document(settings, "commits/" + tag) if tagged else None
-        sha = resolved.get("sha") if isinstance(resolved, dict) else None
+        runs = document(settings, f"commits/{head}/check-runs?check_name={urllib.parse.quote(REHEARSAL_CHECK)}&filter=latest") or {}
+        conclusions = {run.get("conclusion") for run in runs.get("check_runs", [])}
+        if conclusions != {"success"}:
+            raise policy.ToolError(f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check")
+        trees = [document(settings, f"git/commits/{revision}") or {} for revision in (head, sha)]
+        if trees[0].get("tree", {}).get("sha") != trees[1].get("tree", {}).get("sha"):
+            raise policy.ToolError("the merged tree differs from the rehearsed release PR head; update the release PR and merge again")
+        return
+    # The merge request's latest pipeline ran on its head; its rehearsal job must have succeeded there.
+    pipeline = (document(settings, f"merge_requests/{review['number']}") or {}).get("head_pipeline") or {}
+    if pipeline.get("sha") != head:
+        raise policy.ToolError(f"release MR !{review['number']} has no pipeline for its head {head}")
+    jobs = [
+        job for job in pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false") if job.get("name") == GITLAB_REHEARSAL_JOB
+    ]
+    if not jobs or any(job.get("status") != "success" for job in jobs):
+        raise policy.ToolError(f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job")
+    difference = document(settings, f"repository/compare?from={head}&to={sha}&straight=true") or {}
+    if difference.get("diffs"):
+        raise policy.ToolError("the merged tree differs from the rehearsed release MR head; rebase the release MR and merge again")
+
+
+def discard_gitlab(settings: dict, name: str, package: str) -> int:
+    """Delete A GitLab Rehearsal: Its Release, The Tag The Release Created, And Its Generic Package Version."""
+    if not name.startswith(REHEARSAL):
+        raise policy.ToolError("discard deletes rehearsals only")
+    quoted = urllib.parse.quote(name, safe="")
+    removed = 0
+    if document(settings, "releases/" + quoted) is not None:
+        request(settings, "releases/" + quoted, "DELETE")
+        removed += 1
+    if document(settings, "repository/tags/" + quoted) is not None:
+        request(settings, "repository/tags/" + quoted, "DELETE")
+        removed += 1
+    query = f"packages?package_type=generic&package_name={urllib.parse.quote(package, safe='')}&package_version={quoted}"
+    for item in pages(settings, query):
+        if item.get("name") == package and item.get("version") == name:
+            request(settings, f"packages/{item['id']}", "DELETE")
+            removed += 1
+    if document(settings, "releases/" + quoted) is not None or document(settings, "repository/tags/" + quoted) is not None:
+        raise policy.ToolError(f"rehearsal {name} survived deletion; inspect it manually")
+    return removed
+
+
+def oidc_claims(url: str, token: str) -> dict:
+    """The Claims Of A GitHub OIDC Token Requested For Diagnosis Only; The Token Itself Is Never Printed."""
+    separator = "&" if "?" in url else "?"
+    native = urllib.request.Request(f"{url}{separator}audience=release-identity", headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(native, timeout=60) as response:
+        value = json.loads(response.read())["value"]
+    payload = value.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
+def workflow_filename(reference: str) -> str:
+    """The Workflow File Name Of A `owner/repo/.github/workflows/<file>@<ref>` Reference."""
+    match = re.search(r"([^/]+\.ya?ml)(?=@)", reference)
+    return match.group(1) if match else "(unknown)"
+
+
+def create_tag(settings: dict, tag: str, sha: str) -> None:
+    """Create The Lightweight Release Tag Through The Provider With The Release Token."""
+    if settings["provider"] == "github":
+        document(settings, "git/refs", "POST", {"ref": "refs/tags/" + tag, "sha": sha})
     else:
-        remote = document(settings, "releases/" + tag)
-        if not remote:
-            raise policy.ToolError("release is not published")
-        package = urllib.parse.quote(settings.get("package", settings["product"]), safe="")
-        prefix = f"packages/generic/{package}/{tag}/"
-        data = request(settings, prefix + "release.json", binary=True)
-        downloads = {item["name"]: prefix + urllib.parse.quote(item["name"], safe="") for item in remote["assets"]["links"]}
-        sha = document(settings, "repository/tags/" + tag)["commit"]["id"]
-    manifest = json.loads(data or b"{}")
-    if manifest.get("sha") != sha or manifest.get("tag") != settings["tag"] or set(manifest.get("targets", {})) != set(settings["targets"]):
-        raise policy.ToolError("remote release identity or target completeness differs")
-    for receipt in manifest["targets"].values():
-        if receipt.get("sha") != sha:
-            raise policy.ToolError("remote release revision differs")
-        verify_jobs(settings, receipt, require_artifact=False)
-    with temporary.directory() as root:
-        for item in manifest["files"]:
-            path = policy.inside(root, item["name"])
-            path.write_bytes(verify_download(settings, downloads[item["name"]], item))
-        verified = [{**item, "path": item["name"]} for item in manifest["files"]]
-        verify_signatures(directory, settings, root, verified)
-        native = packages.paths.target()
-        if native in settings["targets"]:
-            packages.installed(directory, settings, root, native)
-    sums = request(settings, downloads["SHA256SUMS"], binary=True)
-    expected = "".join(f"{item['sha256']}  {item['name']}\n" for item in manifest["files"]).encode()
-    expected += f"{hashlib.sha256(data or b'').hexdigest()}  release.json\n".encode()
-    if sums != expected:
-        raise policy.ToolError("remote checksum catalog differs")
-    policy.write_json(
-        directory / ".stkr/state/release-publication.json",
-        {"sha": sha, "tag": settings["tag"], "verified": True},
-    )
+        document(settings, "repository/tags", "POST", {"tag_name": tag, "ref": sha})
 
 
-def verify_signatures(directory: Path, settings: dict, root: Path, selected: list) -> None:
-    # Normalize Final Downloads For Product-Owned Signature Commands.
-    with temporary.directory() as assets:
-        for item in selected:
-            source = policy.inside(root, item.get("path", item["name"]))
-            destination = policy.inside(assets, item["name"])
-            destination.write_bytes(source.read_bytes())
-        previous = os.environ.get("RELEASE_ASSET_ROOT")
-        os.environ["RELEASE_ASSET_ROOT"] = str(assets)
-        try:
-            for command in settings.get("signature_checks", []):
-                policy.execute(directory, policy.command(command, "release.signature_checks"))
-        finally:
-            if previous is None:
-                os.environ.pop("RELEASE_ASSET_ROOT", None)
-            else:
-                os.environ["RELEASE_ASSET_ROOT"] = previous
-
-
-def gitlab_merged_revision(proposal: dict) -> str | None:
-    """A Fast-Forward MR Has No Separate Merge Commit"""
-    merge_revision = proposal.get("merge_commit_sha")
-    return proposal.get("sha") if merge_revision is None else merge_revision
+def remote_tag(settings: dict, tag: str) -> str | None:
+    """The Commit A Remote Tag Identifies, Peeling Annotated Tags."""
+    name = urllib.parse.quote(tag, safe="")
+    if settings["provider"] == "github":
+        existing = document(settings, "git/ref/tags/" + name)
+        if not existing:
+            return None
+        target = existing.get("object", {})
+        if target.get("type") == "tag":
+            target = (document(settings, "git/tags/" + target["sha"]) or {}).get("object", {})
+        return target.get("sha")
+    existing = document(settings, "repository/tags/" + name)
+    return existing.get("commit", {}).get("id") if existing else None
 
 
 # === Private Functions === #
 
 
-def _publishable(directory: Path) -> dict:
-    """Publishable Workspace Members By Name."""
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
-    members = set(metadata["workspace_members"])
-    return {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
-
-
-def _github_upload(settings: dict, release: int, available: list, item: dict, data: bytes) -> str:
-    """Upload One Asset To A Draft Unless Present, Then Verify Its Remote Bytes."""
-    matches = [value for value in available if value["name"] == item["name"]]
-    if len(matches) > 1:
-        raise policy.ToolError("duplicate draft asset")
-    if matches:
-        endpoint = f"releases/assets/{matches[0]['id']}"
-    else:
-        uploaded = request(
-            settings, f"releases/{release}/assets?name={urllib.parse.quote(item['name'], safe='')}", "POST", data, binary=True, upload=True
-        )
-        endpoint = f"releases/assets/{json.loads(uploaded or b'{}')['id']}"
-    verify_download(settings, endpoint, item)
-    return endpoint
-
-
 def _publication_order(packages: dict) -> list[str]:
-    """Publishable Crates After Every Publishable Crate They Depend On, Ties By Name."""
+    """Publishable Crates After Every Publishable Crate Their Published Manifest Requires, Ties By Name.
+
+    A dev-dependency that carries a version stays in the published manifest and must resolve from the registry; a
+    path-only one is stripped on packaging.
+    """
     requires = {
         name: sorted(
             {
                 dependency["name"]
                 for dependency in package["dependencies"]
-                if dependency.get("kind") != "dev" and dependency["name"] in packages and dependency["name"] != name
+                if (dependency.get("kind") != "dev" or dependency.get("req", "*") != "*")
+                and dependency["name"] in packages
+                and dependency["name"] != name
             }
         )
         for name, package in packages.items()
@@ -972,7 +583,11 @@ def _publication_order(packages: dict) -> list[str]:
         if name in order:
             return
         if name in visiting:
-            raise policy.ToolError(f"publishable crates form a dependency cycle at {name}")
+            cycle = ", ".join(sorted(visiting))
+            raise policy.ToolError(
+                f"publishable crates {cycle} require each other at {name}; a dev-dependency on a sibling that carries a version stays in the "
+                'published manifest, so declare it path-only ({ path = "../sibling" }, no version) and cargo strips it on packaging'
+            )
         visiting.add(name)
         for dependency in requires[name]:
             visit(dependency)
@@ -982,24 +597,6 @@ def _publication_order(packages: dict) -> list[str]:
     for name in sorted(packages):
         visit(name)
     return order
-
-
-def _crate_published(name: str, version: str) -> bool:
-    """Whether The Sparse Index Already Lists This Exact Crate Version."""
-    lower = name.lower()
-    prefix = {1: "1", 2: "2", 3: "3/" + lower[0]}.get(len(lower), f"{lower[0:2]}/{lower[2:4]}")
-    try:
-        with urllib.request.urlopen(f"{CRATES_INDEX}/{prefix}/{lower}", timeout=60) as response:
-            lines = response.read().decode("utf-8").splitlines()
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
-    except urllib.error.URLError as error:
-        if isinstance(error.reason, FileNotFoundError):
-            return False
-        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
-    return any(json.loads(line).get("vers") == version for line in lines if line.strip())
 
 
 def _retry_after(output: str) -> int:
