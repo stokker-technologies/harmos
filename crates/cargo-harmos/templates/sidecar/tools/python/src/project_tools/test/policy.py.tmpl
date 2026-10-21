@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:19f6602ea3ebfb47f0019e1c22152488c9265febe50c8dfcfc73ab444bdb03e8
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:25f5bbbd627eea80a337b3331aa4c9c5e1205ce7b060553204a9cbeb8936957f
 # ***
 #
 # __PRODUCT_NAME__
@@ -13,14 +13,7 @@ Keys, all optional:
     [conventions.testing]
     limits = { unit = 512, integration = 256, acceptance = 128, system = 64 }
     deadlines = { unit = 10, integration = 120, acceptance = 900, system = 900 }
-    hosts = ["target/build/{profile}/{target}/bin/app{exe}"]
     bench_regression_percent = 20
-
-    [[conventions.testing.lanes]]
-    category = "system"
-    language = "rust"
-    products = ["python"]
-    hosts = ["target/build/{profile}/{target}/bin/server{exe}"]
 
     [[conventions.testing.overrides]]
     category = "acceptance"
@@ -34,12 +27,8 @@ JavaScript workspace packages each have their own scope; other tests share the p
 Exceeding one is a curation finding in the
 index, never a failure. Deadlines are the per-story maximum of a lane in seconds. An override
 replaces the deadline of the stories it selects: for Rust `select` is a nextest filterset, for
-the other languages a glob over `<file>::<story>`. Hosts are artifacts acceptance and system
-lanes need; `{profile}`, `{platform}`, `{architecture}`, `{target}` and `{exe}` expand to the lane profile,
-native operating system, CPU architecture, producer target and executable suffix. Declared hosts require a
-fixture stamp whose immutable file map covers every host before a lane can run.
-Lane products add declared language producers. Omitted lane hosts keep global defaults;
-an empty list clears them. Host directory trees require complete stamped file maps.
+the other languages a glob over `<file>::<story>`. Acceptance and system lanes receive the whole
+Product and Tests builds of their profile and target, so lanes declare no inputs.
 
 The expected lanes are the `test:<category>:<language>` leaf tasks of `mise.toml`.
 """
@@ -96,41 +85,11 @@ class Override:
 
 
 @dataclass(frozen=True)
-class Lane:
-    category: str
-    language: str
-    products: tuple[str, ...] = ()
-    hosts: tuple[str, ...] | None = None
-
-
-@dataclass(frozen=True)
 class Policy:
     limits: dict[str, int]
     deadlines: dict[str, int]
     overrides: tuple[Override, ...]
-    hosts: tuple[str, ...]
     bench_regression_percent: float = 20
-    lanes: tuple[Lane, ...] = ()
-
-    def lane(self, category: str | None, language: str) -> Lane | None:
-        return next(
-            (entry for entry in self.lanes if entry.category == category and entry.language == language),
-            None,
-        )
-
-    def hosts_for(self, category: str | None, language: str) -> tuple[str, ...]:
-        if category is None:
-            return tuple(dict.fromkeys(host for category in CATEGORIES for host in self.hosts_for(category, language)))
-        entry = self.lane(category, language)
-        if entry is not None and entry.hosts is not None:
-            return entry.hosts
-        return self.hosts if category in (None, "acceptance", "system") else ()
-
-    def products_for(self, category: str | None, language: str) -> tuple[str, ...]:
-        if category is None:
-            return tuple(dict.fromkeys(product for entry in self.lanes if entry.language == language for product in entry.products))
-        entry = self.lane(category, language)
-        return () if entry is None else entry.products
 
     def deadline(self, category: str, coverage: bool = False) -> int:
         """The lane maximum per story, multiplied for instrumented runs."""
@@ -175,49 +134,11 @@ def load(directory: Path) -> Policy:
 
     limits = _numbers(testing.get("limits", {}), "limits", LIMITS, 0)
     deadlines = _numbers(testing.get("deadlines", {}), "deadlines", DEADLINES, 1)
-    hosts = testing.get("hosts", [])
-    if not isinstance(hosts, list) or not all(isinstance(host, str) for host in hosts):
-        raise TestError("conventions.testing.hosts must be a list of paths")
-    _paths(hosts)
-
-    inputs = []
-    identities = set()
-    declarations = testing.get("lanes", [])
-    if not isinstance(declarations, list):
-        raise TestError("conventions.testing.lanes must be a list of tables")
-    for entry in declarations:
-        if (
-            not isinstance(entry, dict)
-            or not {"category", "language"} <= set(entry)
-            or not set(entry) <= {"category", "language", "products", "hosts"}
-        ):
-            raise TestError("testing lanes declare category, language, optional products and hosts")
-        category, language = entry["category"], entry["language"]
-        if category not in CATEGORIES or language not in LANGUAGES or (category, language) in identities:
-            raise TestError("testing lane identity must be known and unique")
-        identities.add((category, language))
-        products = entry.get("products", [])
-        if not isinstance(products, list) or any(product not in LANGUAGES for product in products) or len(products) != len(set(products)):
-            raise TestError("testing lane products must be unique declared languages")
-        selected_hosts = entry.get("hosts")
-        if selected_hosts is not None:
-            _paths(selected_hosts)
-            if selected_hosts and category not in ("acceptance", "system"):
-                raise TestError("native hosts belong to acceptance/system lanes")
-        inputs.append(
-            Lane(
-                category,
-                language,
-                tuple(products),
-                None if selected_hosts is None else tuple(selected_hosts),
-            )
+    retired = [key for key in ("hosts", "lanes") if key in testing]
+    if retired:
+        raise TestError(
+            f"conventions.testing.{retired[0]} is retired; acceptance and system lanes receive the whole Product and Tests builds"
         )
-    declared = document.get("languages", {})
-    expected = lanes(directory)
-    if any(
-        (entry.category, entry.language) not in expected or any(product not in declared for product in entry.products) for entry in inputs
-    ):
-        raise TestError("testing lane inputs require a declared task and Product languages")
 
     overrides = []
     for entry in testing.get("overrides", []):
@@ -235,9 +156,7 @@ def load(directory: Path) -> Policy:
         limits,
         deadlines,
         tuple(overrides),
-        tuple(hosts),
         float(threshold),
-        tuple(inputs),
     )
 
 
@@ -254,14 +173,6 @@ def lanes(directory: Path) -> list[tuple[str, str]]:
 
 
 # === Private Functions === #
-
-
-def _paths(value: object) -> None:
-    if not isinstance(value, list) or any(
-        not isinstance(path, str) or not path.strip() or Path(path).is_absolute() or ".." in Path(path).parts or "\\" in path or ":" in path
-        for path in value
-    ):
-        raise TestError("testing hosts must be relative artifact paths")
 
 
 def _toml(path: Path) -> dict[str, Any]:

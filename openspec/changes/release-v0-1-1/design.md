@@ -2,7 +2,7 @@
 
 ## Ownership And Dependency Order
 
-The release owner exclusively uses harmos.wt/release-rehearsal-render. PR19 is integrated into dev. The single release integration branch is release/v0.1.1, generated from published dev after its native graph passed. Preserve the former fix branch and the generated candidate history; the linear-pipeline adoption that briefly sat on this branch is reverted here and parked on ci/managed-workflows for the product migration after the Hub release.
+The release owner exclusively uses harmos.wt/release-rehearsal-render. PR19 is integrated into dev. The single release integration branch is release/v0.1.1, generated from published dev after its native graph passed. Preserve the former fix branch and the generated candidate history; the managed-workflow migration follows on ci/managed-workflows.
 
 The paired consumer is dokime.wt/remote-streamline, change release-v0-1-0. Harmos registry and native publication must finish before Dokime adopts version 0.1.1. No Hub or Dokime drop source is owned here.
 

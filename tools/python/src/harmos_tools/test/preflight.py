@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -64,6 +65,13 @@ def main(arguments: list[str] | None = None) -> None:
     for relative in selected:
         if not _input(fixtures, relative).exists():
             sys.exit(f"fixture input {relative} is absent; run mise run build:tests")
+
+    if category == "acceptance":
+        # Starter Stories Share Mise's Runtime Links; Install Their Full Toolset Before Nextest Starts Them.
+        environment = dict(os.environ)
+        environment.pop("MISE_ENABLE_TOOLS", None)
+        environment.pop("UV_PROJECT_ENVIRONMENT", None)
+        subprocess.run(["mise", "install"], cwd=ROOT, env=environment, check=True)
 
     # The Native Runner Verifies Selected Stamp Hashes And Archive Ownership.
     # Only Hosts Used Here And Acceptance Compiler Inputs Need Executable Modes.

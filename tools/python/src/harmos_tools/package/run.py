@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:2115d620b4e87005d1a5406089c7d54fd9935c88715a75059e60265222d6ceec
+# Rendered by stkr project update from templates/python/package/run.py; sha256:cfd76ba2a50819a4276bf0d7072ccb0a8df4d9f9e2e82f484c966a47677ae193
 # ***
 #
 # Harmos
@@ -157,7 +157,8 @@ def assemble(directory: Path, language: str, profile: str, target: str, staging:
 def verify(directory: Path, profile: str, target: str, root: Path | None = None) -> None:
     """Execute Packaged Native Bytes In An Isolated Installation Directory."""
     for item in definitions(directory, profile, target):
-        if "triple" not in item:
+        # Staged release downloads hold only the executables that ship.
+        if "triple" not in item or root is not None and not item["release"]:
             continue
         source = (root / item["output"]) if root else paths.output(directory, "package", profile, target) / "rust" / item["output"]
         if not source.is_file() or source.is_symlink():
@@ -165,6 +166,7 @@ def verify(directory: Path, profile: str, target: str, root: Path | None = None)
         with temporary.directory() as install:
             executable = install / item["binary"]
             shutil.copy2(source, executable)
+            executable.chmod(0o755)
             subprocess.run([str(executable), *item["verify"]], cwd=install, check=True)
 
 

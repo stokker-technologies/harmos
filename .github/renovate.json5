@@ -1,0 +1,20 @@
+// Rendered by stkr project update from templates/tools/renovate.json5; sha256:767ab4efcefdb7081e7477784d2c13e95d076fc07c42ae732f7322aa9f4de547
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+  // Task branches start from and integrate into dev; build/ keeps Renovate branches in the Hub branch grammar.
+  baseBranchPatterns: ["dev"],
+  branchPrefix: "build/renovate-",
+  semanticCommits: "enabled",
+  semanticCommitType: "build",
+  // The mise manager bumps the pinned [tools] versions; mise.lock, Cargo.lock, uv.lock and pnpm-lock.yaml refresh with them.
+  lockFileMaintenance: { enabled: true },
+}

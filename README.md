@@ -607,9 +607,12 @@ operations and listener callbacks refuse any other value. A sidecar that declare
 observers serves the built-in `harmos.observe` control; the host submits it per
 activation and cancels it to stop the observer, which runs on a thread of its own.
 
-Externally supplied settings and defaults live in each configurable crate's root
-`config.rs`. Composition passes each owner its relevant settings rather than
-retaining global configuration in every manager.
+The intended configuration contract gives each subsystem ownership of its settings
+and validation in its own `config.rs`; root configuration composes those types.
+This migration is incomplete: `crates/harmos-runtime/src/config.rs` still defines
+decode, encode, gRPC, operation and plugin settings. Consumers own defaults and
+pass each owner its relevant settings rather than retaining global configuration
+in every manager.
 
 Host runtimes expose one shared `runtime.plugin` owner; `runtime.handle().plugin`
 clones that same owner. Embedded, guest and native registration is inert. Explicit
@@ -702,7 +705,7 @@ milestone. GitHub hosts the
 authoritative repository and native CI; GitLab retains a one-way mirror.
 
 Follow [issues](https://github.com/stokker-technologies/harmos/issues)
-for development discussions and [the changelog](CHANGELOG.md) for recorded changes.
+for development discussions and [release notes](https://github.com/stokker-technologies/harmos/releases) for recorded changes.
 
 Dynamic clients consume discovered canonical contracts through
 `harmos::grpc::dynamic::Operation` or a generated Python package's
@@ -731,11 +734,12 @@ refuse a missing or stale fixture. Product and Tests outputs use matching
 `test:integration`, `test:acceptance` and `test:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
 Unit and integration lanes consume Tests outputs; metadata inspection uses
-stamped inert artifact copies. Acceptance and system lanes additionally select
-their declared Product hosts, and only acceptance prepares compiler libraries
+stamped inert artifact copies. Acceptance and system lanes also consume the whole
+matching Product build, and only acceptance prepares compiler libraries
 and offline authoring inputs.
-`mise run test:coverage` instruments the full selection separately. `mise run ci`
-runs the same graph as CI on the current tree; a failing lane fails the run.
+`mise run test:coverage` instruments the full selection separately.
+`mise run ci --event pr` simulates the rendered pull-request graph from a cold
+clone of committed source; a failing lane fails the run.
 
 CI runs the Check, Build and Validate stages on Linux and Windows, and both
 platforms are required for `dev`, `main` and releases. Pull requests and pushes
@@ -746,10 +750,12 @@ pipelines. Rust crates publish to crates.io; CI packages retain the native CLI
 and example plugin bundles. Generated Python clients belong to their consuming
 producer package.
 
-Task PRs squash into `dev`. Stable `release/v<version>` branches start from `dev`
-and merge into `main` preserving ancestry, then incorporate their history into
-`dev`. Harmos currently enables the release-branch route into `main`; a published-tag
-hotfix needs its explicit release context before enabling that route.
+Task PRs squash into `dev`. `Release / Prepare` opens a `release/v<version>`
+review into `dev`; the complete native graph and `Release / Rehearsal` verify
+that candidate. Squash-merging the review starts `Release / Tag`, which tags
+the merged `dev` commit and fast-forwards `main` to it. The tag pipeline publishes
+and verifies the native release. Hotfixes follow the same `dev` flow as the next
+patch release.
 
 See [Contributing](CONTRIBUTING.md) for prerequisites and the full development
 workflow.

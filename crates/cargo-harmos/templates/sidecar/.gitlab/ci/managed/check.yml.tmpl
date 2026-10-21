@@ -1,0 +1,217 @@
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:48ddee5c37acfba738fb05d21f20e5123c4a57f71772e67fa274d50aa62ab153
+Check / Repository:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 10 minutes
+  needs: []
+  script:
+  - mise run check:repository
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+Check / Python:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 10 minutes
+  needs: []
+  script:
+  - mise run check:python
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Check / Rust (linux):
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run check:rust
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
+      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Check / Rust (windows):
+  stage: Check
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run check:rust
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
+      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  inherit:
+    default:
+    - interruptible
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo

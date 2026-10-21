@@ -8,6 +8,7 @@ github_attestations = false
 
 [tools]
 # Languages And Runtimes
+node = "26.11.1"
 python = "3.15.0"
 rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
 
@@ -21,6 +22,7 @@ sccache = "0.18.0"
 
 # Formatting And Linting
 "aqua:rhysd/actionlint" = "1.7.12"
+"npm:@fission-ai/openspec" = "1.14.3"
 taplo = "0.10.0"
 
 # Release And Signing
@@ -37,7 +39,6 @@ glab = "1.123.0"
 # === Environment === #
 
 [env]
-UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 
 # === Variables === #
 
@@ -311,19 +312,9 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 # === CI === #
 
 [tasks.ci]
-description = "Run The CI Flow Locally"
-usage = 'flag "--profile <profile>" default="dev"'
-run = [
-  { task = "format --check" },
-  { task = "build --profile {{usage.profile}}" },
-  { task = "build:tests --profile {{usage.profile}}" },
-  { task = "check" },
-  { task = "lint" },
-  { task = "test --profile {{usage.profile}}" },
-  { task = "package --profile {{usage.profile}}" },
-  { task = "release:publish:dry" },
-  { task = "release:rehearse:candidate" },
-]
+description = "Simulate The Rendered CI Locally"
+usage = 'flag "--event <event>" default="pr"'
+run = "stkr ci simulate --event {{usage.event}}"
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
@@ -339,25 +330,25 @@ run = [
 
 # === Release === #
 
-[tasks.release]
-description = "Prepare And Validate A Release Branch"
-run = [{ task = "release:prepare" }, { task = "ci" }]
-
 [tasks."release:prepare"]
 description = "Prepare The Release Branch"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run prepare"
 
 [tasks."release:publish"]
 description = "Publish A Tagged Release"
-run = [{ task = "release:publish:assets" }, { task = "release:publish:rust" }, { task = "release:publish:finalize" }]
+run = [{ task = "release:publish:assets" }, { task = "release:publish:finalize" }]
 
 [tasks."release:publish:assets"]
 description = "Draft The Release With Its Signed Assets"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run publish"
 
 [tasks."release:publish:dry"]
-description = "Verify Rust Registry Publication"
-run = "uv run --locked --project tools/python python -m harmos_tools.test.publish --rust"
+description = "Dry-Run Every Publication"
+run = [
+  "uv run --locked --project tools/python python -m harmos_tools.release.version check",
+  "uv run --locked --project tools/python python -m harmos_tools.release.run dry",
+  "uv run --locked --project tools/python python -m harmos_tools.release.run crates-dry",
+]
 
 [tasks."release:publish:finalize"]
 description = "Publish The Drafted Release"
@@ -371,13 +362,9 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 description = "Rehearse The Publication Chain On A Disposable Draft"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse"
 
-[tasks."release:rehearse:candidate"]
-description = "Rehearse Candidate Publication"
-run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse-candidate"
-
-[tasks."release:stage"]
-description = "Stage Native Release Assets"
-run = "uv run --locked --project tools/python python -m harmos_tools.release.run stage"
+[tasks."release:tag"]
+description = "Tag A Merged Release Review And Fast-Forward Main"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run tag"
 
 [tasks."release:verify"]
 description = "Verify Published Release Assets And Opted-In Installers"
@@ -387,7 +374,7 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 
 [tasks.housekeeping]
 description = "Inspect Repository Housekeeping"
-run = "stkr project housekeeping preview"
+run = "uv run --locked --project tools/python python -m harmos_tools.stkr project housekeeping preview"
 
 [tasks."housekeeping:stats"]
 description = "Report Project Statistics"

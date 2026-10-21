@@ -1,0 +1,90 @@
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:b87c1b96659f3da2671d0200bd0dbc838b96042e6e316b212aed08d8ebde305c
+name: Check
+"on":
+  workflow_call:
+    inputs:
+      runners:
+        type: string
+        required: true
+      budgets:
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+env:
+  PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}
+  MISE_LOCKED: "1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+jobs:
+  check_rust:
+    name: Rust (${{ inputs.platform }})
+    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
+    timeout-minutes: ${{ fromJSON(inputs.budgets).check_rust }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Cache / Cargo
+      id: cargo
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-v2-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      with:
+        version: v0.18.0
+    - run: mise run check:rust
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.cargo.outputs.cache-hit != 'true'
+      with:
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+        key: ${{ steps.cargo.outputs.cache-primary-key }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') &&
+        steps.tools.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.MISE_DATA_DIR }}
+        key: ${{ steps.tools.outputs.cache-primary-key }}
+    - run: sccache --show-stats
+      if: always()
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'pull_request' && 'READ_ONLY' || 'READ_WRITE' }}
+      SCCACHE_GHA_VERSION: ${{ inputs.platform }}
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
