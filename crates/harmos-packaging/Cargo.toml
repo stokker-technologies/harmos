@@ -82,8 +82,8 @@ process-wrap = { workspace = true, features = ["std", "job-object", "process-gro
 
 [dev-dependencies]
 # Local
-harmos-domain = { workspace = true, features = ["derive"] }
-harmos-sdk = { workspace = true, features = ["grpc"] }
+harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
+harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
 
 # Git
 
