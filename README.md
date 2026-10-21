@@ -763,4 +763,4 @@ submitting it.
 
 ## License
 
-Harmos is licensed under [Apache-2.0](LICENSE-APACHE).
+Harmos is licensed under [Apache-2.0](LICENSE).

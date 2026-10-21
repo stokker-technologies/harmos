@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:2b323935810a53e07f9f843dd5a5f1e6c5635f6240221a58e0fcffa8fed21c1d
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:3e500ceb994960862a9b84c579fd3bca1b704709fd05c9d24ff8ae842f9bff6f
 name: CI
 "on":
   push:
@@ -365,7 +365,7 @@ jobs:
     name: Build / Product / Dev (windows)
     runs-on:
     - windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -481,7 +481,7 @@ jobs:
     name: Build / Tests / Dev (windows)
     runs-on:
     - windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 120
     needs:
     - build_product_dev_windows
     steps:
@@ -627,7 +627,7 @@ jobs:
     name: Build / Product / Release (windows)
     runs-on:
     - windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -856,7 +856,7 @@ jobs:
     name: Build / Tests / Release (windows)
     runs-on:
     - windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 120
     needs:
     - build_product_release_windows
     steps:
@@ -2487,7 +2487,7 @@ jobs:
     name: Build / Product / Dev (linux)
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -2603,7 +2603,7 @@ jobs:
     name: Build / Tests / Dev (linux)
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 120
     needs:
     - build_product_dev_linux
     steps:
@@ -2750,7 +2750,7 @@ jobs:
     name: Build / Product / Release (linux)
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -2868,7 +2868,7 @@ jobs:
     name: Build / Tests / Release (linux)
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 120
     needs:
     - build_product_release_linux
     steps:

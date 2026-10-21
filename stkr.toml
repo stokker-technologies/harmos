@@ -32,7 +32,7 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 
 # Measured Cold Windows Build With Fixtures And Unit Tests (26 Minutes); Pull Requests Never Restore A Warm Target.
 [ci.budgets]
-build = 1800
+build = 6600
 
 [ci.runners]
 linux = ["ubuntu-24.04"]
@@ -421,7 +421,7 @@ product = "__PRODUCT_NAME__"
 # === Release === #
 
 [release]
-tag = "v0.1.1"
+tag = "v0.1.2"
 provider = "github"
 repository = "stokker-technologies/harmos"
 product = "harmos"
@@ -452,7 +452,7 @@ lock_commands = [
 ]
 
 [version]
-value = "0.1.1"
+value = "0.1.2"
 files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
 
 [[package.executables]]
