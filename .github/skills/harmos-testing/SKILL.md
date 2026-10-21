@@ -2,11 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<<<<<<< HEAD
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:7a1e50f2aea957f5d0d5fb81a4d0050c566eaae7216e943f9fbac4030b5bf1fa -->
-=======
 <!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:16e779337f5c699cb314154e54de1b8df5fef1a41710dbea46641457360c3df4 -->
->>>>>>> docs/skills-consistency
 
 # Harmos Testing
 
@@ -64,15 +60,5 @@ Generated-project stories use starter manifests and locks, a build-owned Cargo
 vendor directory and a hash-checked Python wheelhouse. Their isolated offline
 inputs cover root tooling and both starter locks.
 
-<<<<<<< HEAD
-Acceptance preflight installs the starter toolset once before nextest starts.
-Parallel starter stories disable automatic mise installs so they cannot repair
-shared runtime links while another story uses them.
-
-Python binding interoperability is Rust-driven acceptance using the tooling project's
-`tools/python/.venv`. Generated Python packages remain consumer-owned; repository tooling has
-no Python test suite or independently published client distribution.
-=======
 Python binding interoperability is Rust-driven acceptance using the root
 `.venv`; generated Python packages remain consumer-owned.
->>>>>>> docs/skills-consistency
