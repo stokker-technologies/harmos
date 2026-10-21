@@ -2,12 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-10-21
+
+
+### Changed
+
+- Use the canonical Apache-2.0 license file (#16)
+
 ## [0.1.1] - 2026-10-21
+
+
+### Changed
+
+- Adopt the linear release pipeline
+- Record the proven release flow for v0.1.1
 
 
 ### Fixed
 
 - Keep workspace dev-dependencies out of published manifests (#19)
+- Align v0.1.1 workspace requirements
 
 ## [0.1.0] - 2026-10-21
 
