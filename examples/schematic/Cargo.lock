@@ -818,9 +818,6 @@ version = "0.1.2"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
- "semver",
- "serde",
- "serde_json",
  "thiserror",
  "tracing",
  "wit-bindgen 0.62.0",
@@ -1546,8 +1543,6 @@ dependencies = [
  "harmos-guest",
  "harmos-packaging",
  "schematic-domain",
- "serde",
- "serde_json",
  "thiserror",
  "tracing",
 ]
