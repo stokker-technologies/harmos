@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-10-21
+
+
+### Fixed
+
+- Keep workspace dev-dependencies out of published manifests (#19)
+
 ## [0.1.0] - 2026-10-21
 
 
