@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:75cdac298e2a0974ba1ac6f3e3d7373da09c04ab15130e1f9a5ab9b0310eb467
+# Rendered by stkr project update from templates/python/package/run.py; sha256:84b372acf2af602d258331c725be9b4ac8ba674d71a6e018ff08350bbc3b37c1
 # ***
 #
 # __PRODUCT_NAME__
@@ -166,6 +166,7 @@ def verify(directory: Path, profile: str, target: str, root: Path | None = None)
         with temporary.directory() as install:
             executable = install / item["binary"]
             shutil.copy2(source, executable)
+            executable.chmod(0o755)
             subprocess.run([str(executable), *item["verify"]], cwd=install, check=True)
 
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:0489713222551254027e674aad8f55766f66f9e9e12edea7ac976eb477ee4302
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:545a60cf729bb036a8459f937da2e21f9cd47446a136ed0842ae2dcd004b13ef
 name: Release
 "on":
   workflow_call:
@@ -412,7 +412,7 @@ jobs:
     - name: Attest Release Downloads
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
       with:
-        subject-checksums: target/release-assets/SHA256SUMS
+        subject-checksums: target/release-assets/any/SHA256SUMS
     env:
       MISE_ENABLE_TOOLS: node,python,rust,uv,gh,git-cliff,glab,aqua:cargo-bins/cargo-binstall
     if: ${{ inputs.ready && (startsWith(github.ref, 'refs/tags/v')) }}

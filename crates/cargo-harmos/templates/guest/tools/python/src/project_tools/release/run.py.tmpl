@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:ccf6f32e708d82e2fcd6017880d7a799b31268f61f2caa468aa92c812e1a7aec
+# Rendered by stkr project update from templates/python/release/run.py; sha256:65a74f827c121390ef3ca20f04233158aa62d52f8337ae98d8511be0e8b82969
 # ***
 #
 # __PRODUCT_NAME__
@@ -43,6 +43,9 @@ STABLE = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 BUMPS = ("auto", "minor", "major")
 SUMS = "SHA256SUMS"
 STATE = "published.json"
+# Staged downloads live under <target>/; SHA256SUMS and the publication state span targets and live under any/.
+ASSETS = "target/release-assets"
+SHARED = "any"
 # The rehearsal runs the same release chain with this switch set; every leaf, authored ones included, honors it.
 REHEARSE = "RELEASE_REHEARSE"
 REHEARSAL_CHECKOUT = "RELEASE_REHEARSAL_CHECKOUT"
@@ -107,24 +110,29 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
     return result
 
 
-def stage(directory: Path, settings: dict, root: Path, tag: str, targets: list[str], profile: str = "release") -> list[dict]:
-    """Copy Every Target's Release Downloads Into One Folder Beside Their SHA256SUMS."""
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
+def stage(directory: Path, settings: dict, tag: str, targets: list[str], profile: str = "release") -> list[dict]:
+    """Copy Each Target's Release Downloads Into Its target/release-assets/<target>/ And Their SHA256SUMS Into any/."""
+    root = _root(directory)
+    # Only the staged targets and the shared checksums are replaced; another target's staging stays untouched.
+    for owned in [*targets, SHARED]:
+        if (root / owned).exists():
+            shutil.rmtree(root / owned)
     files = []
     for selected in targets:
         # Only the native target's executables can run here; other targets arrive verified by their Package jobs.
         if selected == _native():
             packages.verify(directory, profile, selected)
+        (root / selected).mkdir(parents=True)
         for asset in assets(directory, settings, selected, tag, profile):
-            destination = policy.inside(root, asset["name"])
-            if destination.exists():
+            # Downloads publish side by side, so a name must be unique across every target.
+            if any(item["name"] == asset["name"] for item in files):
                 raise policy.ToolError(f"release download names collide across targets: {asset['name']}")
+            destination = policy.inside(root / selected, asset["name"])
             shutil.copyfile(policy.inside(directory, asset["path"]), destination)
-            files.append(_describe(destination))
-    (root / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
-    return [*files, _describe(root / SUMS)]
+            files.append(_describe(root, destination))
+    (root / SHARED).mkdir(parents=True)
+    (root / SHARED / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
+    return [*files, _describe(root, root / SHARED / SUMS)]
 
 
 def notes(directory: Path, tag: str, *, tagged: bool) -> str:
@@ -244,7 +252,7 @@ def dry(directory: Path, settings: dict) -> None:
     profile = os.environ.get("RELEASE_PROFILE", "dev") or "dev"
     if profile not in ("dev", "release"):
         raise policy.ToolError("RELEASE_PROFILE must be dev or release")
-    root = policy.inside(directory, f"target/release-assets/{profile}")
+    root = _root(directory)
     targets = list(settings.get("targets", []))
     present = [selected for selected in targets if (directory / "target/package" / profile / selected).is_dir()]
     missing = sorted(set(targets) - set(present))
@@ -252,15 +260,16 @@ def dry(directory: Path, settings: dict) -> None:
         raise policy.ToolError(f"{profile} packages are missing for release targets: {', '.join(missing)}")
     if missing:
         print(f"note: no local {profile} packages for {', '.join(missing)}; CI stages every release target")
-    files = stage(directory, settings, root, tag, present, profile=profile)
-    for line in (root / SUMS).read_text(encoding="utf-8").splitlines():
+    files = stage(directory, settings, tag, present, profile=profile)
+    staged = {item["name"]: item["path"] for item in files}
+    for line in (root / SHARED / SUMS).read_text(encoding="utf-8").splitlines():
         digest, _, name = line.partition("  ")
-        if hashlib.sha256(policy.inside(root, name).read_bytes()).hexdigest() != digest:
+        if name not in staged or hashlib.sha256(policy.inside(root, staged[name]).read_bytes()).hexdigest() != digest:
             raise policy.ToolError(f"staged download differs from {SUMS}: {name}")
     native = _native()
     if native in present:
         # The staged bytes themselves run, from an isolated directory, exactly as a user's download would.
-        packages.verify(directory, profile, native, root)
+        packages.verify(directory, profile, native, root / native)
     print(f"staged {len(files) - 1} download(s) and {SUMS} for {', '.join(present) or 'no target'} in {root.relative_to(directory)}")
 
 
@@ -286,7 +295,7 @@ def publish(directory: Path, settings: dict) -> None:
     root = _root(directory)
     # GitLab rehearses the development packages of its release review; every other publication stages release ones.
     profile = (os.environ.get("RELEASE_PROFILE") or "release") if rehearse else "release"
-    files = stage(directory, settings, root, tag, targets, profile=profile)
+    files = stage(directory, settings, tag, targets, profile=profile)
     name = registry.rehearsal_name(sha) if rehearse else tag
     state = {"sha": sha, "tag": tag, "name": name, "files": {}}
     if settings["provider"] == "github":
@@ -295,7 +304,7 @@ def publish(directory: Path, settings: dict) -> None:
         for item in files:
             data = _bytes(root, item)
             state["files"][item["name"]] = {**item, "endpoint": registry.upload(settings, release["id"], item, data)}
-            policy.write_json(root / STATE, state)
+            policy.write_json(root / SHARED / STATE, state)
     else:
         if rehearse:
             registry.discard_gitlab(settings, name, _package(settings))
@@ -305,15 +314,15 @@ def publish(directory: Path, settings: dict) -> None:
         for item in files:
             # A rehearsal uploads under its own package version, which the discard deletes again.
             state["files"][item["name"]] = {**item, **registry.upload_generic(settings, _package(settings), name, item, _bytes(root, item))}
-            policy.write_json(root / STATE, state)
-    policy.write_json(root / STATE, state)
+            policy.write_json(root / SHARED / STATE, state)
+    policy.write_json(root / SHARED / STATE, state)
 
 
 def finalize(directory: Path, settings: dict) -> None:
     """Verify The Uploaded Downloads And Signatures, Then Make The Release Visible, Or Discard The Rehearsal."""
     rehearse = rehearsing()
     root = _root(directory)
-    state = json.loads((root / STATE).read_text(encoding="utf-8"))
+    state = json.loads((root / SHARED / STATE).read_text(encoding="utf-8"))
     if state.get("sha") != _revision(directory) or state.get("tag") != release_tag(directory):
         raise policy.ToolError("the staged publication belongs to another revision or version")
     with temporary.directory() as downloads:
@@ -440,12 +449,17 @@ def tag(directory: Path, settings: dict) -> None:
         raise policy.ToolError(f"{name} already identifies another revision; never move a release tag")
     # Only products that render the rehearsal can have rehearsed their review; for them no tag exists without it.
     if _task_defined(directory, "release:rehearse"):
-        registry.rehearsed(settings, review, sha)
+        registry.rehearsed(directory, settings, review, sha)
     else:
         print("note: this product renders no rehearsal; Release / Dry verified the review")
     token = os.environ.get("RELEASE_TOKEN", "")
     if not token:
         raise policy.ToolError("tagging requires the workflow-triggering RELEASE_TOKEN secret")
+    # Reject known divergence before any immutable tag or registry publication can occur.
+    remote = _push_remote(settings, token)
+    _run(directory, ["git", "fetch", "--quiet", remote, "refs/heads/main"], token)
+    if subprocess.run(["git", "merge-base", "--is-ancestor", "FETCH_HEAD", sha], cwd=directory, check=False).returncode:
+        raise policy.ToolError(f"main is not an ancestor of {name}; it must only ever fast-forward to release tags")
     if existing is None:
         # The release token's tag push starts the tag pipeline; the native job token's would not.
         registry.create_tag(settings, name, sha)
@@ -454,10 +468,6 @@ def tag(directory: Path, settings: dict) -> None:
     if _task_defined(directory, "release:publish:rust"):
         policy.execute(directory, ["mise", "run", "release:publish:rust"])
     # main is the last released commit: a fast-forward to the tag, never a merge or a force.
-    remote = _push_remote(settings, token)
-    _run(directory, ["git", "fetch", "--quiet", remote, "refs/heads/main"], token)
-    if subprocess.run(["git", "merge-base", "--is-ancestor", "FETCH_HEAD", sha], cwd=directory, check=False).returncode:
-        raise policy.ToolError(f"main is not an ancestor of {name}; it must only ever fast-forward to release tags")
     _run(directory, ["git", "push", remote, f"{sha}:refs/heads/main"], token)
     print(f"{name}: tagged at {sha}; main fast-forwarded")
 
@@ -539,7 +549,7 @@ def run(directory: Path, verb: str) -> None:
 
 
 def _bytes(root: Path, item: dict) -> bytes:
-    data = policy.inside(root, item["name"]).read_bytes()
+    data = policy.inside(root, item["path"]).read_bytes()
     if hashlib.sha256(data).hexdigest() != item["sha256"]:
         raise policy.ToolError(f"staged release bytes changed: {item['name']}")
     return data
@@ -562,9 +572,9 @@ def _chain(directory: Path) -> list[str]:
     return (["release:publish:rust"] if "release:publish:rust" in tasks else []) + ["release:publish"]
 
 
-def _describe(path: Path) -> dict:
+def _describe(root: Path, path: Path) -> dict:
     data = path.read_bytes()
-    return {"name": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+    return {"name": path.name, "path": path.relative_to(root).as_posix(), "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
 
 
 def _native() -> str:
@@ -718,7 +728,7 @@ def _revision(directory: Path) -> str:
 
 
 def _root(directory: Path) -> Path:
-    return policy.inside(directory, policy.policy(directory, "release").get("directory", "target/release-assets"))
+    return policy.inside(directory, ASSETS)
 
 
 def _run(directory: Path, command: list[str], secret: str) -> str:

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:ad46fd2d97ebcf26e07b9d6897795a0e94aae76ade3ca11db36a619e1993d7af
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:5c2f6fcda443c96c5ae396cbcfbfe9501773340eb62d5ac0712a406010afa87a
 # ***
 #
 # Harmos
@@ -237,7 +237,7 @@ def request(
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
             if tagging:
                 if not token:
-                    raise policy.ToolError("GitLab tagging and rehearsals require the RELEASE_TOKEN project access token")
+                    raise policy.ToolError("GitLab tagging and rehearsals require the RELEASE_TOKEN release identity")
                 headers = {"Authorization": "Bearer " + token}
             elif method == "GET":
                 if not token:
@@ -468,30 +468,31 @@ def release_review(settings: dict, sha: str) -> dict | None:
     return {"head": matches[0]["sha"], "number": matches[0]["iid"]} if matches else None
 
 
-def rehearsed(settings: dict, review: dict, sha: str) -> None:
+def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     """The Release Review Head Passed Its Rehearsal And Its Tree Is Exactly The Merged Tree."""
     head = review["head"]
     if settings["provider"] == "github":
-        runs = document(settings, f"commits/{head}/check-runs?check_name={urllib.parse.quote(REHEARSAL_CHECK)}&filter=latest") or {}
-        conclusions = {run.get("conclusion") for run in runs.get("check_runs", [])}
-        if conclusions != {"success"}:
+        runs = document(settings, f"commits/{head}/check-runs?check_name={urllib.parse.quote(REHEARSAL_CHECK)}&filter=latest")
+        checks = runs.get("check_runs") if isinstance(runs, dict) else None
+        if (
+            not isinstance(checks, list)
+            or not checks
+            or any(not isinstance(run, dict) or run.get("status") != "completed" or run.get("conclusion") != "success" for run in checks)
+        ):
             raise policy.ToolError(f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check")
-        trees = [document(settings, f"git/commits/{revision}") or {} for revision in (head, sha)]
-        if trees[0].get("tree", {}).get("sha") != trees[1].get("tree", {}).get("sha"):
-            raise policy.ToolError("the merged tree differs from the rehearsed release PR head; update the release PR and merge again")
+        _same_tree(directory, head, sha)
         return
     # The merge request's latest pipeline ran on its head; its rehearsal job must have succeeded there.
-    pipeline = (document(settings, f"merge_requests/{review['number']}") or {}).get("head_pipeline") or {}
-    if pipeline.get("sha") != head:
+    merged_review = document(settings, f"merge_requests/{review['number']}")
+    pipeline = merged_review.get("head_pipeline") if isinstance(merged_review, dict) else None
+    if not isinstance(pipeline, dict) or pipeline.get("sha") != head or not isinstance(pipeline.get("id"), int):
         raise policy.ToolError(f"release MR !{review['number']} has no pipeline for its head {head}")
     jobs = [
         job for job in pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false") if job.get("name") == GITLAB_REHEARSAL_JOB
     ]
     if not jobs or any(job.get("status") != "success" for job in jobs):
         raise policy.ToolError(f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job")
-    difference = document(settings, f"repository/compare?from={head}&to={sha}&straight=true") or {}
-    if difference.get("diffs"):
-        raise policy.ToolError("the merged tree differs from the rehearsed release MR head; rebase the release MR and merge again")
+    _same_tree(directory, head, sha)
 
 
 def discard_gitlab(settings: dict, name: str, package: str) -> int:
@@ -556,6 +557,36 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 
 
 # === Private Functions === #
+
+
+def _same_tree(directory: Path, head: str, merged: str) -> None:
+    revisions = (head, merged)
+    if any(not isinstance(revision, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) for revision in revisions):
+        raise policy.ToolError("rehearsal tree verification requires full commit object IDs")
+    commands = [["git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", *revisions]]
+    commands.extend(["git", "rev-parse", "--verify", revision + "^{tree}"] for revision in revisions)
+    outputs = []
+    for command in commands:
+        try:
+            output = subprocess.run(
+                command,
+                cwd=directory,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise policy.ToolError("could not fetch and resolve the rehearsed and merged Git trees") from error
+        if output.returncode:
+            raise policy.ToolError("could not fetch and resolve the rehearsed and merged Git trees")
+        outputs.append(output.stdout.strip())
+    trees = outputs[1:]
+    if any(not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", tree) for tree in trees):
+        raise policy.ToolError("rehearsal tree verification returned no valid tree object IDs")
+    if trees[0] != trees[1]:
+        raise policy.ToolError("the merged tree differs from the rehearsed release review head; update the review and merge again")
 
 
 def _publication_order(packages: dict) -> list[str]:
