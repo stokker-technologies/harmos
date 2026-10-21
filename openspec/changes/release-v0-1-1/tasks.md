@@ -3,16 +3,13 @@
 ## 1. Source
 
 - [x] 1.1 Adopt PR19's dependency corrections; verify merged provider state and unchanged runtime APIs.
-- [x] 1.5 Carry the change into release/v0.1.1 and verify required OpenSpec tooling/configuration before its signed commit.
+- [ ] 1.5 Carry the change into release/v0.1.1 and verify required OpenSpec tooling/configuration before its signed commit.
 - [ ] 1.2 Generate aligned v0.1.1 manifests, sibling requirements and locks with the migrated release preparation; inspect the complete candidate diff and git-cliff notes preview.
 - [ ] 1.3 Review README claims and examples against candidate dependencies, linear release policy and final downloads; update only affected content.
 - [ ] 1.4 Confirm source inventory complete and release candidate ownership before validation.
 - [x] 1.6 Bootstrap the approved exact-revision authoring CLI locally and use supported same-change rebind from the expected old branch; verify unchanged source and correct marker ownership.
 - [ ] 1.7 Adopt a repaired, verified published Hub release renderer; replace legacy workflows/helpers/changelog/provenance and matching scaffold copies through their owner, preserving authored mise settings and existing candidate history.
-- [x] 1.8 Resolve the approved RELEASE_TOKEN identity and concrete provider protection migration; retain full required native dev checks and obtain any reserved approval before replacing legacy main rules.
-- [x] 1.9 Create a separate single-repository Harmos release PAT with the organization's maximum lifetime, provision repository RELEASE_TOKEN with gh, and verify live filtered rehearsal-check reads without exposing credentials.
-- [ ] 1.10 Retire CHANGELOG.md through the supported Hub owner path: the installed PreToolUse guard rejects deletion under the superseded changelog contract; reconcile that guard with tag-time notes before cleanup, without bypassing it.
-- [x] 1.11 Adopt PR16's exact canonical license file and README destination in the candidate to satisfy the current required authoring check; retain PR16 reconciliation in the authorized integration follow-up.
+- [ ] 1.8 Resolve the approved RELEASE_TOKEN identity and concrete provider protection migration; retain full required native dev checks and obtain any reserved approval before replacing legacy main rules.
 
 ## 2. Validation And Publication
 

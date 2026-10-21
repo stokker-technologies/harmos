@@ -1,11 +1,11 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:07e695d5beea69e08ae4003295a4e63b7319cbc0037d36104e9e64c1734e5b5c
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:80d579febdbaf31432ae1dd35f97e0ca7c1517e6c3beba688e615212a7125d10
 stages:
 - Check
 - Build
 - Validate
 - Bench
 - Package
-- Release
+- Publish
 default:
   image:
     name: >-
@@ -15,7 +15,6 @@ default:
   before_script:
   - mise trust --yes
   - mise install --yes
-  interruptible: true
 variables:
   GIT_DEPTH: "0"
   MISE_YES: "1"
@@ -27,25 +26,1311 @@ variables:
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
 workflow:
   rules:
-  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-    variables:
-      PROFILE: release
-    auto_cancel:
-      on_new_commit: none
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    variables:
-      PROFILE: dev
-    auto_cancel:
-      on_new_commit: interruptible
   - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
     when: never
   - if: $CI_COMMIT_BRANCH
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+Check / Repository:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 10 minutes
+  needs: []
+  script:
+  - mise run check:repository
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+Check / Python:
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 10 minutes
+  needs: []
+  script:
+  - mise run check:python
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Check / Rust (linux):
+  stage: Check
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run check:rust
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Product / Dev (linux):
+  stage: Build
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile dev
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
+    mkdir -p target/ci
+    candidates=("target/build/dev/${native}/" "target/build/dev/any/" "target/generated/")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-product-dev-linux.tar.zst" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- "${outputs[@]}"
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-product-dev-linux.tar.zst
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Tests / Dev (linux):
+  stage: Build
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build:tests --profile dev
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
+    mkdir -p target/ci
+    candidates=("target/build/dev/${native}/tests")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-tests-dev-linux.tar.zst"  -- "${outputs[@]}"
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)"
+    native="${native##*/}"
+    mkdir -p "target/build/dev/${native}/fixtures"
+    mkdir -p target/ci
+    candidates=("target/build/dev/${native}/fixtures")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-fixtures-dev-linux.tar.zst"  -- "${outputs[@]}"
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-tests-dev-linux.tar.zst
+    - target/ci/build-fixtures-dev-linux.tar.zst
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Product / Release (linux):
+  stage: Build
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile release
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
+    mkdir -p target/ci
+    candidates=("target/build/release/${native}/" "target/build/release/any/" "target/generated/")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-product-release-linux.tar.zst" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- "${outputs[@]}"
+  rules:
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-product-release-linux.tar.zst
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Tests / Release (linux):
+  stage: Build
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build:tests --profile release
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
+    mkdir -p target/ci
+    candidates=("target/build/release/${native}/tests")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-tests-release-linux.tar.zst"  -- "${outputs[@]}"
+  - |-
+    native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)"
+    native="${native##*/}"
+    mkdir -p "target/build/release/${native}/fixtures"
+    mkdir -p target/ci
+    candidates=("target/build/release/${native}/fixtures")
+    outputs=()
+    for path in "${candidates[@]}"; do
+      if [ -e "$path" ]; then outputs+=("$path"); fi
+    done
+    [ ${#outputs[@]} -gt 0 ]
+    tar --zstd -cf "target/ci/build-fixtures-release-linux.tar.zst"  -- "${outputs[@]}"
+  rules:
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: linux-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-tests-release-linux.tar.zst
+    - target/ci/build-fixtures-release-linux.tar.zst
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Validate / Unit / Rust (linux):
+  stage: Validate
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
+  - mise run test:unit:rust --profile $PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    needs:
+    - job: Build / Tests / Dev (linux)
+      artifacts: true
     variables:
       PROFILE: dev
-    auto_cancel:
-      on_new_commit: none
-include:
-- local: .gitlab/ci/managed/check.yml
-- local: .gitlab/ci/managed/build.yml
-- local: .gitlab/ci/managed/validate.yml
-- local: .gitlab/ci/managed/package.yml
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+    needs:
+    - job: Build / Tests / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+    needs:
+    - job: Build / Tests / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Build / Tests / Release (linux)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    name: reports-$PROFILE-linux-unit-rust
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/$PROFILE/linux-*/unit-rust/
+    reports:
+      junit: target/tests/$PROFILE/linux-*/unit-rust/junit.xml
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Package / Rust (linux):
+  stage: Package
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
+  - mise run package:rust --profile $PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (linux)
+      artifacts: false
+    - job: Validate / Unit / Rust (linux)
+      artifacts: false
+    - job: Build / Product / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (linux)
+      artifacts: false
+    - job: Validate / Unit / Rust (linux)
+      artifacts: false
+    - job: Build / Product / Dev (linux)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (linux)
+      artifacts: false
+    - job: Validate / Unit / Rust (linux)
+      artifacts: false
+    - job: Build / Product / Release (linux)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    name: package-$PROFILE-rust-linux-*
+    expire_in: 7 days
+    paths:
+    - target/package/$PROFILE/linux-*/rust/
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Check / Rust (windows):
+  stage: Check
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run check:rust
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Product / Dev (windows):
+  stage: Build
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile dev
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/dev/${native}/", "target/build/dev/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-product-dev-windows.tar.zst
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Tests / Dev (windows):
+  stage: Build
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build:tests --profile dev
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/dev/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile dev)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force "target/build/dev/${native}/fixtures" | Out-Null
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/dev/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-dev-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
+      || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/) && ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-tests-dev-windows.tar.zst
+    - target/ci/build-fixtures-dev-windows.tar.zst
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Product / Release (windows):
+  stage: Build
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build --profile release
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/release/${native}/", "target/build/release/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  rules:
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-product-release-windows.tar.zst
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Build / Tests / Release (windows):
+  stage: Build
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune start
+  - mise run build:tests --profile release
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/release/${native}/tests") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - |-
+    $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile release)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    New-Item -ItemType Directory -Force "target/build/release/${native}/fixtures" | Out-Null
+    New-Item -ItemType Directory -Force target/ci | Out-Null
+    [string[]]$outputs = @("target/build/release/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
+    if (!$outputs) { throw 'No build outputs found' }
+    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-fixtures-release-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  rules:
+  - if: >-
+      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
+      $CI_COMMIT_BRANCH == "main")
+    variables:
+      COMPILER_CACHE_POLICY: pull-push
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $COMPILER_CACHE_POLICY
+  - key:
+      prefix: windows-$CI_JOB_NAME_SLUG-target
+      files:
+      - Cargo.lock
+      - mise.lock
+    paths:
+    - target/debug/deps/
+    - target/debug/build/
+    - target/debug/.fingerprint/
+    - target/release/deps/
+    - target/release/build/
+    - target/release/.fingerprint/
+    policy: $COMPILER_CACHE_POLICY
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-tests-release-windows.tar.zst
+    - target/ci/build-fixtures-release-windows.tar.zst
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  after_script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.prune prune
+  variables:
+    COMPILER_CACHE_POLICY: pull
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+Validate / Unit / Rust (windows):
+  stage: Validate
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - tar --zstd -xf "target/ci/build-tests-$env:PROFILE-windows.tar.zst"
+  - mise run test:unit:rust --profile $env:PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    needs:
+    - job: Build / Tests / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: >-
+      $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~
+      /^(dev|main|release\/v.*)$/
+    needs:
+    - job: Build / Tests / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+    needs:
+    - job: Build / Tests / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Build / Tests / Release (windows)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    name: reports-$PROFILE-windows-unit-rust
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/$PROFILE/windows-*/unit-rust/
+    reports:
+      junit: target/tests/$PROFILE/windows-*/unit-rust/junit.xml
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Package / Rust (windows):
+  stage: Package
+  tags:
+  - saas-windows-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
+  - mise run package:rust --profile $env:PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (windows)
+      artifacts: false
+    - job: Validate / Unit / Rust (windows)
+      artifacts: false
+    - job: Build / Product / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (windows)
+      artifacts: false
+    - job: Validate / Unit / Rust (windows)
+      artifacts: false
+    - job: Build / Product / Dev (windows)
+      artifacts: true
+    variables:
+      PROFILE: dev
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    needs:
+    - job: Check / Repository
+      artifacts: false
+    - job: Check / Rust (windows)
+      artifacts: false
+    - job: Validate / Unit / Rust (windows)
+      artifacts: false
+    - job: Build / Product / Release (windows)
+      artifacts: true
+    variables:
+      PROFILE: release
+  artifacts:
+    name: package-$PROFILE-rust-windows-*
+    expire_in: 7 days
+    paths:
+    - target/package/$PROFILE/windows-*/rust/
+  inherit:
+    default: false
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: windows-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: windows-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+Publish / Dry:
+  stage: Publish
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  script:
+  - mise run release:publish:dry
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+  dependencies: []
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab
+Publish / Release:
+  stage: Publish
+  tags: []
+  timeout: 30 minutes
+  script:
+  - mise run release:publish
+  rules:
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  environment:
+    name: release
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+    CRATES_IO_ID_TOKEN:
+      aud: crates.io
+  dependencies:
+  - Package / Rust (linux)
+  - Package / Rust (windows)
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab
+Validate / Coverage:
+  stage: Validate
+  tags: []
+  timeout: 180 minutes
+  needs:
+  - job: Build / Product / Dev (linux)
+    artifacts: true
+  - job: Build / Tests / Dev (linux)
+    artifacts: true
+  script:
+  - tar --zstd -xf "target/ci/build-product-dev-linux.tar.zst"
+  - tar --zstd -xf "target/ci/build-tests-dev-linux.tar.zst"
+  - tar --zstd -xf "target/ci/build-fixtures-dev-linux.tar.zst"
+  - mise run test:coverage --profile dev
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/dev/linux-*/coverage/
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo
+Publish / Prepare:
+  stage: Publish
+  tags:
+  - saas-linux-medium-amd64
+  timeout: 30 minutes
+  needs: []
+  script:
+  - mise run release:prepare
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "web"
+    when: manual
+  cache:
+  - key:
+      prefix: linux-tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+  - key:
+      prefix: linux-cargo
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: pull
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,gh,git-cliff,glab

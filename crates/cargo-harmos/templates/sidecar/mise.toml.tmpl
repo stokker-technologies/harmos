@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:960942826bfd4735860379163d44606467d15aafe9283035894fd04243bd4d51
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:10c5afdc05383e1ce391d81ab51d0cc574bc3cc37043c366a39bcd216bad272c
 # === Settings === #
 
 [settings]
@@ -184,15 +184,36 @@ run = "uv run --locked --project tools/python python -m project_tools.package.ru
 # === CI === #
 
 [tasks.ci]
-description = "Simulate The Rendered CI Locally"
-usage = 'flag "--event <event>" default="pr"'
-run = "stkr ci simulate --event {{usage.event}}"
+description = "Run The CI Flow Locally"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  { task = "check" },
+  { task = "build --profile {{usage.profile}}" },
+  { task = "build:tests --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
+]
 
 [tasks."ci:nightly"]
 description = "Run The Nightly Coverage And Bench Flow"
 run = [{ task = "build" }, { task = "build:tests" }, { task = "test:coverage" }]
 
 # === Release === #
+
+[tasks.release]
+description = "Prepare And Validate A Release"
+run = [{ task = "release:prepare" }, { task = "ci" }, { task = "release:publish:dry" }]
+
+[tasks."release:prepare"]
+description = "Prepare The Release Branch"
+run = "uv run --locked --project tools/python python -m project_tools.release.run prepare"
+
+[tasks."release:publish"]
+description = "Publish A Tagged Release"
+run = [{ task = "release:publish:rust" }]
+
+[tasks."release:publish:dry"]
+description = "Dry-Run Every Publication"
+run = "uv run --locked --project tools/python python -m project_tools.test.publish --rust"
 
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
@@ -202,11 +223,7 @@ run = "uv run --locked --project tools/python python -m project_tools.release.ru
 
 [tasks.housekeeping]
 description = "Clean Owned Build Outputs And State"
-run = "uv run --locked --project tools/python python -m project_tools.stkr project housekeeping"
-
-[tasks."housekeeping:outdated"]
-description = "Report Available Dependency And Tool Updates Without Changing Anything"
-run = "mise outdated"
+run = "stkr project housekeeping"
 
 [tasks."housekeeping:stats"]
 description = "Count Source Lines"

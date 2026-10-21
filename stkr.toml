@@ -67,6 +67,24 @@ step_timeout_seconds = 600
 [conventions.rust]
 exclude = ["schematic-domain"]
 
+[[conventions.testing.lanes]]
+category = "acceptance"
+language = "rust"
+hosts = [
+  "target/build/{profile}/{target}/bin/cargo-harmos{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-sidecar{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm",
+]
+
+[[conventions.testing.lanes]]
+category = "system"
+language = "rust"
+hosts = [
+  "target/build/{profile}/{target}/bin/schematic-cli{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-sidecar{exe}",
+  "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm",
+]
+
 [conventions.testing.limits]
 unit = 512
 # The Runtime Crate Alone Owns About 660 Curated Stories.
@@ -403,10 +421,13 @@ product = "__PRODUCT_NAME__"
 # === Release === #
 
 [release]
+tag = "v0.1.1"
 provider = "github"
 repository = "stokker-technologies/harmos"
 product = "harmos"
+notes = "CHANGELOG.md"
 targets = ["linux-x86_64", "windows-x86_64"]
+tests = ["unit-rust", "integration-rust", "acceptance-rust", "system-rust"]
 crates_bootstrap_secret = "CARGO_REGISTRY_TOKEN"
 lock_commands = [
   [

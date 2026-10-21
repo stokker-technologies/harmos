@@ -89,8 +89,8 @@ your application defines what each change means.
 
 ## Quick Start
 
-Harmos is pre-1.0. APIs may change. Stable releases publish the Harmos crates
-to crates.io. Windows and Linux are the supported development platforms.
+Harmos is pre-1.0. APIs may change, and the crate is not yet published to
+crates.io. Windows and Linux are the supported development platforms.
 
 Try the diagram-editor walkthrough with the repository's pinned toolchain:
 
@@ -189,21 +189,21 @@ cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path example
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
-Stable releases publish raw
+The upcoming release is configured to publish raw
 `cargo-harmos-<version>-<Rust-target-triple>` executables (`.exe` on Windows).
 After publication, download the matching asset, verify it against `SHA256SUMS`,
 rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
 `PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
 installation. Cargo-binstall and mise installation are verified against those
 same published bytes before release completion. Harmos crates, including the
-CLI, are published to crates.io.
+CLI, are configured for crates.io publication.
 
 The release also declares `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
 checks run both backends from an isolated extraction. Release downloads include
-`SHA256SUMS`; test reports and fixtures remain CI artifacts.
+`SHA256SUMS` and `release.json`; test reports and fixtures remain CI artifacts.
 
 `package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Relocated archives use
@@ -702,7 +702,7 @@ milestone. GitHub hosts the
 authoritative repository and native CI; GitLab retains a one-way mirror.
 
 Follow [issues](https://github.com/stokker-technologies/harmos/issues)
-for development discussions and [releases](https://github.com/stokker-technologies/harmos/releases) for recorded changes.
+for development discussions and [the changelog](CHANGELOG.md) for recorded changes.
 
 Dynamic clients consume discovered canonical contracts through
 `harmos::grpc::dynamic::Operation` or a generated Python package's
@@ -731,12 +731,11 @@ refuse a missing or stale fixture. Product and Tests outputs use matching
 `test:integration`, `test:acceptance` and `test:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
 Unit and integration lanes consume Tests outputs; metadata inspection uses
-stamped inert artifact copies. Acceptance and system lanes also consume the whole
-matching Product build, and only acceptance prepares compiler libraries
+stamped inert artifact copies. Acceptance and system lanes additionally select
+their declared Product hosts, and only acceptance prepares compiler libraries
 and offline authoring inputs.
-`mise run test:coverage` instruments the full selection separately.
-`mise run ci --event pr` simulates the rendered pull-request graph from a cold
-clone of committed source; a failing lane fails the run.
+`mise run test:coverage` instruments the full selection separately. `mise run ci`
+runs the same graph as CI on the current tree; a failing lane fails the run.
 
 CI runs the Check, Build and Validate stages on Linux and Windows, and both
 platforms are required for `dev`, `main` and releases. Pull requests and pushes
@@ -747,12 +746,10 @@ pipelines. Rust crates publish to crates.io; CI packages retain the native CLI
 and example plugin bundles. Generated Python clients belong to their consuming
 producer package.
 
-Task PRs squash into `dev`. `Release / Prepare` opens a `release/v<version>`
-review into `dev`; the complete native graph and `Release / Rehearsal` verify
-that candidate. Squash-merging the review starts `Release / Tag`, which tags
-the merged `dev` commit and fast-forwards `main` to it. The tag pipeline publishes
-and verifies the native release. Hotfixes follow the same `dev` flow as the next
-patch release.
+Task PRs squash into `dev`. Stable `release/v<version>` branches start from `dev`
+and merge into `main` preserving ancestry, then incorporate their history into
+`dev`. Harmos currently enables the release-branch route into `main`; a published-tag
+hotfix needs its explicit release context before enabling that route.
 
 See [Contributing](CONTRIBUTING.md) for prerequisites and the full development
 workflow.
@@ -766,4 +763,4 @@ submitting it.
 
 ## License
 
-Harmos is licensed under [Apache-2.0](LICENSE).
+Harmos is licensed under [Apache-2.0](LICENSE-APACHE).

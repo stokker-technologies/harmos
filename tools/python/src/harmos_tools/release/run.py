@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:5664a29e69feb137f46b78985a260cadb40c012f3a2b11775833c3401c87d41f
+# Rendered by stkr project update from templates/python/release/run.py; sha256:d8ff19cc5d07a15352bbbdc7a63312b7e561924f81e3ec9af3a73ef9a082982b
 # ***
 #
 # Harmos
@@ -7,11 +7,12 @@
 #
 # ***
 
-"""Prepare, Rehearse, Tag And Publish Releases From The Conventional Commit History"""
+"""Prepare Candidates And Bind Native Validation To Immutable Releases"""
 
 # === Imports === #
 
 # Standard Library Imports
+import base64
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 import urllib.parse
 from functools import cache
@@ -40,18 +42,9 @@ from . import policy, registry, screenshots, version
 # === Constants === #
 
 STABLE = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-BUMPS = ("auto", "minor", "major")
-SUMS = "SHA256SUMS"
-STATE = "published.json"
-# The rehearsal runs the same release chain with this switch set; every leaf, authored ones included, honors it.
-REHEARSE = "RELEASE_REHEARSE"
+RESERVED = {"SHA256SUMS", "release.json", "platform.json", "published.json"}
 REHEARSAL_CHECKOUT = "RELEASE_REHEARSAL_CHECKOUT"
-# The rendered GitHub workflows: crates.io trusts the caller, PyPI the called release workflow.
-CALLER_WORKFLOW = "ci.yml"
-RELEASE_WORKFLOW = "managed-release.yml"
-# Hub-owned leaves of the release chain; any other release:publish step is project-authored.
-OWNED_LEAVES = {"release:publish:assets", "release:publish:python", "release:publish:finalize"}
-COLD_UNSET = {"RUSTC_WRAPPER", "UV_PROJECT_ENVIRONMENT", "CARGO_HOME", "UV_CACHE_DIR", REHEARSAL_CHECKOUT, REHEARSE}
+COLD_UNSET = {"RUSTC_WRAPPER", "UV_PROJECT_ENVIRONMENT", "CARGO_HOME", "UV_CACHE_DIR", "RELEASE_REHEARSAL_CHECKOUT"}
 
 # === Types === #
 
@@ -60,675 +53,730 @@ COLD_UNSET = {"RUSTC_WRAPPER", "UV_PROJECT_ENVIRONMENT", "CARGO_HOME", "UV_CACHE
 # === Public Functions === #
 
 
+def inputs(directory: Path) -> dict:
+    """Identify Committed Source And Locked Native Resolved Inputs Across Promotions."""
+
+    tree = policy.execute(directory, ["git", "rev-parse", "HEAD^{tree}"], capture=True).strip()
+    if policy.execute(directory, ["git", "status", "--porcelain", "--untracked-files=normal"], capture=True).strip():
+        tree = None
+    graph = []
+    overrides = []
+    if (directory / "Cargo.toml").is_file():
+        resolved = policy.execute(directory, ["cargo", "metadata", "--locked", "--format-version", "1"], capture=True)
+        metadata = json.loads(resolved)
+        identities = {}
+        for package in metadata["packages"]:
+            source = package["source"]
+            if source is None:
+                manifest = Path(package["manifest_path"]).resolve()
+                if manifest.is_relative_to(directory.resolve()):
+                    relative = manifest.relative_to(directory.resolve()).as_posix()
+                    source = "path:" + relative
+                else:
+                    overrides.append(
+                        {
+                            "package": package["name"],
+                            "manifest": manifest.as_posix(),
+                            "source": _override_source(manifest.parent),
+                        }
+                    )
+                    source = "local:" + manifest.as_posix()
+            identities[package["id"]] = f"{package['name']}@{package['version']}|{source}"
+        graph = [
+            {
+                "package": identities[node["id"]],
+                "features": sorted(node["features"]),
+                "dependencies": sorted(identities[dependency] for dependency in node["dependencies"]),
+            }
+            for node in metadata["resolve"]["nodes"]
+        ]
+    environment = {name: os.environ.get(name) for name in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET")}
+    identity = {
+        "source_tree": tree,
+        "graph": sorted(graph, key=lambda node: node["package"]),
+        "build_environment": environment,
+    }
+
+    # Local Overrides Mark The Identity Unpublishable; CI Refuses Them Outright.
+    if overrides:
+        overrides.sort(key=lambda override: (override["package"], override["manifest"]))
+        if continuous_integration():
+            names = ", ".join(override["package"] for override in overrides)
+            raise policy.ToolError(f"unpublished local dependency override: {names}")
+        _warn_overrides(tuple((item["package"], item["manifest"]) for item in overrides))
+        identity["local_overrides"] = overrides
+    return identity
+
+
 def continuous_integration() -> bool:
-    """Whether A CI Runner Executes This Process."""
+    """Whether a CI runner executes this process."""
     return any(os.environ.get(name, "").lower() in {"1", "true"} for name in ("CI", "GITHUB_ACTIONS", "GITLAB_CI"))
 
 
-def rehearsing() -> bool:
-    """Whether This Leaf Runs Inside A Rehearsal Of The Release Chain."""
-    return os.environ.get(REHEARSE) == "1"
+def tag_version(tag: str) -> str:
+    if not isinstance(tag, str) or re.fullmatch("v" + STABLE, tag) is None:
+        raise policy.ToolError("release requires a stable vMAJOR.MINOR.PATCH tag")
+    return tag[1:]
 
 
-def release_tag(directory: Path) -> str:
-    """The Stable Tag Of The Prepared Version: `v` Plus `[version] value`."""
-    value = policy.policy(directory, "version").get("value")
-    if not isinstance(value, str) or re.fullmatch(STABLE, value) is None:
-        raise policy.ToolError("version.value must declare a stable MAJOR.MINOR.PATCH version")
-    return "v" + value
-
-
-def native_target(settings: dict) -> str:
+def target(settings: dict) -> str:
     system = {"Linux": "linux", "Windows": "windows", "Darwin": "macos"}.get(platform.system())
     architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(platform.machine().lower(), platform.machine().lower())
-    selected = f"{system}-{architecture}"
+    selected = os.environ.get("RELEASE_TARGET", f"{system}-{architecture}")
     if selected not in settings.get("targets", []):
-        raise policy.ToolError(f"native target {selected} is not one of release.targets")
+        raise policy.ToolError("native release target must be one of release.targets")
+    if selected != f"{system}-{architecture}":
+        raise policy.ToolError("release target differs from the native build host")
     return selected
 
 
-def assets(directory: Path, settings: dict, selected: str, tag: str, profile: str = "release") -> list[dict]:
-    """The Declared Release Downloads Of One Target, From Its Existing Package Of The Profile."""
+def tools(directory: Path, settings: dict) -> dict:
+    commands = {
+        "mise": ["mise", "--version"],
+        "python": ["python", "--version"],
+        "uv": ["uv", "--version"],
+    }
+    if (directory / "Cargo.toml").is_file():
+        commands.update({"cargo": ["cargo", "--version"], "rustc": ["rustc", "-Vv"]})
+    if _tracked(directory, "*package.json"):
+        commands.update({"node": ["node", "--version"], "npm": ["npm", "--version"]})
+    commands.update(settings.get("tools", {}))
+    result = {}
+    for name, command in commands.items():
+        result[name] = policy.execute(directory, policy.command(command, "release.tools"), capture=True).strip()
+        if not result[name]:
+            raise policy.ToolError(f"release tool identity unavailable: {name}")
+    return result
+
+
+def assets(directory: Path, settings: dict) -> list[dict]:
+    selected = target(settings)
+    value = tag_version(settings["tag"])
     result = []
-    declared = settings.get("assets", []) + packages.packaged(directory, profile, selected)
+    declared = settings.get("assets", []) + packages.packaged(directory, "release", selected)
     for definition in declared:
         if definition.get("target") != selected:
             continue
-        relative = definition["path"].format(profile=profile, target=selected)
+        relative = definition["path"].format(profile="release", target=selected)
         source = policy.inside(directory, relative)
-        name = definition.get("name", source.name).format(product=settings["product"], version=tag[1:], target=selected)
-        if Path(name).name != name or name in {SUMS, STATE, ".", ".."} or "\\" in name or "\n" in name:
-            raise policy.ToolError(f"invalid release asset name: {name}")
+        name = definition.get("name", source.name).format(product=settings["product"], version=value, target=selected)
+        if (
+            Path(name).name != name
+            or name in RESERVED | {".", ".."}
+            or "\\" in name
+            or "\n" in name
+            or any(item["name"] == name for item in result)
+        ):
+            raise policy.ToolError(f"invalid or duplicate release asset: {name}")
         if not source.is_file() or source.is_symlink():
             raise policy.ToolError(f"missing regular release asset: {source}")
-        result.append({"name": name, "path": relative, "target": selected})
+        result.append(
+            {
+                "name": name,
+                "path": relative,
+                "target": selected,
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "size": source.stat().st_size,
+            }
+        )
     if not result:
         raise policy.ToolError(f"no release assets declared for {selected}")
     return result
 
 
-def stage(directory: Path, settings: dict, root: Path, tag: str, targets: list[str], profile: str = "release") -> list[dict]:
-    """Copy Every Target's Release Downloads Into One Folder Beside Their SHA256SUMS."""
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
-    files = []
-    for selected in targets:
-        # Only the native target's executables can run here; other targets arrive verified by their Package jobs.
-        if selected == _native():
-            packages.verify(directory, profile, selected)
-        for asset in assets(directory, settings, selected, tag, profile):
-            destination = policy.inside(root, asset["name"])
-            if destination.exists():
-                raise policy.ToolError(f"release download names collide across targets: {asset['name']}")
-            shutil.copyfile(policy.inside(directory, asset["path"]), destination)
-            files.append(_describe(destination))
-    (root / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
-    return [*files, _describe(root / SUMS)]
-
-
-def notes(directory: Path, tag: str, *, tagged: bool) -> str:
-    """Release Notes Rendered At Tag Time From The Conventional Commit History."""
-    command = ["git-cliff", "--strip", "header"]
-    command += ["--current"] if tagged else ["--unreleased", "--tag", tag]
-    return policy.execute(directory, command, capture=True).strip() + "\n"
-
-
-def planned_version(directory: Path, current: str, bump: str) -> str:
-    """The Next Version: The Current One Before Its First Tag, Else git-cliff's 0.x-Aware Bump Or The Explicit Override."""
-    if not policy.execute(directory, ["git", "tag", "--list", "v" + current], capture=True).strip():
-        return current
-    # Breaking changes bump the minor and everything else the patch while the version is 0.x, as the cliff.toml [bump] declares.
-    command = ["git-cliff", "--bumped-version"]
-    if bump != "auto":
-        command += ["--bump", bump]
-    planned = policy.execute(directory, command, capture=True).strip().removeprefix("v")
-    if planned == current:
-        since = policy.execute(directory, ["git", "log", "--format=%h %s", f"v{current}..HEAD"], capture=True).strip()
-        listing = "\n".join("  " + line for line in since.splitlines()) or "  (no commits)"
-        raise policy.ToolError(f"v{current} is released and no Conventional Commit since warrants a new version; commits since:\n{listing}")
-    return planned
-
-
 def prepare(directory: Path, settings: dict) -> None:
-    """Bump Every Version Carrier And Regenerate Release Inputs In The Working Tree."""
-    bump = os.environ.get("RELEASE_BUMP", "auto") or "auto"
-    if bump not in BUMPS:
-        raise policy.ToolError(f"RELEASE_BUMP must be one of {', '.join(BUMPS)}")
+    branch = policy.execute(directory, ["git", "symbolic-ref", "--short", "HEAD"], capture=True).strip()
+    if not branch.startswith("release/v"):
+        raise policy.ToolError("prepare requires a release/v<version> stabilization branch")
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
-        raise policy.ToolError("prepare requires clean committed source")
-    _require_publication(directory, settings)
-    current = release_tag(directory)[1:]
-    planned = planned_version(directory, current, bump)
-    if re.fullmatch(STABLE, planned) is None:
-        raise policy.ToolError(f"the next version is not a stable version: {planned}")
-    _requirements(directory, current, planned)
+        raise policy.ToolError("prepare requires clean committed candidate source")
+    planned = (
+        policy.execute(
+            directory,
+            ["git-cliff", "--bump", "patch", "--bumped-version", "--use-branch-tags"],
+            capture=True,
+        )
+        .strip()
+        .removeprefix("v")
+    )
+    if re.fullmatch(STABLE, planned) is None or branch != f"release/v{planned}":
+        raise policy.ToolError(f"candidate branch must be release/v{planned}")
     version.run(directory, "sync", value=planned)
-    _policy_version(directory, planned)
+    policy_path = directory / "stkr.toml"
+    text = policy_path.read_text()
+    for section, key, value in [
+        ("version", "value", planned),
+        ("release", "tag", "v" + planned),
+    ]:
+        pattern = rf"(?ms)(^\[{section}\]\s*\n)(.*?)(?=^\[|\Z)"
+        match = re.search(pattern, text)
+        if match is None:
+            raise policy.ToolError(f"prepare requires [{section}] policy")
+        body = re.sub(rf"(?m)^{key}\s*=.*\n?", "", match.group(2))
+        text = text[: match.start()] + match.group(1) + f'{key} = "{value}"\n' + body + text[match.end() :]
+    policy_path.write_text(text)
+    changelog = policy.inside(directory, settings.get("notes", "CHANGELOG.md"))
+    policy.execute(directory, ["git-cliff", "--tag", "v" + planned, "--output", str(changelog)])
     commands = settings.get("lock_commands")
     if commands is None:
         commands = []
-        if (directory / "Cargo.toml").is_file():
+        if (directory / "Cargo.toml").exists():
             # Cold runners start with an empty Cargo home, so the workspace-only update may fetch the index.
             commands.append(["cargo", "update", "--workspace"])
+        # Each Lock Is Refreshed Beside The Package That Owns It.
         for lock in _tracked(directory, "*package-lock.json"):
-            commands.append(["npm", "install", "--package-lock-only", "--ignore-scripts", "--prefix", str(directory / Path(lock).parent)])
+            package = str(directory / Path(lock).parent)
+            commands.append(
+                [
+                    "npm",
+                    "install",
+                    "--package-lock-only",
+                    "--ignore-scripts",
+                    "--prefix",
+                    package,
+                ]
+            )
         for lock in _tracked(directory, "*pnpm-lock.yaml"):
-            commands.append(["pnpm", "install", "--lockfile-only", "--ignore-scripts", "--dir", str(directory / Path(lock).parent)])
+            package = str(directory / Path(lock).parent)
+            commands.append(
+                [
+                    "pnpm",
+                    "install",
+                    "--lockfile-only",
+                    "--ignore-scripts",
+                    "--dir",
+                    package,
+                ]
+            )
         for lock in _tracked(directory, "*uv.lock"):
-            commands.append(["uv", "lock", "--offline", "--project", str(directory / Path(lock).parent)])
+            project = str(directory / Path(lock).parent)
+            commands.append(["uv", "lock", "--offline", "--project", project])
     for command in commands:
         policy.execute(directory, policy.command(command, "release.lock_commands"))
     if policy.policy(directory, "screenshots").get("scenes"):
         screenshots.capture(directory)
-    print(f"Prepared v{planned}; review the changes, or let Release / Prepare open the release review")
+    print(f"Prepared v{planned}; review and commit before building the candidate")
 
 
-def review(directory: Path, settings: dict) -> None:
-    """Commit The Prepared Tree To release/v<version> And Open Its Review Into dev With The Release Token."""
-    token = os.environ.get("RELEASE_TOKEN", "")
-    if not continuous_integration() or not token:
-        raise policy.ToolError("the release review opens from Release / Prepare with the RELEASE_TOKEN secret")
-    tag = release_tag(directory)
+def author(directory: Path, settings: dict) -> None:
+    """Commit Prepared GitHub Source With A Verified Signature And Dispatch Candidate CI."""
+    if settings["provider"] != "github" or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        raise policy.ToolError("author requires the native GitHub prepare workflow")
+    planned = os.environ.get("RELEASE_VERSION", "")
+    tag_version("v" + planned)
+    branch = "release/v" + planned
+    if policy.execute(directory, ["git", "branch", "--show-current"], capture=True).strip() != branch:
+        raise policy.ToolError("author requires the matching stabilization branch")
+    expected = archive.revision(directory)
+    if not expected or expected != os.environ.get("GITHUB_SHA") or os.environ.get("GITHUB_REF") != "refs/heads/dev":
+        raise policy.ToolError("prepare must start at the dispatched dev revision")
+    if settings.get("tag") != "v" + planned or policy.policy(directory, "version").get("value") != planned:
+        raise policy.ToolError("prepared version differs from the requested candidate")
     version.run(directory, "check")
-    branch = registry.RELEASE_BRANCH + tag
-    remote = _push_remote(settings, token)
-    if _run(directory, ["git", "ls-remote", "--heads", remote, "refs/heads/" + branch], token).strip():
-        raise policy.ToolError(f"{branch} already exists; merge or close its review before preparing again")
-    title = f"chore(release): prepare {tag}"
-    identity = [
-        "-c",
-        "user.name=" + os.environ.get("GITHUB_ACTOR", os.environ.get("GITLAB_USER_NAME", "Release")),
-        "-c",
-        "user.email=" + os.environ.get("GITLAB_USER_EMAIL", "release@users.noreply.github.com"),
-    ]
-    policy.execute(directory, ["git", "switch", "--create", branch])
     policy.execute(directory, ["git", "add", "--all"])
-    # A first release at the established version may change no carrier; its review still records the release.
-    policy.execute(directory, ["git", *identity, "commit", "--quiet", "--allow-empty", "--message", title])
-    # A push and a review made with the release token start the review's CI; the native job token's would not.
-    _run(directory, ["git", "push", remote, f"HEAD:refs/heads/{branch}"], token)
-    body = policy.inside(directory, "target/release-notes.md")
-    body.parent.mkdir(parents=True, exist_ok=True)
-    body.write_text(notes(directory, tag, tagged=False), encoding="utf-8")
-    if settings["provider"] == "github":
-        command = ["gh", "pr", "create", "--base", "dev", "--head", branch, "--title", title, "--body-file", str(body)]
-        environment = {**os.environ, "GH_TOKEN": token}
-    else:
-        command = [
-            "glab",
-            "mr",
-            "create",
-            "--source-branch",
-            branch,
-            "--target-branch",
-            "dev",
-            "--title",
-            title,
-            "--description",
-            body.read_text(encoding="utf-8"),
-            "--squash-before-merge",
-            "--remove-source-branch",
-            "--yes",
-        ]
-        environment = {**os.environ, "GITLAB_TOKEN": token}
-    if subprocess.run(command, cwd=directory, env=environment, check=False).returncode:
-        raise policy.ToolError(f"opening the release review failed; {branch} is pushed and can be reviewed by hand")
-
-
-def dry(directory: Path, settings: dict) -> None:
-    """Stage The Development Packages Like A Release And Run The Native Downloads From Them, Offline."""
-    tag = release_tag(directory)
-    version.run(directory, "check")
-    # Release reviews package the release profile; every other run packages dev.
-    profile = os.environ.get("RELEASE_PROFILE", "dev") or "dev"
-    if profile not in ("dev", "release"):
-        raise policy.ToolError("RELEASE_PROFILE must be dev or release")
-    root = policy.inside(directory, f"target/release-assets/{profile}")
-    targets = list(settings.get("targets", []))
-    present = [selected for selected in targets if (directory / "target/package" / profile / selected).is_dir()]
-    missing = sorted(set(targets) - set(present))
-    if missing and continuous_integration():
-        raise policy.ToolError(f"{profile} packages are missing for release targets: {', '.join(missing)}")
-    if missing:
-        print(f"note: no local {profile} packages for {', '.join(missing)}; CI stages every release target")
-    files = stage(directory, settings, root, tag, present, profile=profile)
-    for line in (root / SUMS).read_text(encoding="utf-8").splitlines():
-        digest, _, name = line.partition("  ")
-        if hashlib.sha256(policy.inside(root, name).read_bytes()).hexdigest() != digest:
-            raise policy.ToolError(f"staged download differs from {SUMS}: {name}")
-    native = _native()
-    if native in present:
-        # The staged bytes themselves run, from an isolated directory, exactly as a user's download would.
-        packages.verify(directory, profile, native, root)
-    print(f"staged {len(files) - 1} download(s) and {SUMS} for {', '.join(present) or 'no target'} in {root.relative_to(directory)}")
-
-
-def publish(directory: Path, settings: dict) -> None:
-    """The Assets Leaf: Draft The Release, Or Its Rehearsal Draft, And Upload Every Download With SHA256SUMS."""
-    rehearse = rehearsing()
-    tag = release_tag(directory)
-    sha = _revision(directory)
-    # Every version carrier agrees with the prepared version before anything is staged.
-    version.run(directory, "check")
-    if rehearse:
-        if registry.remote_tag(settings, tag):
-            raise policy.ToolError(f"{tag} already exists; prepare a new version before rehearsing")
-    else:
-        registry.require_tag(directory, tag)
-    _refuse_overrides(directory)
-    local = rehearse and not continuous_integration()
-    targets = [native_target(settings)] if local else list(settings.get("targets", []))
-    if local:
-        print("note: the local rehearsal stages the native target only; CI rehearses every release target")
-    if not targets:
-        raise policy.ToolError("release.targets must declare the required OS/architecture targets")
-    root = _root(directory)
-    # GitLab rehearses the development packages of its release review; every other publication stages release ones.
-    profile = (os.environ.get("RELEASE_PROFILE") or "release") if rehearse else "release"
-    files = stage(directory, settings, root, tag, targets, profile=profile)
-    name = registry.rehearsal_name(sha) if rehearse else tag
-    state = {"sha": sha, "tag": tag, "name": name, "files": {}}
-    if settings["provider"] == "github":
-        release = registry.draft(settings, name, sha, notes(directory, tag, tagged=not rehearse), rehearsal=rehearse)
-        state["release_id"] = release["id"]
-        for item in files:
-            data = _bytes(root, item)
-            state["files"][item["name"]] = {**item, "endpoint": registry.upload(settings, release["id"], item, data)}
-            policy.write_json(root / STATE, state)
-    else:
-        if rehearse:
-            registry.discard_gitlab(settings, name, _package(settings))
-        elif registry.document(settings, "releases/" + _quote(tag)):
-            raise policy.ToolError("published release cannot be replaced; use a new patch version")
-        registry.verify_duplicate_policy(settings)
-        for item in files:
-            # A rehearsal uploads under its own package version, which the discard deletes again.
-            state["files"][item["name"]] = {**item, **registry.upload_generic(settings, _package(settings), name, item, _bytes(root, item))}
-            policy.write_json(root / STATE, state)
-    policy.write_json(root / STATE, state)
-
-
-def finalize(directory: Path, settings: dict) -> None:
-    """Verify The Uploaded Downloads And Signatures, Then Make The Release Visible, Or Discard The Rehearsal."""
-    rehearse = rehearsing()
-    root = _root(directory)
-    state = json.loads((root / STATE).read_text(encoding="utf-8"))
-    if state.get("sha") != _revision(directory) or state.get("tag") != release_tag(directory):
-        raise policy.ToolError("the staged publication belongs to another revision or version")
-    with temporary.directory() as downloads:
-        for item in state["files"].values():
-            (downloads / item["name"]).write_bytes(registry.verify_download(settings, item["endpoint"], item))
-        signed = not settings.get("package_signing") or not rehearse
-        if signed:
-            registry.verify_signatures(directory, settings, downloads, list(state["files"]))
-        elif settings.get("signature_checks"):
-            print("note: rehearsal packages are unsigned; signature checks run on the stable tag")
-    if settings["provider"] == "github":
-        current = registry.document(settings, f"releases/{state['release_id']}")
-        if not isinstance(current, dict) or not current.get("draft") or current.get("tag_name") != state["name"]:
-            raise policy.ToolError("the release is no longer the staged draft; verify it manually")
-        listed = {item["name"] for item in registry.pages(settings, f"releases/{state['release_id']}/assets")}
-        if listed != set(state["files"]):
-            raise policy.ToolError("draft assets differ from the staged downloads")
-        if rehearse:
-            registry.discard(settings, state["name"])
-            print(f"{state['name']}: rehearsal passed and its draft was deleted")
-            return
-        if registry.remote_tag(settings, state["tag"]) != state["sha"]:
-            raise policy.ToolError("the release tag is absent or identifies another revision")
-        registry.document(settings, f"releases/{state['release_id']}", "PATCH", {"draft": False})
-        visible = registry.document(settings, "releases/tags/" + _quote(state["tag"]))
-        if not isinstance(visible, dict) or visible.get("draft") or visible.get("prerelease"):
-            raise policy.ToolError("published release visibility cannot be verified")
-        return
-    # GitLab has no drafts: a rehearsal creates its release at the revision, verifies it, then deletes it, its tag and
-    # its package version.
-    if not rehearse and registry.remote_tag(settings, state["tag"]) != state["sha"]:
-        raise policy.ToolError("the release tag is absent or identifies another revision")
-    created = registry.document(
-        settings,
-        "releases",
-        "POST",
-        {
-            "tag_name": state["name"],
-            "ref": state["sha"],
-            "name": state["name"],
-            "description": notes(directory, state["tag"], tagged=not rehearse),
-            "assets": {"links": [item["link"] for item in state["files"].values()]},
+    changed = policy.execute(directory, ["git", "diff", "--cached", "--name-only", "-z", "--no-renames"], capture=True)
+    additions = []
+    deletions = []
+    for relative in filter(None, changed.split("\0")):
+        source = policy.inside(directory, relative)
+        if source.is_symlink():
+            raise policy.ToolError("prepared source cannot introduce symlinks")
+        if source.is_file():
+            additions.append({"path": relative, "contents": base64.b64encode(source.read_bytes()).decode("ascii")})
+        else:
+            deletions.append({"path": relative})
+    if not additions and not deletions:
+        raise policy.ToolError("prepare produced no candidate changes")
+    registry.request(settings, "git/refs", "POST", json.dumps({"ref": "refs/heads/" + branch, "sha": expected}).encode())
+    payload = {
+        "query": "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid signature { isValid } } } }",
+        "variables": {
+            "input": {
+                "branch": {"repositoryNameWithOwner": settings["repository"], "branchName": branch},
+                "expectedHeadOid": expected,
+                "message": {"headline": "chore(release): prepare v" + planned},
+                "fileChanges": {"additions": additions, "deletions": deletions},
+            }
         },
+    }
+    response = json.loads(registry.request(settings, "", "POST", json.dumps(payload).encode(), graphql=True) or b"{}")
+    commit = (response.get("data") or {}).get("createCommitOnBranch") or {}
+    commit = commit.get("commit") or {}
+    if response.get("errors") or not commit.get("oid") or not (commit.get("signature") or {}).get("isValid"):
+        raise policy.ToolError("GitHub did not confirm a signed candidate; inspect the preserved release branch")
+    # GITHUB_TOKEN Pushes Do Not Trigger CI; Explicit Dispatch Does.
+    registry.request(settings, "actions/workflows/ci.yml/dispatches", "POST", json.dumps({"ref": branch}).encode())
+    print(f"Prepared signed candidate {commit['oid']} on {branch}; native CI dispatched")
+
+
+def candidate(directory: Path, settings: dict) -> None:
+    """Prepare Or Resume One Stable Candidate From Published Dev And Open Its Review."""
+    version = os.environ.get("RELEASE_VERSION", "")
+    tag_version("v" + version)
+    github = settings["provider"] == "github"
+    if (
+        github
+        and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or not github
+        and os.environ.get("CI_PIPELINE_SOURCE") != "web"
+    ):
+        raise policy.ToolError("candidate authoring requires the native manual release workflow")
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("candidate authoring requires a clean checkout")
+    remote = settings.get("remote", "origin")
+    branch = "release/v" + version
+    policy.execute(directory, ["git", "fetch", remote, "dev"])
+    development = policy.execute(directory, ["git", "rev-parse", "FETCH_HEAD"], capture=True).strip()
+    existing = policy.execute(directory, ["git", "ls-remote", "--heads", remote, "refs/heads/" + branch], capture=True).strip()
+    if existing:
+        policy.execute(directory, ["git", "fetch", remote, branch])
+        revision = policy.execute(directory, ["git", "rev-parse", "FETCH_HEAD"], capture=True).strip()
+        local = policy.execute(directory, ["git", "branch", "--list", branch], capture=True).strip()
+        if local:
+            policy.execute(directory, ["git", "switch", branch])
+            if archive.revision(directory) != revision:
+                raise policy.ToolError("local candidate differs from its published branch; refuse to reset it")
+        else:
+            policy.execute(directory, ["git", "switch", "--create", branch, revision])
+        if policy.policy(directory, "version").get("value") != version or policy.policy(directory, "release").get("tag") != "v" + version:
+            raise policy.ToolError("existing release branch has another prepared version")
+    else:
+        policy.execute(directory, ["git", "switch", "--create", branch, development])
+        prepare(directory, settings)
+        policy.execute(directory, ["git", "add", "--all"])
+        if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+            author = os.environ.get("GITHUB_ACTOR", os.environ.get("GITLAB_USER_NAME", "Release Maintainer"))
+            email = os.environ.get("GITLAB_USER_EMAIL", author + "@users.noreply.github.com")
+            policy.execute(
+                directory,
+                ["git", "-c", "user.name=" + author, "-c", "user.email=" + email, "commit", "-m", "chore(release): prepare v" + version],
+            )
+    policy.execute(directory, ["mise", "run", "ci"])
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("candidate CI changed source; commit a coherent repair before retrying")
+    destination = remote
+    if not github:
+        identity = registry.document(settings, "")
+        if not identity or str(identity.get("id")) != os.environ.get("CI_PROJECT_ID") or not os.environ.get("GITLAB_TOKEN"):
+            raise policy.ToolError("candidate push requires the native protected project token")
+        destination = f"https://oauth2:{os.environ['GITLAB_TOKEN']}@{os.environ['CI_SERVER_HOST']}/{os.environ['CI_PROJECT_PATH']}.git"
+    policy.execute(directory, ["git", "push", destination, "HEAD:refs/heads/" + branch])
+    query = (
+        "state=open&head="
+        + urllib.parse.quote(os.environ.get("GITHUB_REPOSITORY", settings.get("repository", "")).split("/")[0] + ":" + branch, safe="")
+        + "&base=main"
+        if github
+        else "state=opened&source_branch=" + urllib.parse.quote(branch, safe="") + "&target_branch=main"
     )
-    if not isinstance(created, dict) or created.get("tag_name") != state["name"] or (created.get("commit") or {}).get("id") != state["sha"]:
-        raise policy.ToolError("published release tag identity cannot be verified")
-    remote = registry.document(settings, "releases/" + _quote(state["name"])) or {}
-    if {link.get("name") for link in (remote.get("assets") or {}).get("links", [])} != set(state["files"]):
-        raise policy.ToolError("release links differ from the staged downloads")
-    if rehearse:
-        registry.discard_gitlab(settings, state["name"], _package(settings))
-        print(f"{state['name']}: rehearsal passed; its release, tag and package version were deleted")
-
-
-def verify(directory: Path, settings: dict) -> None:
-    """After Publication: Download Every Published Asset, Match SHA256SUMS And Signatures, Install On This Platform."""
-    tag = release_tag(directory)
-    sha = _revision(directory)
-    if registry.remote_tag(settings, tag) != sha:
-        raise policy.ToolError(f"{tag} does not identify the checked-out revision")
-    quoted = _quote(tag)
-    if settings["provider"] == "github":
-        remote = registry.document(settings, "releases/tags/" + quoted)
-        if not isinstance(remote, dict) or remote.get("draft") or remote.get("prerelease"):
-            raise policy.ToolError("release is not published")
-        downloads = {item["name"]: f"releases/assets/{item['id']}" for item in registry.pages(settings, f"releases/{remote['id']}/assets")}
-    else:
-        remote = registry.document(settings, "releases/" + quoted)
-        if not isinstance(remote, dict):
-            raise policy.ToolError("release is not published")
-        prefix = f"packages/generic/{_quote(_package(settings))}/{quoted}/"
-        downloads = {item["name"]: prefix + _quote(item["name"]) for item in remote["assets"]["links"]}
-    if SUMS not in downloads:
-        raise policy.ToolError(f"the release publishes no {SUMS}")
-    sums = registry.request(settings, downloads[SUMS], binary=True) or b""
-    listed = {}
-    for line in sums.decode("utf-8").splitlines():
-        digest, _, name = line.partition("  ")
-        listed[name] = digest
-    if set(listed) != set(downloads) - {SUMS}:
-        raise policy.ToolError(f"{SUMS} and the published downloads differ")
-    with temporary.directory() as root:
-        for name, digest in listed.items():
-            data = registry.request(settings, downloads[name], binary=True) or b""
-            if hashlib.sha256(data).hexdigest() != digest:
-                raise policy.ToolError(f"published download differs from {SUMS}: {name}")
-            policy.inside(root, name).write_bytes(data)
-        registry.verify_signatures(directory, settings, root, list(listed))
-        native = native_target(settings)
-        packages.installed(directory, {**settings, "tag": tag}, root, native)
-    policy.write_json(directory / ".stkr/state/release-publication.json", {"sha": sha, "tag": tag, "verified": True})
-
-
-def crates(directory: Path, settings: dict) -> None:
-    """The Rust Leaf: Publish Crates From The Tag Job, Or Dry-Run Them In A Rehearsal."""
-    if rehearsing():
-        registry.rehearse_crates(directory)
-    else:
-        registry.publish_crates(directory)
+    endpoint = "pulls" if github else "merge_requests"
+    proposals = registry.pages(settings, endpoint + "?" + query)
+    if len(proposals) > 1:
+        raise policy.ToolError("multiple open reviews identify the release branch")
+    if not proposals:
+        body = (
+            {"title": "Release v" + version, "body": "Prepare Stable Release v" + version, "head": branch, "base": "main"}
+            if github
+            else {
+                "title": "Release v" + version,
+                "description": "Prepare Stable Release v" + version,
+                "source_branch": branch,
+                "target_branch": "main",
+                "squash": False,
+                "remove_source_branch": False,
+            }
+        )
+        proposals = [registry.document(settings, endpoint, "POST", body)]
+    print(proposals[0].get("html_url", proposals[0].get("web_url", "")))
 
 
 def tag(directory: Path, settings: dict) -> None:
-    """On The Dev Push Of A Merged Release Review: Tag It, Publish Crates, Fast-Forward main."""
-    sha = _revision(directory)
+    """Tag One Verified Main Merge Idempotently, Without Publishing A Release."""
+    sha = archive.revision(directory)
     github = settings["provider"] == "github"
-    pushed = (
-        os.environ.get("GITHUB_EVENT_NAME") == "push"
-        and os.environ.get("GITHUB_REF") == "refs/heads/dev"
-        and os.environ.get("GITHUB_SHA") == sha
-        if github
-        else os.environ.get("CI_PIPELINE_SOURCE") == "push"
-        and os.environ.get("CI_COMMIT_BRANCH") == "dev"
-        and os.environ.get("CI_COMMIT_SHA") == sha
-    )
-    if not pushed:
-        raise policy.ToolError("tagging runs only on the native dev push of a merged release review")
-    review = registry.release_review(settings, sha)
-    if review is None:
-        print("note: this dev push merges no release review; nothing to tag")
-        return
-    name = release_tag(directory)
-    existing = registry.remote_tag(settings, name)
-    if existing and existing != sha:
-        raise policy.ToolError(f"{name} already identifies another revision; never move a release tag")
-    # Only products that render the rehearsal can have rehearsed their review; for them no tag exists without it.
-    if _task_defined(directory, "release:rehearse"):
-        registry.rehearsed(settings, review, sha)
+    if not sha or policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("tagging requires clean committed main source")
+    if github:
+        valid = (
+            os.environ.get("GITHUB_EVENT_NAME") == "push"
+            and os.environ.get("GITHUB_REF") == "refs/heads/main"
+            and os.environ.get("GITHUB_SHA") == sha
+        )
     else:
-        print("note: this product renders no rehearsal; Release / Dry verified the review")
-    token = os.environ.get("RELEASE_TOKEN", "")
-    if not token:
-        raise policy.ToolError("tagging requires the workflow-triggering RELEASE_TOKEN secret")
-    if existing is None:
-        # The release token's tag push starts the tag pipeline; the native job token's would not.
-        registry.create_tag(settings, name, sha)
-    if registry.remote_tag(settings, name) != sha:
-        raise policy.ToolError(f"{name} was not created at {sha}")
-    if _task_defined(directory, "release:publish:rust"):
-        policy.execute(directory, ["mise", "run", "release:publish:rust"])
-    # main is the last released commit: a fast-forward to the tag, never a merge or a force.
-    remote = _push_remote(settings, token)
-    _run(directory, ["git", "fetch", "--quiet", remote, "refs/heads/main"], token)
-    if subprocess.run(["git", "merge-base", "--is-ancestor", "FETCH_HEAD", sha], cwd=directory, check=False).returncode:
-        raise policy.ToolError(f"main is not an ancestor of {name}; it must only ever fast-forward to release tags")
-    _run(directory, ["git", "push", remote, f"{sha}:refs/heads/main"], token)
-    print(f"{name}: tagged at {sha}; main fast-forwarded")
+        valid = (
+            os.environ.get("CI_PIPELINE_SOURCE") == "push"
+            and os.environ.get("CI_COMMIT_BRANCH") == "main"
+            and os.environ.get("CI_COMMIT_SHA") == sha
+            and os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
+        )
+    if not valid or settings["tag"] != "v" + str(policy.policy(directory, "version").get("value")):
+        raise policy.ToolError("tagging requires the prepared version on a protected native main push")
+    registry.merged_review(directory, settings, sha)
+    name = settings["tag"]
+    endpoint = "git/ref/tags/" + name if github else "repository/tags/" + name
+    existing = registry.document(settings, endpoint)
+    if existing:
+        if github:
+            object = existing.get("object", {})
+            if object.get("type") == "tag":
+                object = registry.document(settings, "git/tags/" + object["sha"]).get("object", {})
+            revision = object.get("sha")
+        else:
+            revision = existing.get("commit", {}).get("id")
+        if revision != sha:
+            raise policy.ToolError("existing release tag identifies another revision; never move it")
+        return
+    endpoint = "git/refs" if github else "repository/tags"
+    body = {"ref": "refs/tags/" + name, "sha": sha} if github else {"tag_name": name, "ref": sha}
+    registry.document(settings, endpoint, "POST", body)
+
+
+def stage(directory: Path, settings: dict, folder: Path) -> None:
+    # Staging publishes nothing, so the candidate branch stages the same bytes its tag will.
+    registry.require_candidate(directory, settings)
+    packages.verify(directory, "release", target(settings))
+    selected = assets(directory, settings)
+    if policy.policy(directory, "version").get("value") != tag_version(settings["tag"]):
+        raise policy.ToolError("prepared package version differs from release tag")
+    version.run(directory, "check")
+    identity = inputs(directory)
+    if identity.get("local_overrides"):
+        raise policy.ToolError("release staging rejects local dependency overrides")
+    sha = archive.revision(directory)
+    if not identity["source_tree"] or not sha:
+        raise policy.ToolError("release staging requires clean committed source")
+    provider = settings.get("provider")
+    run_id = os.environ.get("GITHUB_RUN_ID" if provider == "github" else "CI_PIPELINE_ID")
+    job_id = registry.job_identity(settings)
+    if provider not in ["github", "gitlab"] or not run_id or not job_id:
+        raise policy.ToolError("stage requires exact native provider run and job identity")
+    native_sha = os.environ.get("GITHUB_SHA" if provider == "github" else "CI_COMMIT_SHA")
+    if native_sha != sha:
+        raise policy.ToolError("native build SHA differs from checkout")
+    folder.mkdir(parents=True, exist_ok=True)
+    receipt = folder / "platform.json"
+    if receipt.exists():
+        raise policy.ToolError("stage exists; explicitly clean before a recovery build")
+    for asset in selected:
+        destination = policy.inside(folder, asset["name"])
+        if destination.exists():
+            raise policy.ToolError("stage cannot overwrite existing files")
+        shutil.copy(policy.inside(directory, asset["path"]), destination)
+    policy.write_json(
+        receipt,
+        {
+            "schema": 1,
+            "sha": sha,
+            "tag": settings["tag"],
+            "target": target(settings),
+            "provider": provider,
+            "run_id": run_id,
+            "build_job": job_id,
+            "artifact_name": os.environ.get("RELEASE_ARTIFACT_NAME", ""),
+            "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
+            "inputs": identity,
+            "tools": tools(directory, settings),
+            "assets": selected,
+            "created_at": int(time.time()),
+        },
+    )
+
+
+def verify_platform(
+    directory: Path,
+    settings: dict,
+    folder: Path,
+    receipt: dict,
+    *,
+    native: bool = True,
+) -> None:
+    if receipt.get("sha") != archive.revision(directory) or receipt.get("tag") != settings["tag"]:
+        raise policy.ToolError("release SHA or tag differs; new commits require a new build")
+    current = inputs(directory)
+    if current.get("local_overrides") or receipt.get("inputs", {}).get("local_overrides"):
+        raise policy.ToolError("release verification rejects local dependency overrides")
+    # Platforms share the committed tree, which holds every lock file, and the resolved graph; checkout bytes,
+    # tools and environment are platform-specific and stay in each receipt.
+    for name in ["source_tree", "graph"]:
+        if not receipt.get("inputs", {}).get(name) or receipt["inputs"][name] != current[name]:
+            if name == "graph" and receipt.get("inputs", {}).get(name) == current.get(name) == []:
+                continue
+            raise policy.ToolError(f"release resolved inputs differ: {name}")
+    if receipt["created_at"] > time.time() + 300:
+        raise policy.ToolError("release evidence timestamp is in the future")
+    if time.time() - receipt["created_at"] > settings.get("max_age_seconds", 7 * 86400):
+        raise policy.ToolError("release evidence expired; explicit recovery build required")
+    for asset in receipt["assets"]:
+        file = policy.inside(folder, asset["name"])
+        if file.is_symlink() or not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != asset["sha256"]:
+            raise policy.ToolError(f"release asset changed: {asset['name']}")
+        if asset["target"] != receipt["target"]:
+            raise policy.ToolError("asset target differs from native receipt")
+    # A local rehearsal clone has no native run to verify.
+    if native:
+        registry.verify_jobs(settings, receipt)
+
+
+def assemble(directory: Path, settings: dict, root: Path, *, local: bool = False) -> dict:
+    required = settings.get("targets")
+    if not isinstance(required, list) or not required or len(set(required)) != len(required):
+        raise policy.ToolError("release.targets must declare unique required OS/architecture targets")
+    if local:
+        required = [target(settings)]
+    selected = {}
+    names = set()
+    files = []
+    for path in sorted(root.glob("*/platform.json")):
+        receipt = json.loads(path.read_text())
+        native = receipt.get("target")
+        if native not in required or native in selected:
+            raise policy.ToolError("unexpected or duplicate release target")
+        verify_platform(directory, settings, path.parent, receipt, native=not local)
+        selected[native] = receipt
+        for asset in receipt["assets"]:
+            if asset["name"] in names:
+                raise policy.ToolError("release download names collide across targets")
+            names.add(asset["name"])
+            files.append({**asset, "path": str(path.parent.relative_to(root) / asset["name"])})
+    if set(selected) != set(required):
+        raise policy.ToolError("missing required release targets")
+    manifest = {
+        "schema": 1,
+        "sha": archive.revision(directory),
+        "tag": settings["tag"],
+        "product": settings["product"],
+        "targets": selected,
+        "files": files,
+    }
+    policy.write_json(root / "release.json", manifest)
+    sums = "".join(f"{asset['sha256']}  {asset['name']}\n" for asset in files)
+    sums += f"{hashlib.sha256((root / 'release.json').read_bytes()).hexdigest()}  release.json\n"
+    (root / "SHA256SUMS").write_text(sums)
+    return manifest
 
 
 def rehearse(directory: Path, settings: dict) -> None:
-    """Run The Release Chain With RELEASE_REHEARSE=1: Natively In CI, Else From A Cold Clone Under target/."""
-    if not continuous_integration() and os.environ.get(REHEARSAL_CHECKOUT) != "1":
-        _rehearse_clean(directory, settings)
+    """Rehearse The Publication Chain On A Disposable Draft: Natively In CI, Else From A Cold Clean Clone."""
+    if settings.get("provider") != "github":
+        raise policy.ToolError(registry.GITLAB_REHEARSAL)
+    root = policy.inside(directory, settings.get("directory", "target/release-assets"))
+    if os.environ.get(REHEARSAL_CHECKOUT) == "1":
+        # The cold clone has no native run, so cross-platform receipts and native artifacts stay with CI.
+        print("note: local rehearsal stages the native target only; cross-platform receipts and native artifacts are verified in CI")
+        _stage_local(directory, settings, policy.inside(root, target(settings)))
+        manifest = assemble(directory, settings, root, local=True)
+    elif continuous_integration():
+        registry.require_candidate(directory, settings)
+        manifest = assemble(directory, settings, root)
+    else:
+        _rehearse_clean(directory)
         return
-    chain = _chain(directory)
-    environment = {**os.environ, REHEARSE: "1"}
-    try:
-        for task in chain:
-            print(f"rehearsal: mise run {task}", flush=True)
-            if subprocess.run(["mise", "run", task], cwd=directory, env=environment, check=False).returncode:
-                raise policy.ToolError(f"rehearsal step failed: {task}")
-    finally:
-        discard(directory, settings)
+    # Signing producers run on stable tags only, so candidate packages carry no signatures to check.
+    signed = not settings.get("package_signing") or os.environ.get("GITHUB_REF", "").startswith("refs/tags/")
+    registry.rehearse(directory, settings, root, manifest, _publication_leaves(directory), signed=signed)
 
 
 def discard(directory: Path, settings: dict) -> None:
-    """Delete The Rehearsal Of This Revision Whatever Happened Before: Its Draft, Or Its GitLab Release And Package."""
-    name = registry.rehearsal_name(_revision(directory))
-    if settings.get("provider") == "github":
-        print(f"{name}: deleted {registry.discard(settings, name)} rehearsal draft(s)")
-    else:
-        print(f"{name}: deleted {registry.discard_gitlab(settings, name, _package(settings))} rehearsal object(s)")
-
-
-def identity(directory: Path, settings: dict) -> None:
-    """Print The OIDC Identity Registries See And The Trusted Publisher Values That Match It."""
-    url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
-    request = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-    if not url or not request:
-        print("note: no GitHub OIDC token is available to this job; grant id-token: write to diagnose Trusted Publishing")
-        return
-    claims = registry.oidc_claims(url, request)
-    repository = claims.get("repository", "")
-    environment = claims.get("environment") or "(none)"
-    caller = registry.workflow_filename(claims.get("workflow_ref", ""))
-    called = registry.workflow_filename(claims.get("job_workflow_ref", ""))
-    # crates.io matches the caller's workflow_ref; PyPI matches the called workflow's job_workflow_ref.
-    print(
-        f"crates.io Trusted Publisher: repository {repository}, workflow {caller}, environment {environment} (workflow_ref {claims.get('workflow_ref')})"
-    )
-    print(
-        f"PyPI Trusted Publisher: repository {repository}, workflow {called}, environment {environment} (job_workflow_ref {claims.get('job_workflow_ref')})"
-    )
-    for registry_name, actual, expected in [("crates.io", caller, CALLER_WORKFLOW), ("PyPI", called, RELEASE_WORKFLOW)]:
-        if actual != expected:
-            print(f"warning: {registry_name} sees workflow {actual}, but the rendered guidance names {expected}")
+    """Delete The Rehearsal Draft Of This Revision Whatever Happened Before."""
+    if settings.get("provider") != "github":
+        raise policy.ToolError(registry.GITLAB_REHEARSAL)
+    sha = archive.revision(directory)
+    if not sha:
+        raise policy.ToolError("rehearsal discard requires a committed HEAD")
+    name = registry.rehearsal_name(sha)
+    print(f"{name}: deleted {registry.discard(settings, name)} rehearsal draft(s)")
 
 
 def run(directory: Path, verb: str) -> None:
     settings = policy.policy(directory, "release")
-    operations = {
-        "prepare": prepare,
-        "review": review,
-        "dry": dry,
-        "rehearse": rehearse,
-        "discard": discard,
-        "identity": identity,
-        "crates-dry": lambda directory, settings: registry.rehearse_crates(directory, skip_published=False),
-        "tag": tag,
-        "crates": crates,
-        "publish": publish,
-        "python": lambda directory, settings: registry.python(directory, settings, rehearse=rehearsing()),
-        "finalize": finalize,
-        "verify": verify,
-        "guard": lambda directory, settings: registry.require_tag(directory, release_tag(directory)),
-        "assets": lambda directory, settings: print(
-            json.dumps(assets(directory, settings, native_target(settings), release_tag(directory)), indent=2)
-        ),
-    }
-    operations[verb](directory, settings)
+    if verb == "candidate":
+        candidate(directory, settings)
+        return
+    if verb == "prepare":
+        prepare(directory, settings)
+        return
+    if verb == "author":
+        author(directory, settings)
+        return
+    tag_version(settings["tag"])
+    if verb == "rehearse":
+        rehearse(directory, settings)
+        return
+    if verb == "rehearse-candidate":
+        branch = policy.execute(directory, ["git", "branch", "--show-current"], capture=True).strip()
+        if continuous_integration():
+            print("note: the native Publish / Rehearsal job rehearses candidates in CI")
+        elif branch != "release/" + settings["tag"]:
+            print(f"note: publication rehearsal runs on release/{settings['tag']}, not {branch or 'a detached HEAD'}")
+        else:
+            rehearse(directory, settings)
+        return
+    if verb == "discard":
+        discard(directory, settings)
+        return
+    if verb == "tag":
+        tag(directory, settings)
+        return
+    if verb == "guard":
+        registry.require_tag(directory, settings)
+        return
+    if verb == "crates":
+        registry.publish_crates(directory)
+        return
+    if verb == "route":
+        registry.check_route(directory, settings)
+        return
+    if verb == "verify":
+        registry.verify_publication(directory, settings)
+        return
+    root = policy.inside(directory, settings.get("directory", "target/release-assets"))
+    if verb == "assets":
+        print(json.dumps(assets(directory, settings), indent=2))
+    elif verb == "stage":
+        folder = policy.inside(root, target(settings))
+        stage(directory, settings, folder)
+    elif verb == "assemble":
+        assemble(directory, settings, root)
+    else:
+        manifest = assemble(directory, settings, root)
+        registry.authorize(directory, settings, manifest)
+        if verb == "publish":
+            registry.publish(directory, settings, root, manifest)
+        else:
+            registry.finalize(directory, settings, root, manifest)
 
 
 # === Private Functions === #
 
 
-def _bytes(root: Path, item: dict) -> bytes:
-    data = policy.inside(root, item["name"]).read_bytes()
-    if hashlib.sha256(data).hexdigest() != item["sha256"]:
-        raise policy.ToolError(f"staged release bytes changed: {item['name']}")
-    return data
-
-
-def _chain(directory: Path) -> list[str]:
-    """The Rust Leaf, Then The release:publish Chain, Refusing Authored Steps That Ignore The Rehearsal Switch."""
+def _publication_leaves(directory: Path) -> list[str]:
+    """The release:publish Steps In Order, As The Real Chain Runs Them."""
     with (directory / "mise.toml").open("rb") as file:
-        tasks = tomllib.load(file).get("tasks", {})
-    steps = tasks.get("release:publish", {}).get("run", []) if isinstance(tasks.get("release:publish"), dict) else []
+        task = tomllib.load(file).get("tasks", {}).get("release:publish", {})
+    steps = task.get("run", []) if isinstance(task, dict) else []
     leaves = [step["task"] if isinstance(step, dict) else str(step) for step in (steps if isinstance(steps, list) else [steps])]
     if not leaves:
-        raise policy.ToolError("the rehearsal requires the release:publish chain")
-    for leaf in leaves:
-        if leaf in OWNED_LEAVES:
-            continue
-        body = json.dumps(tasks.get(leaf.split(" ")[0], {}))
-        if REHEARSE not in body:
-            raise policy.ToolError(f"{leaf} is project-authored and does not honor {REHEARSE}; it would publish from a rehearsal")
-    return (["release:publish:rust"] if "release:publish:rust" in tasks else []) + ["release:publish"]
+        raise policy.ToolError("release:rehearse requires the release:publish chain")
+    return leaves
 
 
-def _describe(path: Path) -> dict:
-    data = path.read_bytes()
-    return {"name": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+def _stage_local(directory: Path, settings: dict, folder: Path) -> None:
+    """Stage The Native Release Package Like CI Staging, Bound To The Clean Clone Instead Of A Native Run."""
+    packages.verify(directory, "release", target(settings))
+    selected = assets(directory, settings)
+    identity = inputs(directory)
+    sha = archive.revision(directory)
+    if identity.get("local_overrides") or not identity["source_tree"] or not sha:
+        raise policy.ToolError("local rehearsal requires clean committed source without overrides")
+    if (folder / "platform.json").exists():
+        raise policy.ToolError("stage exists; the rehearsal clone must start clean")
+    folder.mkdir(parents=True, exist_ok=True)
+    for asset in selected:
+        shutil.copy(policy.inside(directory, asset["path"]), policy.inside(folder, asset["name"]))
+    receipt = {
+        "schema": 1,
+        "sha": sha,
+        "tag": settings["tag"],
+        "target": target(settings),
+        "provider": "local",
+        "run_id": "",
+        "build_job": "",
+        "artifact_name": "",
+        "attempt": "1",
+        "inputs": identity,
+        "tools": tools(directory, settings),
+        "assets": selected,
+        "created_at": int(time.time()),
+    }
+    policy.write_json(folder / "platform.json", receipt)
 
 
-def _native() -> str:
-    system = {"Linux": "linux", "Windows": "windows", "Darwin": "macos"}.get(platform.system(), "")
-    architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(platform.machine().lower(), platform.machine().lower())
-    return f"{system}-{architecture}"
-
-
-def _online(settings: dict) -> bool:
-    """Whether Provider Credentials Allow Reading Remote Tags."""
-    names = ("GH_TOKEN", "GITHUB_TOKEN") if settings.get("provider") == "github" else ("RELEASE_TOKEN", "GITLAB_TOKEN")
-    return any(os.environ.get(name) for name in names)
-
-
-def _policy_version(directory: Path, value: str) -> None:
-    """Write `[version] value` In The Project Policy, Keeping Every Other Line."""
-    path = directory / "stkr.toml"
-    text = path.read_text(encoding="utf-8")
-    match = re.search(r"(?ms)(^\[version\]\s*\n)(.*?)(?=^\[|\Z)", text)
-    if match is None:
-        raise policy.ToolError("prepare requires [version] policy")
-    body = re.sub(r"(?m)^value\s*=.*$", f'value = "{value}"', match.group(2), count=1)
-    path.write_text(text[: match.start()] + match.group(1) + body + text[match.end() :], encoding="utf-8")
-
-
-def _package(settings: dict) -> str:
-    """The GitLab Generic Package That Carries The Release Downloads."""
-    return settings.get("package", settings["product"])
-
-
-def _push_remote(settings: dict, token: str) -> str:
-    """An Authenticated Push URL For The Release Identity, Which The main Ruleset Admits."""
-    if settings["provider"] == "github":
-        repository = settings.get("repository", os.environ.get("GITHUB_REPOSITORY"))
-        return f"https://x-access-token:{token}@github.com/{repository}.git"
-    return f"https://oauth2:{token}@{os.environ['CI_SERVER_HOST']}/{os.environ['CI_PROJECT_PATH']}.git"
-
-
-def _quote(value: str) -> str:
-    """A Single Path Segment Of A Provider Endpoint."""
-    return urllib.parse.quote(value, safe="")
-
-
-def _refuse_overrides(directory: Path) -> None:
-    """Published Bytes Never Come From Unpublished Local Dependency Checkouts."""
-    if not (directory / "Cargo.toml").is_file():
-        return
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--locked", "--format-version", "1"], capture=True))
-    outside = [
-        package["name"]
-        for package in metadata["packages"]
-        if package["source"] is None and not Path(package["manifest_path"]).resolve().is_relative_to(directory.resolve())
-    ]
-    if outside:
-        raise policy.ToolError(f"unpublished local dependency override: {', '.join(sorted(outside))}")
-
-
-def _rehearse_clean(directory: Path, settings: dict) -> None:
-    """Rehearse HEAD From A Fresh Clone With Cold Tool Caches Under target/, Refusing Render Drift First."""
-    if not _online(settings):
-        name = "GH_TOKEN" if settings["provider"] == "github" else "RELEASE_TOKEN"
-        raise policy.ToolError(f"the local rehearsal uses the real provider API; export {name}")
-    sha = _revision(directory)
+def _rehearse_clean(directory: Path) -> None:
+    """Rehearse HEAD From A Fresh Clone With Cold Tool Caches, Refusing Render Drift First."""
+    if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):
+        raise policy.ToolError("local rehearsal uses the real GitHub API; export GH_TOKEN")
+    sha = archive.revision(directory)
+    if not sha:
+        raise policy.ToolError("local rehearsal requires a committed HEAD")
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         print(f"note: uncommitted changes are not rehearsed; the clone exports {sha}")
     if shutil.which("stkr") is None:
         raise policy.ToolError("the render drift check requires stkr on PATH")
-    # /tmp is often memory; the cold root lives in the ignored target/ of this checkout and is replaced each run.
-    scratch = policy.inside(directory, "target/release-rehearsal")
-    if scratch.exists():
-        shutil.rmtree(scratch)
-    checkout = scratch / "checkout"
-    policy.execute(directory, ["git", "clone", "--quiet", "--no-local", "--no-checkout", str(directory), str(checkout)])
-    policy.execute(checkout, ["git", "checkout", "--quiet", "--detach", sha])
-    environment = {
-        name: value
-        for name, value in os.environ.items()
-        if name not in COLD_UNSET and not name.startswith(("MISE_", "VIRTUAL_ENV", "CARGO_TARGET", "CARGO_BUILD_"))
-    }
-    environment.update(
-        {
-            "CARGO_HOME": str(scratch / "cargo"),
-            "UV_CACHE_DIR": str(scratch / "uv"),
-            "MISE_DATA_DIR": str(scratch / "mise"),
-            "MISE_CACHE_DIR": str(scratch / "mise-cache"),
-            "MISE_LOCKED": "1",
-            "MISE_TRUSTED_CONFIG_PATHS": str(checkout),
-            "npm_config_store_dir": str(scratch / "pnpm"),
-            "CARGO_INCREMENTAL": "0",
-            "RELEASE_PROFILE": "release",
+    with temporary.directory() as scratch:
+        checkout = scratch / "checkout"
+        policy.execute(directory, ["git", "clone", "--quiet", "--no-local", "--no-checkout", str(directory), str(checkout)])
+        policy.execute(checkout, ["git", "checkout", "--quiet", "--detach", sha])
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name not in COLD_UNSET and not name.startswith(("MISE_", "VIRTUAL_ENV", "CARGO_TARGET", "CARGO_BUILD_"))
         }
-    )
-    steps = [
-        ["mise", "install"],
-        ["stkr", "project", "update"],
-        ["mise", "run", "format"],
-        None,
-        ["mise", "run", "build", "--profile", "release"],
-        ["mise", "run", "package", "--profile", "release"],
-        ["mise", "run", "release:rehearse"],
-    ]
-    for command in steps:
-        if command is None:
-            drift = policy.execute(checkout, ["git", "status", "--porcelain"], capture=True).strip()
-            if drift:
-                raise policy.ToolError(f"render drift: stkr project update and the formatters change\n{drift}")
-            continue
-        print("rehearsal: " + " ".join(command), flush=True)
-        if command[-1] == "release:rehearse":
-            environment[REHEARSAL_CHECKOUT] = "1"
-        if subprocess.run(command, cwd=checkout, env=environment, check=False).returncode:
-            raise policy.ToolError(f"local rehearsal step failed: {' '.join(command)}")
-
-
-def _require_publication(directory: Path, settings: dict) -> None:
-    """Refuse A Release Whose Crates Cannot Publish: A First Publication Needs The Bootstrap Token."""
-    if not (directory / "Cargo.toml").is_file():
-        return
-    missing = [name for name in registry.publishable(directory) if not registry.crate_published(name)]
-    if not missing:
-        return
-    available = os.environ.get("CRATES_BOOTSTRAP_AVAILABLE") == "true" or bool(os.environ.get("CARGO_REGISTRY_TOKEN"))
-    message = f"crates not yet on crates.io need the bootstrap token for their first publication: {', '.join(missing)}"
-    if continuous_integration() and not available:
-        raise policy.ToolError(message + "; configure the [release] crates_bootstrap_secret environment secret before preparing")
-    if not available:
-        print("warning: " + message)
-
-
-def _requirements(directory: Path, previous: str, planned: str) -> None:
-    """Move Path Dependency Requirements On Workspace Members To The Planned Version; Locks Follow In prepare."""
-    if previous == planned:
-        return
-    for name in _tracked(directory, "Cargo.toml", "*/Cargo.toml"):
-        path = directory / name
-        text = path.read_text(encoding="utf-8")
-        updated = re.sub(
-            r"\{[^{}\n]*\bpath\s*=[^{}\n]*\}",
-            lambda match: re.sub(r'(\bversion\s*=\s*")' + re.escape(previous) + '"', r"\g<1>" + planned + '"', match.group(0)),
-            text,
+        environment.update(
+            {
+                "CARGO_HOME": str(scratch / "cargo"),
+                "UV_CACHE_DIR": str(scratch / "uv"),
+                "MISE_DATA_DIR": str(scratch / "mise"),
+                "MISE_CACHE_DIR": str(scratch / "mise-cache"),
+                "MISE_LOCKED": "1",
+                "MISE_TRUSTED_CONFIG_PATHS": str(checkout),
+                "npm_config_store_dir": str(scratch / "pnpm"),
+                "CARGO_INCREMENTAL": "0",
+            }
         )
-        if updated != text:
-            path.write_text(updated, encoding="utf-8")
+        module = (__package__ or "release").rsplit(".", 1)[0] + ".release.run"
+        steps = [
+            ["mise", "install"],
+            ["stkr", "project", "update"],
+            ["mise", "run", "format"],
+            None,
+            ["mise", "run", "build", "--profile", "release"],
+            ["mise", "run", "package", "--profile", "release"],
+            ["mise", "exec", "--", "uv", "run", "--locked", "--project", "tools/python", "python", "-m", module, "rehearse"],
+        ]
+        for command in steps:
+            if command is None:
+                drift = subprocess.run(
+                    ["git", "status", "--porcelain"], cwd=checkout, capture_output=True, text=True, encoding="utf-8", check=True
+                ).stdout.strip()
+                if drift:
+                    raise policy.ToolError(f"render drift: stkr project update and the formatters change\n{drift}")
+                continue
+            print("rehearsal: " + " ".join(command), flush=True)
+            if command[-1] == "rehearse":
+                environment[REHEARSAL_CHECKOUT] = "1"
+            result = subprocess.run(command, cwd=checkout, env=environment, check=False)
+            if result.returncode:
+                raise policy.ToolError(f"local rehearsal step failed with exit code {result.returncode}: {' '.join(command)}")
 
 
-def _revision(directory: Path) -> str:
-    sha = archive.revision(directory)
-    if not sha:
-        raise policy.ToolError("release operations require a committed HEAD")
-    return sha
-
-
-def _root(directory: Path) -> Path:
-    return policy.inside(directory, policy.policy(directory, "release").get("directory", "target/release-assets"))
-
-
-def _run(directory: Path, command: list[str], secret: str) -> str:
-    """Run A Command That Carries A Credential, Never Echoing It; Returns Its Scrubbed Standard Output."""
-    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, encoding="utf-8", check=False)
-    scrub = (lambda text: text.replace(secret, "***")) if secret else (lambda text: text)
-    print(scrub(result.stderr or ""), end="", file=sys.stderr)
-    if result.returncode:
-        raise policy.ToolError(f"{command[0]} {command[1]} failed with exit code {result.returncode}")
-    return scrub(result.stdout or "")
+def _override_source(directory: Path) -> str:
+    """Bind Local Development Evidence To The External Checkout Contents."""
+    root = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout.strip()
+    )
+    files = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout.split(b"\0")
+    digest = hashlib.sha256()
+    for name in sorted(set(files) - {b""}):
+        path = root / os.fsdecode(name)
+        digest.update(name + b"\0")
+        if path.is_symlink():
+            digest.update(b"link\0" + os.fsencode(os.readlink(path)))
+        elif path.is_file():
+            digest.update(b"file\0" + hashlib.sha256(path.read_bytes()).digest())
+        else:
+            digest.update(b"missing\0")
+    return digest.hexdigest()
 
 
 @cache
@@ -738,9 +786,13 @@ def _tracked(directory: Path, *patterns: str) -> list[str]:
     return sorted(filter(None, listed.split("\0")))
 
 
-def _task_defined(directory: Path, name: str) -> bool:
-    with (directory / "mise.toml").open("rb") as file:
-        return name in tomllib.load(file).get("tasks", {})
+def _warn_overrides(overrides: tuple[tuple[str, str], ...]) -> None:
+    """Warn once per process that local overrides make evidence unpublishable."""
+    listing = "\n".join(f"  {package}: {manifest}" for package, manifest in overrides)
+    print(
+        f"warning: unpublished local dependency overrides; local evidence is not publishable and CI refuses this tree:\n{listing}",
+        file=sys.stderr,
+    )
 
 
 # === Entry Point === #
@@ -750,20 +802,21 @@ if __name__ == "__main__":
         policy.main(
             "release",
             [
-                "prepare",
-                "review",
-                "dry",
-                "crates-dry",
-                "rehearse",
-                "discard",
-                "identity",
-                "tag",
+                "guard",
                 "crates",
+                "rehearse",
+                "rehearse-candidate",
+                "discard",
+                "prepare",
+                "author",
+                "candidate",
+                "tag",
+                "stage",
+                "assemble",
                 "publish",
-                "python",
                 "finalize",
                 "verify",
-                "guard",
+                "route",
                 "assets",
             ],
             run,
