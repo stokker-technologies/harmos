@@ -5,210 +5,110 @@ description: Design Harmos application boundaries, operation ownership, resource
 
 # Harmos Architecture
 
-Project contracts take precedence over generic architecture defaults. Read current source for exact signatures.
-
-The project skills are `harmos-architecture`, `harmos-authoring` and
-`harmos-testing`. Conventions belong to the company `stkr-*` skills, including
-`stkr-conventions` and the applicable language skills.
+Apply `stkr-rust-architecture` for the tier model. Harmos assigns the following
+crate owners; dependencies below describe production edges, not test dependencies.
 
 ## Application And Contract Layout
 
-- `contract/` owns shared message types, operation declarations and portable
-  catalogs used by the application and plugins. Because guests compile it to
-  WebAssembly, it depends on `harmos-domain` rather than the host facade;
-  declarations need no Tokio, async execution or host engine. Domain declarations
-  are host-independent and free of protobuf transcoding; `harmos-domain::Message`
-  owns Postcard encoding and decoding in `crates/harmos-domain/src/message/mod.rs`.
-  The SDK, sidecar, guest and runtime `grpc` features own protobuf
-  transcoding, and `harmos-packaging` owns schema and binding generation.
-- `app/` owns application state, resource-bound implementations and `app.rs`
-  composition. CLI and GUI crates are shells. Plugins depend on the contract,
-  never on the application runtime crate.
-- Operations are the protocol. Declare `grpc(package = "...", service = "...",
-  method = "...")` on the operation; do not prescribe separate consumer
-  `grpc/` or `protocol/` crates/folders, hand-authored protobuf, or duplicate RPC
-  handlers. Harmos's internal `grpc/` module owns transport implementation.
-- Start small: `state.rs` for replayable application data, `resources.rs` for
-  shared live dependencies, `operations/mod.rs` and vertical operation leaves.
-  Introduce `state/` only when several cohesive state types or rules justify it;
-  the runtime's internal state domain does not require consumers to copy it.
-- Operations perform managed attempts, services own resident work, and observers
-  own periodic production. A bounded subscription operation can stay open under
-  an explicit policy and lane; it adapts an existing producer rather than owning
-  a duplicate producer or scheduler.
+| Crate | Ownership | Harmos Dependencies |
+| --- | --- | --- |
+| `harmos` | Consumer entry library and host facade. | `harmos-domain`, `harmos-runtime`. |
+| `harmos-domain` | Host-free messages, contracts, schemas and portable catalogs. | Optional `harmos-macros` for declarations. |
+| `harmos-runtime` | Resource-bound execution and host composition. | `harmos-domain`, `harmos-sdk`, `harmos-storage`, `harmos-macros`; optional `harmos-guest`, `harmos-sidecar`, `harmos-packaging`. |
+| `harmos-sdk` | Shared execution and plugin lifecycle contracts. | `harmos-domain`. |
+| `harmos-storage` | Storage engine, Arrow queries, persistence and signal kernels. | `harmos-domain`. |
+| `harmos-guest` | Wasm component SDK. | `harmos-domain`, `harmos-sdk`. |
+| `harmos-sidecar` | Native process carrier and SDK. | `harmos-domain`, `harmos-sdk`. |
+| `harmos-packaging` | Artifact receipts, bundles and schema/binding generation. | `harmos-domain`. |
+| `harmos-macros` | Declaration and authoring macros. | No Harmos crate dependency. |
+| `cargo-harmos` | Cargo subcommand for product packaging and authoring. | `harmos-packaging`. |
 
+All ten crates are publishable workspace packages. The SDK, storage, carrier,
+packaging and macro boundaries keep their consumers independent of the larger
+host runtime.
+
+Declare a product's operation contracts, including requests and replies, records,
+streams, prompts and settings models once in `<p>-domain`. Depend on
+`harmos-domain` for host-free Harmos declarations. Implement handlers in
+`<p>-runtime`; nothing re-declares or forwards an operation. Every shipped
+interface imports the product entry library `<p>` and provides the same
+operations through its own host.
+
+## Hosted Applications
+
+An app is a role, not a tier: an application is `<p>-runtime` hosted as a
+sidecar. Its hosting binary is a `[[bin]]` of the runtime unless the company
+crate split rule applies.
+
+A resource library beside the runtime is legitimate when it wraps one external
+system, such as a proprietary process's protobuf API or desktop automation.
+Otherwise keep that responsibility as a module of the runtime.
 
 ## Catalogs And Domain Ownership
 
-- Name domain catalogs by their role: `Operations`, `Observers`, `Services`,
-  `Listeners`, `Streams`, `Records`, `Transactions`, and `Lanes`. Generic typed
-  catalogs may use the application's own domain vocabulary.
-- Declare each operation on its owning request struct in a vertical leaf file.
-  Catalog entries reference the leaf type; never attach operation metadata to
-  enum entries.
-- Assemble each catalog once and compose it directly. Avoid parallel aliases and
-  catalog-wrapper functions. Use `()` for an absent generic catalog.
-- Place managers inside their domains, such as `services/manager.rs` and
-  `storage/manager.rs`, re-exported by the domain's `mod.rs`. There is one
-  app-wide owner per domain; plugin scopes do not create independent managers.
-- Keep listener delivery within stream/record ownership; no separate
-  `ListenerManager`. Keep shared supervision private rather than duplicating
-  service and observer lifecycle engines.
-- Standard embedded, native and guest hosts use `Runtime.plugin` and
-  `Handle.plugin`, the same `PluginHost` allocation. Registration is inert;
-  explicit initialization activates the dependency graph. Runtime shutdown
-  retires plugins while their operation/state infrastructure remains available.
-  Rust-only embedded catalogs use `register_embedded` / `reload_embedded`;
-  portable embedded catalogs use `register_embedded_wire` /
-  `reload_embedded_wire`, projecting original contracts from resource-bound
-  handlers through `AuthoredContracts`. Both use that same lifecycle/registry;
-  neither requires a separate SDK host or changes original caller authority.
-  Keep custom `PluginLifecycle` drivers behind the lower-level `PluginManager`
-  extension rather than requiring them in ordinary applications.
-- Plugin-specific public types carry the `Plugin` prefix. Runtime managers use
-  `harmos::Result` and `harmos::Error`. The storage engine owns
-  `harmos_storage::Result` and `harmos_storage::Error`; its runtime bridge maps
-  failures when composing host lifecycle work.
+Catalogs assemble declarations owned by the product domain. Operation metadata
+belongs to the request declaration; catalog entries reference that declaration.
+Runtime handlers implement those contracts against the runtime's resources.
 
+A plugin is a native process the host launches and supervises over piped stdio.
+Every Dokime plugin is one. A sidecar uses the same carrier for a product's own
+runtime. A guest is a Wasm component run in-process by the host. Dokime admits
+native sidecars only.
+
+Harmos registers sidecars and guests under the same runtime plugin owner.
+Registration describes contributions; activation owns their execution.
+There is no attachment path for a runtime on another machine.
+
+Cross-provider routing lets a plugin's requirements name operations another
+registered provider offers. The host resolves by contract and shared visibility
+and rejects ambiguity. A provider's operation identity alone is insufficient:
+the declared version, schema, policy, visibility and replay contract must match.
+Explicit provider selection must still satisfy the same contract and visibility.
 
 ## Features And Imports
 
-The `harmos` application facade composes domain declarations and host runtime
-execution. The runtime composes managed state, streams, the storage engine and authoring;
-optional facilities are `plugin`, `plugin-sidecar`, `plugin-guest`, `grpc`,
-`generate-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
-hosting imply `plugin`; gRPC implies `generate-proto`. TLS and Web policy belong
-to the runtime gRPC settings.
+Use `harmos` for host composition, `harmos-domain` for portable declarations,
+`harmos-sidecar` for native carrier consumers and `harmos-guest` for guests.
+Both carrier crates share `harmos-sdk`; neither depends on the host runtime.
 
-Shared declarations depend on pure `harmos-domain`: schemas, messages, operation
-metadata, transactions and portable catalogs. Async implementations use
-`harmos-sdk`, which owns `Operation`, execution contexts, typed responses, wire
-execution and plugin lifecycle traits. Native plugins use `harmos-sidecar`,
-guests use `harmos-guest`; both reexport the same SDK contracts without a host
-runtime. `harmos-storage` owns Arrow, queries, persistence and signal kernels;
-`harmos-runtime` owns its application lifecycle and operation bridge. `harmos-packaging` owns build receipts, bundles, descriptor/reflection
-projection and proto and Python generators. Build scripts use it directly;
-its binding features never belong on `harmos-domain` or the host facade.
-
-Each configurable subsystem owns its settings and validation in its own
-`config.rs` (for example `storage/config.rs`). Root `config.rs` composes those
-module-owned types without duplicate definitions. Keep at most two configuration
-levels within each subsystem; root composition adds one outer level. Prefix
-storage settings types with `Storage`.
-
-Consumers explicitly supply resource and operational policy without implicit
-`Default` implementations or deserialization fallbacks. Consumers own product
-defaults, machine-aware sizing and operator overrides. Harmos owns protocol
-constants, correctness constraints and private algorithm choices. Existing APIs
-require cohesive migration with their consumers; this policy does not claim the
-migration is already implemented. Managers receive only relevant settings;
-live resources and mutable state remain with their domain owners.
-
-`harmos::prelude` is a bounded authoring convenience for application entry points,
-common operation/transaction traits, and macros. Domain modules retain canonical
-ownership. Do not expand the prelude into an automatic manager/type inventory.
+The runtime's `plugin-sidecar` and `plugin-guest` features imply `plugin`.
+Its `grpc` feature owns transport composition; domain declarations stay
+host-free. SDK and carrier protobuf codecs are optional `grpc` facilities.
+`harmos-packaging` owns schema and binding generation independently of runtime
+execution.
 
 ## Aggregate Vocabulary
 
-Harmos owns one statistic vocabulary and the math behind it; consumers alias it
-and never redefine a subset. `harmos::Aggregate` (from `harmos-domain`, wasm-clean,
-serde snake case, `name()`/`parse()` as `count`, `mean`, `p95`) is
-`Count | Sum | Mean | Median | Min | Max | Rms | Std | Percentile(u8)`. `Std` is
-the population deviation; `Percentile` takes a whole percentage 0..=100 and
-interpolates linearly between ranks.
+`harmos-domain` owns `Aggregate`, re-exported through `harmos`:
+`Count`, `Sum`, `Mean`, `Median`, `Min`, `Max`, `Rms`, `Std` and
+`Percentile(u8)`. Consumers reuse that vocabulary.
 
-The math lives in `harmos_storage::signal`; optional FFT uses the storage
-crate's `fft` feature (forwarded by the host facade's `signal-fft`). `Series` answers every member exactly over a finished run;
-`Summary` is the streaming, mergeable form and answers only the members where
-`Aggregate::mergeable()` holds, refusing median and percentiles with `None`.
-Both skip non-finite values; empty input answers `Count` and `Sum` with zero and
-everything else with `None`. The `Aggregates` trait maps the vocabulary onto both:
-
-```rust
-use harmos::Aggregate;
-use harmos::signal::{Aggregates, Series, Summary};
-
-let series = Series::new(&samples); // or `samples.into_iter().collect()`
-let p95 = series.aggregate(Aggregate::Percentile(95));
-let settled = series.all_within(4.75, 5.25);
-let merged = Summary::of(&left).merge(&Summary::of(&right));
-let mean = merged.aggregate(Aggregate::Mean);
-```
-
-Every reduction path evaluates through `Series` or `Summary`: plot buckets
-(`streams::Bucket::aggregate`), stream batch measurements
-(`streams::Measurement::aggregate`) and storage group-bys
-(`storage::query::scalar::Agg::Of(Aggregate)`). Storage additionally keeps `Agg::Len`
-and `Agg::Last`, which select rows rather than compute statistics, and answers
-`Sum`, `Mean` and `Median` of integer and exact columns in exact rational
-arithmetic. Do not add a private statistic implementation beside them.
+`harmos-storage` owns signal mathematics. `Series` represents a finished
+series; `Summary` represents mergeable streaming statistics. Median and
+percentiles require the finished series. The storage `fft` feature owns FFT
+kernels; the host facade exposes them through `signal-fft`.
 
 ## Simulation Surface
 
-Keep the shared builder at `harmos::Builder`. Supporting simulation names belong
-under `harmos::simulation`; do not expose internal reboot factories or restore obsolete
-runtime aliases in consumer APIs.
-
-For concrete plugin and transport authoring, use `harmos-authoring`.
+Simulation belongs to `harmos-runtime` and is exposed through `harmos`.
+It does not introduce another product tier or another owner for contracts.
 
 ## Storage Ownership And Queries
 
-`harmos_storage::StorageManager` owns read/write admission, accounting,
-persistence and generic retention. The runtime wrapper adds host clock injection
-and resident-worker ownership; it does not duplicate engine state. Consumer applications supply explicit StorageSettings from
-storage/config.rs; root config.rs composes those settings. Do not reintroduce
-library-selected operational defaults or report-specific read allowances.
-StorageRequestSettings controls queue/dispatch capacity; StorageResponseSettings
-batch_rows and batch_bytes control delivery ceilings, independently of query
-row offset/limit. Preserve bounds on in-flight writes and encoding scratch as
-well as pending descriptions and data.
+`harmos-storage` owns read/write admission, accounting, persistence, retention
+and the query engine. The runtime storage wrapper supplies the host clock and
+resident-worker ownership around the same engine.
 
-Query is a declarative storage-owned plan with a full StorageCursor, a selected
-source, ordered transforms and a final row slice. The cursor identifies the
-requested history; it does not itself pin retention. Admission protects the
-required data for the read lifetime. A pruned or foreign history errors rather
-than silently selecting a newer boundary. Sources cover objects, records,
-streams, schemas and finished-file metadata. ReadFile is separate and reads
-finished immutable content; explicit producing/follow/resume APIs retain their
-separate lifecycle.
+Consumers own storage budgets, admission limits, concurrency and response batch
+sizes. Harmos owns protocol constants and correctness constraints. Product
+settings belong to the product domain; the runtime owns the configured live
+storage resources.
 
-Use Arrow Schema and RecordBatch for analytical results. Emit one schema event,
-then bounded batches, then the operation's final completion response. Native
-calls use the same contract without forced serialization. Wire codecs must
-preflight allocation bounds, preserve schema equality and use the existing
-operation transport. Shared Arrow allocations remain charged through clones
-and slices until their last owner releases them. A consumer-created deep copy
-is the consumer's allocation; it must not be confused with a free zero-copy
-escape from storage accounting.
+Storage owns the declarative `Query`, `StorageCursor`, source and transform
+vocabulary. Arrow schemas and record batches are analytical results; clones and
+slices retain the original storage allocation's charge. The query engine and
+signal kernels remain shared owners across interfaces.
 
-Keep one storage transform catalog and the shared statistic implementation.
-Validate input/output schemas before emitting results; apply transforms in
-order and row slicing last. Aggregate full selected data; downsample display
-traces only. Preserve exact integer/rational semantics where supported. Do not
-introduce arbitrary code execution, a second query engine or browser-side
-evidence calculations to bypass the shared contract.
-
-Separate typed write operations share acceptance/durability machinery. Each
-logical batch validates and commits atomically; transport frames do not define
-commit boundaries. Accepted work belongs to storage and cannot be withdrawn by
-cancelling its operation. Durable receipts prove persistence. Connection loss
-can leave partial committed success and unknown unacknowledged outcomes; do not
-blindly replay uncertain batches. Long-lived execution writers must not inherit
-a short fixed operation lifetime. Consumer acquisition policy may drop unsent
-measurement data, but storage must not silently discard accepted work or
-managed-state/control transitions.
-
-StateManager owns transactions, live state and replay. StateBackend stores the
-journal and snapshots through StorageManager. Keep state journal positions
-separate from evidence cursors. Required evidence must become durable before
-state referring to it is replayable; snapshots must be durable before covered
-journal entries can be reclaimed. Do not imply atomicity across independent
-backends merely because acknowledgments mention both.
-
-Consumers own lifecycle retention policy, including preserving all revisions
-needed by active executions. Generic retention releases must survive ordinary
-persistence and restart. Subject sealing cannot race active
-materializations or accepted late writes. Report finalization, stop behavior,
-renderer resources and stopped-report evidence boundaries belong to Dokime,
-not Harmos. Temporary contention may wait; impossible working sets or retained
-result deadlocks must fail explicitly rather than loop or omit results.
+The runtime state manager owns transactions, live state and replay. Its storage
+backend owns journal and snapshot persistence through the storage engine.
+Evidence cursors and state journal positions describe distinct histories.
