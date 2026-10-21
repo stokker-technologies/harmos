@@ -2,7 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:93ba90efab6ad9c75ff3738918b1ee829e854e2735d79493d5b25a856fe8a23a -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:7a1e50f2aea957f5d0d5fb81a4d0050c566eaae7216e943f9fbac4030b5bf1fa -->
 
 # Harmos Testing
 
@@ -23,8 +23,11 @@ product boundaries determine where Harmos behavior belongs.
 
 Each crate has at most one integration binary. Layers share the project-wide caps
 in `stkr.toml` (`[conventions.testing.limits]`: unit 512, integration 256,
-acceptance 128, system 64). Integration domains mirror production modules beneath
-`tests/integration/main.rs`; shared controllable backends live in `tests/support/`.
+acceptance 128, system 64). The target layout mirrors production modules beneath
+`tests/integration/main.rs`. Two crates still select other paths for their
+`integration` binary in Cargo.toml and remain exceptions to migrate:
+`harmos-domain` uses `tests/message/main.rs`, and `harmos-guest` uses
+`tests/kit/main.rs`. Shared controllable backends live in `tests/support/`.
 Storage manager stories exercise its public engine boundary.
 Their real `WorkerOwner` runs the canonical worker and joins it on close; a host
 runtime is needed only when the story proves host composition. Runtime storage

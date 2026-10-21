@@ -22,8 +22,11 @@ product boundaries determine where Harmos behavior belongs.
 
 Each crate has at most one integration binary. Layers share the project-wide caps
 in `stkr.toml` (`[conventions.testing.limits]`: unit 512, integration 256,
-acceptance 128, system 64). Integration domains mirror production modules beneath
-`tests/integration/main.rs`; shared controllable backends live in `tests/support/`.
+acceptance 128, system 64). The target layout mirrors production modules beneath
+`tests/integration/main.rs`. Two crates still select other paths for their
+`integration` binary in Cargo.toml and remain exceptions to migrate:
+`harmos-domain` uses `tests/message/main.rs`, and `harmos-guest` uses
+`tests/kit/main.rs`. Shared controllable backends live in `tests/support/`.
 Storage manager stories exercise its public engine boundary.
 Their real `WorkerOwner` runs the canonical worker and joins it on close; a host
 runtime is needed only when the story proves host composition. Runtime storage

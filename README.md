@@ -607,9 +607,12 @@ operations and listener callbacks refuse any other value. A sidecar that declare
 observers serves the built-in `harmos.observe` control; the host submits it per
 activation and cancels it to stop the observer, which runs on a thread of its own.
 
-Externally supplied settings and defaults live in each configurable crate's root
-`config.rs`. Composition passes each owner its relevant settings rather than
-retaining global configuration in every manager.
+The intended configuration contract gives each subsystem ownership of its settings
+and validation in its own `config.rs`; root configuration composes those types.
+This migration is incomplete: `crates/harmos-runtime/src/config.rs` still defines
+decode, encode, gRPC, operation and plugin settings. Consumers own defaults and
+pass each owner its relevant settings rather than retaining global configuration
+in every manager.
 
 Host runtimes expose one shared `runtime.plugin` owner; `runtime.handle().plugin`
 clones that same owner. Embedded, guest and native registration is inert. Explicit
