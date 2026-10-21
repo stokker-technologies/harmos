@@ -281,7 +281,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cargo-harmos"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1006,7 +1006,7 @@ dependencies = [
 
 [[package]]
 name = "harmos"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "harmos-domain",
  "harmos-runtime",
@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "harmos-macros",
  "harmos-packaging",
@@ -1034,7 +1034,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-guest"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-macros"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-packaging"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "criterion",
  "harmos-domain",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sidecar"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "criterion",
  "futures-util",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-storage"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "schematic-domain"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "harmos-domain",
  "serde",
