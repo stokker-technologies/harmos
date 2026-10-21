@@ -81,7 +81,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 
 [dev-dependencies]
 # Local
-harmos-domain = { workspace = true, features = ["derive"] }
+harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
 
 # Git
 
