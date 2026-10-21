@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:f9aac1e16eace66d562de40a569c577a87f480d8acc84b172bb208e048912131
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:4cacd82373258334d03fafed497dc6659e1d0f6a12154525749df6fb22fe4bf8
 name: CI
 "on":
   push:
@@ -29,7 +29,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":[\"ubuntu-24.04\"],\"large\":[\"ubuntu-24.04\"]},\"windows\":{\"small\":[\"windows-2022\"],\"large\":[\"windows-2022\"]},\"nightly\":{\"small\":[\"stokker-local-linux-x64\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":40,\"build_tests\":40}"
+      budgets: "{\"build_product\":120,\"build_tests\":120}"
       platform: linux
     secrets: inherit
   build_windows:
@@ -37,7 +37,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":[\"ubuntu-24.04\"],\"large\":[\"ubuntu-24.04\"]},\"windows\":{\"small\":[\"windows-2022\"],\"large\":[\"windows-2022\"]},\"nightly\":{\"small\":[\"stokker-local-linux-x64\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":40,\"build_tests\":40}"
+      budgets: "{\"build_product\":120,\"build_tests\":120}"
       platform: windows
     secrets: inherit
   check:

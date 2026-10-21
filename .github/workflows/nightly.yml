@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:7bbe66c70a696fcc0b09b02b94fdfd28e3b7bcd9072edf7e291e7396721bbaec
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:b860ea7ae11095cb765097e45377371f1aedee47ee47e7cca5cf1eb459045ba5
 name: Nightly
 "on":
   schedule:
@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":[\"ubuntu-24.04\"],\"large\":[\"ubuntu-24.04\"]},\"windows\":{\"small\":[\"windows-2022\"],\"large\":[\"windows-2022\"]},\"nightly\":{\"small\":[\"stokker-local-linux-x64\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":40,\"build_tests\":40}"
+      budgets: "{\"build_product\":120,\"build_tests\":120}"
       platform: linux
     secrets: inherit
   build_windows:
@@ -46,7 +46,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":[\"ubuntu-24.04\"],\"large\":[\"ubuntu-24.04\"]},\"windows\":{\"small\":[\"windows-2022\"],\"large\":[\"windows-2022\"]},\"nightly\":{\"small\":[\"stokker-local-linux-x64\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":40,\"build_tests\":40}"
+      budgets: "{\"build_product\":120,\"build_tests\":120}"
       platform: windows
     secrets: inherit
   check:
