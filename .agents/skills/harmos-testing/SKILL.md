@@ -59,15 +59,5 @@ Generated-project stories use starter manifests and locks, a build-owned Cargo
 vendor directory and a hash-checked Python wheelhouse. Their isolated offline
 inputs cover root tooling and both starter locks.
 
-<<<<<<< HEAD
-Acceptance preflight installs the starter toolset once before nextest starts.
-Parallel starter stories disable automatic mise installs so they cannot repair
-shared runtime links while another story uses them.
-
-Python binding interoperability is Rust-driven acceptance using the tooling project's
-`tools/python/.venv`. Generated Python packages remain consumer-owned; repository tooling has
-no Python test suite or independently published client distribution.
-=======
 Python binding interoperability is Rust-driven acceptance using the root
 `.venv`; generated Python packages remain consumer-owned.
->>>>>>> docs/skills-consistency
