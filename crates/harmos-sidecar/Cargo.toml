@@ -130,7 +130,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 [dev-dependencies]
 # Local
-harmos-macros = { workspace = true, default-features = true }
+harmos-macros = { path = "../harmos-macros" }
 
 # Git
 

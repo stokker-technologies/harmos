@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/publish.py; sha256:22420346939b3b1442b172057e08b6f5d30a45be4fe365fed2c4eed7e85bf1af
+# Rendered by stkr project update from templates/python/test/publish.py; sha256:4344bb011a651946ca84e92913a2bd56735d4c5b406cf23a99f40fe190190c29
 # ***
 #
 # Harmos
@@ -19,10 +19,9 @@ import subprocess
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
-from . import policy
 from .. import temporary
+from . import policy
 
 # Type Checking Imports
 

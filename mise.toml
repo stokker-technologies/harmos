@@ -103,12 +103,21 @@ run = [
 
 [tasks.check]
 description = "Check Every Language And Workflows"
-depends = ["check:rust"]
-run = "actionlint"
+run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:python" }]
+
+[tasks."check:python"]
+description = "Check Python"
+run = [{ task = "format:python --check" }, { task = "lint:python" }]
+
+[tasks."check:repository"]
+description = "Check Repository Configuration And Conventions"
+run = [{ task = "format:toml --check" }, "actionlint"]
 
 [tasks."check:rust"]
 description = "Check Rust"
 run = [
+  { task = "format:rust --check" },
+  { task = "lint:rust" },
   "cargo check --locked --workspace --all-targets --all-features",
   "cargo check --locked --workspace --all-targets --no-default-features",
   "cargo check --locked -p harmos-domain --target wasm32-unknown-unknown",
@@ -313,6 +322,7 @@ run = [
   { task = "test --profile {{usage.profile}}" },
   { task = "package --profile {{usage.profile}}" },
   { task = "release:publish:dry" },
+  { task = "release:rehearse:candidate" },
 ]
 
 [tasks."ci:nightly"]
@@ -356,6 +366,14 @@ run = "uv run --locked --project tools/python python -m harmos_tools.release.run
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
 run = "uv run --locked --project tools/python python -m harmos_tools.release.run crates"
+
+[tasks."release:rehearse"]
+description = "Rehearse The Publication Chain On A Disposable Draft"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse"
+
+[tasks."release:rehearse:candidate"]
+description = "Rehearse Candidate Publication"
+run = "uv run --locked --project tools/python python -m harmos_tools.release.run rehearse-candidate"
 
 [tasks."release:stage"]
 description = "Stage Native Release Assets"

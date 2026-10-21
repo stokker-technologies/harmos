@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Greeting Values And Pure Formatting.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 
-
 /* === Constants === */
 
 /* === Macros === */
@@ -31,8 +29,9 @@
 
 /* === Structs === */
 #[harmos_domain::message]
-pub struct Greeting { pub message: String }
-
+pub struct Greeting {
+    pub message: String,
+}
 
 /* === Enums === */
 
@@ -40,9 +39,10 @@ pub struct Greeting { pub message: String }
 
 /* === Implementations === */
 impl Greeting {
-    pub fn for_name(name: &str) -> Self { Self { message: format!("Hello, {name}!") } }
+    pub fn for_name(name: &str) -> Self {
+        Self { message: format!("Hello, {name}!") }
+    }
 }
-
 
 /* === Public Functions === */
 
@@ -56,4 +56,3 @@ mod tests {
         assert_eq!(super::Greeting::for_name("Ada").message, "Hello, Ada!");
     }
 }
-

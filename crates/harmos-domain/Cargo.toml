@@ -72,7 +72,7 @@ memchr = { workspace = true, default-features = true }
 harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
 
 # Local
-harmos-macros = { workspace = true }
+harmos-macros = { path = "../harmos-macros" }
 harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
 
 # Git

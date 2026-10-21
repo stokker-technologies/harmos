@@ -781,10 +781,12 @@ pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
 
 /* === Private Functions === */
 
-// A Pass Racing Shutdown Meets The Closed Carrier; Any Other Refusal Fails The Story
+// A Pass Racing Shutdown Meets The Closed Carrier, Or Its Already Retired Attempt Scope; Any Other Refusal Fails The Story
 fn published<E: std::fmt::Debug>(result: Result<(), E>) {
+    const SHUTDOWN: [&str; 2] = ["carrier attempt admission is closed", "native attempt or generation context admission is closed"];
     if let Err(error) = result {
-        assert!(format!("{error:?}").contains("carrier attempt admission is closed"), "{error:?}");
+        let error = format!("{error:?}");
+        assert!(SHUTDOWN.iter().any(|refusal| error.contains(refusal)), "{error}");
     }
 }
 
