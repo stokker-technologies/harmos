@@ -117,8 +117,8 @@ tower-http = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Local
-harmos-packaging = { workspace = true, features = ["generate-proto"] }
-harmos-sdk = { workspace = true, features = ["grpc"] }
+harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto"] }
+harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
 
 # Git
