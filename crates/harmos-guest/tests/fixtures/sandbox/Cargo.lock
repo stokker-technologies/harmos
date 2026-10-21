@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-domain"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "harmos-macros",
  "memchr",
@@ -133,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-guest"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sandbox-guest"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "harmos-domain",
  "harmos-guest",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "harmos-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "harmos-domain",
  "postcard",
