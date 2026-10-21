@@ -421,10 +421,10 @@ product = "__PRODUCT_NAME__"
 # === Release === #
 
 [release]
+tag = "v0.1.0"
 provider = "github"
 repository = "stokker-technologies/harmos"
 product = "harmos"
-tag = "v0.1.0"
 notes = "CHANGELOG.md"
 targets = ["linux-x86_64", "windows-x86_64"]
 tests = ["unit-rust", "integration-rust", "acceptance-rust", "system-rust"]
