@@ -1,10 +1,13 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:48ddee5c37acfba738fb05d21f20e5123c4a57f71772e67fa274d50aa62ab153
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:7431d0447f0aba9bb839960291de29510612e468ed9993f660bd9c68e0f92d68
 Check / Repository:
   stage: Check
   tags:
-  - saas-linux-medium-amd64
+  - $STKR_RUNNER_LINUX_SMALL
   timeout: 10 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
   - mise run check:repository
   rules:
@@ -12,31 +15,49 @@ Check / Repository:
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
   - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
   cache:
   - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: pull
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Check / Python:
   stage: Check
   tags:
-  - saas-linux-medium-amd64
+  - $STKR_RUNNER_LINUX_SMALL
   timeout: 10 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
   - mise run check:python
   rules:
@@ -44,174 +65,370 @@ Check / Python:
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
   - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  cache:
-  - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: pull
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Check / Rust (linux):
   stage: Check
   tags:
-  - saas-linux-medium-amd64
+  - $STKR_RUNNER_LINUX_LARGE
   timeout: 30 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
   - mise run check:rust
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
   cache:
   - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
+    policy: $STKR_CACHE_POLICY
   - key:
-      prefix: linux-$CI_JOB_NAME_SLUG-target
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
       files:
-      - Cargo.lock
       - mise.lock
     paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
-  variables:
-    COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Check / Rust (windows):
   stage: Check
   tags:
-  - saas-windows-medium-amd64
+  - $STKR_RUNNER_WINDOWS_LARGE
   timeout: 30 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
   - mise run check:rust
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  cache:
-  - key:
-      prefix: windows-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: windows-cargo
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
-  - key:
-      prefix: windows-$CI_JOB_NAME_SLUG-target
-      files:
-      - Cargo.lock
-      - mise.lock
-    paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
   inherit:
     default:
     - interruptible
   before_script:
+  - >-
+    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
+    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
+    review pipeline $env:review_run"; exit 0 }
   - mise trust --yes
   - mise install --yes
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
   variables:
-    COMPILER_CACHE_POLICY: pull
     MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+Validated / Repository:
+  stage: Check
+  tags:
+  - $STKR_RUNNER_LINUX_SMALL
+  timeout: 10 minutes
+  needs: []
+  script:
+  - |-
+    mise trust --yes && mise install python && mise exec -- python - <<'STKR_REVIEW' || { mkdir -p target/ci; printf 'validated=false\nreview_run=\nreview_profile=\n' >> "${GITHUB_OUTPUT:-target/ci/validated.env}"; }
+    # Standard Library Imports
+    import io
+    import json
+    import os
+    import re
+    import subprocess
+    import urllib.parse
+    import urllib.request
+    import zipfile
+    from datetime import datetime, timezone
+    from pathlib import Path
+    # Third Party Imports
+    # Local Imports
+    # Type Checking Imports
+    # === Public Exports === #
+    # === Constants === #
+    OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+    # === Types === #
+    # === Classes === #
+    class ProviderRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+            origin = urllib.parse.urlsplit(req.full_url)
+            destination = urllib.parse.urlsplit(newurl)
+            if destination.scheme != "https":
+                raise ValueError("insecure artifact redirect")
+            if redirected is not None and (origin.scheme, origin.netloc) != (destination.scheme, destination.netloc):
+                redirected.remove_header("PRIVATE-TOKEN")
+            return redirected
+    # === Public Functions === #
+    def command(*args):
+        return subprocess.run(args, check=True, capture_output=True, text=True, timeout=120).stdout.strip()
+    def request(endpoint, *, binary=False):
+        if os.environ.get("GITHUB_ACTIONS"):
+            return json.loads(command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}"))
+        token = os.environ["RELEASE_TOKEN"]
+        if not token:
+            raise ValueError("provider token unavailable")
+        base = os.environ["CI_API_V4_URL"]
+        project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
+        native = urllib.request.Request(f"{base}/projects/{project}/{endpoint}", headers={"PRIVATE-TOKEN": token})
+        with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
+            data = response.read()
+        return data if binary else json.loads(data)
+    def pages(endpoint, key=None):
+        values = []
+        for page in range(1, 101):
+            separator = "&" if "?" in endpoint else "?"
+            response = request(f"{endpoint}{separator}per_page=100&page={page}")
+            batch = response[key] if key else response
+            if not isinstance(batch, list):
+                raise ValueError("invalid provider page")
+            values.extend(batch)
+            if len(batch) < 100:
+                return values
+        raise ValueError("provider pagination limit")
+    def same_tree(head, tree):
+        if not isinstance(head, str) or OID.fullmatch(head) is None:
+            return False
+        command("git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", head)
+        return command("git", "rev-parse", "--verify", head + "^{tree}") == tree
+    def lookup():
+        sha = command("git", "rev-parse", "HEAD")
+        tree = command("git", "rev-parse", "HEAD^{tree}")
+        if OID.fullmatch(tree) is None:
+            raise ValueError("invalid checkout tree")
+        github = bool(os.environ.get("GITHUB_ACTIONS"))
+        if github:
+            reviews = [review for review in pages(f"commits/{sha}/pulls") if review.get("merged_at")
+                       and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"]
+        else:
+            reviews = [review for review in pages(f"repository/commits/{sha}/merge_requests") if review.get("state") == "merged"
+                       and sha in (review.get("merge_commit_sha"), review.get("squash_commit_sha")) and review.get("target_branch") == "dev"]
+        if len(reviews) != 1:
+            raise ValueError("no unambiguous merged review")
+        review = reviews[0]
+        head = review["head"]["sha"] if github else review["sha"]
+        branch = review["head"]["ref"] if github else review["source_branch"]
+        if not same_tree(head, tree):
+            raise ValueError("review tree differs")
+        profile = "release" if branch.startswith("release/v") and os.environ.get("REVIEW_RELEASE") == "true" else "dev"
+        tag = os.environ.get("GITHUB_REF", "").startswith("refs/tags/") or bool(os.environ.get("CI_COMMIT_TAG"))
+        if tag and profile != "release":
+            raise ValueError("tag requires release-profile evidence")
+        required = json.loads(os.environ.get("REVIEW_PACKAGES", "[]"))
+        if tag:
+            required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
+        if github:
+            runs = pages(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
+            runs = [run for run in runs if run.get("head_sha") == head and any(pr.get("number") == review["number"] for pr in run.get("pull_requests", []))]
+            run = max(runs, key=lambda item: item["id"])
+            if run.get("status") != "completed" or run.get("conclusion") != "success":
+                raise ValueError("review run is not green")
+            jobs = pages(f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
+            if not jobs or any(job.get("conclusion") not in ("success", "skipped") for job in jobs):
+                raise ValueError("review jobs are not green")
+            artifacts = pages(f"actions/runs/{run['id']}/artifacts", "artifacts")
+            for name in required:
+                matches = [artifact for artifact in artifacts if artifact.get("name") == name.replace("PROFILE", profile)]
+                if len(matches) != 1 or matches[0].get("expired") is not False:
+                    raise ValueError("review package unavailable")
+        else:
+            review = request(f"merge_requests/{review['iid']}")
+            run = review["head_pipeline"]
+            if run.get("sha") != head or run.get("status") != "success" or run.get("source") != "merge_request_event":
+                raise ValueError("review pipeline is not green")
+            jobs = pages(f"pipelines/{run['id']}/jobs?include_retried=false")
+            if any(job.get("name") == "Plan / Impact" for job in jobs):
+                bridges = [bridge for bridge in pages(f"pipelines/{run['id']}/bridges") if bridge.get("name") == "CI / Required"]
+                if len(bridges) != 1 or bridges[0].get("status") != "success":
+                    raise ValueError("review child gate is not green")
+                child = bridges[0].get("downstream_pipeline")
+                if not isinstance(child, dict) or child.get("sha") != head or child.get("status") != "success" or not isinstance(child.get("id"), int):
+                    raise ValueError("review child pipeline is not green for this exact revision")
+                run = child
+                jobs = pages(f"pipelines/{run['id']}/jobs?include_retried=false")
+            if not jobs or any(job.get("status") not in ("success", "skipped", "manual") for job in jobs):
+                raise ValueError("review jobs are not green")
+            for name in required:
+                matches = [job for job in jobs if job.get("name") == name]
+                if len(matches) != 1 or matches[0].get("status") != "success" or not matches[0].get("artifacts_file", {}).get("filename"):
+                    raise ValueError("review package unavailable")
+                expiry = matches[0].get("artifacts_expire_at")
+                if expiry and datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+                    raise ValueError("review package expired")
+        if not isinstance(run["id"], int) or run["id"] <= 0:
+            raise ValueError("invalid review run ID")
+        if tag and not any(job.get("name", "").endswith("Release / Rehearsal")
+                           and job.get("conclusion" if github else "status") == "success" for job in jobs):
+            raise ValueError("release review has no successful rehearsal")
+        protected = os.environ.get("GITHUB_REF_PROTECTED") == "true" or os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
+        version = branch.removeprefix("release/") if profile == "release" else f"dev.{run['id']}+{head[:8]}"
+        if re.fullmatch(r"(?:v\d+\.\d+\.\d+|dev\.\d+\+[0-9a-f]{8})", version) is None:
+            raise ValueError("invalid review version")
+        return {"validated": "true", "review_run": str(run["id"]), "review_profile": profile,
+                "review_sha": head, "review_version": version, "stable_release": str(bool(tag and protected)).lower()}
+    def restore():
+        if os.environ.get("validated") != "true":
+            return
+        run = os.environ["review_run"]
+        if not run.isdecimal():
+            raise ValueError("invalid review pipeline")
+        jobs = pages(f"pipelines/{run}/jobs?include_retried=false")
+        for name in json.loads(os.environ["REVIEW_PACKAGES"]) + json.loads(os.environ.get("REVIEW_BUILDS", "[]")):
+            matches = [job for job in jobs if job.get("name") == name and job.get("status") == "success"]
+            if len(matches) != 1:
+                raise ValueError("review package producer unavailable")
+            data = request(f"jobs/{matches[0]['id']}/artifacts", binary=True)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                for member in archive.infolist():
+                    path = Path(member.filename)
+                    parent = member.is_dir() and member.filename in ("target/", "target/package/")
+                    if path.is_absolute() or ".." in path.parts or "\\" in member.orig_filename or (member.external_attr >> 16) & 0o170000 == 0o120000:
+                        raise ValueError("unsafe package archive path")
+                    if not parent and not member.filename.startswith(("target/package/", "target/ci/")):
+                        raise ValueError("unexpected package archive path")
+                archive.extractall()
+        print(f"Reusing packages from review pipeline {run}")
+    # === Private Functions === #
+    # === Entry Point === #
+    if __name__ == "__main__":
+        if os.environ.get("REVIEW_RESTORE") == "true":
+            restore()
+        else:
+            result = {"validated": "false", "review_run": "", "review_profile": "", "review_sha": "", "review_version": "", "stable_release": "false"}
+            try:
+                result = lookup()
+            except Exception as error:
+                # Never print provider responses, commands or credentials on lookup failure.
+                print(f"Review evidence unavailable ({type(error).__name__}); running the full pipeline")
+            if not os.environ.get("GITHUB_ACTIONS"):
+                version = os.environ.get("CI_COMMIT_TAG") or f"dev.{os.environ.get('CI_PIPELINE_ID', '')}+{os.environ.get('CI_COMMIT_SHORT_SHA', '')}"
+                result["DEPLOY_EXPECTED_VERSION"] = result.get("review_version") or version
+            output = os.environ.get("GITHUB_OUTPUT", "target/ci/validated.env")
+            Path(output).parent.mkdir(parents=True, exist_ok=True)
+            with open(output, "a", encoding="utf-8", newline="\n") as stream:
+                stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
+            print(f"validated={result['validated']} review_run={result['review_run']}")
+    STKR_REVIEW
+  rules:
+  - if: >-
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev") ||
+      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]/)
+  before_script: []
+  environment:
+    name: release
+    action: verify
+  variables:
+    REVIEW_BUILDS: "[]"
+    REVIEW_RELEASE: "false"
+    REVIEW_PACKAGES: "[\"Package / Rust (linux)\",\"Package / Rust (windows)\"]"
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/validated.env
+    reports:
+      dotenv: target/ci/validated.env
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY

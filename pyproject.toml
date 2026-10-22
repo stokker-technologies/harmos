@@ -1,0 +1,10 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+[tool.uv.workspace]
+members = ["tools/python"]

@@ -194,9 +194,9 @@ The upcoming release is configured to publish raw
 After publication, download the matching asset, verify it against `SHA256SUMS`,
 rename it to `cargo-harmos` (`cargo-harmos.exe` on Windows), and place it on
 `PATH`. On Linux, make it executable. Run `cargo harmos --help` to check
-installation. Cargo-binstall and mise installation are verified against those
-same published bytes before release completion. Harmos crates, including the
-CLI, are configured for crates.io publication.
+installation. Mise installation is verified against those same published bytes
+before release completion. Harmos library crates are configured for crates.io
+publication; the Cargo tool ships as a release executable.
 
 The release also declares `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
@@ -718,35 +718,36 @@ Use the setup commands in [Quick Start](#quick-start), then choose a task:
 
 ```sh
 mise run build                  # Build packageable products and generated clients
-mise run build:tests            # Build the shared test archive and fixtures
+mise run build:rust:tests       # Build the shared test archive and fixtures
 mise run check                  # Run repository checks
 mise run test                   # Run the test suite
-mise run build:bench            # Build benchmark executables
+mise run build:rust:bench       # Build benchmark executables
 mise run bench                  # Record benchmark results
 ```
 
 Local and development validation use the development profile. `mise run build`
-exports shipping binaries and generated clients. `mise run build:tests` compiles
+exports shipping binaries and generated clients. `mise run build:rust:tests` compiles
 one shared nextest archive and stamps the schematic/sandbox fixtures under
 `target/build/dev/<target>/fixtures/`; test layers run from that archive and
 refuse a missing or stale fixture. Product and Tests outputs use matching
-`target/build/<profile>/<target>/` directories. Separate `test:unit`,
-`test:integration`, `test:acceptance` and `test:system` tasks select behavioral
+`target/build/<profile>/<target>/` directories. Separate `test:rust:unit`,
+`test:rust:integration`, `test:rust:acceptance` and `test:rust:system` tasks select behavioral
 layers, each writing its JUnit report under `target/tests/`.
 Unit and integration lanes consume Tests outputs; metadata inspection uses
 stamped inert artifact copies. Acceptance and system lanes also consume the whole
 matching Product build, and only acceptance prepares compiler libraries
 and offline authoring inputs.
-`mise run test:coverage` instruments the full selection separately.
-`mise run ci --event pr` simulates the rendered pull-request graph from a cold
-clone of committed source; a failing lane fails the run.
+`mise run check:python:generated` verifies generated clients after Product Build.
+`mise run test:rust:coverage` instruments the full selection separately.
+`mise run ci` runs the ordinary checks, producers, tests, package and dry
+publication locally. Native provider CI proves every required platform.
 
-CI runs the Check, Build and Validate stages on Linux and Windows, and both
+CI runs the Check, Build and Test stages on Linux and Windows, and both
 platforms are required for `dev`, `main` and releases. Pull requests and pushes
 to `dev` verify development packages and dry publication; packages consume
 Product outputs under `target/package/<profile>/<target>/`. Nightly adds coverage and
 benchmarks. Optimized distribution builds and publication belong to release-tag
-pipelines. Rust crates publish to crates.io; CI packages retain the native CLI
+pipelines. Rust library crates publish to crates.io; CI packages retain the native CLI
 and example plugin bundles. Generated Python clients belong to their consuming
 producer package.
 

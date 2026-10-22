@@ -177,7 +177,13 @@ fn file_hash(path: std::path::PathBuf) -> Option<String> {
 }
 
 fn command(binary: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(binary).args(args).current_dir(env!("CARGO_MANIFEST_DIR")).output().ok()?;
+    let mut command = Command::new(binary);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let output = command.args(args).current_dir(env!("CARGO_MANIFEST_DIR")).output().ok()?;
     output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 

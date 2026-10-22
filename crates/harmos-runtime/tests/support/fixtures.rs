@@ -17,7 +17,9 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::OnceLock;
 
 // Third Party Imports
@@ -40,6 +42,18 @@ use serde_json::Value;
 /* === Implementations === */
 
 /* === Public Functions === */
+
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    let command = Command::new(program);
+    #[cfg(windows)]
+    let command = {
+        use std::os::windows::process::CommandExt;
+        let mut command = command;
+        command.creation_flags(0x08000000);
+        command
+    };
+    command
+}
 
 pub fn artifact(name: &str) -> PathBuf {
     let path = stamp()["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name}"));

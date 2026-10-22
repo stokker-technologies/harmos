@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:505dfe6ff6da2ab3934427e5f0a966a9c9f669f5a8643ce25de1000187e57063
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:8b1d6a8e73c19242ae797de21fca18d95097b718a7d2b1ab2c22ba1da15e77c8
 # === Settings === #
 
 [settings]
@@ -9,7 +9,7 @@ lockfile = true
 [tools]
 # Languages And Runtimes
 python = "3.15.0"
-rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal" }
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools", profile = "minimal" }
 
 # Package Managers
 uv = "0.13.0"
@@ -17,6 +17,7 @@ uv = "0.13.0"
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
 "aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+"github:bnjbvr/cargo-machete" = "0.9.2"
 sccache = "0.18.0"
 
 # Formatting And Linting
@@ -70,6 +71,7 @@ run = "cargo fmt --all{% if usage.check %} --check{% endif %}"
 description = "Format TOML"
 usage = 'flag "--check"'
 run = "git ls-files -z -- '*.toml' | xargs -0 taplo fmt --option column_width=140{% if usage.check %} --check{% endif %}"
+run_windows = """pwsh -NoProfile -Command "taplo fmt --option column_width=140{% if usage.check %} --check{% endif %} -- @(git ls-files -- '*.toml')""""
 
 # === Lint === #
 
@@ -104,6 +106,7 @@ description = "Check Rust"
 run = [
   { task = "format:rust --check" },
   { task = "lint:rust" },
+  "cargo-machete --skip-target-dir",
   "cargo check --workspace --all-targets --all-features",
   "cargo check --workspace --all-targets --no-default-features",
 ]
@@ -116,7 +119,7 @@ env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.build.run rust --profile {{usage.profile}}"
 
-[tasks."build:tests"]
+[tasks."build:rust:tests"]
 description = "Build Test Binaries And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
@@ -142,21 +145,21 @@ run = "cargo harmos sidecar dev"
 description = "Test Every Layer"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:unit --profile {{usage.profile}}"]
+depends = ["test:rust --profile {{usage.profile}}"]
 
-[tasks."test:coverage"]
+[tasks."test:rust"]
+description = "Test Rust"
+env.CARGO_INCREMENTAL = "0"
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:rust:unit --profile {{usage.profile}}"]
+
+[tasks."test:rust:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --project tools/python python -m project_tools.test.run coverage --language rust --profile {{usage.profile}}"
 
-[tasks."test:unit"]
-description = "Test Unit Layer"
-env.CARGO_INCREMENTAL = "0"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:unit:rust --profile {{usage.profile}}"]
-
-[tasks."test:unit:rust"]
+[tasks."test:rust:unit"]
 description = "Test Unit Rust"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -181,15 +184,6 @@ flag "--target <target>" default="native""""
 run = "uv run --locked --project tools/python python -m project_tools.package.run rust --profile {{usage.profile}} --target {{usage.target}}"
 
 # === CI === #
-
-[tasks.ci]
-description = "Simulate The Rendered CI Locally"
-usage = 'flag "--event <event>" default="pr"'
-run = "stkr ci simulate --event {{usage.event}}"
-
-[tasks."ci:nightly"]
-description = "Run The Nightly Coverage And Bench Flow"
-run = [{ task = "build" }, { task = "build:tests" }, { task = "test:coverage" }]
 
 # === Release === #
 

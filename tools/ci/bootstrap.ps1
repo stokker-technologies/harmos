@@ -1,5 +1,9 @@
 # Prepare The Native Windows Toolchain
+param([switch]$ExportGitHubEnvironment)
+
 $ErrorActionPreference = 'Stop'
+$before = @{}
+Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
     if (-not (Test-Path $vswhere)) { throw 'Install Visual Studio Build Tools With The C++ Workload And Windows SDK' }
@@ -14,3 +18,11 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) { throw 'The Native C++ Compiler Is Unavailable' }
 if (-not $env:WindowsSdkDir) { throw 'The Windows SDK Is Unavailable' }
 Write-Host "Windows SDK: $env:WindowsSDKVersion"
+
+if ($ExportGitHubEnvironment) {
+    if (-not $env:GITHUB_ENV -or -not $env:GITHUB_PATH) { throw 'GitHub Environment Files Are Unavailable' }
+    Get-ChildItem Env: | Where-Object { $_.Name -notmatch '^(GITHUB_|RUNNER_|PATH$)' -and $before[$_.Name] -ne $_.Value } |
+        ForEach-Object { "$($_.Name)=$($_.Value)" } | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' |
+        Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+}

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:96704ae274392786fbfa2aad08f30da393d11f1a226001b735168fd9bc507cc5
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:ee598dc4372d7d91a9f4546450f4d2927c0c880ea5de86ffeb028909e6372e3b
 name: Nightly
 "on":
   schedule:
@@ -14,92 +14,92 @@ jobs:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":30,\"build_tests\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"build_product\":30,\"build_tests\":30}"
       platform: linux
     secrets: inherit
   build_windows:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"build_product\":30,\"build_tests\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"build_product\":30,\"build_tests\":30}"
       platform: windows
     secrets: inherit
   check:
     name: Check
     uses: ./.github/workflows/managed-check.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"check_python\":10,\"source\":10}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"check_python\":10,\"source\":10}"
     secrets: inherit
   check_linux:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"check_rust\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"check_rust\":30}"
       platform: linux
     secrets: inherit
   check_windows:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"check_rust\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"check_rust\":30}"
       platform: windows
     secrets: inherit
   package_linux:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"package_rust\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"package_rust\":30}"
       platform: linux
     secrets: inherit
     needs:
     - build_linux
     - check
     - check_linux
-    - validate_linux
+    - test_linux
   package_windows:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"package_rust\":30}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"package_rust\":30}"
       platform: windows
     secrets: inherit
     needs:
     - build_windows
     - check
     - check_windows
-    - validate_windows
-  validate_nightly:
-    name: Validate
-    uses: ./.github/workflows/managed-validate-nightly.yml
+    - test_windows
+  test_nightly:
+    name: Test
+    uses: ./.github/workflows/managed-test-nightly.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"validate_coverage\":180}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"validate_coverage_rust\":180}"
     secrets: inherit
     needs:
     - build_linux
-  validate_linux:
-    name: Validate
-    uses: ./.github/workflows/managed-validate-native.yml
+  test_linux:
+    name: Test
+    uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"validate_test_unit_rust\":10}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"validate_test_rust_unit\":30}"
       platform: linux
     secrets: inherit
     needs:
     - build_linux
-  validate_windows:
-    name: Validate
-    uses: ./.github/workflows/managed-validate-native.yml
+  test_windows:
+    name: Test
+    uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":[\"ubuntu-latest\"],\"large\":[\"ubuntu-latest\"]},\"windows\":{\"small\":[\"windows-latest\"],\"large\":[\"windows-latest\"]},\"nightly\":{\"small\":[\"self-hosted\",\"linux\"],\"coverage\":[\"ubuntu-latest\"]}}"
-      budgets: "{\"validate_test_unit_rust\":10}"
+      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-latest') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-latest') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-latest') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'ubuntu-latest') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      timeouts: "{\"validate_test_rust_unit\":30}"
       platform: windows
     secrets: inherit
     needs:

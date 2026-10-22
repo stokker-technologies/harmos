@@ -63,6 +63,10 @@ def main() -> None:
         [sys.executable, "-m", run.__name__, "rust", "--profile", profile],
         cwd=ROOT,
         check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
     )
     packaged = (source for source in (destination / "rust").iterdir() if source.is_file())
     assets = _records(packaged, destination)
@@ -134,14 +138,30 @@ def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> 
 
 def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:
     directory.mkdir()
-    result = subprocess.run([str(executable), *arguments], cwd=directory, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        [str(executable), *arguments],
+        cwd=directory,
+        capture_output=True,
+        text=True,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+    )
     if "Reopened: 2 symbols, 1 net, 3 route points" not in result.stdout.splitlines():
         raise RuntimeError(f"packaged Schematic {directory.name} walkthrough did not reopen its document")
 
 
 def _package_plugin(command: list[str], result: Path) -> None:
     with result.open("w", encoding="utf-8") as output:
-        subprocess.run(command, cwd=ROOT, stdout=output, check=True)
+        subprocess.run(
+            command,
+            cwd=ROOT,
+            stdout=output,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
 
 
 def _records(sources: Iterable[Path], destination: Path) -> dict:

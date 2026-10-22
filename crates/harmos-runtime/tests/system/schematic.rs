@@ -16,7 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::process::Command;
 
 // Third Party Imports
 
@@ -58,7 +57,7 @@ fn cli_backends_reopen() {
         let plugin = fixtures::artifact(artifact);
 
         // Nominal Editing Persists Through The Backend And Reopens.
-        let output = Command::new(&cli).current_dir(directory.path()).arg(backend).arg(&plugin).output().unwrap();
+        let output = fixtures::command(&cli).current_dir(directory.path()).arg(backend).arg(&plugin).output().unwrap();
         assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
         let stdout = String::from_utf8(output.stdout).unwrap();
         let lines: Vec<_> = stdout.lines().collect();
@@ -68,7 +67,7 @@ fn cli_backends_reopen() {
         assert!(!lines.iter().any(|line| line.starts_with("Analysis")));
 
         // Advanced Analysis And Cancellation Use The Same Caller Directory.
-        let output = Command::new(&cli).current_dir(directory.path()).arg(backend).arg(&plugin).arg("--advanced").output().unwrap();
+        let output = fixtures::command(&cli).current_dir(directory.path()).arg(backend).arg(&plugin).arg("--advanced").output().unwrap();
         assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
         let stdout = String::from_utf8(output.stdout).unwrap();
         let lines = stdout.lines().map(str::to_owned);

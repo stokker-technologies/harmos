@@ -16,7 +16,6 @@
 // Standard Library Imports
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 // Third Party Imports
 
 // Local Imports
@@ -99,7 +98,7 @@ fn authoring_refusals_compile() {
         ("shared_message_field.rs", "unsupported boxed message field"),
     ] {
         let source = fixtures.join(fixture);
-        let compiled = Command::new(&rustc)
+        let compiled = fixtures::command(&rustc)
             .arg("--edition=2024")
             .arg("--crate-type=bin")
             .arg("--emit=metadata")

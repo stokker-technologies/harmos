@@ -50,7 +50,7 @@ fn grpc_descriptors_compile() {
     let artifacts = harmos_packaging::proto::Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let root = harmos_packaging::proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("storage")).unwrap();
-    let output = std::process::Command::new(fixtures::protoc())
+    let output = fixtures::command(fixtures::protoc())
         .current_dir(&root)
         .arg("--proto_path=.")
         .arg(format!("--descriptor_set_out={}", target.path().join("compiled.bin").display()))

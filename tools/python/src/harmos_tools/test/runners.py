@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/runners.py; sha256:d478e292f685e5733d869ef5f3e16038a5dcf45a377955c47e00ed1a69e8f27f
+# Rendered by stkr project update from templates/python/test/runners.py; sha256:40354f56d3e2e953e3e376015693ec9a5c62214ef87b1b1ace45c7e4ccad9d35
 # ***
 #
 # Harmos
@@ -43,10 +43,15 @@ def main() -> None:
     repository = os.environ["GITHUB_REPOSITORY"]
     organization = repository.split("/")[0]
     workflows = json.loads(os.environ["GITHUB_RUNNER_WORKFLOWS"])
-    groups = [group for page in _pages(f"orgs/{organization}/actions/runner-groups") for group in page["runner_groups"]]
+    groups = None
     references = [os.environ["GITHUB_REF"], "refs/heads/release/v" + os.environ["RELEASE_VERSION"]]
     for workflow, requirements in workflows.items():
-        for required in requirements:
+        labels = {label for platform, roles in requirements.items() if platform != "nightly" for label in roles.values()}
+        for required in sorted(labels):
+            if required.startswith(("ubuntu-", "windows-", "macos-")):
+                continue
+            if groups is None:
+                groups = [group for page in _pages(f"orgs/{organization}/actions/runner-groups") for group in page["runner_groups"]]
             eligible = []
             for group in groups:
                 runners = [
@@ -54,7 +59,7 @@ def main() -> None:
                     for page in _pages(f"orgs/{organization}/actions/runner-groups/{group['id']}/runners")
                     for runner in page["runners"]
                 ]
-                if any(set(required).issubset({label["name"] for label in runner["labels"]}) for runner in runners):
+                if any(required in {label["name"] for label in runner["labels"]} for runner in runners):
                     eligible.append(group)
             for reference in references:
                 if not any(permitted(group, repository, workflow, reference) for group in eligible):
@@ -65,7 +70,12 @@ def main() -> None:
 
 
 def _pages(endpoint: str) -> list[dict]:
-    return json.loads(subprocess.check_output(["gh", "api", "--hostname", "github.com", "--paginate", "--slurp", endpoint]))
+    return json.loads(
+        subprocess.check_output(
+            ["gh", "api", "--hostname", "github.com", "--paginate", "--slurp", endpoint],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    )
 
 
 # === Entry Point === #

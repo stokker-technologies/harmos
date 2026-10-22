@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:bc6c402f9f4d253da5ab477e7ec421088991d7e53d8be77a30668149ec716451
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:a832d13d8918bf68152344d236da6b434a3aeaeb67dbb70fe45c0d0eda2b1d73
 # ***
 #
 # Harmos
@@ -30,7 +30,7 @@ replaces the deadline of the stories it selects: for Rust `select` is a nextest 
 the other languages a glob over `<file>::<story>`. Acceptance and system lanes receive the whole
 Product and Tests builds of their profile and target, so lanes declare no inputs.
 
-The expected lanes are the `test:<category>:<language>` leaf tasks of `mise.toml`.
+The expected lanes are the `test:<language>:<category>` leaf tasks of `mise.toml`.
 """
 
 # === Imports === #
@@ -167,8 +167,8 @@ def lanes(directory: Path) -> list[tuple[str, str]]:
     expected = []
     for name in tasks:
         parts = name.split(":")
-        if len(parts) == 3 and parts[0] == "test" and parts[1] in CATEGORIES and parts[2] in LANGUAGES:
-            expected.append((parts[1], parts[2]))
+        if len(parts) == 3 and parts[0] == "test" and parts[2] in CATEGORIES and parts[1] in LANGUAGES:
+            expected.append((parts[2], parts[1]))
     return sorted(expected, key=lambda lane: (CATEGORIES.index(lane[0]), lane[1]))
 
 

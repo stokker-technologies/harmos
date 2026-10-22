@@ -1,0 +1,174 @@
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:1e99ab55c3b7120a6f19f811b78645f311307404ee9c79427d5df707bef50ed7
+Test / Rust / Unit (linux):
+  stage: Test
+  tags:
+  - $STKR_RUNNER_LINUX_SMALL
+  timeout: 30 minutes
+  needs:
+  - job: Build / Tests (linux)
+    artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
+  script:
+  - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
+  - mise run test:rust:unit --profile $PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  artifacts:
+    name: reports-$PROFILE-linux-unit-rust
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/$PROFILE/linux-*/unit-rust/
+    reports:
+      junit: target/tests/$PROFILE/linux-*/unit-rust/junit.xml
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+Test / Rust / Unit (windows):
+  stage: Test
+  tags:
+  - $STKR_RUNNER_WINDOWS_SMALL
+  timeout: 30 minutes
+  needs:
+  - job: Build / Tests (windows)
+    artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
+  script:
+  - tar --zstd -xf "target/ci/build-tests-$env:PROFILE-windows.tar.zst"
+  - mise run test:rust:unit --profile $env:PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  artifacts:
+    name: reports-$PROFILE-windows-unit-rust
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/$PROFILE/windows-*/unit-rust/
+    reports:
+      junit: target/tests/$PROFILE/windows-*/unit-rust/junit.xml
+  inherit:
+    default:
+    - interruptible
+  before_script:
+  - >-
+    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
+    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
+    review pipeline $env:review_run"; exit 0 }
+  - mise trust --yes
+  - mise install --yes
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+Test / Rust / Coverage:
+  stage: Test
+  tags:
+  - $STKR_RUNNER_NIGHTLY_COVERAGE
+  timeout: 180 minutes
+  needs:
+  - job: Build / Product (linux)
+    artifacts: true
+  - job: Build / Tests (linux)
+    artifacts: true
+  script:
+  - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
+  - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
+  - mise run test:rust:coverage --profile $PROFILE
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/tests/$PROFILE/linux-*/coverage/
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY

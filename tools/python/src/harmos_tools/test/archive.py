@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:55d502ab785797691e2b82fb93186b6a89f4991a46710132ddcb7bf3c66982a7
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:369e55a4b2d1804ed91183860878cd0d1825f3d1c362e55aeb6652a490b1623c
 # ***
 #
 # Harmos
@@ -45,6 +45,7 @@ MESSAGES = "compiler.json"
 def revision(directory: Path) -> str | None:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         cwd=directory,
         capture_output=True,
         text=True,
@@ -71,7 +72,7 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         "--workspace",
         "--tests",
         "--cargo-profile",
-        profile,
+        "release-tests" if profile == "release" else profile,
         "--cargo-message-format",
         "json",
         "--archive-file",
@@ -79,7 +80,9 @@ def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         *extra,
     ]
     with path.with_name(MESSAGES).open("w", encoding="utf-8") as output:
-        result = subprocess.run(command, cwd=directory, stdout=output, check=False)
+        result = subprocess.run(
+            command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, stdout=output, check=False
+        )
     if result.returncode:
         path.unlink(missing_ok=True)
         for line in path.with_name(MESSAGES).read_text(encoding="utf-8").splitlines():
@@ -127,7 +130,9 @@ def binaries(directory: Path, profile: str) -> dict[str, str]:
             "--message-format",
             "json",
         ]
-        result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, capture_output=True, text=True, check=False
+        )
         if result.returncode:
             raise policy.TestError(f"nextest could not list test binaries: {result.stderr.strip()}")
         return {identity: entry["binary-name"] for identity, entry in json.loads(result.stdout).get("rust-binaries", {}).items()}
@@ -161,6 +166,10 @@ def install_wheels(directory: Path, profile: str, native: str | None = None) -> 
                 "--reinstall",
                 *map(str, wheels),
             ],
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             cwd=directory,
             check=True,
         )
@@ -171,7 +180,7 @@ def stamp(directory: Path, profile: str, files: Sequence[str], metadata: Mapping
     record = {
         "profile": profile,
         "target": paths.target(),
-        "files": {name: _digest(_inside(directory, name)) for name in files},
+        "files": {Path(name).as_posix(): _digest(_inside(directory, name)) for name in files},
         "metadata": dict(metadata or {}),
     }
     target = paths.output(directory, "build", profile) / "fixtures/stamp.json"
@@ -187,6 +196,8 @@ def fixtures(
     roots: Sequence[str] | None = None,
 ) -> None:
     """Refuse stamped fixtures that changed, and required files the stamp does not cover."""
+    required = [Path(name).as_posix() for name in required]
+    roots = None if roots is None else [Path(name).as_posix() for name in roots]
     path = paths.output(directory, "build", profile) / "fixtures/stamp.json"
     if not path.is_file():
         if required:
@@ -245,7 +256,9 @@ def _digest(path: Path) -> str:
 
 
 def _toolchain(directory: Path) -> str:
-    return subprocess.check_output(["rustc", "-Vv"], cwd=directory, text=True).strip()
+    return subprocess.check_output(
+        ["rustc", "-Vv"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, text=True
+    ).strip()
 
 
 # === Entry Point === #

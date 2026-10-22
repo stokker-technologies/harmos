@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:dd3d3af200d3eb36dac8709365004190f16709bd4be00609b9ed1f75982357ce
+# Rendered by stkr project update from templates/python/test/run.py; sha256:455d2e2779698a37f3af3f9b69242b3001d80706c9c4ad57993f07aa6d4ab7b4
 # ***
 #
 # Harmos
@@ -406,9 +406,25 @@ def _deadline(rules: policy.Policy, language: str, case: report.Case, recorded: 
     return rules.story(case.category, seconds)
 
 
+def _console() -> dict:
+    """Keep Native Console Signaling Available Without A Visible Window."""
+    if os.name != "nt":
+        return {}
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = subprocess.SW_HIDE
+    return {
+        "startupinfo": startup,
+        "creationflags": subprocess.CREATE_NEW_CONSOLE,
+        "stdin": sys.stdin,
+        "stdout": sys.stdout,
+        "stderr": sys.stderr,
+    }
+
+
 def _execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | None) -> int:
     try:
-        return subprocess.run(list(command), cwd=cwd, env=environment, check=False).returncode
+        return subprocess.run(list(command), cwd=cwd, env=environment, check=False, **_console()).returncode
     except OSError as error:
         raise policy.TestError(f"{command[0]} is unavailable: {error}") from error
 
@@ -416,7 +432,7 @@ def _execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | No
 def _measured(command: Sequence[str], cwd: Path, environment: dict[str, str]) -> tuple[int, int | None]:
     """Exit status and peak resident bytes of one process and the children it waited for."""
     try:
-        process = subprocess.Popen(list(command), cwd=cwd, env=environment)
+        process = subprocess.Popen(list(command), cwd=cwd, env=environment, **_console())
     except OSError as error:
         raise policy.TestError(f"{command[0]} is unavailable: {error}") from error
     if not hasattr(os, "wait4"):
@@ -438,7 +454,7 @@ def _bench_rust(
 ) -> tuple[list[report.Bench], int]:
     messages = paths.output(directory, "build", "bench") / "bench/compiler.json"
     if not messages.is_file():
-        raise policy.TestError("missing benchmark compiler metadata; run build:bench first")
+        raise policy.TestError("missing benchmark compiler metadata; run build:rust:bench first")
     archive.fixtures(directory, "bench", [messages.relative_to(directory).as_posix()])
     targets = []
     for line in messages.read_text(encoding="utf-8").splitlines():

@@ -64,7 +64,7 @@ tempfile = { workspace = true, default-features = true }
 # Parsing
 
 # Concurrency
-process-wrap = { workspace = true, features = ["std", "job-object", "process-group"] }
+process-wrap = { workspace = true, features = ["std", "job-object", "process-group", "creation-flags"] }
 
 # Async
 

@@ -1,0 +1,119 @@
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:3aaf4d63a12dc59e55cc0e1f1f65c8dab1ea213289e3c565e5d216bf5e0641e2
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+
+"""Select Conservative Native CI Jobs And Emit A GitLab Child Pipeline."""
+
+# === Imports === #
+
+# Standard Library Imports
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+
+# Third Party Imports
+
+# Local Imports
+
+# Type Checking Imports
+
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def changed_paths(target: str) -> set[str] | None:
+    """Include Deleted, Added, Dirty And Untracked Paths Against One Merge Base."""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(
+            ["git", *arguments], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), stderr=subprocess.DEVNULL, timeout=30
+        ).decode("utf-8")
+
+    try:
+        if os.environ.get("GITLAB_CI") == "true" and target.startswith("origin/"):
+            branch = target.removeprefix("origin/")
+            git("check-ref-format", "--branch", branch)
+            git("fetch", "--no-tags", "origin", f"refs/heads/{branch}:refs/remotes/origin/{branch}")
+        revision = git("rev-parse", "--verify", "--end-of-options", target + "^{commit}").strip()
+        bases = git("merge-base", "--all", revision, "HEAD").splitlines()
+        if len(bases) != 1:
+            return None
+        diff = git("diff", "--name-only", "--no-renames", "-z", bases[0], "--")
+        untracked = git("ls-files", "--others", "--exclude-standard", "-z")
+        return set(filter(None, diff.split("\0") + untracked.split("\0")))
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        return None
+
+
+def select(plan: dict, paths: set[str] | None) -> set[str]:
+    """Match Every Changed Path And Preserve The Complete Dependency Closure."""
+    graph = plan["dependencies"]
+    full = set(graph)
+    if not paths or any(_matches(plan["protected"], path) for path in paths):
+        return full
+    selected = set()
+    for rule in plan["rules"]:
+        if all(_matches(rule["only"], path) and not _matches(rule["exclude"], path) for path in paths):
+            selected.update(rule["jobs"])
+    if not selected:
+        return full
+    pending = list(selected)
+    while pending:
+        job = pending.pop()
+        if job not in graph:
+            raise ValueError(f"impact plan references unknown job {job}")
+        for dependency in graph[job]:
+            if dependency not in selected:
+                selected.add(dependency)
+                pending.append(dependency)
+    return selected
+
+
+def main(plan: dict) -> None:
+    """Native Providers Supply The Target Context; Missing Context Selects Full Proof."""
+    target = os.environ.get("STKR_IMPACT_TARGET")
+    paths = changed_paths(target) if target else None
+    selected = select(plan, paths)
+    if "document" in plan:
+        document = plan["document"]
+        for name in list(document):
+            if isinstance(document[name], dict) and "stage" in document[name] and name not in selected:
+                del document[name]
+        # Original Event Rules Remain Meaningful Inside The Native Child Pipeline.
+        text = json.dumps(document).replace("CI_PIPELINE_SOURCE", "STKR_PIPELINE_SOURCE")
+        destination = Path("target/ci/impact-child.yml")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(text + "\n", encoding="utf-8")
+    else:
+        result = json.dumps(sorted(selected), separators=(",", ":"))
+        if output := os.environ.get("GITHUB_OUTPUT"):
+            with Path(output).open("a", encoding="utf-8") as stream:
+                stream.write(f"jobs={result}\n")
+        print(result)
+
+
+# === Private Functions === #
+
+
+def _matches(patterns: list[str], path: str) -> bool:
+    # Hub Compiles The Glob Dialect Once For Both Local And Provider Resolution.
+    return any(re.fullmatch(pattern.encode("utf-8"), path.encode("utf-8")) is not None for pattern in patterns)
+
+
+# === Entry Point === #

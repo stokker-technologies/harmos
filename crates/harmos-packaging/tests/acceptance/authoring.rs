@@ -59,7 +59,7 @@ impl Project {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join(format!("starter-{kind}"));
         let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
-        let result = Command::new(fixtures::artifact("cargo-harmos"))
+        let result = fixtures::command(fixtures::artifact("cargo-harmos"))
             .current_dir(checkout)
             .args(["harmos", "new", kind])
             .arg(&root)
@@ -84,7 +84,7 @@ impl Project {
         project.run("mise", &["trust", "mise.toml"]);
         project.run("cargo", &["generate-lockfile", "--offline"]);
         // The Staged Wheels Replace The Public Index: Rebind The Shipped Lock To Them Without Moving A Pin
-        let lock = project.root.join("tools/python/uv.lock");
+        let lock = project.root.join("uv.lock");
         let shipped = pins(&std::fs::read_to_string(&lock).unwrap());
         project.run("uv", &["lock", "--offline", "--project", "tools/python"]);
         assert_eq!(pins(&std::fs::read_to_string(&lock).unwrap()), shipped, "the staged wheels satisfy the shipped Python pins");
@@ -98,7 +98,7 @@ impl Project {
     }
 
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
-        let mut command = Command::new(program);
+        let mut command = fixtures::command(program);
         // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
         let inherited = std::env::vars_os().filter_map(|(name, _)| {
             let value = name.to_str()?;
@@ -132,8 +132,8 @@ impl Project {
     fn check_and_test(&self) {
         self.run("mise", &["run", "check"]);
         self.run("mise", &["run", "build"]);
-        self.run("mise", &["run", "build:tests"]);
-        self.run("mise", &["run", "test:unit"]);
+        self.run("mise", &["run", "build:rust:tests"]);
+        self.run("mise", &["run", "test:rust:unit"]);
     }
 }
 
@@ -303,12 +303,15 @@ fn dev_rebuilds(kind: &str) {
     // A Build Script Owns A Python Descendant Until Product Cancellation Reaps Both.
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let address = listener.local_addr().unwrap();
-    let python = project.root.join("tools/python/.venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
+    let python = project.root.join(".venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
     let program = format!(
         "import json,os,socket; s=socket.create_connection(('127.0.0.1',{})); s.sendall(json.dumps([os.getppid(),os.getpid()]).encode()+b'\\n'); s.recv(1)",
         address.port()
     );
-    let script = format!("fn main() {{ std::process::Command::new({:?}).args([\"-c\", {:?}]).status().unwrap(); }}\n", python, program);
+    let script = format!(
+        "fn main() {{ let mut command = std::process::Command::new({:?}); #[cfg(windows)] {{ use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }} command.args([\"-c\", {:?}]).status().unwrap(); }}\n",
+        python, program
+    );
     std::fs::write(project.root.join("build.rs"), script).unwrap();
     assert_eq!(watcher.event("started")["attempt"], 6);
     let (mut descendant, _) = listener.accept().unwrap();

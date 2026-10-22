@@ -2,14 +2,14 @@
 # Native manifests own package metadata; mise owns executable recipes.
 # Defaults stay implicit. Commented sections do not declare configuration.
 
-# === Project === #
+# === === Project === === #
 
 [project]
 name = "Harmos"
 visibility = "public"
 platforms = ["linux", "windows"]
 
-# === Languages === #
+# === === Languages === === #
 
 [languages.rust]
 roots = ["crates", "examples"]
@@ -19,49 +19,76 @@ exclude = ["crates/cargo-harmos/templates"]
 [languages.python]
 roots = ["tools/python"]
 generated = ["target/generated/python/src"]
-exclude = ["tools/python/.venv", "tools/python/.ruff_cache"]
+exclude = [".venv", "tools/python/.ruff_cache"]
 
-
-# === Repository === #
+# === === Repository === === #
 
 [housekeeping.branches]
 exclude = ["main", "master", "dev", "develop", "release/**"]
 
-
-# === CI === #
-
-# Measured Cold Windows Build With Fixtures And Unit Tests (26 Minutes); Pull Requests Never Restore A Warm Target.
-[ci.budgets]
-build = 6600
+# === === CI === === #
 
 [ci.runners]
-linux = ["ubuntu-24.04"]
-windows = ["windows-2022"]
-nightly = ["stokker-local-linux-x64"]
+linux = "ubuntu-24.04"
+windows = "windows-2022"
+nightly = "stokker-local-linux-x64"
 
-[ci.setup]
-linux = ["command -v cc", "command -v pkg-config"]
-windows = [
-  '''
-$before = @{}
-Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
-. ./tools/ci/bootstrap.ps1
-Get-ChildItem Env: | Where-Object { $_.Name -notmatch '^(GITHUB_|RUNNER_|PATH$)' -and $before[$_.Name] -ne $_.Value } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-$env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-''',
-]
+# --- Impact --- #
 
+[ci.impact]
+default = "full"
 
-# === Agents === #
+# --- Stage / Check --- #
 
+[[ci.jobs]]
+id = "check:rust"
+platform = "windows"
+bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 
-# === Hooks === #
+# --- Stage / Build --- #
+
+[[ci.jobs]]
+id = "build"
+platform = "linux"
+bootstrap = ["command -v cc", "command -v pkg-config"]
+timeout_minutes = 110
+
+[[ci.jobs]]
+id = "build"
+platform = "windows"
+bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
+timeout_minutes = 110
+
+[[ci.jobs]]
+id = "build:rust:tests"
+platform = "linux"
+bootstrap = ["command -v cc", "command -v pkg-config"]
+timeout_minutes = 110
+
+[[ci.jobs]]
+id = "build:rust:tests"
+platform = "windows"
+bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
+timeout_minutes = 110
+
+[[ci.jobs]]
+id = "build:rust:bench"
+platform = "linux"
+bootstrap = ["command -v cc", "command -v pkg-config"]
+
+# --- Stage / Test --- #
+
+[[ci.jobs]]
+id = "test:rust:acceptance"
+platform = "windows"
+bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
+
+# === === Hooks === === #
 
 [hooks]
 step_timeout_seconds = 600
 
-
-# === Conventions === #
+# === === Conventions === === #
 
 # Declaration-Only Contracts Have No Runtime Work To Trace.
 [conventions.rust]
@@ -371,11 +398,7 @@ reason = "Three times the measured 2.283s native guest story, with the 10s floor
 [barrels]
 exclude = ["crates/harmos-runtime/src/prelude.rs"]
 
-
-# === Templates === #
-
-# === Catalogs === #
-
+# === === Templates === === #
 
 [[templates.scaffolds]]
 path = "crates/cargo-harmos/templates/sidecar"
@@ -399,8 +422,7 @@ package = "__PACKAGE_NAME__"
 module = "__RUST_MODULE__"
 product = "__PRODUCT_NAME__"
 
-
-# === Release === #
+# === === Release === === #
 
 [release]
 provider = "github"
@@ -441,7 +463,7 @@ name = "cargo-harmos"
 targets = { linux-x86_64 = "x86_64-unknown-linux-gnu", windows-x86_64 = "x86_64-pc-windows-msvc" }
 release = true
 verify = ["--version"]
-installers = ["mise", "binstall"]
+installers = ["mise"]
 
 [[package.bundles]]
 language = "rust"
@@ -466,12 +488,3 @@ inputs = [
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
 ]
-
-
-# === Documentation === #
-
-
-# === Screenshots === #
-
-
-# === PyO3 === #

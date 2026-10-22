@@ -10,7 +10,7 @@ github_attestations = false
 # Languages And Runtimes
 node = "26.11.1"
 python = "3.15.0"
-rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools-preview", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
+rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools", profile = "minimal", targets = "wasm32-unknown-unknown,wasm32-wasip2" }
 
 # Package Managers
 uv = "0.13.0"
@@ -18,6 +18,7 @@ uv = "0.13.0"
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.148"
 "aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+"github:bnjbvr/cargo-machete" = "0.9.2"
 sccache = "0.18.0"
 
 # Formatting And Linting
@@ -32,9 +33,6 @@ glab = "1.123.0"
 
 # Project Statistics
 "aqua:boyter/scc" = "4.1.0"
-
-# Product Tools
-"aqua:cargo-bins/cargo-binstall" = "1.26.0"
 
 # === Environment === #
 
@@ -110,6 +108,15 @@ run = [{ task = "check:repository" }, { task = "check:rust" }, { task = "check:p
 description = "Check Python"
 run = [{ task = "format:python --check" }, { task = "lint:python" }]
 
+[tasks."check:python:generated"]
+description = "Check Generated Python"
+depends = ["prepare:tools"]
+run = [
+  "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
+  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
+]
+
 [tasks."check:repository"]
 description = "Check Repository Configuration And Conventions"
 run = [{ task = "format:toml --check" }, "actionlint"]
@@ -119,6 +126,7 @@ description = "Check Rust"
 run = [
   { task = "format:rust --check" },
   { task = "lint:rust" },
+  "cargo-machete --skip-target-dir",
   "cargo check --locked --workspace --all-targets --all-features",
   "cargo check --locked --workspace --all-targets --no-default-features",
   "cargo check --locked -p harmos-domain --target wasm32-unknown-unknown",
@@ -136,13 +144,13 @@ depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --product --profile {{usage.profile}}"
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."build:bench"]
+[tasks."build:rust:bench"]
 description = "Build Benchmark Executables"
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench -- --all-features"
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."build:tests"]
+[tasks."build:rust:tests"]
 description = "Build The Shared Test Archive And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
@@ -156,22 +164,21 @@ env = { CARGO_INCREMENTAL = "0" }
 [tasks.test]
 description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
+
+depends = ["test:rust --profile {{usage.profile}}"]
+
+[tasks."test:rust"]
+description = "Test Rust"
+usage = 'flag "--profile <profile>" default="dev"'
 depends = [
-  "test:unit --profile {{usage.profile}}",
-  "test:integration --profile {{usage.profile}}",
-  "test:acceptance --profile {{usage.profile}}",
-  "test:system --profile {{usage.profile}}",
-  "test:generated --profile {{usage.profile}}",
+  "test:rust:unit --profile {{usage.profile}}",
+  "test:rust:integration --profile {{usage.profile}}",
+  "test:rust:acceptance --profile {{usage.profile}}",
+  "test:rust:system --profile {{usage.profile}}",
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:unit"]
-description = "Test Unit Layer"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:unit:rust --profile {{usage.profile}}"]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:unit:rust"]
+[tasks."test:rust:unit"]
 description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
@@ -180,13 +187,7 @@ run = [
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:integration"]
-description = "Test Integration Layer"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:integration:rust --profile {{usage.profile}}"]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:integration:rust"]
+[tasks."test:rust:integration"]
 description = "Test Integration Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
@@ -196,13 +197,7 @@ run = [
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:acceptance"]
-description = "Test Acceptance Layer"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:acceptance:rust --profile {{usage.profile}}"]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:acceptance:rust"]
+[tasks."test:rust:acceptance"]
 description = "Test Acceptance Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
@@ -212,19 +207,14 @@ run = [
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:coverage"]
+[tasks."test:rust:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
-depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:system"]
-description = "Test System Layer"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:system:rust --profile {{usage.profile}}"]
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}"
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:system:rust"]
+[tasks."test:rust:system"]
 description = "Test System Rust"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
@@ -234,61 +224,30 @@ run = [
 ]
 env = { CARGO_INCREMENTAL = "0" }
 
-[tasks."test:generated"]
-description = "Test Generated Clients"
-usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:generated:python"]
-env = { CARGO_INCREMENTAL = "0" }
-
-[tasks."test:generated:python"]
-description = "Test Generated Python"
-depends = ["prepare:tools"]
-run = [
-  "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
-  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude _wire target/generated/python/src",
-  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
-]
-env = { CARGO_INCREMENTAL = "0" }
-
 # === Bench === #
 
 [tasks.bench]
 description = "Bench Every Layer"
 usage = 'flag "--refresh-baseline"'
 depends = [
-  "bench:unit {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
-  "bench:integration {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
-  "bench:system {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:rust:unit {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:rust:integration {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
+  "bench:rust:system {% if usage.refresh_baseline %}--refresh-baseline{% endif %}",
 ]
 
-[tasks."bench:unit"]
-description = "Bench Unit Layer"
-usage = 'flag "--refresh-baseline"'
-depends = ["bench:unit:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
-
-[tasks."bench:unit:rust"]
+[tasks."bench:rust:unit"]
 description = "Bench Unit Rust"
 usage = 'flag "--refresh-baseline"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
-[tasks."bench:integration"]
-description = "Bench Integration Layer"
-usage = 'flag "--refresh-baseline"'
-depends = ["bench:integration:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
-
-[tasks."bench:integration:rust"]
+[tasks."bench:rust:integration"]
 description = "Bench Integration Rust"
 usage = 'flag "--refresh-baseline"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
-[tasks."bench:system"]
-description = "Bench System Layer"
-usage = 'flag "--refresh-baseline"'
-depends = ["bench:system:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
-
-[tasks."bench:system:rust"]
+[tasks."bench:rust:system"]
 description = "Bench System Rust"
 usage = 'flag "--refresh-baseline"'
 depends = ["prepare:tools"]
@@ -312,20 +271,15 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 # === CI === #
 
 [tasks.ci]
-description = "Simulate The Rendered CI Locally"
-usage = 'flag "--event <event>" default="pr"'
-run = "stkr ci simulate --event {{usage.event}}"
-
-[tasks."ci:nightly"]
-description = "Run The Nightly Coverage And Bench Flow"
+description = "Run Native Local CI"
 run = [
+  { task = "check" },
   { task = "build" },
-  { task = "build:tests" },
-  { task = "test:coverage" },
-  { task = "build:bench" },
-  { task = "bench:unit --refresh-baseline" },
-  { task = "bench:integration --refresh-baseline" },
-  { task = "bench:system --refresh-baseline" },
+  { task = "build:rust:tests" },
+  { task = "check:python:generated" },
+  { task = "test" },
+  { task = "package" },
+  { task = "release:publish:dry" },
 ]
 
 # === Release === #

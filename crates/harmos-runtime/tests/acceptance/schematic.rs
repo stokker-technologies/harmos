@@ -17,7 +17,7 @@
 
 // Standard Library Imports
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 // Third Party Imports
 use serde_json::Value;
@@ -47,7 +47,7 @@ use super::fixtures;
 fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
     let tool = fixtures::artifact("cargo-harmos");
 
-    Command::new(tool).current_dir(directory).arg("harmos").args(arguments).output().unwrap()
+    fixtures::command(tool).current_dir(directory).arg("harmos").args(arguments).output().unwrap()
 }
 
 fn succeeded(output: &Output) {
