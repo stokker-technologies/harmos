@@ -1,6 +1,9 @@
-# CI Migration
+# ci-migration Specification
 
-## ADDED Requirements
+## Purpose
+TBD - created by archiving change streamlined-ci. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: Adopt The Agreed Hub Contract
 The product SHALL migrate its authored tasks and configuration and canonically generated tooling/workflows to the locked Hub CI contracts while preserving required native platform coverage, artifact dependencies and release behavior.
