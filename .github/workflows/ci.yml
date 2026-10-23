@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:ad1dbdef264b18f0d79105793f153c923c39f2bb4994323a67c71144d62f045d
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:571bcb9a45a78adb56d71375567f30fd3b14952b5f655d8a684b2c29fe5d2298
 name: CI
 "on":
   push:
@@ -28,7 +28,7 @@ jobs:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product\":30,\"build_tests\":30}"
       platform: linux
     secrets: inherit
@@ -41,7 +41,7 @@ jobs:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product\":30,\"build_tests\":30}"
       platform: windows
     secrets: inherit
@@ -54,7 +54,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_python\":10,\"source\":10}"
     secrets: inherit
     needs:
@@ -66,7 +66,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-generated.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_generated_python\":10}"
     secrets: inherit
     needs:
@@ -79,7 +79,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust\":30}"
       platform: linux
     secrets: inherit
@@ -92,7 +92,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust\":30}"
       platform: windows
     secrets: inherit
@@ -105,7 +105,7 @@ jobs:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust\":30}"
       platform: linux
     secrets: inherit
@@ -123,7 +123,7 @@ jobs:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust\":30}"
       platform: windows
     secrets: inherit
@@ -141,7 +141,7 @@ jobs:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_acceptance\":30,\"validate_test_rust_integration\":30,\"validate_test_rust_system\":30,\"validate_test_rust_unit\":30}"
       platform: linux
     secrets: inherit
@@ -155,7 +155,7 @@ jobs:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_acceptance\":30,\"validate_test_rust_integration\":30,\"validate_test_rust_system\":30,\"validate_test_rust_unit\":30}"
       platform: windows
     secrets: inherit
@@ -167,7 +167,7 @@ jobs:
       'cancelled') && needs.validated.outputs.validated != 'true'
   validated:
     name: Validated / Repository
-    runs-on: ${{ vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     if: >-
       github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
@@ -401,7 +401,7 @@ jobs:
       attestations: write
       packages: write
     with:
-      runners: "{\"linux\":{\"small\":${{ toJSON(vars.STKR_RUNNER_LINUX_SMALL || 'ubuntu-24.04') }},\"large\":${{ toJSON(vars.STKR_RUNNER_LINUX_LARGE || 'ubuntu-24.04') }}},\"windows\":{\"small\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_SMALL || 'windows-2022') }},\"large\":${{ toJSON(vars.STKR_RUNNER_WINDOWS_LARGE || 'windows-2022') }}},\"nightly\":{\"small\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_SMALL || 'stokker-local-linux-x64') }},\"coverage\":${{ toJSON(vars.STKR_RUNNER_NIGHTLY_COVERAGE || 'ubuntu-latest') }}}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
       review_run: ${{ needs.validated.outputs.review_run }}
       review_profile: ${{ needs.validated.outputs.review_profile }}
       review_sha: ${{ needs.validated.outputs.review_sha }}

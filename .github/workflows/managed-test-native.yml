@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-native.yml; sha256:61692f5d05258cf824803a8a5e2d68a6a675f0f5050c1201aac558f60976e740
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-native.yml; sha256:b8bf8cd246a4d59a81884cec8051ac1693ecfc5f3b236514c46194e92e414f24
 name: Test
 "on":
   workflow_call:
@@ -24,7 +24,10 @@ env:
 jobs:
   validate_test_rust_unit:
     name: Rust / Unit (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].small)) }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_test_rust_unit }}
     env:
       MISE_ENABLE_TOOLS: >-
@@ -146,7 +149,10 @@ jobs:
         path: .cache/uv/
   validate_test_rust_integration:
     name: Rust / Integration (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].small)) }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_test_rust_integration }}
     env:
       MISE_ENABLE_TOOLS: >-
@@ -268,7 +274,10 @@ jobs:
         path: .cache/uv/
   validate_test_rust_acceptance:
     name: Rust / Acceptance (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].small)) }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_test_rust_acceptance }}
     env:
       MISE_ENABLE_TOOLS: >-
@@ -406,7 +415,10 @@ jobs:
         path: .cache/uv/
   validate_test_rust_system:
     name: Rust / System (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].small)) }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_test_rust_system }}
     env:
       MISE_ENABLE_TOOLS: >-

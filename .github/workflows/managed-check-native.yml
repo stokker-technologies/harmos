@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:be21d85414fd8a2c771e7bbde84a41b25ca675c60ab92d707c791721c7d3ffa8
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:118701e2f5bc2dcd850cfd857ff6950a129b839a679de0d12a3cf8bf0f061bc9
 name: Check
 "on":
   workflow_call:
@@ -24,7 +24,10 @@ env:
 jobs:
   check_rust:
     name: Rust (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].large)) }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).check_rust }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

@@ -1,7 +1,7 @@
 # ci-migration Specification
 
 ## Purpose
-TBD - created by archiving change streamlined-ci. Update Purpose after archive.
+Keep Harmos aligned with the shared Hub CI graph while preserving native platform coverage, required delivery gates and release behavior.
 
 ## Requirements
 

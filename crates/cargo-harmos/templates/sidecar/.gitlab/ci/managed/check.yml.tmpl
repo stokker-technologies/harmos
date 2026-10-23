@@ -1,8 +1,8 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:7431d0447f0aba9bb839960291de29510612e468ed9993f660bd9c68e0f92d68
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:2ba337acc40f508c72a71806cd7ea3bb2345dffd46ad5fc4c2d6194acd0c7dda
 Check / Repository:
   stage: Check
   tags:
-  - $STKR_RUNNER_LINUX_SMALL
+  - saas-linux-medium-amd64
   timeout: 10 minutes
   needs:
   - job: Validated / Repository
@@ -52,7 +52,7 @@ Check / Repository:
 Check / Python:
   stage: Check
   tags:
-  - $STKR_RUNNER_LINUX_SMALL
+  - saas-linux-medium-amd64
   timeout: 10 minutes
   needs:
   - job: Validated / Repository
@@ -102,7 +102,7 @@ Check / Python:
 Check / Rust (linux):
   stage: Check
   tags:
-  - $STKR_RUNNER_LINUX_LARGE
+  - saas-linux-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Validated / Repository
@@ -152,7 +152,7 @@ Check / Rust (linux):
 Check / Rust (windows):
   stage: Check
   tags:
-  - $STKR_RUNNER_WINDOWS_LARGE
+  - saas-windows-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Validated / Repository
@@ -205,7 +205,7 @@ Check / Rust (windows):
 Validated / Repository:
   stage: Check
   tags:
-  - $STKR_RUNNER_LINUX_SMALL
+  - saas-linux-medium-amd64
   timeout: 10 minutes
   needs: []
   script:

@@ -42,7 +42,13 @@ default = "full"
 
 [[ci.jobs]]
 id = "check:rust"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "check:rust"
 platform = "windows"
+runner = "stokker-local-windows-x64"
 bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 
 # --- Stage / Build --- #
@@ -50,38 +56,96 @@ bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 [[ci.jobs]]
 id = "build"
 platform = "linux"
+runner = "stokker-local-linux-x64"
 bootstrap = ["command -v cc", "command -v pkg-config"]
 timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build"
 platform = "windows"
+runner = "stokker-local-windows-x64"
 bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:tests"
 platform = "linux"
+runner = "stokker-local-linux-x64"
 bootstrap = ["command -v cc", "command -v pkg-config"]
 timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:tests"
 platform = "windows"
+runner = "stokker-local-windows-x64"
 bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:bench"
 platform = "linux"
+runner = "stokker-local-linux-x64"
 bootstrap = ["command -v cc", "command -v pkg-config"]
 
 # --- Stage / Test --- #
 
 [[ci.jobs]]
+id = "test:rust:unit"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "test:rust:unit"
+platform = "windows"
+runner = "stokker-local-windows-x64"
+
+[[ci.jobs]]
+id = "test:rust:integration"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "test:rust:integration"
+platform = "windows"
+runner = "stokker-local-windows-x64"
+
+[[ci.jobs]]
+id = "test:rust:acceptance"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
 id = "test:rust:acceptance"
 platform = "windows"
+runner = "stokker-local-windows-x64"
 bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
+
+[[ci.jobs]]
+id = "test:rust:system"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "test:rust:system"
+platform = "windows"
+runner = "stokker-local-windows-x64"
+
+# --- Stage / Bench --- #
+
+[[ci.jobs]]
+id = "bench:rust:unit"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "bench:rust:integration"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+[[ci.jobs]]
+id = "bench:rust:system"
+platform = "linux"
+runner = "stokker-local-linux-x64"
 
 # === === Hooks === === #
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/nextest.py; sha256:0fb79b628d10e441d5e74115b200ab85f26abf705342fb689ee1d90dfe56810b
+# Rendered by stkr project update from templates/python/test/nextest.py; sha256:5c69e987adc81f6ad56ddb9d0651430b508be2fc20ce19e5b59053f067136709
 # ***
 #
 # __PRODUCT_NAME__
@@ -89,6 +89,7 @@ def config(
         "",
         f"[profile.{PROFILE}.junit]",
         'path = "junit.xml"',
+        'report-skipped = "ignored"',
     ]
     for expression, seconds in overrides:
         lines += [

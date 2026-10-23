@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:4067788c7edc46bd770061d2c27f51382161ce18601c1ebed8abde5f890026ef
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:eea33aeac19a35c1ebfea34d0abf0e85e26aef390df349ea429bdb3ae2385c2f
 name: Build
 "on":
   workflow_call:
@@ -24,7 +24,10 @@ env:
 jobs:
   build_product:
     name: Product (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].large)) }}
     timeout-minutes: >-
       ${{ inputs.platform == 'windows' && 110 || (inputs.platform == 'linux' && 110
       || (30)) }}
@@ -154,6 +157,7 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         include-hidden-files: true
+        compression-level: 0
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
@@ -195,7 +199,10 @@ jobs:
         github.ref == 'refs/heads/main') && 'READ_WRITE' || 'READ_ONLY' }}
   build_tests:
     name: Tests (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
+    runs-on: >-
+      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
+      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
+      (fromJSON(inputs.runners)[inputs.platform].large)) }}
     timeout-minutes: >-
       ${{ inputs.platform == 'windows' && 110 || (inputs.platform == 'linux' && 110
       || (30)) }}
@@ -340,6 +347,7 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         include-hidden-files: true
+        compression-level: 0
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:

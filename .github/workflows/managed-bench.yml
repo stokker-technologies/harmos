@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-bench.yml; sha256:3e825fec36359b5a084d31c3990539d5c8117bb86897fa5f5dabb8451ab34fbc
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-bench.yml; sha256:e87fc55a43cc3027313cd0a7cdde4c3a7ac4d3cf95ed32d42d02e8770d4208d2
 name: Bench
 "on":
   workflow_call:
@@ -21,7 +21,7 @@ env:
 jobs:
   bench_rust_integration:
     name: Rust / Integration
-    runs-on: ${{ fromJSON(inputs.runners).nightly.small }}
+    runs-on: stokker-local-linux-x64
     timeout-minutes: ${{ fromJSON(inputs.timeouts).bench_rust_integration }}
     env:
       MISE_ENABLE_TOOLS: >-
@@ -154,7 +154,7 @@ jobs:
     if: github.event_name == 'schedule'
   bench_rust_system:
     name: Rust / System
-    runs-on: ${{ fromJSON(inputs.runners).nightly.small }}
+    runs-on: stokker-local-linux-x64
     timeout-minutes: ${{ fromJSON(inputs.timeouts).bench_rust_system }}
     env:
       MISE_ENABLE_TOOLS: >-
@@ -287,7 +287,7 @@ jobs:
     if: github.event_name == 'schedule'
   bench_rust_unit:
     name: Rust / Unit
-    runs-on: ${{ fromJSON(inputs.runners).nightly.small }}
+    runs-on: stokker-local-linux-x64
     timeout-minutes: ${{ fromJSON(inputs.timeouts).bench_rust_unit }}
     env:
       MISE_ENABLE_TOOLS: >-

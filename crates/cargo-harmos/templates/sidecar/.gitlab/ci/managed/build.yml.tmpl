@@ -1,8 +1,8 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:626656cff9898a9e1d876661d36e50659412db57cfa30b7d89fe478136eca3e1
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:a4b7ce56d4961713b032ca7e1c228b79b1dfd8963e17d8913e1fe24b686beed6
 Build / Product (linux):
   stage: Build
   tags:
-  - $STKR_RUNNER_LINUX_LARGE
+  - saas-linux-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Validated / Repository
@@ -67,7 +67,7 @@ Build / Product (linux):
 Build / Tests (linux):
   stage: Build
   tags:
-  - $STKR_RUNNER_LINUX_LARGE
+  - saas-linux-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Build / Product (linux)
@@ -135,7 +135,7 @@ Build / Tests (linux):
 Build / Product (windows):
   stage: Build
   tags:
-  - $STKR_RUNNER_WINDOWS_LARGE
+  - saas-windows-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Validated / Repository
@@ -200,7 +200,7 @@ Build / Product (windows):
 Build / Tests (windows):
   stage: Build
   tags:
-  - $STKR_RUNNER_WINDOWS_LARGE
+  - saas-windows-medium-amd64
   timeout: 30 minutes
   needs:
   - job: Build / Product (windows)

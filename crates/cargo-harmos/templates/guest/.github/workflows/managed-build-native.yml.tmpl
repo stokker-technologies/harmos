@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:7bfa30f7fb07188536e75fbeed396160cf76cab1c84392f925e9724e70ad4d8b
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:41f2bae44d0df42cc2c73e35c55a8da212725f4d9496de2fb9661f972193ee05
 name: Build
 "on":
   workflow_call:
@@ -141,6 +141,7 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         include-hidden-files: true
+        compression-level: 0
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
@@ -316,6 +317,7 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         include-hidden-files: true
+        compression-level: 0
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
