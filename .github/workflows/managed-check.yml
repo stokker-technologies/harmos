@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check.yml; sha256:fbdb8298063ab5d7bd50868f9416ccfa2ab78a54e8aa489ce49bdeef49d81e86
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check.yml; sha256:2a4c78a9b5b5397c548d79eb97ced29301047cd372dcd3aa52ef1885f3019521
 name: Check
 "on":
   workflow_call:
@@ -14,6 +14,7 @@ env:
     ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref,
     'release/v')) && 'release' || 'dev' }}
   MISE_LOCKED: "1"
+  MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
   npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
@@ -24,6 +25,20 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runners).linux.small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).source }}
     steps:
+    - name: Configure Checkout Git
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
+        if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$count", 'core.longpaths')
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$count", 'true')
+        $env:GIT_CONFIG_COUNT = ([int]$count + 1).ToString()
+        if ($env:GITHUB_ENV) {
+          foreach ($name in @('GIT_CONFIG_COUNT', "GIT_CONFIG_KEY_$count", "GIT_CONFIG_VALUE_$count")) {
+            "$name=$([Environment]::GetEnvironmentVariable($name))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+        }
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
@@ -31,14 +46,17 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |-
-        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        $identity = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+        $bytes = [Text.Encoding]::UTF8.GetBytes($identity)
+        $slot = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+        $directory = Join-Path ([IO.Path]::GetTempPath()) ('stkr-mise/' + $slot)
         "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         "STKR_RUNNER_IMAGE=$($env:ImageOS ?? 'windows')-$($env:ImageVersion ?? 'self')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     - name: Resolve Mise Directory
       if: runner.os != 'Windows'
       shell: bash
       run: |-
-        printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+        printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${RUNNER_TEMP}" >> "$GITHUB_ENV"
         printf 'STKR_RUNNER_IMAGE=%s-%s\n' "${ImageOS:-$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}${VERSION_ID:-}")}" "${ImageVersion:-self}" >> "$GITHUB_ENV"
     - name: Identify Installation Roots
       if: runner.os == 'Windows'
@@ -58,6 +76,118 @@ jobs:
           if command -v sha256sum >/dev/null; then digest=$(printf '%s' "$root" | sha256sum); else digest=$(printf '%s' "$root" | shasum -a 256); fi
           printf '%s=%s\n' "$name" "${digest%% *}" >> "$GITHUB_ENV"
         done
+    - name: Prepare Windows Tools
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $ErrorActionPreference = 'Stop'
+        # === Setup === #
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+        if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'The standard Windows image requires installed Visual Studio Build Tools' }
+        $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($LASTEXITCODE -ne 0 -or !$installation) { throw 'The standard Windows image requires installed Visual Studio C++ tools' }
+        Import-Module (Join-Path $installation 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+        Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+        $compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'cl.exe' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+        if (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) 'link.exe') -PathType Leaf)) { throw 'MSVC compiler and linker are required from the selected installation' }
+        $archiveRoot = Join-Path $PWD '.cache/bootstrap/zstd-1.5.7'
+        $archive = Join-Path $archiveRoot 'zstd.zip'
+        New-Item -ItemType Directory -Force $archiveRoot | Out-Null
+        $checksum = 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9'
+        if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
+            Invoke-WebRequest 'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip' -OutFile $archive
+        }
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned zstd archive checksum mismatch' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force
+        $compressor = Join-Path $archiveRoot 'zstd-v1.5.7-win64/zstd.exe'
+        if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
+        $compressorRoot = Split-Path -Parent $compressor
+        $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # === Verification === #
+        & $compressor --version
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }
+        $selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'link.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1
+        if ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) 'link.exe')) { throw 'MSVC linker precedence is required' }
+        # === Entry Point === #
+        $paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim('"') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })
+        $candidates = @($paths | ForEach-Object { Join-Path $_ 'tar.exe' })
+        foreach ($git in @($paths | ForEach-Object { Join-Path $_ 'git.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {
+          $root = Split-Path -Parent (Split-Path -Parent $git)
+          $candidates += Join-Path $root 'usr/bin/tar.exe'
+        }
+        $tar = $null
+        foreach ($candidate in @($candidates | Select-Object -Unique)) {
+          if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+          try {
+            $version = & $candidate --version 2>$null
+            if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+            $capabilities = & $candidate --help 2>$null
+            if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+            $tar = $candidate
+            break
+          } catch { continue }
+        }
+        if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required from the standard Git image baseline' }
+        $env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator
+        if ($env:GITHUB_ENV) {
+          foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+          }
+        }
+    - name: Prepare Linux Tools
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |-
+        set -eu
+        # === Setup === #
+        native_tools='tar zstd unzip zip'
+        case ",${MISE_ENABLE_TOOLS:-rust}," in
+            *,rust,*|*,cargo:*)
+                native_tools="$native_tools cc c++ make pkg-config"
+                compiler=1
+                ;;
+            *) compiler=0 ;;
+        esac
+        missing=''
+        for tool in $native_tools; do
+            if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
+        done
+        case "$(tar --version 2>/dev/null || true)" in
+            'tar (GNU tar)'*) ;;
+            *) missing="$missing GNU-tar" ;;
+        esac
+        if [ "$compiler" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then
+            missing="$missing openssl-development"
+        fi
+        install_prerequisites() {
+            set -- tar zstd unzip zip
+            if command -v apt-get >/dev/null 2>&1; then
+                if [ "$compiler" -eq 1 ]; then set -- "$@" build-essential pkg-config libssl-dev; fi
+                if [ "$(id -u)" -eq 0 ]; then
+                    apt-get update
+                    apt-get install -y --no-install-recommends "$@"
+                else
+                    sudo -n apt-get update
+                    sudo -n apt-get install -y --no-install-recommends "$@"
+                fi
+            elif command -v apk >/dev/null 2>&1; then
+                if [ "$compiler" -eq 1 ]; then set -- "$@" build-base pkgconf openssl-dev; fi
+                if [ "$(id -u)" -eq 0 ]; then apk add --no-cache "$@"
+                else sudo -n apk add --no-cache "$@"; fi
+            else
+                printf 'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\n' "$missing" >&2
+                exit 1
+            fi
+        }
+        if [ -n "$missing" ]; then install_prerequisites; fi
+        # === Verification === #
+        case "$(tar --version)" in
+            'tar (GNU tar)'*) ;;
+            *) printf 'GNU tar is required.\n' >&2; exit 1 ;;
+        esac
+        zstd --version
+        # === Entry Point === #
     - id: cargo_downloads
       name: Cache / cargo-downloads
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -125,12 +255,26 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: >-
-        node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,npm:@fission-ai/openspec,taplo,git-cliff
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,npm:@fission-ai/openspec,taplo,git-cliff
   check_python:
     name: Python
     runs-on: ${{ fromJSON(inputs.runners).linux.small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).check_python }}
     steps:
+    - name: Configure Checkout Git
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
+        if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$count", 'core.longpaths')
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$count", 'true')
+        $env:GIT_CONFIG_COUNT = ([int]$count + 1).ToString()
+        if ($env:GITHUB_ENV) {
+          foreach ($name in @('GIT_CONFIG_COUNT', "GIT_CONFIG_KEY_$count", "GIT_CONFIG_VALUE_$count")) {
+            "$name=$([Environment]::GetEnvironmentVariable($name))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+        }
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
@@ -138,14 +282,17 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |-
-        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        $identity = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+        $bytes = [Text.Encoding]::UTF8.GetBytes($identity)
+        $slot = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+        $directory = Join-Path ([IO.Path]::GetTempPath()) ('stkr-mise/' + $slot)
         "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         "STKR_RUNNER_IMAGE=$($env:ImageOS ?? 'windows')-$($env:ImageVersion ?? 'self')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     - name: Resolve Mise Directory
       if: runner.os != 'Windows'
       shell: bash
       run: |-
-        printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+        printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${RUNNER_TEMP}" >> "$GITHUB_ENV"
         printf 'STKR_RUNNER_IMAGE=%s-%s\n' "${ImageOS:-$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}${VERSION_ID:-}")}" "${ImageVersion:-self}" >> "$GITHUB_ENV"
     - name: Identify Installation Roots
       if: runner.os == 'Windows'
@@ -165,6 +312,118 @@ jobs:
           if command -v sha256sum >/dev/null; then digest=$(printf '%s' "$root" | sha256sum); else digest=$(printf '%s' "$root" | shasum -a 256); fi
           printf '%s=%s\n' "$name" "${digest%% *}" >> "$GITHUB_ENV"
         done
+    - name: Prepare Windows Tools
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $ErrorActionPreference = 'Stop'
+        # === Setup === #
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+        if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'The standard Windows image requires installed Visual Studio Build Tools' }
+        $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($LASTEXITCODE -ne 0 -or !$installation) { throw 'The standard Windows image requires installed Visual Studio C++ tools' }
+        Import-Module (Join-Path $installation 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+        Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+        $compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'cl.exe' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+        if (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) 'link.exe') -PathType Leaf)) { throw 'MSVC compiler and linker are required from the selected installation' }
+        $archiveRoot = Join-Path $PWD '.cache/bootstrap/zstd-1.5.7'
+        $archive = Join-Path $archiveRoot 'zstd.zip'
+        New-Item -ItemType Directory -Force $archiveRoot | Out-Null
+        $checksum = 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9'
+        if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
+            Invoke-WebRequest 'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip' -OutFile $archive
+        }
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned zstd archive checksum mismatch' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force
+        $compressor = Join-Path $archiveRoot 'zstd-v1.5.7-win64/zstd.exe'
+        if (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw 'Pinned zstd executable missing' }
+        $compressorRoot = Split-Path -Parent $compressor
+        $env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH
+        # === Verification === #
+        & $compressor --version
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned zstd cannot execute' }
+        $selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ 'link.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1
+        if ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) 'link.exe')) { throw 'MSVC linker precedence is required' }
+        # === Entry Point === #
+        $paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim('"') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })
+        $candidates = @($paths | ForEach-Object { Join-Path $_ 'tar.exe' })
+        foreach ($git in @($paths | ForEach-Object { Join-Path $_ 'git.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {
+          $root = Split-Path -Parent (Split-Path -Parent $git)
+          $candidates += Join-Path $root 'usr/bin/tar.exe'
+        }
+        $tar = $null
+        foreach ($candidate in @($candidates | Select-Object -Unique)) {
+          if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+          try {
+            $version = & $candidate --version 2>$null
+            if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+            $capabilities = & $candidate --help 2>$null
+            if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+            $tar = $candidate
+            break
+          } catch { continue }
+        }
+        if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required from the standard Git image baseline' }
+        $env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator
+        if ($env:GITHUB_ENV) {
+          foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+          }
+        }
+    - name: Prepare Linux Tools
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |-
+        set -eu
+        # === Setup === #
+        native_tools='tar zstd unzip zip'
+        case ",${MISE_ENABLE_TOOLS:-rust}," in
+            *,rust,*|*,cargo:*)
+                native_tools="$native_tools cc c++ make pkg-config"
+                compiler=1
+                ;;
+            *) compiler=0 ;;
+        esac
+        missing=''
+        for tool in $native_tools; do
+            if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
+        done
+        case "$(tar --version 2>/dev/null || true)" in
+            'tar (GNU tar)'*) ;;
+            *) missing="$missing GNU-tar" ;;
+        esac
+        if [ "$compiler" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then
+            missing="$missing openssl-development"
+        fi
+        install_prerequisites() {
+            set -- tar zstd unzip zip
+            if command -v apt-get >/dev/null 2>&1; then
+                if [ "$compiler" -eq 1 ]; then set -- "$@" build-essential pkg-config libssl-dev; fi
+                if [ "$(id -u)" -eq 0 ]; then
+                    apt-get update
+                    apt-get install -y --no-install-recommends "$@"
+                else
+                    sudo -n apt-get update
+                    sudo -n apt-get install -y --no-install-recommends "$@"
+                fi
+            elif command -v apk >/dev/null 2>&1; then
+                if [ "$compiler" -eq 1 ]; then set -- "$@" build-base pkgconf openssl-dev; fi
+                if [ "$(id -u)" -eq 0 ]; then apk add --no-cache "$@"
+                else sudo -n apk add --no-cache "$@"; fi
+            else
+                printf 'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\n' "$missing" >&2
+                exit 1
+            fi
+        }
+        if [ -n "$missing" ]; then install_prerequisites; fi
+        # === Verification === #
+        case "$(tar --version)" in
+            'tar (GNU tar)'*) ;;
+            *) printf 'GNU tar is required.\n' >&2; exit 1 ;;
+        esac
+        zstd --version
+        # === Entry Point === #
     - id: cargo_downloads
       name: Cache / cargo-downloads
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -232,4 +491,4 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: >-
-        node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
