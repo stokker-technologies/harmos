@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:8020429b9e3ed625b801626042aae0c7613cc32dd649f51d8fd768178b7030a5
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:807bc354c3b2a6b201cf3ddc606540d9e33991a1c9d2a6e3678f77a6b2a501f1
 name: Check
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
 jobs:
   check_rust:
     name: Rust (${{ inputs.platform }})
-    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
+    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).check_rust }}
     steps:
     - name: Configure Checkout Git
@@ -223,22 +223,7 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
-    - name: Compiler Cache Storage
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-      with:
-        script: |-
-          for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
-            const value = process.env[key];
-            if (value) { core.setSecret(value); core.exportVariable(key, value); }
-          }
-          if (process.env.ACTIONS_CACHE_SERVICE_V2) {
-            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
-          }
-    - run: >-
-        mise exec -- uv run --locked --project tools/python python -m
-        project_tools.ci.sccache
-      env:
-        STKR_SCCACHE_SCRIPT: mise run check:rust
+    - run: mise run check:rust
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -271,10 +256,4 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: >-
-        aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv
-      STKR_SCCACHE_BACKEND: gha
-      STKR_SCCACHE_MODE: >-
-        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
-        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
-        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+        go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo

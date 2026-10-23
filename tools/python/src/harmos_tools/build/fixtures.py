@@ -27,7 +27,7 @@ from pathlib import Path
 # Local Imports
 from ..test import archive
 from .. import temporary
-from . import paths, run
+from . import cargo, paths, run
 
 # Type Checking Imports
 
@@ -209,7 +209,9 @@ def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch
             stderr=sys.stderr,
         )
     messages = destination / "messages.json"
-    command = ["cargo", "build", "--locked", "--profile", profile, "--message-format=json", *extra]
+    arguments = ["--locked", "--profile", profile, *extra]
+    cargo.clippy(directory, arguments)
+    command = ["cargo", "build", *arguments, "--message-format=json"]
     with messages.open("w", encoding="utf-8") as output:
         completed = subprocess.run(
             command,

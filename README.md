@@ -742,6 +742,13 @@ and offline authoring inputs.
 `mise run ci` runs the ordinary checks, producers, tests, package and dry
 publication locally. Native provider CI proves every required platform.
 
+Rust compilation runs Clippy first with matching features, targets and profiles.
+`check:rust` performs formatting and dependency checks without compiling; Build
+also preserves explicit no-default-feature and Wasm compatibility proofs.
+CI runs Product and optional Tests producers in one native Build job per platform,
+then Test and Package consume their separate artifacts in parallel. Product-only
+builds do not implicitly produce the test archive.
+
 CI runs the Check, Build and Test stages on Linux and Windows, and both
 platforms are required for `dev`, `main` and releases. Pull requests and pushes
 to `dev` verify development packages and dry publication; packages consume

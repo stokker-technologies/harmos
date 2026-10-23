@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/run.py; sha256:53e5de75402ca02f63c7bb101335f09e42605b5f734cc1831690d881aaf16752
+# Rendered by stkr project update from templates/python/build/run.py; sha256:cd94f99ba4f38b7e81d2b7934fdae3dc7a389667c4b2eb2c6ee56d7914586d24
 # ***
 #
 # Harmos
@@ -25,7 +25,7 @@ from typing import Any
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from . import paths
+from . import cargo, paths
 
 # Type Checking Imports
 
@@ -44,9 +44,19 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
     destination = paths.output(directory, "build", profile, native)
     messages = destination / "product/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
-    command = ["cargo", "build", "--locked", "--workspace", "--profile", profile, "--message-format=json-render-diagnostics"]
+    arguments = ["--locked", "--workspace", "--profile", profile]
+    cargo.clippy(directory, arguments)
+    command = ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"]
     with messages.open("w", encoding="utf-8") as output:
-        subprocess.run(command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, stdout=output, check=True)
+        subprocess.run(
+            command,
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            cwd=directory,
+            stdout=output,
+            check=True,
+        )
     with temporary.directory() as staging:
         for name in ("bin", "lib"):
             (staging / name).mkdir()
@@ -56,7 +66,15 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
                 source = Path(executable)
                 shutil.copy2(source, staging / "bin" / source.name)
             elif any(
-                kind in event.get("target", {}).get("kind", []) for kind in ("lib", "rlib", "cdylib", "dylib", "staticlib", "proc-macro")
+                kind in event.get("target", {}).get("kind", [])
+                for kind in (
+                    "lib",
+                    "rlib",
+                    "cdylib",
+                    "dylib",
+                    "staticlib",
+                    "proc-macro",
+                )
             ):
                 for filename in event.get("filenames", []):
                     source = Path(filename)
@@ -113,7 +131,15 @@ def main() -> None:
         rust(directory, options.profile, options.target)
     elif options.language == "python":
         subprocess.run(
-            ["uv", "build", "--project", str(project), "--wheel", "--out-dir", str(destination / "python")],
+            [
+                "uv",
+                "build",
+                "--project",
+                str(project),
+                "--wheel",
+                "--out-dir",
+                str(destination / "python"),
+            ],
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,

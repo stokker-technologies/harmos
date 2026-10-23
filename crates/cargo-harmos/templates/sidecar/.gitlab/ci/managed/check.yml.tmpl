@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:78f266e80c6656e0196eab3176c62fd32c385f404fc5fa8f2899d28094a5f311
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:2ece6dc0ac4dd54bc5d4103c5676225e989dddfdeb76eaec166398b760cdaf84
 Check / Repository:
   stage: Check
   tags:
@@ -169,7 +169,7 @@ Check / Rust (linux):
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
   variables:
     MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
   before_script:
   - >-
     if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
@@ -331,11 +331,30 @@ Check / Rust (windows):
         if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
       }
     }
+  - |-
+    $ErrorActionPreference = 'Stop'
+    # === Setup === #
+    $root = Join-Path $PWD '.cache/bootstrap/mise-2026.10.17'
+    $archive = Join-Path $root 'mise.zip'
+    $checksum = '32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c'
+    New-Item -ItemType Directory -Force $root | Out-Null
+    if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
+        Invoke-WebRequest 'https://github.com/jdx/mise/releases/download/v2026.10.17/mise-v2026.10.17-windows-x64.zip' -OutFile $archive
+    }
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned mise archive checksum mismatch' }
+    Expand-Archive -LiteralPath $archive -DestinationPath $root -Force
+    $mise = Join-Path $root 'mise/bin/mise.exe'
+    if (!(Test-Path -LiteralPath $mise -PathType Leaf)) { throw 'Pinned mise executable missing' }
+    $env:PATH = (Split-Path -Parent $mise) + [IO.Path]::PathSeparator + $env:PATH
+    # === Verification === #
+    & $mise --version
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned mise cannot execute' }
+    # === Entry Point === #
   - mise trust --yes
   - mise install --yes
   variables:
     MISE_ENABLE_TOOLS: >-
-      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+      go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
 Validated / Repository:
   stage: Check
   tags:
@@ -408,6 +427,24 @@ Validated / Repository:
             return False
         command("git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", head)
         return command("git", "rev-parse", "--verify", head + "^{tree}") == tree
+    def github_review_run(run, review):
+        if run.get("head_sha") != review["head"]["sha"]:
+            return False
+        associations = run.get("pull_requests")
+        if associations:
+            return any(pr.get("number") == review["number"] for pr in associations)
+        # GitHub Can Drop The Association After The Merged Source Branch Is Deleted.
+        repository = review["head"].get("repo", {}).get("id")
+        return (
+            associations == []
+            and isinstance(repository, int)
+            and repository > 0
+            and run.get("event") == "pull_request"
+            and run.get("head_branch") == review["head"]["ref"]
+            and run.get("head_repository", {}).get("id") == repository
+            and run.get("repository", {}).get("id") == review.get("base", {}).get("repo", {}).get("id")
+            and isinstance(run.get("repository", {}).get("id"), int)
+        )
     def lookup():
         sha = command("git", "rev-parse", "HEAD")
         tree = command("git", "rev-parse", "HEAD^{tree}")
@@ -436,7 +473,7 @@ Validated / Repository:
             required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
         if github:
             runs = pages(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
-            runs = [run for run in runs if run.get("head_sha") == head and any(pr.get("number") == review["number"] for pr in run.get("pull_requests", []))]
+            runs = [run for run in runs if github_review_run(run, review)]
             run = max(runs, key=lambda item: item["id"])
             if run.get("status") != "completed" or run.get("conclusion") != "success":
                 raise ValueError("review run is not green")

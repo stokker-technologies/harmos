@@ -1,11 +1,11 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:21f312ab6b574ef7a6bd4d2813fde4399c4a34560be4fbd1ebbd87d7645bba63
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:6019d9a6dadedcac90f59d6bbfb65d6d838f1a5d33d439d6462089a6aceb0eec
 Test / Rust / Unit (linux):
   stage: Test
   tags:
   - saas-linux-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Tests (linux)
+  - job: Build / Native (linux)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
@@ -92,7 +92,7 @@ Test / Rust / Unit (windows):
   - saas-windows-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Tests (windows)
+  - job: Build / Native (windows)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
@@ -222,6 +222,25 @@ Test / Rust / Unit (windows):
         if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
       }
     }
+  - |-
+    $ErrorActionPreference = 'Stop'
+    # === Setup === #
+    $root = Join-Path $PWD '.cache/bootstrap/mise-2026.10.17'
+    $archive = Join-Path $root 'mise.zip'
+    $checksum = '32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c'
+    New-Item -ItemType Directory -Force $root | Out-Null
+    if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
+        Invoke-WebRequest 'https://github.com/jdx/mise/releases/download/v2026.10.17/mise-v2026.10.17-windows-x64.zip' -OutFile $archive
+    }
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned mise archive checksum mismatch' }
+    Expand-Archive -LiteralPath $archive -DestinationPath $root -Force
+    $mise = Join-Path $root 'mise/bin/mise.exe'
+    if (!(Test-Path -LiteralPath $mise -PathType Leaf)) { throw 'Pinned mise executable missing' }
+    $env:PATH = (Split-Path -Parent $mise) + [IO.Path]::PathSeparator + $env:PATH
+    # === Verification === #
+    & $mise --version
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned mise cannot execute' }
+    # === Entry Point === #
   - mise trust --yes
   - mise install --yes
   variables:
@@ -233,9 +252,7 @@ Test / Rust / Coverage:
   - saas-linux-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Product (linux)
-    artifacts: true
-  - job: Build / Tests (linux)
+  - job: Build / Native (linux)
     artifacts: true
   script:
   - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
