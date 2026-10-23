@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:3db2a671f89458b371f5cf28179c9289779dd8bf3b2ef233e71b8aeb1e8c3c11
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:cdd4d0c66de0c36ddfb470fc9dd64d678e84eb853f4cc98b1fd8a60dc43824de
 name: CI
 "on":
   push:
@@ -25,7 +25,7 @@ jobs:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product\":120,\"build_tests\":120}"
       platform: linux
     secrets: inherit
@@ -41,7 +41,7 @@ jobs:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product\":120,\"build_tests\":120}"
       platform: windows
     secrets: inherit
@@ -57,7 +57,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_python\":120,\"source\":120}"
     secrets: inherit
     needs:
@@ -72,7 +72,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-generated.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_generated_python\":120}"
     secrets: inherit
     needs:
@@ -88,7 +88,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust\":120}"
       platform: linux
     secrets: inherit
@@ -104,7 +104,7 @@ jobs:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust\":120}"
       platform: windows
     secrets: inherit
@@ -120,7 +120,7 @@ jobs:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust\":120}"
       platform: linux
     secrets: inherit
@@ -141,7 +141,7 @@ jobs:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust\":120}"
       platform: windows
     secrets: inherit
@@ -162,7 +162,7 @@ jobs:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_acceptance\":120,\"validate_test_rust_integration\":120,\"validate_test_rust_system\":120,\"validate_test_rust_unit\":120}"
       platform: linux
     secrets: inherit
@@ -179,7 +179,7 @@ jobs:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_acceptance\":120,\"validate_test_rust_integration\":120,\"validate_test_rust_system\":120,\"validate_test_rust_unit\":120}"
       platform: windows
     secrets: inherit
@@ -433,7 +433,7 @@ jobs:
       attestations: write
       packages: write
     with:
-      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"stokker-local-linux-x64\",\"coverage\":\"ubuntu-latest\"}}"
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       review_run: ${{ needs.validated.outputs.review_run }}
       review_profile: ${{ needs.validated.outputs.review_profile }}
       review_sha: ${{ needs.validated.outputs.review_sha }}
