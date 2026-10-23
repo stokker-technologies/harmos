@@ -30,7 +30,6 @@ proc-macro = true
 
 # Utilities
 heck = { workspace = true }
-semver = { workspace = true, default-features = true }
 
 # Serialization
 serde_json = { workspace = true, default-features = true }

@@ -157,7 +157,15 @@ def product(profile: str, scratch: Path) -> None:
         artifacts[package] = destination.relative_to(export).as_posix()
         builds[package] = f"product/examples/{staged}"
 
-    metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT))
+    metadata = json.loads(
+        subprocess.check_output(
+            ["cargo", "metadata", "--locked", "--format-version", "1"],
+            cwd=ROOT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
+    )
     platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
     package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
     protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
@@ -175,7 +183,14 @@ def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
 
-    rustc = subprocess.check_output(["rustc", "-Vv"], cwd=directory, text=True)
+    rustc = subprocess.check_output(
+        ["rustc", "-Vv"],
+        cwd=directory,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stderr=sys.stderr,
+    )
     hosts = (line.removeprefix("host: ") for line in rustc.splitlines() if line.startswith("host: "))
     host = next(hosts)
     target = extra[extra.index("--target") + 1] if "--target" in extra else host
@@ -185,12 +200,26 @@ def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch
     metadata = destination / "metadata.json"
     with metadata.open("w", encoding="utf-8") as output:
         subprocess.run(
-            ["cargo", "metadata", "--locked", "--format-version", "1", *platforms, *features], cwd=directory, stdout=output, check=True
+            ["cargo", "metadata", "--locked", "--format-version", "1", *platforms, *features],
+            cwd=directory,
+            stdout=output,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
         )
     messages = destination / "messages.json"
     command = ["cargo", "build", "--locked", "--profile", profile, "--message-format=json", *extra]
     with messages.open("w", encoding="utf-8") as output:
-        completed = subprocess.run(command, cwd=directory, stdout=output, check=False)
+        completed = subprocess.run(
+            command,
+            cwd=directory,
+            stdout=output,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
     if completed.returncode:
         raise RuntimeError(f"cargo build failed for {name}")
 
@@ -257,7 +286,15 @@ def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: st
         "--json",
     ]
     with result.open("w", encoding="utf-8") as output:
-        completed = subprocess.run(command, cwd=ROOT, stdout=output, check=False)
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            stdout=output,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
     if completed.returncode:
         raise RuntimeError(f"cargo harmos could not collect {package}")
     return json.loads(result.read_text(encoding="utf-8")), result
@@ -272,7 +309,15 @@ def _offline_inputs(destination: Path) -> Path:
         vendor += ["--sync", str(manifest)]
     vendor.append(str(destination / "vendor"))
     destination.mkdir(parents=True, exist_ok=True)
-    subprocess.run(vendor, cwd=ROOT, stdout=subprocess.DEVNULL, check=True)
+    subprocess.run(
+        vendor,
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stderr=sys.stderr,
+    )
     projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
     requirements = []
     for index, project in enumerate(projects):
@@ -287,26 +332,55 @@ def _offline_inputs(destination: Path) -> Path:
     # Each Project Locks Its Own Closure, So Each Downloads Separately Into The Shared Wheel Directory.
     download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
     for selected in requirements:
-        subprocess.run([*download, "--requirement", str(selected)], cwd=ROOT, check=True)
+        subprocess.run(
+            [*download, "--requirement", str(selected)],
+            cwd=ROOT,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
     # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
-    subprocess.run([*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")], cwd=ROOT, check=True)
+    subprocess.run(
+        [*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")],
+        cwd=ROOT,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
     return destination
 
 
 def _requirements(project: Path, destination: Path) -> None:
-    """Project Native Or Suffixed Starter Metadata Without Publishing A Second Source Tree."""
+    """Project Native Or Suffixed Starter Workspace Metadata Without Publishing A Second Source Tree."""
     suffix = "" if (project / "pyproject.toml").is_file() else ".tmpl"
+    workspace = project.parents[1]
     environment = dict(os.environ)
     environment.pop("UV_PROJECT_ENVIRONMENT", None)
     with temporary.directory() as projected, destination.open("w", encoding="utf-8") as output:
-        shutil.copy2(project / f"pyproject.toml{suffix}", projected / "pyproject.toml")
-        shutil.copy2(project / f"uv.lock{suffix}", projected / "uv.lock")
-        export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(projected)]
-        subprocess.run(export, cwd=ROOT, stdout=output, check=True, env=environment)
+        member = projected / "tools/python"
+        member.mkdir(parents=True)
+        shutil.copy2(workspace / f"pyproject.toml{suffix}", projected / "pyproject.toml")
+        shutil.copy2(workspace / f"uv.lock{suffix}", projected / "uv.lock")
+        shutil.copy2(project / f"pyproject.toml{suffix}", member / "pyproject.toml")
+        export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(member)]
+        subprocess.run(
+            export,
+            cwd=ROOT,
+            stdout=output,
+            check=True,
+            env=environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+        )
 
 
 def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
-    """Generate The Schematic Sidecar's Python Client, Which `test:generated:python` Checks."""
+    """Generate The Schematic Sidecar's Python Client, Which `check:python:generated` Checks."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
     catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar"}
     if len(catalogs) != 1:
@@ -342,7 +416,15 @@ def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None
         "--protoc",
         str(protoc),
     ]
-    subprocess.run(command, cwd=ROOT, stdout=subprocess.DEVNULL, check=True)
+    subprocess.run(
+        command,
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stderr=sys.stderr,
+    )
     generated = sorted(output.rglob("*"))
     generated_files = (path for path in generated if path.is_file())
     for path in generated_files:
@@ -442,6 +524,10 @@ def _libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, s
 def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple[str, str, set[str]] | None:
     source = Path(filename)
     if source.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
+        return None
+    # Matching Emitted Libraries Already Carry Their Metadata.
+    companion = source.with_suffix(".rlib")
+    if source.suffix == ".rmeta" and any(Path(name) == companion for name in message["filenames"]):
         return None
     destination = fixtures / "libraries" / source.name
     if not destination.exists():

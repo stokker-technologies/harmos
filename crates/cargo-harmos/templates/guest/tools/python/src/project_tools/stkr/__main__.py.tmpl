@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:13eae8c279dfb2e005327b067731cc7c412c507c9c1010f74eda89d07ae7d62a
+# Rendered by stkr project update from templates/python/stkr/__main__.py; sha256:1c08cea1a3daa64ee40e29dc73737f9c0064fde59feb87fff86aa41859886e9b
 # ***
 #
 # __PRODUCT_NAME__
@@ -65,7 +65,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
             return 0
         print(f"{UNAVAILABLE}; install it with stkr machine install", file=sys.stderr)
         return 127
-    return subprocess.call([executable, *arguments])
+    return subprocess.call(
+        [executable, *arguments],
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
 
 
 # === Private Functions === #

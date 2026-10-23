@@ -77,7 +77,13 @@ pub(super) fn export(
     }
     let compiler_input = staging.path().join("compiler.bin");
     fs::write(&compiler_input, set.encode_to_vec())?;
-    let compiler = Command::new(protoc)
+    let mut compiler = Command::new(protoc);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        compiler.creation_flags(0x08000000);
+    }
+    let compiler = compiler
         .arg(format!("--descriptor_set_in={}", compiler_input.display()))
         .arg(format!("--python_out={}", source.display()))
         .arg(format!("--pyi_out={}", source.display()))

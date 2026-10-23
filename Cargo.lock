@@ -1055,7 +1055,6 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "semver",
  "serde_json",
  "syn 3.0.9",
 ]
@@ -1110,7 +1109,6 @@ dependencies = [
  "http-body",
  "http-body-util",
  "petgraph",
- "postcard",
  "prost-reflect",
  "protoc-bin-vendored",
  "schematic-domain",
@@ -1160,7 +1158,6 @@ dependencies = [
  "harmos-sdk",
  "libc",
  "postcard",
- "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",

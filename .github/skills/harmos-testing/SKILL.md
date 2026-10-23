@@ -2,11 +2,11 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:16e779337f5c699cb314154e54de1b8df5fef1a41710dbea46641457360c3df4 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:cb87b505370d34812f90860a5249eecaf1a0e802f971cfe719e1ab9eec3fe7b2 -->
 
 # Harmos Testing
 
-Apply `stkr-testing` for layers and lanes. These are Harmos-specific exceptions.
+Apply `stkr-test` for layers and lanes. These are Harmos-specific exceptions.
 Run the full lanes locally on the combined tree before opening or updating a
 review; CI confirms.
 

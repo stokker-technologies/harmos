@@ -1,0 +1,141 @@
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:47d666981d3c9b0781875fc7874ab458410cb3311deaefc3da7a1c63c138301e
+name: Test
+"on":
+  workflow_call:
+    inputs:
+      runners:
+        type: string
+        required: true
+      timeouts:
+        type: string
+        required: true
+env:
+  PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}
+  MISE_LOCKED: "1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+jobs:
+  validate_coverage_rust:
+    name: Rust / Coverage
+    runs-on: ${{ fromJSON(inputs.runners).nightly.coverage }}
+    timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_coverage_rust }}
+    env:
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Resolve Mise Directory
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        $directory = Join-Path ([System.IO.Path]::GetTempPath()) 'stkr-mise'
+        "MISE_DATA_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "STKR_RUNNER_IMAGE=$($env:ImageOS ?? 'windows')-$($env:ImageVersion ?? 'self')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Resolve Mise Directory
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |-
+        printf 'MISE_DATA_DIR=%s/stkr-mise\n' "${TMPDIR:-/tmp}" >> "$GITHUB_ENV"
+        printf 'STKR_RUNNER_IMAGE=%s-%s\n' "${ImageOS:-$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}${VERSION_ID:-}")}" "${ImageVersion:-self}" >> "$GITHUB_ENV"
+    - name: Identify Installation Roots
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |-
+        foreach ($entry in @{ STKR_MISE_ROOT = $env:MISE_DATA_DIR; STKR_WORKSPACE_ROOT = $env:GITHUB_WORKSPACE }.GetEnumerator()) {
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($entry.Value))
+          $digest = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+          "$($entry.Key)=$digest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        }
+    - name: Identify Installation Roots
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |-
+        for name in STKR_MISE_ROOT STKR_WORKSPACE_ROOT; do
+          if [ "$name" = STKR_MISE_ROOT ]; then root="$MISE_DATA_DIR"; else root="$GITHUB_WORKSPACE"; fi
+          if command -v sha256sum >/dev/null; then digest=$(printf '%s' "$root" | sha256sum); else digest=$(printf '%s' "$root" | shasum -a 256); fi
+          printf '%s=%s\n' "$name" "${digest%% *}" >> "$GITHUB_ENV"
+        done
+    - id: cargo_downloads
+      name: Cache / cargo-downloads
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{
+          hashFiles('Cargo.lock') }}
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+    - id: mise
+      name: Cache / mise
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ env.STKR_RUNNER_IMAGE }}-${{ env.STKR_JOB_IMAGE }}-${{ env.STKR_MISE_ROOT
+          }}-${{ env.STKR_WORKSPACE_ROOT }}-${{ hashFiles('mise.lock') }}
+        path: ${{ env.MISE_DATA_DIR }}
+    - id: uv
+      name: Cache / uv
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        key: >-
+          stkr-v4-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock')
+          }}-${{ hashFiles('uv.lock', 'mise.lock') }}
+        path: .cache/uv/
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      env:
+        RUSTC_WRAPPER: ""
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-product-${{ env.PROFILE }}-linux
+    - name: Extract Build
+      shell: bash
+      run: tar --zstd -xf "build-product-${{ env.PROFILE }}-linux.tar.zst"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-tests-${{ env.PROFILE }}-linux
+    - name: Extract Build
+      shell: bash
+      run: tar --zstd -xf "build-tests-${{ env.PROFILE }}-linux.tar.zst"
+    - run: mise run test:rust:coverage --profile ${{ env.PROFILE }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: junit-coverage-${{ env.PROFILE }}-linux
+        path: target/tests/${{ env.PROFILE }}/*/coverage/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main') && steps.cargo_downloads.outputs.cache-hit !=
+        'true'
+      with:
+        key: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
+        path: |-
+          .cache/cargo/registry/
+          .cache/cargo/git/
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main') && steps.mise.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.mise.outputs.cache-primary-key }}
+        path: ${{ env.MISE_DATA_DIR }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: >-
+        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main') && steps.uv.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.uv.outputs.cache-primary-key }}
+        path: .cache/uv/
+    if: github.event_name == 'schedule'

@@ -37,7 +37,6 @@ thiserror = { workspace = true, default-features = true }
 tracing = { workspace = true, default-features = true }
 
 # Utilities
-sha2 = { workspace = true, default-features = true }
 
 # Serialization
 serde = { workspace = true, default-features = true }
@@ -53,7 +52,6 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = ["time"] }
 
 # Networking
 

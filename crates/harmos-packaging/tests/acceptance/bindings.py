@@ -388,7 +388,13 @@ def _typing(target: Path, alpha: Path, beta: Path) -> None:
         str(source),
     ]
     result = subprocess.run(
-        command, env=env, capture_output=True, text=True, check=False
+        command,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     source.write_text(
@@ -398,7 +404,13 @@ def _typing(target: Path, alpha: Path, beta: Path) -> None:
         "FixtureReservedRequest(Clear_=123)\n"
     )
     result = subprocess.run(
-        command, env=env, capture_output=True, text=True, check=False
+        command,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
     )
     assert result.returncode != 0 and "invalid-argument-type" in result.stdout, (
         result.stdout + result.stderr
@@ -407,7 +419,14 @@ def _typing(target: Path, alpha: Path, beta: Path) -> None:
 
 def _run(command: list[str], *, env: dict[str, str], cwd: Path | None = None) -> None:
     result = subprocess.run(
-        command, env=env, cwd=cwd, capture_output=True, text=True, check=False
+        command,
+        env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
     )
     assert result.returncode == 0, (
         f"Command: {command}\n{result.stdout}\n{result.stderr}"

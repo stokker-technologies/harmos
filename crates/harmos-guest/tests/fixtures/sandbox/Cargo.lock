@@ -150,7 +150,6 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "semver",
  "serde_json",
  "syn 3.0.9",
 ]

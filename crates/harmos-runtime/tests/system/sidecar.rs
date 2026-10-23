@@ -95,7 +95,10 @@ async fn sidecar_composition_walks() {
     if std::env::var(ENV_SCENE).as_deref() != Ok("1") {
         // The Current-Thread Test Host Tolerates This Ambient Setting; A Native
         // Multithread Sidecar Must Clear It Before A Fresh Valid Generation Starts.
-        let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command
             .args(["--exact", "sidecar::sidecar_composition_walks", "--nocapture"])
             .env(ENV_SCENE, "1")
             .env("TOKIO_WORKER_THREADS", "0")

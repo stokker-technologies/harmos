@@ -73,7 +73,12 @@ impl Process {
         #[cfg(unix)]
         command.wrap(process_wrap::std::ProcessGroup::leader());
         #[cfg(windows)]
-        command.wrap(process_wrap::std::JobObject);
+        {
+            // JobObject Replaces Native Flags; Its Wrapper Preserves Explicit Policy.
+            let mut flags = process_wrap::std::CreationFlags(Default::default());
+            flags.0.0 = 0x08000000;
+            command.wrap(flags).wrap(process_wrap::std::JobObject);
+        }
         let child = Arc::new(Mutex::new(command.spawn()?));
         let retained = child.clone();
         let finished = Arc::new(AtomicBool::new(false));

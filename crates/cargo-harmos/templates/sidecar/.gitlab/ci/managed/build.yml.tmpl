@@ -1,14 +1,14 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:dcac402c34d3cb34e5868f39ca5d0e6160d1259314625d308d9d3858fba92b84
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:6a5c4442190a7697abe6aabea8e52cedff5afce254430fd39f073e1a6077ea65
 Build / Product (linux):
   stage: Build
   tags:
   - saas-linux-medium-amd64
   timeout: 30 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
   - mise run build --profile $PROFILE
   - |-
     native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $PROFILE)"
@@ -22,71 +22,48 @@ Build / Product (linux):
     [ ${#outputs[@]} -gt 0 ]
     tar --zstd -cf "target/ci/build-product-$PROFILE-linux.tar.zst" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- "${outputs[@]}"
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-product-$PROFILE-linux.tar.zst
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
   cache:
   - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
+    policy: $STKR_CACHE_POLICY
   - key:
-      prefix: linux-$CI_JOB_NAME_SLUG-target
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
       files:
-      - Cargo.lock
       - mise.lock
     paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
-  artifacts:
-    expire_in: 7 days
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
     paths:
-    - target/ci/build-product-$PROFILE-linux.tar.zst
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
-  variables:
-    COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Build / Tests (linux):
   stage: Build
   tags:
@@ -95,12 +72,12 @@ Build / Tests (linux):
   needs:
   - job: Build / Product (linux)
     artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
   - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
-  - mise run build:tests --profile $PROFILE
+  - mise run build:rust:tests --profile $PROFILE
   - |-
     native="$(mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $PROFILE)"
     native="${native##*/}"
@@ -113,144 +90,91 @@ Build / Tests (linux):
     [ ${#outputs[@]} -gt 0 ]
     tar --zstd -cf "target/ci/build-tests-$PROFILE-linux.tar.zst"  -- "${outputs[@]}"
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  artifacts:
+    expire_in: 7 days
+    paths:
+    - target/ci/build-tests-$PROFILE-linux.tar.zst
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
   cache:
   - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
+    policy: $STKR_CACHE_POLICY
   - key:
-      prefix: linux-$CI_JOB_NAME_SLUG-target
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
       files:
-      - Cargo.lock
       - mise.lock
     paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
-  artifacts:
-    expire_in: 7 days
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
     paths:
-    - target/ci/build-tests-$PROFILE-linux.tar.zst
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
-  variables:
-    COMPILER_CACHE_POLICY: pull
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Build / Product (windows):
   stage: Build
   tags:
   - saas-windows-medium-amd64
   timeout: 30 minutes
-  needs: []
+  needs:
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
   - mise run build --profile $env:PROFILE
   - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $env:PROFILE)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
     [string[]]$outputs = @("target/build/$env:PROFILE/${native}/", "target/build/$env:PROFILE/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
-    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+    & $tar -cf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  cache:
-  - key:
-      prefix: windows-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: windows-cargo
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
-  - key:
-      prefix: windows-$CI_JOB_NAME_SLUG-target
-      files:
-      - Cargo.lock
-      - mise.lock
-    paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
   artifacts:
     expire_in: 7 days
     paths:
@@ -259,16 +183,39 @@ Build / Product (windows):
     default:
     - interruptible
   before_script:
+  - >-
+    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
+    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
+    review pipeline $env:review_run"; exit 0 }
   - mise trust --yes
   - mise install --yes
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
   variables:
-    COMPILER_CACHE_POLICY: pull
     MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Build / Tests (windows):
   stage: Build
   tags:
@@ -277,74 +224,65 @@ Build / Tests (windows):
   needs:
   - job: Build / Product (windows)
     artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune start
-  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
-  - mise run build:tests --profile $env:PROFILE
   - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
+    & $tar -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -d"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - mise run build:rust:tests --profile $env:PROFILE
+  - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $env:PROFILE)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
     [string[]]$outputs = @("target/build/$env:PROFILE/${native}/tests", "target/build/$env:PROFILE/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
-    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    & $tar -cf "target/ci/build-tests-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "merge_request_event") && ($CI_COMMIT_BRANCH == "dev"
-      || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/) &&
-      ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
-  - if: >-
-      ($CI_PIPELINE_SOURCE == "schedule") && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_PIPELINE_SOURCE == "schedule"
-  - if: >-
-      ($CI_COMMIT_TAG =~ /^v[0-9]/) && ($CI_COMMIT_BRANCH == "dev" ||
-      $CI_COMMIT_BRANCH == "main")
-    variables:
-      COMPILER_CACHE_POLICY: pull-push
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
-  cache:
-  - key:
-      prefix: windows-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: windows-cargo
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $COMPILER_CACHE_POLICY
-  - key:
-      prefix: windows-$CI_JOB_NAME_SLUG-target
-      files:
-      - Cargo.lock
-      - mise.lock
-    paths:
-    - target/debug/deps/
-    - target/debug/build/
-    - target/debug/.fingerprint/
-    - target/release/deps/
-    - target/release/build/
-    - target/release/.fingerprint/
-    policy: $COMPILER_CACHE_POLICY
   artifacts:
     expire_in: 7 days
     paths:
@@ -353,13 +291,36 @@ Build / Tests (windows):
     default:
     - interruptible
   before_script:
+  - >-
+    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
+    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
+    review pipeline $env:review_run"; exit 0 }
   - mise trust --yes
   - mise install --yes
-  after_script:
-  - >-
-    mise exec -- uv run --locked --project tools/python python -m
-    project_tools.test.prune prune
   variables:
-    COMPILER_CACHE_POLICY: pull
     MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY

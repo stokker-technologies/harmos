@@ -56,7 +56,6 @@ tracing = { workspace = true, default-features = true }
 
 # Utilities
 getrandom = { workspace = true, features = ["std"], optional = true }
-semver = { workspace = true, default-features = true }
 sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization

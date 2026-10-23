@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/run.py; sha256:bcb94a15c41f11d99240740d2acca2081177e2babd47f7ac0255be3d2e2054c7
+# Rendered by stkr project update from templates/python/build/run.py; sha256:a2eabf0a84a329b5cc450700fc82b1ad5c7fe85dd8042143d51aac73bf94c02c
 # ***
 #
 # __PRODUCT_NAME__
@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -45,7 +46,7 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
     messages.parent.mkdir(parents=True, exist_ok=True)
     command = ["cargo", "build", "--locked", "--workspace", "--profile", profile, "--message-format=json-render-diagnostics"]
     with messages.open("w", encoding="utf-8") as output:
-        subprocess.run(command, cwd=directory, stdout=output, check=True)
+        subprocess.run(command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, stdout=output, check=True)
     with temporary.directory() as staging:
         for name in ("bin", "lib"):
             (staging / name).mkdir()
@@ -67,7 +68,14 @@ def rust(directory: Path, profile: str, native: str | None = None) -> None:
 
 def record_target(directory: Path, messages: Path, profile: str, native: str | None = None) -> None:
     """Record The Actual Rust Target For Generic And Authored Product Builders."""
-    compiler = subprocess.run(["rustc", "-vV"], cwd=directory, capture_output=True, text=True, check=True).stdout
+    compiler = subprocess.run(
+        ["rustc", "-vV"],
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        cwd=directory,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     host = next(line.removeprefix("host: ") for line in compiler.splitlines() if line.startswith("host: "))
     triple = os.environ.get("CARGO_BUILD_TARGET", host)
     compiled_targets = set()
@@ -106,6 +114,10 @@ def main() -> None:
     elif options.language == "python":
         subprocess.run(
             ["uv", "build", "--project", str(project), "--wheel", "--out-dir", str(destination / "python")],
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             cwd=directory,
             check=True,
         )

@@ -17,7 +17,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 // Third Party Imports
 
 // Local Imports
@@ -42,7 +42,7 @@ use crate::fixtures;
 /* === Private Functions === */
 
 fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str) -> Output {
-    Command::new(rustc)
+    fixtures::command(rustc)
         .arg("--edition=2024")
         .arg("--crate-type=bin")
         .arg("--emit=metadata")
@@ -72,7 +72,7 @@ fn crate_builds_against() {
     // Built once against Harmos and serde — never harmos-macros directly, since
     // the facade re-exports the attributes through harmos, exactly as
     // `crates/harmos` itself does.
-    let compiled = Command::new(&rustc)
+    let compiled = fixtures::command(&rustc)
         .arg("--edition=2024")
         .arg("--crate-type=rlib")
         .arg("--crate-name=facade")

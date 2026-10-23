@@ -14,6 +14,7 @@
 # Standard Library Imports
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 # Third Party Imports
@@ -43,12 +44,21 @@ def main() -> None:
         check=True,
         capture_output=True,
         text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
     ).stdout
     paths = sorted({name for name in listing.split("\0") if name and Path(name).is_file() and not _rendered(Path(name))})
     command = ["taplo", "fmt", "--option", "column_width=140"]
     if check:
         command.append("--check")
-    subprocess.run([*command, *paths], check=True)
+    subprocess.run(
+        [*command, *paths],
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
 
 
 # === Private Functions === #

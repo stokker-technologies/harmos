@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:5c2f6fcda443c96c5ae396cbcfbfe9501773340eb62d5ac0712a406010afa87a
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:80ff1b6f49325e9ae402a7d767678d7b5c2e1db1cb739d2ca01a439dc8d51733
 # ***
 #
 # Harmos
@@ -79,6 +79,7 @@ def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -
         while True:
             result = subprocess.run(
                 ["cargo", "publish", "--locked", "--package", name],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 cwd=directory,
                 capture_output=True,
                 text=True,
@@ -133,7 +134,17 @@ def publishable(directory: Path) -> dict:
     """Publishable Workspace Members By Name."""
     metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
     members = set(metadata["workspace_members"])
-    return {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
+    packages = {package["name"]: package for package in metadata["packages"] if package["id"] in members and package.get("publish") != []}
+    for name, package in packages.items():
+        role = _interface_role(package)
+        if role:
+            manifest = Path(package.get("manifest_path", "Cargo.toml"))
+            manifest = manifest.relative_to(directory) if manifest.is_relative_to(directory) else manifest
+            raise policy.ToolError(
+                f"{manifest.as_posix()}: {name} is a {role} crate; CLI, GUI and Cargo subcommand crates ship as release executables and installers, "
+                "never to crates.io; declare publish = false"
+            )
+    return packages
 
 
 def crate_published(name: str, version: str | None = None) -> bool:
@@ -157,9 +168,10 @@ def crate_published(name: str, version: str | None = None) -> bool:
 
 def python(directory: Path, settings: dict, *, rehearse: bool) -> None:
     """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
-    selected = sorted(str(path.relative_to(directory)) for path in directory.glob("target/package/release/*/python/*") if path.is_file())
+    profile = policy.profile()
+    selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/package/{profile}/*/python/*") if path.is_file())
     if not selected:
-        raise policy.ToolError("release:publish:python has no release Python packages")
+        raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
     if rehearse:
         # Build and check only: uv validates every file without credentials or upload.
         policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
@@ -225,10 +237,11 @@ def request(
             # Tagging and everything a rehearsal creates and deletes again need the release token.
             rehearsal = method == "POST" and endpoint == "releases" and json.loads(data or b"{}").get("tag_name", "").startswith(REHEARSAL)
             cleanup = method == "DELETE" and (
-                endpoint.startswith(("releases/" + REHEARSAL, "repository/tags/" + REHEARSAL))
+                endpoint.startswith(("releases/" + REHEARSAL, "repository/tags/" + REHEARSAL, "repository/branches/release%2Fv"))
                 or re.fullmatch(r"packages/[0-9]+", endpoint) is not None
             )
-            tagging = method == "POST" and endpoint == "repository/tags" or rehearsal or cleanup
+            merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
+            tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or rehearsal or cleanup or merging
             if (
                 method != "GET"
                 and not tagging
@@ -264,7 +277,10 @@ def request(
     except urllib.error.HTTPError as error:
         if error.code == 404 and method == "GET":
             return None
-        raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}") from error
+        message = error.read().decode("utf-8", errors="replace")
+        if token:
+            message = message.replace(token, "***")
+        raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
 
 
 def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None) -> Any:
@@ -285,6 +301,66 @@ def pages(settings: dict, endpoint: str, key: str | None = None) -> list:
         if len(values) < 100:
             return result
         page += 1
+
+
+def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep=time.sleep) -> None:
+    """Arm Native Squash Auto-Merge After Opening The Release Review, Waiting Briefly For GitLab's Pipeline."""
+    if settings["provider"] == "github":
+        repository = settings.get("repository", os.environ.get("GITHUB_REPOSITORY", ""))
+        head = urllib.parse.quote(repository.split("/")[0] + ":" + branch, safe="")
+        reviews = pages(settings, f"pulls?state=open&base=dev&head={head}")
+    else:
+        source = urllib.parse.quote(branch, safe="")
+        reviews = pages(settings, f"merge_requests?state=opened&target_branch=dev&source_branch={source}")
+    if len(reviews) != 1:
+        raise policy.ToolError(f"expected one open release review for {branch}; auto-merge was not armed")
+    review = reviews[0]
+    if settings["provider"] == "github":
+        payload = {
+            "query": (
+                "mutation($input: EnablePullRequestAutoMergeInput!) { enablePullRequestAutoMerge(input: $input) "
+                "{ pullRequest { autoMergeRequest { mergeMethod commitHeadline } } } }"
+            ),
+            "variables": {"input": {"pullRequestId": review["node_id"], "mergeMethod": "SQUASH", "commitHeadline": title}},
+        }
+        response = json.loads(request(settings, "graphql", "POST", json.dumps(payload).encode(), graphql=True) or b"{}")
+        if response.get("errors"):
+            raise policy.ToolError("enablePullRequestAutoMerge failed: " + json.dumps(response["errors"]))
+        result = ((response.get("data") or {}).get("enablePullRequestAutoMerge") or {}).get("pullRequest") or {}
+        if result.get("autoMergeRequest") != {"mergeMethod": "SQUASH", "commitHeadline": title}:
+            raise policy.ToolError(f"GitHub did not confirm squash auto-merge for {branch}")
+        return
+
+    endpoint = f"merge_requests/{review['iid']}"
+    for attempt in range(12):
+        current = document(settings, endpoint) or {}
+        if current.get("head_pipeline"):
+            try:
+                result = (
+                    document(
+                        settings,
+                        endpoint + "/merge",
+                        "PUT",
+                        {
+                            "merge_when_pipeline_succeeds": True,
+                            "squash": True,
+                            "squash_commit_message": title,
+                            "should_remove_source_branch": True,
+                        },
+                    )
+                    or {}
+                )
+            except policy.ToolError as error:
+                # GitLab can still be computing mergeability after creating the head pipeline.
+                if not isinstance(error.__cause__, urllib.error.HTTPError) or error.__cause__.code != 405:
+                    raise
+            else:
+                if result.get("merge_when_pipeline_succeeds") or result.get("state") == "merged":
+                    return
+                raise policy.ToolError(f"GitLab did not confirm auto-merge for {branch}")
+        if attempt < 11:
+            sleep(5)
+    raise policy.ToolError(f"GitLab release review for {branch} was not ready for auto-merge after 12 attempts; the review remains open")
 
 
 def verify_duplicate_policy(settings: dict) -> None:
@@ -331,7 +407,7 @@ def require_tag(directory: Path, tag: str) -> None:
         sha = os.environ.get("GITHUB_SHA")
     else:
         allowed = (
-            os.environ.get("CI_PIPELINE_SOURCE") == "push"
+            os.environ.get("STKR_PIPELINE_SOURCE", os.environ.get("CI_PIPELINE_SOURCE")) == "push"
             and os.environ.get("CI_COMMIT_TAG") == tag
             and os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
         )
@@ -487,9 +563,22 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     pipeline = merged_review.get("head_pipeline") if isinstance(merged_review, dict) else None
     if not isinstance(pipeline, dict) or pipeline.get("sha") != head or not isinstance(pipeline.get("id"), int):
         raise policy.ToolError(f"release MR !{review['number']} has no pipeline for its head {head}")
-    jobs = [
-        job for job in pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false") if job.get("name") == GITLAB_REHEARSAL_JOB
-    ]
+    pipeline_jobs = pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false")
+    if any(job.get("name") == "Plan / Impact" for job in pipeline_jobs):
+        bridges = [bridge for bridge in pages(settings, f"pipelines/{pipeline['id']}/bridges") if bridge.get("name") == "CI / Required"]
+        if len(bridges) != 1 or bridges[0].get("status") != "success":
+            raise policy.ToolError("release review child gate is not green")
+        child = bridges[0].get("downstream_pipeline")
+        if (
+            not isinstance(child, dict)
+            or child.get("sha") != head
+            or child.get("status") != "success"
+            or not isinstance(child.get("id"), int)
+        ):
+            raise policy.ToolError("release review child pipeline is not green for its head")
+        pipeline = child
+        pipeline_jobs = pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false")
+    jobs = [job for job in pipeline_jobs if job.get("name") == GITLAB_REHEARSAL_JOB]
     if not jobs or any(job.get("status") != "success" for job in jobs):
         raise policy.ToolError(f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job")
     _same_tree(directory, head, sha)
@@ -533,6 +622,21 @@ def workflow_filename(reference: str) -> str:
     return match.group(1) if match else "(unknown)"
 
 
+def delete_branch(settings: dict, branch: str) -> bool:
+    """Delete A Remote Branch If It Still Exists, Since Native Source-Branch Removal Usually Got There First."""
+    if settings["provider"] == "github":
+        name = urllib.parse.quote(branch, safe="/")
+        if document(settings, "git/ref/heads/" + name) is None:
+            return False
+        request(settings, "git/refs/heads/" + name, "DELETE")
+    else:
+        endpoint = "repository/branches/" + urllib.parse.quote(branch, safe="")
+        if document(settings, endpoint) is None:
+            return False
+        request(settings, endpoint, "DELETE")
+    return True
+
+
 def create_tag(settings: dict, tag: str, sha: str) -> None:
     """Create The Lightweight Release Tag Through The Provider With The Release Token."""
     if settings["provider"] == "github":
@@ -559,6 +663,16 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 # === Private Functions === #
 
 
+def _interface_role(package: dict) -> str | None:
+    """CLI For A `-cli` Crate, Cargo Subcommand For `cargo-<name>`, GUI For A `-gui` Crate Or A Tauri Desktop Shell."""
+    if package["name"].endswith("-cli"):
+        return "CLI"
+    if package["name"].startswith("cargo-"):
+        return "Cargo subcommand"
+    tauri = any(item.get("name") == "tauri" and item.get("kind") is None for item in package.get("dependencies", []))
+    return "GUI" if package["name"].endswith("-gui") or tauri else None
+
+
 def _same_tree(directory: Path, head: str, merged: str) -> None:
     revisions = (head, merged)
     if any(not isinstance(revision, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) for revision in revisions):
@@ -570,6 +684,7 @@ def _same_tree(directory: Path, head: str, merged: str) -> None:
         try:
             output = subprocess.run(
                 command,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 cwd=directory,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                 capture_output=True,

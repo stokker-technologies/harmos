@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:580f74d14af4e66166d4bada9623bc5ec4f6f535917062f165ae7d92d928b42e -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:88b0a8493f92cc429e442485078ce42538d2e46c7e3a6eff31818916ae914f52 -->
 
 # Harmos Architecture
 
@@ -24,7 +24,7 @@ crate owners; dependencies below describe production edges, not test dependencie
 | `harmos-macros` | Declaration and authoring macros. | No Harmos crate dependency. |
 | `cargo-harmos` | Cargo subcommand for product packaging and authoring. | `harmos-packaging`. |
 
-All ten crates are publishable workspace packages. The SDK, storage, carrier,
+The library crates publish to crates.io; `cargo-harmos` ships through release executables. The SDK, storage, carrier,
 packaging and macro boundaries keep their consumers independent of the larger
 host runtime.
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:914536425a2a9f300b25eabc5f9f5009c4de9cd5907c91ad1fa55e8f1aeb8249
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:795cbb394f0410df058e6d6075301adbebee27f9513576b027324c63e234855f
 Package / Rust (linux):
   stage: Package
   tags:
@@ -9,10 +9,13 @@ Package / Rust (linux):
     artifacts: false
   - job: Check / Rust (linux)
     artifacts: false
-  - job: Validate / Unit / Rust (linux)
+  - job: Test / Rust / Unit (linux)
     artifacts: false
   - job: Build / Product (linux)
     artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
   - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
   - mise run package:rust --profile $PROFILE
@@ -25,25 +28,40 @@ Package / Rust (linux):
     expire_in: 7 days
     paths:
     - target/package/$PROFILE/linux-*/rust/
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+  before_script:
+  - >-
+    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
+    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
+    review pipeline %s\n' "$review_run"; exit 0; fi
+  - mise trust --yes
+  - mise install --yes
   cache:
   - key:
-      prefix: linux-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: linux-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: pull
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
 Package / Rust (windows):
   stage: Package
   tags:
@@ -54,12 +72,36 @@ Package / Rust (windows):
     artifacts: false
   - job: Check / Rust (windows)
     artifacts: false
-  - job: Validate / Unit / Rust (windows)
+  - job: Test / Rust / Unit (windows)
     artifacts: false
   - job: Build / Product (windows)
     artifacts: true
+  - job: Validated / Repository
+    artifacts: true
+    optional: true
   script:
-  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
+  - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
+    & $tar -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -d"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   - mise run package:rust --profile $env:PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -74,24 +116,36 @@ Package / Rust (windows):
     default:
     - interruptible
   before_script:
+  - >-
+    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
+    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
+    review pipeline $env:review_run"; exit 0 }
   - mise trust --yes
   - mise install --yes
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
   cache:
   - key:
-      prefix: windows-tools
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/
-    policy: pull-push
-  - key:
-      prefix: windows-cargo
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
       files:
       - Cargo.lock
     paths:
     - .cache/cargo/registry/
     - .cache/cargo/git/
-    policy: pull
-  variables:
-    MISE_ENABLE_TOOLS: >-
-      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY

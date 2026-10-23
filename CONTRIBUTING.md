@@ -32,9 +32,11 @@ Each native CI lane prepares the locked Python tooling before running commands
 with `--no-sync`; runners do not share a prepared environment. Python type checks
 run with `lint:python`. Generated-client checks type-check the complete output
 and lint Harmos-emitted modules; protoc's `_wire` modules are excluded from Ruff.
+The native uv workspace keeps `uv.lock` and `.venv` at the repository root;
+`--project tools/python` selects its tooling member.
 
 Embedded CLI starters live under `crates/cargo-harmos/templates/` with a `.tmpl`
-filename suffix so Cargo includes them in the published tool package. The build
+filename suffix so Cargo includes them in the tool's embedded resources. The build
 removes that suffix from embedded output names. Keep the suffix when editing
 authored starters; refresh Hub-owned starter files through `stkr project update`.
 
@@ -65,7 +67,7 @@ mise run ci
 ```
 
 `mise run build` exports packageable products and generated clients.
-`mise run build:tests` creates the shared workspace archive and stamps native/Wasm
+`mise run build:rust:tests` creates the shared workspace archive and stamps native/Wasm
 inputs in `target/build/dev/<target>/fixtures/stamp.json`.
 Ordinary test lanes consume those exact development
 artifacts and never rebuild fixtures. Their preflight refuses missing, stale or
@@ -78,8 +80,8 @@ the pull request instead of weakening the gate.
 
 ## Benchmarks
 
-Run `mise run build:bench` followed by `mise run bench` for the Rust benchmark suites, or choose `bench:unit`,
-`bench:integration` or `bench:system`. Pure codec work, managed runtime/storage
+Run `mise run build:rust:bench` followed by `mise run bench` for the Rust benchmark suites, or choose `bench:rust:unit`,
+`bench:rust:integration` or `bench:rust:system`. Pure codec work, managed runtime/storage
 behavior and executable transport have separate owners. Fixture activation and
 shutdown stay outside timed calls; report the payload, batching, carrier, profile,
 revision and hardware with any result.

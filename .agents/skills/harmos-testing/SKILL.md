@@ -5,7 +5,7 @@ description: Author Harmos engine, runtime, carrier and packaging stories using 
 
 # Harmos Testing
 
-Apply `stkr-testing` for layers and lanes. These are Harmos-specific exceptions.
+Apply `stkr-test` for layers and lanes. These are Harmos-specific exceptions.
 Run the full lanes locally on the combined tree before opening or updating a
 review; CI confirms.
 

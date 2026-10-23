@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/policy.py; sha256:aaa43b7bd4f84d37052dfc6601e7c52baf06605a3594e69977fd714242ba7857
+# Rendered by stkr project update from templates/python/release/policy.py; sha256:ee76a7fac1c7de2b4a4fc8dfe9b6759d7bc39c842a058cdd64f37c394330ebdb
 # ***
 #
 # __PRODUCT_NAME__
@@ -14,6 +14,7 @@
 # Standard Library Imports
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -62,6 +63,14 @@ def policy(directory: Path, name: str) -> dict[str, Any]:
     return value
 
 
+def profile(default: str = "release") -> str:
+    """The Package Profile Passed By The Rendered Job Or A Local Invocation."""
+    selected = os.environ.get("RELEASE_PROFILE") or default
+    if selected not in ("dev", "release"):
+        raise ToolError("RELEASE_PROFILE must be dev or release")
+    return selected
+
+
 def inside(directory: Path, relative: str) -> Path:
     candidate = directory / relative
     if Path(relative).is_absolute() or not candidate.resolve().is_relative_to(directory.resolve()):
@@ -78,11 +87,14 @@ def command(value: object, name: str) -> list[str]:
 def execute(directory: Path, arguments: Sequence[str], *, capture: bool = False) -> str:
     result = subprocess.run(
         list(arguments),
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         cwd=directory,
         check=False,
         text=True,
         encoding="utf-8",
-        capture_output=capture,
+        stdin=sys.stdin,
+        stdout=subprocess.PIPE if capture else sys.stdout,
+        stderr=subprocess.PIPE if capture else sys.stderr,
     )
     if result.returncode:
         raise ToolError(f"{arguments[0]} failed with exit code {result.returncode}: {result.stderr or ''}")

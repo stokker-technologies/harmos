@@ -831,7 +831,6 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "semver",
  "serde_json",
  "syn 3.0.9",
 ]
@@ -870,7 +869,6 @@ dependencies = [
  "harmos-sidecar",
  "harmos-storage",
  "petgraph",
- "postcard",
  "semver",
  "serde",
  "serde_json",
@@ -906,7 +904,6 @@ dependencies = [
  "harmos-sdk",
  "libc",
  "postcard",
- "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1503,10 +1500,8 @@ dependencies = [
  "schematic-storage",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "tempfile",
  "thiserror",
- "tokio",
  "tracing",
 ]
 

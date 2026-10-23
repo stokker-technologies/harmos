@@ -9,7 +9,7 @@
 
 // Export Generated Python Packages And Consume Them From The Repository
 // Interpreter. Prerequisite: `uv sync --locked --project tools/python --group test`
-// provisions `tools/python/.venv` with protobuf, build and ty.
+// provisions the root `.venv` with protobuf, build and ty.
 
 /* === Modules === */
 
@@ -23,11 +23,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 // Third Party Imports
 
 // Local Imports
+use crate::fixtures;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_domain::schema::{
@@ -244,9 +245,9 @@ fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 // Run One Consumer Scene; `pure` Selects The Pure-Python Protobuf Runtime
 fn scene(name: &str, arguments: &[&Path], pure: bool, input: &[u8]) -> Vec<u8> {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let interpreter = repository.join("tools/python/.venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
+    let interpreter = repository.join(".venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
     assert!(interpreter.is_file(), "{} is missing; run `uv sync --locked --project tools/python --group test`", interpreter.display());
-    let mut command = Command::new(interpreter);
+    let mut command = fixtures::command(interpreter);
     command
         .arg(CONSUMER)
         .arg(name)

@@ -1,7 +1,10 @@
-# Rendered by stkr project update from templates/python/uv.lock; sha256:0beaf196ce36e30689fd4a8560d335110e0f210ac51547db74b7970ae822be46
+# Rendered by stkr project update from templates/python/uv.lock; sha256:3c881b515e9ffb9c6c17438699bd92c55f763dd320dbe190ee5b98fc86bdb1b1
 version = 1
 revision = 5
 requires-python = ">=3.13"
+
+[manifest]
+members = ["project-tools"]
 
 [[package]]
 name = "hatchling"
@@ -49,7 +52,7 @@ wheels = [
 [[package]]
 name = "project-tools"
 version = "0.0.0"
-source = { editable = "." }
+source = { editable = "tools/python" }
 
 [package.dev-dependencies]
 dev = [

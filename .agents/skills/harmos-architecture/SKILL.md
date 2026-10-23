@@ -23,7 +23,7 @@ crate owners; dependencies below describe production edges, not test dependencie
 | `harmos-macros` | Declaration and authoring macros. | No Harmos crate dependency. |
 | `cargo-harmos` | Cargo subcommand for product packaging and authoring. | `harmos-packaging`. |
 
-All ten crates are publishable workspace packages. The SDK, storage, carrier,
+The library crates publish to crates.io; `cargo-harmos` ships through release executables. The SDK, storage, carrier,
 packaging and macro boundaries keep their consumers independent of the larger
 host runtime.
 
