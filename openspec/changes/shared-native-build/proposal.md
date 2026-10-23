@@ -13,5 +13,7 @@ The agreed Hub graph consolidates native product and test compilation into one j
 
 ## Impact
 
+The hosted-only routing requirement replaces the earlier compile-runner-routing local-compilation policy.
+
 Owned scope: stkr.toml, generated mise and CI files, affected tooling/task consumers, maintained documentation and required-check names. The Hub owns generators and common recipes. No release is authorized by this change.
 

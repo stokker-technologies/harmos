@@ -5,7 +5,7 @@
 - [x] 1.3 Preserve Wasm-target proof, feature/profile parity, product-only installer behavior and separate Build artifacts; repair affected consumers and documentation.
 - [x] 1.4 Run targeted generator/task checks and review all source changes; close implementation inventory before full validation.
 
-- [x] 1.5 Apply the updated hosted-only GitHub routing decision, regenerate without provider credentials and verify affected configuration/workflows.
+- [x] 1.5 Apply the updated hosted-only GitHub routing decision, retire the superseded compilation-routing requirement, regenerate without provider credentials and verify affected configuration/workflows.
 
 ## Validation And Delivery
 
