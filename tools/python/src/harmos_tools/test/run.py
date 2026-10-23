@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:455d2e2779698a37f3af3f9b69242b3001d80706c9c4ad57993f07aa6d4ab7b4
+# Rendered by stkr project update from templates/python/test/run.py; sha256:151e8f0fb645f74471dd60ca5368694d819eed6c3d6af543ed961344fdaf1a08
 # ***
 #
 # Harmos
@@ -102,6 +102,7 @@ def test(
             cwd,
             environment,
             junit,
+            scratch,
             recorded,
         )
         lane["arguments"] = list(extra)
@@ -159,6 +160,7 @@ def coverage(
             cwd,
             environment,
             junit,
+            scratch,
             {},
         )
         if language == "rust" and _execute(nextest.report(profile, cobertura), directory, environment) != 0:
@@ -338,12 +340,31 @@ def _lane(
     cwd: Path,
     environment: dict[str, str] | None,
     junit: Path,
+    scratch: Path,
     recorded: dict[str, dict],
 ) -> dict:
     """Execute a lane command and turn its JUnit report into a lane record."""
     started = time.time()
     status = _execute(command, cwd, environment)
     seconds = time.time() - started
+    destination = report.location(directory, profile, key)
+    if (
+        not junit.resolve().is_relative_to(scratch.resolve())
+        or any(path.is_symlink() for path in (junit, *junit.parents) if path.is_relative_to(scratch))
+        or destination.is_symlink()
+        or not destination.resolve().is_relative_to(directory.resolve())
+    ):
+        raise policy.TestError(f"{key}: native evidence escapes its owned report paths")
+    for evidence in junit.parent.rglob("*"):
+        if evidence.is_symlink() or not evidence.resolve().is_relative_to(junit.parent.resolve()):
+            raise policy.TestError(f"{key}: native evidence escapes its report directory")
+        if evidence == junit or not evidence.is_file():
+            continue
+        target = destination / evidence.relative_to(junit.parent)
+        if target.is_symlink() or not target.resolve().is_relative_to(destination.resolve()):
+            raise policy.TestError(f"{key}: native evidence destination escapes its lane")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(evidence, target)
     if not junit.is_file():
         raise policy.TestError(f"{key}: the runner exited {status} without a JUnit report")
 
@@ -362,7 +383,6 @@ def _lane(
     for story in overruns:
         print(f"{key}: {story} exceeded its liveness deadline", file=sys.stderr)
 
-    destination = report.location(directory, profile, key)
     report.write(destination / "junit.xml", text)
     durations = {}
     for case in found:

@@ -15,7 +15,6 @@
 
 // Standard Library Imports
 use std::fs;
-use std::path::Path;
 // Third Party Imports
 
 // Local Imports
@@ -47,7 +46,7 @@ fn authoring_refusals_compile() {
     let harmos_sidecar = fixtures::library("harmos_sidecar");
     let serde = fixtures::library("serde");
     let dependencies = fixtures::dependencies();
-    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let fixtures = fixtures::manifest().join("tests/fixtures");
     let output = std::env::temp_dir().join(format!("harmos-stream-ui-{}", std::process::id()));
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     fs::create_dir_all(&output).expect("the compile-test output directory is available");

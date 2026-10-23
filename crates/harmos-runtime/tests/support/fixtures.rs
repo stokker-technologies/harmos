@@ -55,6 +55,14 @@ pub fn command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+pub fn manifest() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory")
+}
+
+pub fn workspace() -> PathBuf {
+    manifest().ancestors().nth(2).expect("crates live two levels below the workspace").to_owned()
+}
+
 pub fn artifact(name: &str) -> PathBuf {
     let path = stamp()["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("the fixture stamp has no {name}"));
     directory().join(path)
@@ -115,11 +123,9 @@ pub fn protoc() -> PathBuf {
 /* === Private Functions === */
 
 fn directory() -> PathBuf {
-    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory");
-    let root = manifest.ancestors().nth(2).expect("crates live two levels below the workspace");
     let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
     let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
-    root.join("target/build").join(profile).join(target).join("fixtures")
+    workspace().join("target/build").join(profile).join(target).join("fixtures")
 }
 
 fn stamp() -> &'static Value {

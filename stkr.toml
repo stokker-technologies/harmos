@@ -31,7 +31,6 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 [ci.runners]
 linux = "ubuntu-24.04"
 windows = "windows-2022"
-nightly = "stokker-local-linux-x64"
 
 # --- Impact --- #
 
@@ -49,7 +48,6 @@ runner = "stokker-local-linux-x64"
 id = "check:rust"
 platform = "windows"
 runner = "stokker-local-windows-x64"
-bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 
 # --- Stage / Build --- #
 
@@ -57,59 +55,30 @@ bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 id = "build"
 platform = "linux"
 runner = "stokker-local-linux-x64"
-bootstrap = ["command -v cc", "command -v pkg-config"]
-timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build"
 platform = "windows"
 runner = "stokker-local-windows-x64"
-bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
-timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:tests"
 platform = "linux"
 runner = "stokker-local-linux-x64"
-bootstrap = ["command -v cc", "command -v pkg-config"]
-timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:tests"
 platform = "windows"
 runner = "stokker-local-windows-x64"
-bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
-timeout_minutes = 110
 
 [[ci.jobs]]
 id = "build:rust:bench"
 platform = "linux"
 runner = "stokker-local-linux-x64"
-bootstrap = ["command -v cc", "command -v pkg-config"]
 
 # --- Stage / Test --- #
 
 [[ci.jobs]]
-id = "test:rust:unit"
-platform = "linux"
-runner = "stokker-local-linux-x64"
-
-[[ci.jobs]]
-id = "test:rust:unit"
-platform = "windows"
-runner = "stokker-local-windows-x64"
-
-[[ci.jobs]]
-id = "test:rust:integration"
-platform = "linux"
-runner = "stokker-local-linux-x64"
-
-[[ci.jobs]]
-id = "test:rust:integration"
-platform = "windows"
-runner = "stokker-local-windows-x64"
-
-[[ci.jobs]]
 id = "test:rust:acceptance"
 platform = "linux"
 runner = "stokker-local-linux-x64"
@@ -118,32 +87,26 @@ runner = "stokker-local-linux-x64"
 id = "test:rust:acceptance"
 platform = "windows"
 runner = "stokker-local-windows-x64"
-bootstrap = ["./tools/ci/bootstrap.ps1 -ExportGitHubEnvironment"]
 
 [[ci.jobs]]
-id = "test:rust:system"
+id = "test:rust:coverage"
+platform = "linux"
+runner = "stokker-local-linux-x64"
+
+# --- Stage / Release --- #
+
+[[ci.jobs]]
+id = "release:publish:dry"
 platform = "linux"
 runner = "stokker-local-linux-x64"
 
 [[ci.jobs]]
-id = "test:rust:system"
-platform = "windows"
-runner = "stokker-local-windows-x64"
-
-# --- Stage / Bench --- #
-
-[[ci.jobs]]
-id = "bench:rust:unit"
+id = "release:rehearse"
 platform = "linux"
 runner = "stokker-local-linux-x64"
 
 [[ci.jobs]]
-id = "bench:rust:integration"
-platform = "linux"
-runner = "stokker-local-linux-x64"
-
-[[ci.jobs]]
-id = "bench:rust:system"
+id = "release:tag"
 platform = "linux"
 runner = "stokker-local-linux-x64"
 

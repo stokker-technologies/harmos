@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:6b564b93ff6f5d062dc4583286d2672efa185226a6d7789d0ddf8dba570654c1
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:ea86f8296980d76e1ff068584fcceaa55828d550934c95c898d227b9b610e220
 # === Settings === #
 
 [settings]
@@ -8,6 +8,7 @@ lockfile = true
 
 [tools]
 # Languages And Runtimes
+go = "1.27.3"
 python = "3.15.0"
 rust = { version = "1.99.0", components = "clippy,rustfmt,llvm-tools", profile = "minimal" }
 
@@ -21,7 +22,8 @@ uv = "0.13.0"
 sccache = "0.18.0"
 
 # Formatting And Linting
-"aqua:rhysd/actionlint" = "1.7.12"
+"aqua:koalaman/shellcheck" = "0.11.0"
+"go:github.com/rhysd/actionlint/cmd/actionlint" = "v1.7.13-0.20260417151945-fd33e9f582a0"
 taplo = "0.10.0"
 
 # Release And Signing

@@ -51,9 +51,6 @@ const POLICY: OperationPolicy = OperationPolicy {
     restart: RestartPolicy::Never,
 };
 
-// The Python Consumer Each Story Runs One Scene Of
-const CONSUMER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/acceptance/bindings.py");
-
 // The Generated Python Surface Of A Request Carrying Aggregates
 const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi.snapshot");
 
@@ -244,12 +241,12 @@ fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 
 // Run One Consumer Scene; `pure` Selects The Pure-Python Protobuf Runtime
 fn scene(name: &str, arguments: &[&Path], pure: bool, input: &[u8]) -> Vec<u8> {
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repository = fixtures::workspace();
     let interpreter = repository.join(".venv").join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" });
     assert!(interpreter.is_file(), "{} is missing; run `uv sync --locked --project tools/python --group test`", interpreter.display());
     let mut command = fixtures::command(interpreter);
     command
-        .arg(CONSUMER)
+        .arg(fixtures::manifest().join("tests/acceptance/bindings.py"))
         .arg(name)
         .args(arguments)
         .env_remove("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION")

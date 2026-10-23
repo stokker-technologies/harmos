@@ -600,10 +600,9 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
 }
 
 fn vault(name: &str) -> vault::Directory {
-    let directory = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("sim-evidence").join(name);
-    std::fs::remove_dir_all(&directory).ok();
-
-    vault::Directory::at(directory)
+    let prefix = format!("harmos-sim-evidence-{name}-");
+    let directory = tempfile::Builder::new().prefix(&prefix).tempdir().expect("the temporary directory is writable");
+    vault::Directory::at(&Arc::new(directory))
 }
 
 fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {

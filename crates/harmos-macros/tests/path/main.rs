@@ -64,7 +64,7 @@ fn crate_builds_against() {
     let harmos = fixtures::library("harmos");
     let serde = fixtures::library("serde");
     let dependencies = fixtures::dependencies();
-    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let fixtures = fixtures::manifest().join("tests/fixtures");
     let output = std::env::temp_dir().join(format!("harmos-facade-ui-{}", std::process::id()));
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     fs::create_dir_all(&output).expect("the compile-test output directory is available");
