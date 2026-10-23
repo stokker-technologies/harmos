@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:571bcb9a45a78adb56d71375567f30fd3b14952b5f655d8a684b2c29fe5d2298
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:607fe9d9625054da2ed92455873e3f28aa6e8a1379f56ff2b53d50da567569a1
 name: CI
 "on":
   push:
@@ -228,7 +228,9 @@ jobs:
                 return redirected
         # === Public Functions === #
         def command(*args):
-            return subprocess.run(args, check=True, capture_output=True, text=True, timeout=120).stdout.strip()
+            return subprocess.run(
+                args, check=True, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            ).stdout.strip()
         def request(endpoint, *, binary=False):
             if os.environ.get("GITHUB_ACTIONS"):
                 return json.loads(command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}"))

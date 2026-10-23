@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:abb931fae51923995066f521e59321cac5ef501a577a14ede5d166afc69dbe9d
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:795cbb394f0410df058e6d6075301adbebee27f9513576b027324c63e234855f
 Package / Rust (linux):
   stage: Package
   tags:
@@ -80,7 +80,28 @@ Package / Rust (windows):
     artifacts: true
     optional: true
   script:
-  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
+  - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
+    & $tar -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -d"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   - mise run package:rust --profile $env:PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"

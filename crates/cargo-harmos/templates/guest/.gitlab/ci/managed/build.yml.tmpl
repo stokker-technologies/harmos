@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:a4b7ce56d4961713b032ca7e1c228b79b1dfd8963e17d8913e1fe24b686beed6
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:6a5c4442190a7697abe6aabea8e52cedff5afce254430fd39f073e1a6077ea65
 Build / Product (linux):
   stage: Build
   tags:
@@ -144,12 +144,31 @@ Build / Product (windows):
   script:
   - mise run build --profile $env:PROFILE
   - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $env:PROFILE)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
     [string[]]$outputs = @("target/build/$env:PROFILE/${native}/", "target/build/$env:PROFILE/any/", "target/generated/") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
-    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
+    & $tar -cf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0" --exclude='*/tests' --exclude='*/fixtures' --exclude='*/bench' -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -209,15 +228,55 @@ Build / Tests (windows):
     artifacts: true
     optional: true
   script:
-  - tar --zstd -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst"
+  - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
+    & $tar -xf "target/ci/build-product-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -d"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   - mise run build:rust:tests --profile $env:PROFILE
   - |-
+    $candidates = @(Get-Command tar.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($git in @(Get-Command git.exe -CommandType Application -All -ErrorAction SilentlyContinue)) {
+      $root = Split-Path -Parent (Split-Path -Parent $git.Source)
+      $candidates += Join-Path $root 'usr/bin/tar.exe'
+    }
+    $tar = $null
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+      if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      try {
+        $version = & $candidate --version 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
+        $capabilities = & $candidate --help 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
+        $tar = $candidate
+        break
+      } catch { continue }
+    }
+    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required; repair native runner provisioning' }
+    $env:PATH = (Split-Path -Parent $tar) + [IO.Path]::PathSeparator + $env:PATH
     $native = Split-Path -Leaf (& mise exec -- uv run --locked --project tools/python python -m project_tools.build.paths build --profile $env:PROFILE)
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force target/ci | Out-Null
     [string[]]$outputs = @("target/build/$env:PROFILE/${native}/tests", "target/build/$env:PROFILE/${native}/fixtures") | ForEach-Object { Get-Item -Path $_.TrimEnd('/','\') -ErrorAction SilentlyContinue } | ForEach-Object { (Resolve-Path -LiteralPath $_.FullName -Relative).Replace('\', '/') }
     if (!$outputs) { throw 'No build outputs found' }
-    & "$env:ProgramFiles\Git\usr\bin\tar.exe" -cf "target/ci/build-tests-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
+    & $tar -cf "target/ci/build-tests-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -T0"  -- @outputs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"

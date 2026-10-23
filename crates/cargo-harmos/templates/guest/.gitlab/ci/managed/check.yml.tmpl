@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:2ba337acc40f508c72a71806cd7ea3bb2345dffd46ad5fc4c2d6194acd0c7dda
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:95056e7ce57d18613eed01125e1e65915e163eb92e69bd85e8d58125909fbd8d
 Check / Repository:
   stage: Check
   tags:
@@ -242,7 +242,9 @@ Validated / Repository:
             return redirected
     # === Public Functions === #
     def command(*args):
-        return subprocess.run(args, check=True, capture_output=True, text=True, timeout=120).stdout.strip()
+        return subprocess.run(
+            args, check=True, capture_output=True, text=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        ).stdout.strip()
     def request(endpoint, *, binary=False):
         if os.environ.get("GITHUB_ACTIONS"):
             return json.loads(command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}"))
