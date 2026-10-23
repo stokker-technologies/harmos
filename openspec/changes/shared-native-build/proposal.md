@@ -7,7 +7,7 @@ The agreed Hub graph consolidates native product and test compilation into one j
 ## What Changes
 
 - Consume the validated Hub shared Build generator and canonical mise tasks.
-- Route compilation through the existing native Build runner overrides; remove retired check/test-build job overrides.
+- Use the declared GitHub-hosted platform defaults for every job; remove all local runner job overrides.
 - Preserve product features, optional test features, Wasm-target proofs, independent artifacts and required Linux/Windows gates.
 - Keep local installer commands product-only and run Test and Package consumers in parallel after Build.
 

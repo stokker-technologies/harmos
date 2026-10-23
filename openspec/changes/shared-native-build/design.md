@@ -12,7 +12,7 @@ Mise tasks own exact feature selection. Do not duplicate feature lists in stkr.t
 
 ## Routing And Removal
 
-Keep platform-specific ci.jobs entries for id = "build". Remove obsolete build:rust:tests job entries and compilation routing from noncompiling check:rust. Preserve explicit compilation needs such as coverage. Review release overrides against their actual compilation responsibility rather than deleting them blindly.
+Use the existing hosted platform defaults (ubuntu-24.04 and windows-2022) for GitHub jobs. Remove all local ci.jobs runner overrides, including Build, Bench, Acceptance, Coverage and Release. Keep their tasks, platforms, profiles, deadlines and native integration gates unchanged.
 
 ## Acceptance
 

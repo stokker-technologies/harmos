@@ -1,9 +1,7 @@
-# Rendered by stkr project update from templates/ci/.github/actionlint.yaml; sha256:d26bab09534e503be5098e256b0f02edd1ebebc0de48ac570ed08e66eb8ae379
+# Rendered by stkr project update from templates/ci/.github/actionlint.yaml; sha256:4651f131682a8ea8097c6d9653e365f5bbadc57aa3bf794c1c6621c2becd237a
 self-hosted-runner:
   labels:
   - macos-latest
-  - stokker-local-linux-x64
-  - stokker-local-windows-x64
   - ubuntu-24.04
   - ubuntu-latest
   - windows-2022

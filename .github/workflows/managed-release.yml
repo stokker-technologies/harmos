@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:42eeced0f8c9009a5638bf2f7dbe458c0c30b7fb58b4c9ffb90304ddcf477d73
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:53066e31590f471ade05a7e278ed09b712b4d58d69717bd8776127c5b2077715
 name: Release
 "on":
   workflow_call:
@@ -56,7 +56,7 @@ env:
 jobs:
   dry:
     name: Dry
-    runs-on: stokker-local-linux-x64
+    runs-on: ${{ fromJSON(inputs.runners).linux.large }}
     timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
@@ -585,7 +585,7 @@ jobs:
       contents: read
   rehearsal:
     name: Rehearsal
-    runs-on: stokker-local-linux-x64
+    runs-on: ${{ fromJSON(inputs.runners).linux.small }}
     timeout-minutes: 120
     steps:
     - name: Configure Checkout Git
@@ -846,7 +846,7 @@ jobs:
       cancel-in-progress: false
   tag:
     name: Tag
-    runs-on: stokker-local-linux-x64
+    runs-on: ${{ fromJSON(inputs.runners).linux.small }}
     timeout-minutes: 120
     steps:
     - name: Configure Checkout Git

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:1fe4cadee9e2981fd458cc70806b2af8cc972f69372a9d865b020628c7ffa2cf
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-native.yml; sha256:f743349c0e970d27cfce9df602ccaa68dbbd943c8e5543429a791dc7f9c1bae9
 name: Build
 "on":
   workflow_call:
@@ -25,10 +25,7 @@ env:
 jobs:
   build_product:
     name: Native (${{ inputs.platform }})
-    runs-on: >-
-      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
-      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
-      (fromJSON(inputs.runners)[inputs.platform].large)) }}
+    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].large }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).build_product }}
     steps:
     - name: Configure Checkout Git
