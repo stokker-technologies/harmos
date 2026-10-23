@@ -22,6 +22,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 // Third Party Imports
 
@@ -53,7 +54,7 @@ const QUARANTINE: &str = "quarantine";
 
 #[derive(Clone)]
 pub struct Directory {
-    root: PathBuf,
+    root: Arc<tempfile::TempDir>,
     ceiling: usize,
     cadence: Duration,
 }
@@ -65,13 +66,12 @@ pub struct Directory {
 /* === Implementations === */
 
 impl Directory {
-    pub fn at(root: impl AsRef<Path>) -> Self {
-        let root = root.as_ref().to_path_buf();
+    pub fn at(root: &Arc<tempfile::TempDir>) -> Self {
         for place in [DRAFTS, KEPT, QUARANTINE] {
-            fs::create_dir_all(root.join(place)).expect("the scratch directory is writable");
+            fs::create_dir_all(root.path().join(place)).expect("the scratch directory is writable");
         }
 
-        Self { root, ceiling: CEILING, cadence: CADENCE }
+        Self { root: Arc::clone(root), ceiling: CEILING, cadence: CADENCE }
     }
 
     pub fn reading(mut self, bytes: usize) -> Self {
@@ -85,7 +85,7 @@ impl Directory {
     }
 
     pub fn quarantined(&self) -> Vec<String> {
-        let mut found: Vec<String> = fs::read_dir(self.root.join(QUARANTINE))
+        let mut found: Vec<String> = fs::read_dir(self.root.path().join(QUARANTINE))
             .expect("the quarantine is readable")
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
@@ -96,15 +96,15 @@ impl Directory {
     }
 
     fn staged(&self, name: &str) -> PathBuf {
-        self.root.join(DRAFTS).join(name)
+        self.root.path().join(DRAFTS).join(name)
     }
 
     fn held(&self, name: &str) -> PathBuf {
-        self.root.join(KEPT).join(name)
+        self.root.path().join(KEPT).join(name)
     }
 
     fn unused(&self, name: &str) -> PathBuf {
-        let place = self.root.join(QUARANTINE);
+        let place = self.root.path().join(QUARANTINE);
 
         std::iter::once(place.join(name))
             .chain((1..).map(|again| place.join(format!("{name}.{again}"))))

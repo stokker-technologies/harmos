@@ -20,6 +20,7 @@ mod vault;
 
 // Standard Library Imports
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -252,12 +253,10 @@ fn upload() -> Upload {
     Upload { filename: "camera-3.mp4".to_owned(), content_type: "video/mp4".to_owned() }
 }
 
-fn scratch(name: &str) -> PathBuf {
-    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("evidence").join(name);
-    std::fs::remove_dir_all(&directory).ok();
-    std::fs::create_dir_all(&directory).expect("the target directory is writable");
-
-    directory
+fn scratch(name: &str) -> Arc<tempfile::TempDir> {
+    let prefix = format!("harmos-evidence-{name}-");
+    let directory = tempfile::Builder::new().prefix(&prefix).tempdir().expect("the temporary directory is writable");
+    Arc::new(directory)
 }
 
 fn declared(vault: impl Vault) -> Builder<Bank> {
@@ -274,7 +273,7 @@ async fn kept_with(vault: impl Vault, history: &Stored) -> Runtime<Bank> {
 
 #[tokio::test]
 async fn written_evidence_verified() {
-    let runtime = kept(Directory::at(scratch("written"))).await;
+    let runtime = kept(Directory::at(&scratch("written"))).await;
     let evidence = &runtime.evidence;
 
     let draft = evidence.open::<Recording>("session-7", "capture.log", upload()).await.expect("a declared kind opens");
@@ -405,7 +404,7 @@ async fn interrupted_claim_heals() {
 
 #[tokio::test]
 async fn bounded_read_clamps() {
-    let runtime = kept(Directory::at(scratch("bounded")).reading(4)).await;
+    let runtime = kept(Directory::at(&scratch("bounded")).reading(4)).await;
     let evidence = &runtime.evidence;
 
     let draft = evidence.open::<Recording>("run-1", "tail.log", upload()).await.expect("a declared kind opens");
@@ -438,7 +437,7 @@ async fn bounded_read_clamps() {
 
 #[tokio::test]
 async fn scope_finalizes_all() {
-    let runtime = kept(Directory::at(scratch("scoped"))).await;
+    let runtime = kept(Directory::at(&scratch("scoped"))).await;
     let evidence = &runtime.evidence;
 
     for key in ["one.log", "two.log"] {
@@ -475,7 +474,7 @@ async fn scope_finalizes_all() {
 
 #[tokio::test]
 async fn watch_coalesces_final() {
-    let runtime = kept(Directory::at(scratch("watched"))).await;
+    let runtime = kept(Directory::at(&scratch("watched"))).await;
     let evidence = &runtime.evidence;
 
     let draft = evidence.open::<Recording>("run-4", "growing.log", upload()).await.expect("a declared kind opens");
@@ -497,7 +496,7 @@ async fn watch_coalesces_final() {
 // synchronous file I/O, so the paused clock steps the cadence exactly.
 #[tokio::test(start_paused = true)]
 async fn watch_drives_looking() {
-    let counted = Counted::new(Directory::at(scratch("unwatched")));
+    let counted = Counted::new(Directory::at(&scratch("unwatched")));
     let mut looks = counted.looks();
     let runtime = kept(counted).await;
     let evidence = &runtime.evidence;
@@ -551,7 +550,7 @@ async fn abandoned_draft_quarantined() {
 
 #[tokio::test]
 async fn key_claimed_once() {
-    let runtime = kept(Directory::at(scratch("claimed"))).await;
+    let runtime = kept(Directory::at(&scratch("claimed"))).await;
     let evidence = &runtime.evidence;
 
     let draft = evidence.open::<Recording>("run-8", "once.log", upload()).await.expect("a declared kind opens");
@@ -599,7 +598,7 @@ async fn duplicate_kind_refused() {
     let refused = refusal(
         Runtime::<Bank>::builder(Ledger::default(), ())
             .register(catalog())
-            .evidence(Directory::at(scratch("twice")), [Recording::definition(), Recording::definition()])
+            .evidence(Directory::at(&scratch("twice")), [Recording::definition(), Recording::definition()])
             .runtime()
             .await,
     );
