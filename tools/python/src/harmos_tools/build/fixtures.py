@@ -525,6 +525,10 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
     source = Path(filename)
     if source.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
         return None
+    # Matching Emitted Libraries Already Carry Their Metadata.
+    companion = source.with_suffix(".rlib")
+    if source.suffix == ".rmeta" and any(Path(name) == companion for name in message["filenames"]):
+        return None
     destination = fixtures / "libraries" / source.name
     if not destination.exists():
         _copy(source, destination, files)
