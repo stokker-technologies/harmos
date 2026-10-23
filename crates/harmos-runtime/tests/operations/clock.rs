@@ -131,7 +131,8 @@ fn bypasses(directory: &Path, found: &mut Vec<String>) {
 
 #[test]
 fn sources_avoid_tokio() {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("nextest sets the manifest directory");
+    let source = Path::new(&manifest).join("src");
     assert!(!source.join("work").exists(), "operations own their execution support");
     let mut found = Vec::new();
     for domain in ["operations", "services", "supervision"] {

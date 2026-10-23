@@ -58,13 +58,13 @@ impl Project {
     fn new(kind: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join(format!("starter-{kind}"));
-        let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
+        let checkout = fixtures::workspace();
         let result = fixtures::command(fixtures::artifact("cargo-harmos"))
-            .current_dir(checkout)
+            .current_dir(&checkout)
             .args(["harmos", "new", kind])
             .arg(&root)
             .arg("--harmos-path")
-            .arg(checkout)
+            .arg(&checkout)
             .output()
             .unwrap();
         succeeded(&result);
