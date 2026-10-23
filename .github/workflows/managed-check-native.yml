@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:118701e2f5bc2dcd850cfd857ff6950a129b839a679de0d12a3cf8bf0f061bc9
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-native.yml; sha256:fe75f663fa71c87508cfc66696aee820e65f1e31dce92ad513f46ee8ef0accdc
 name: Check
 "on":
   workflow_call:
@@ -119,8 +119,10 @@ jobs:
         STKR_SCCACHE_SCRIPT: mise run check:rust
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-
-        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main') && steps.cargo_downloads.outputs.cache-hit !=
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.cargo_downloads.outputs.cache-hit !=
         'true'
       with:
         key: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
@@ -129,15 +131,19 @@ jobs:
           .cache/cargo/git/
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-
-        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main') && steps.mise.outputs.cache-hit != 'true'
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.mise.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.mise.outputs.cache-primary-key }}
         path: ${{ env.MISE_DATA_DIR }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-
-        success() && github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main') && steps.uv.outputs.cache-hit != 'true'
+        success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
+        || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && steps.uv.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
@@ -146,5 +152,7 @@ jobs:
         aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,github:bnjbvr/cargo-machete,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
       STKR_SCCACHE_BACKEND: gha
       STKR_SCCACHE_MODE: >-
-        ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
-        github.ref == 'refs/heads/main') && 'READ_WRITE' || 'READ_ONLY' }}
+        ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+        github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
+        endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}

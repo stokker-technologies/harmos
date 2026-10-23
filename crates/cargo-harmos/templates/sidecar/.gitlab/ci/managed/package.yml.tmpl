@@ -1,9 +1,9 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:795cbb394f0410df058e6d6075301adbebee27f9513576b027324c63e234855f
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:163615d47f3c6c00797b282d77114140803c84f9f58096177b8b8e12db122414
 Package / Rust (linux):
   stage: Package
   tags:
   - saas-linux-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Check / Repository
     artifacts: false
@@ -38,35 +38,11 @@ Package / Rust (linux):
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Package / Rust (windows):
   stage: Package
   tags:
   - saas-windows-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Check / Repository
     artifacts: false
@@ -125,27 +101,3 @@ Package / Rust (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY

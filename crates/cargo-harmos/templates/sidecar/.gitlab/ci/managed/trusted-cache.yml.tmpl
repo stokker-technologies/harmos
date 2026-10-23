@@ -1,0 +1,408 @@
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/trusted-cache.yml; sha256:3297ba3c5746f5a420b904136b5f0724d7f0c4c86dbde327f254e240669d7a64
+Check / Repository:
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Check / Python:
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Check / Rust (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Product (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Tests (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Test / Rust / Unit (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Package / Rust (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Check / Rust (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Product (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Tests (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Test / Rust / Unit (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Package / Rust (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
+    STKR_CACHE_POLICY: pull-push
+Test / Rust / Coverage:
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    MISE_ENABLE_TOOLS: >-
+      python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Validated / Repository:
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
+    REVIEW_BUILDS: "[]"
+    REVIEW_RELEASE: "false"
+    REVIEW_PACKAGES: "[\"Package / Rust (linux)\",\"Package / Rust (windows)\"]"
+    STKR_CACHE_POLICY: pull-push

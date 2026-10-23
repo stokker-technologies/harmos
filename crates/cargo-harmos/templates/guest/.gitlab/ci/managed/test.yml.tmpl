@@ -1,9 +1,9 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:06d1fec4dc8d51ef96de9c858993c13d513e4c328cdea7205e1d91fcf5b545a9
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:3264f6900bb652428a3c2f6817f0ddb6fed822b6274e532dc1e68a3cddb7edb5
 Test / Rust / Unit (linux):
   stage: Test
   tags:
   - saas-linux-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Build / Tests (linux)
     artifacts: true
@@ -36,35 +36,11 @@ Test / Rust / Unit (linux):
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Test / Rust / Unit (windows):
   stage: Test
   tags:
   - saas-windows-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Build / Tests (windows)
     artifacts: true
@@ -121,35 +97,11 @@ Test / Rust / Unit (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:rhysd/actionlint,git-cliff
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Test / Rust / Coverage:
   stage: Test
   tags:
   - saas-linux-medium-amd64
-  timeout: 180 minutes
+  timeout: 120 minutes
   needs:
   - job: Build / Product (linux)
     artifacts: true
@@ -169,27 +121,3 @@ Test / Rust / Coverage:
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY

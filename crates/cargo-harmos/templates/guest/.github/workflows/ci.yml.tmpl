@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:7ba58a6acbf0c9ee9aea365c607a82a55766049b4d60440c558aae9c6d06eeb7
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:fec092aeff9c90c15f574f5b00050cd960500f800c7d0df761db1b0791da55d0
 name: CI
 "on":
   push:
@@ -20,16 +20,13 @@ name: CI
         default: auto
 permissions:
   contents: read
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build_linux:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":30,\"build_tests\":30}"
+      timeouts: "{\"build_product\":120,\"build_tests\":120}"
       platform: linux
     secrets: inherit
     needs:
@@ -37,12 +34,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-build_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   build_windows:
     name: Build
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":30,\"build_tests\":30}"
+      timeouts: "{\"build_product\":120,\"build_tests\":120}"
       platform: windows
     secrets: inherit
     needs:
@@ -50,24 +50,30 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-build_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check:
     name: Check
     uses: ./.github/workflows/managed-check.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_python\":10,\"source\":10}"
+      timeouts: "{\"check_python\":120,\"source\":120}"
     secrets: inherit
     needs:
     - validated
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-check-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check_linux:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust\":30}"
+      timeouts: "{\"check_rust\":120}"
       platform: linux
     secrets: inherit
     needs:
@@ -75,12 +81,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-check_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check_windows:
     name: Check
     uses: ./.github/workflows/managed-check-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust\":30}"
+      timeouts: "{\"check_rust\":120}"
       platform: windows
     secrets: inherit
     needs:
@@ -88,12 +97,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-check_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   package_linux:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust\":30}"
+      timeouts: "{\"package_rust\":120}"
       platform: linux
     secrets: inherit
     needs:
@@ -105,12 +117,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-package_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   package_windows:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust\":30}"
+      timeouts: "{\"package_rust\":120}"
       platform: windows
     secrets: inherit
     needs:
@@ -122,12 +137,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-package_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   test_linux:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_unit\":30}"
+      timeouts: "{\"validate_test_rust_unit\":120}"
       platform: linux
     secrets: inherit
     needs:
@@ -136,12 +154,15 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-test_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   test_windows:
     name: Test
     uses: ./.github/workflows/managed-test-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_unit\":30}"
+      timeouts: "{\"validate_test_rust_unit\":120}"
       platform: windows
     secrets: inherit
     needs:
@@ -150,10 +171,13 @@ jobs:
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-test_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   validated:
     name: Validated / Repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 120
     if: >-
       github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
       startsWith(github.ref, 'refs/tags/v'))
@@ -363,3 +387,6 @@ jobs:
                     stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
                 print(f"validated={result['validated']} review_run={result['review_run']}")
         STKR_REVIEW
+    concurrency:
+      group: "ci-${{ github.workflow }}-validated-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"

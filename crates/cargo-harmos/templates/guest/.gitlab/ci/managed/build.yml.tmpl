@@ -1,9 +1,9 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:6a5c4442190a7697abe6aabea8e52cedff5afce254430fd39f073e1a6077ea65
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/build.yml; sha256:94238373423ecb3a214f53ba07c177843867ee1dbe9691b9136829cccffbaf15
 Build / Product (linux):
   stage: Build
   tags:
   - saas-linux-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -40,35 +40,11 @@ Build / Product (linux):
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Build / Tests (linux):
   stage: Build
   tags:
   - saas-linux-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Build / Product (linux)
     artifacts: true
@@ -108,35 +84,11 @@ Build / Tests (linux):
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Build / Product (windows):
   stage: Build
   tags:
   - saas-windows-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -192,35 +144,11 @@ Build / Product (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Build / Tests (windows):
   stage: Build
   tags:
   - saas-windows-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Build / Product (windows)
     artifacts: true
@@ -300,27 +228,3 @@ Build / Tests (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY

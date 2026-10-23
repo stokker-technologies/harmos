@@ -1,9 +1,9 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:95056e7ce57d18613eed01125e1e65915e163eb92e69bd85e8d58125909fbd8d
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:fce729cbefe6c55862012a74c727681b1507f3863adea78d69a1cfa53f22c8a1
 Check / Repository:
   stage: Check
   tags:
   - saas-linux-medium-amd64
-  timeout: 10 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -25,35 +25,11 @@ Check / Repository:
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Check / Python:
   stage: Check
   tags:
   - saas-linux-medium-amd64
-  timeout: 10 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -75,35 +51,11 @@ Check / Python:
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Check / Rust (linux):
   stage: Check
   tags:
   - saas-linux-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -125,35 +77,11 @@ Check / Rust (linux):
     review pipeline %s\n' "$review_run"; exit 0; fi
   - mise trust --yes
   - mise install --yes
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Check / Rust (windows):
   stage: Check
   tags:
   - saas-windows-medium-amd64
-  timeout: 30 minutes
+  timeout: 120 minutes
   needs:
   - job: Validated / Repository
     artifacts: true
@@ -178,35 +106,11 @@ Check / Rust (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:rhysd/actionlint,taplo
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
 Validated / Repository:
   stage: Check
   tags:
   - saas-linux-medium-amd64
-  timeout: 10 minutes
+  timeout: 120 minutes
   needs: []
   script:
   - |-
@@ -410,27 +314,3 @@ Validated / Repository:
     - target/ci/validated.env
     reports:
       dotenv: target/ci/validated.env
-  cache:
-  - key:
-      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
-      files:
-      - Cargo.lock
-    paths:
-    - .cache/cargo/registry/
-    - .cache/cargo/git/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
-      files:
-      - mise.lock
-    paths:
-    - .cache/mise/downloads/
-    policy: $STKR_CACHE_POLICY
-  - key:
-      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
-      files:
-      - uv.lock
-      - mise.lock
-    paths:
-    - .cache/uv/
-    policy: $STKR_CACHE_POLICY
