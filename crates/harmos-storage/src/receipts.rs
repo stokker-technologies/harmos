@@ -31,11 +31,13 @@ use crate::{Error, Identifier, MemorySize, Result};
 /* === Constants === */
 
 const ID_COPIES: usize = 5;
+const COMPLETION_BYTES: usize = 2 * std::mem::size_of::<usize>();
 const NODE_SHARE: usize = node_bytes().div_ceil(4);
 // The Map And Order Headers Plus The Root Node, Charged While Any Receipt Is Held.
 const LEDGER_BASE: usize = std::mem::size_of::<BTreeMap<MutationId, Entry>>() + std::mem::size_of::<VecDeque<MutationId>>() + node_bytes();
 // Smallest Possible Receipt Charge, Bounding Recovered Row Counts.
-const ENTRY_MINIMUM: usize = ID_COPIES * std::mem::size_of::<MutationId>() + std::mem::size_of::<MutationValue>() + NODE_SHARE;
+const ENTRY_MINIMUM: usize =
+    ID_COPIES * std::mem::size_of::<MutationId>() + std::mem::size_of::<MutationValue>() + NODE_SHARE + COMPLETION_BYTES;
 
 /* === Macros === */
 
@@ -70,7 +72,10 @@ struct Entry {
     expires_at: SystemTime,
     value: Option<MutationValue>,
     bytes: usize,
+    completion: Arc<()>,
 }
+
+pub(super) struct Completion(Arc<()>);
 
 /* === Enums === */
 
@@ -94,6 +99,12 @@ pub(super) enum ReceiptState {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Entry {
+    fn reclaimable(&self) -> bool {
+        self.value.is_some() && Arc::strong_count(&self.completion) == 1
+    }
+}
 
 impl Receipts {
     pub(super) fn new(retention: Duration, bound: NonZeroUsize, execution: crate::execution::Execution) -> Result<Self> {
@@ -129,10 +140,11 @@ impl Receipts {
         Ok(MutationWindow { history: history.clone(), id: self.window.clone(), expires_at: self.expires_at })
     }
 
-    pub(super) fn lookup(&self, id: &MutationId, fingerprint: &[u8; 32]) -> Result<ReceiptState> {
+    pub(super) fn lookup(&self, id: &MutationId, fingerprint: &[u8; 32], completion: Option<&Completion>) -> Result<ReceiptState> {
         let now = self.execution.now();
         if let Some(entry) = self.entries.get(id) {
-            if now >= entry.deadline {
+            let admitted = completion.is_some_and(|completion| Arc::ptr_eq(&completion.0, &entry.completion));
+            if !admitted && now >= entry.deadline {
                 tracing::error!(window = %id.window, mutation = %id.key, reason = "retry window expired", "storage mutation rejected");
                 return Err(expired());
             }
@@ -152,9 +164,13 @@ impl Receipts {
         Ok(ReceiptState::Missing)
     }
 
+    pub(super) fn completion(&self, id: &MutationId) -> Completion {
+        Completion(self.entries.get(id).expect("admitted receipt").completion.clone())
+    }
+
     pub(super) fn insert(&mut self, id: &MutationId, fingerprint: [u8; 32], outcome_bytes: usize) -> Result<()> {
         self.purge(self.execution.now());
-        if !matches!(self.lookup(id, &fingerprint)?, ReceiptState::Missing) {
+        if !matches!(self.lookup(id, &fingerprint, None)?, ReceiptState::Missing) {
             return Err(Error::AlreadyRegistered { domain: "storage mutation", name: id.key.to_string() });
         }
         let bytes = charge(id, outcome_bytes)?;
@@ -162,7 +178,10 @@ impl Receipts {
             self.evict_oldest()?;
         }
         self.order.push_back(id.clone());
-        self.entries.insert(id.clone(), Entry { fingerprint, deadline: self.deadline, expires_at: self.expires_at, value: None, bytes });
+        self.entries.insert(
+            id.clone(),
+            Entry { fingerprint, deadline: self.deadline, expires_at: self.expires_at, value: None, bytes, completion: Arc::new(()) },
+        );
         self.bytes += bytes;
         Ok(())
     }
@@ -173,9 +192,7 @@ impl Receipts {
     }
 
     pub(super) fn complete(&mut self, id: &MutationId, value: MutationValue) {
-        let Some(entry) = self.entries.get_mut(id) else {
-            return;
-        };
+        let entry = self.entries.get_mut(id).expect("pending receipt retained through completion");
         if entry.value.is_some() {
             return;
         }
@@ -196,8 +213,7 @@ impl Receipts {
 
     // Drop The Oldest Completed Receipt; Pending Receipts Still Await Their Outcome.
     fn evict_oldest(&mut self) -> Result<()> {
-        let index =
-            self.order.iter().position(|id| self.entries.get(id).is_some_and(|entry| entry.value.is_some())).ok_or_else(exhausted)?;
+        let index = self.order.iter().position(|id| self.entries.get(id).is_some_and(Entry::reclaimable)).ok_or_else(exhausted)?;
         let id = self.order.remove(index).expect("ordered receipt");
         let entry = self.entries.remove(&id).expect("ordered receipt");
         self.bytes -= entry.bytes;
@@ -253,6 +269,7 @@ impl Receipts {
                 expires_at: receipt.expires_at,
                 value: Some(receipt.value),
                 bytes,
+                completion: Arc::new(()),
             };
             order.push_back(receipt.mutation.clone());
             if restored.insert(receipt.mutation, entry).is_some() {
@@ -268,17 +285,16 @@ impl Receipts {
         Ok(())
     }
 
-    // Expire From The Oldest Admission; Retained Entries Still Check Their Own Deadline.
+    // Pending Work And Attached Callers Retain Their Charged Outcome Independently
+    // Of Retry Eligibility. A Pinned Front Must Not Hold Later Expired Receipts.
     pub(super) fn purge(&mut self, now: Instant) {
-        while let Some(id) = self.order.front() {
-            if self.entries.get(id).is_some_and(|entry| now < entry.deadline) {
-                break;
-            }
-            let id = self.order.pop_front().expect("ordered receipt");
-            if let Some(entry) = self.entries.remove(&id) {
+        self.order.retain(|id| {
+            let remove = self.entries.get(id).is_none_or(|entry| now >= entry.deadline && entry.reclaimable());
+            if remove && let Some(entry) = self.entries.remove(id) {
                 self.bytes -= entry.bytes;
             }
-        }
+            !remove
+        });
         if self.entries.is_empty() {
             self.clear();
         }
@@ -437,6 +453,7 @@ fn charge(id: &MutationId, outcome_bytes: usize) -> Result<usize> {
         .checked_mul(ID_COPIES)
         .and_then(|bytes| bytes.checked_add(outcome_bytes))
         .and_then(|bytes| bytes.checked_add(NODE_SHARE))
+        .and_then(|bytes| bytes.checked_add(COMPLETION_BYTES))
         .ok_or_else(exhausted)
 }
 

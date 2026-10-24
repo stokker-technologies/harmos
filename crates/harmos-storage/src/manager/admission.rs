@@ -63,7 +63,7 @@ impl<C> StorageManager<C> {
                     return Attempt::Refuse(Refusal::Failed(error));
                 }
                 if let Some(mutation) = mutation {
-                    match state.receipts.lookup(mutation.id, &mutation.fingerprint) {
+                    match state.receipts.lookup(mutation.id, &mutation.fingerprint, None) {
                         Ok(ReceiptState::Complete(value)) => {
                             return match value.cursor() {
                                 Ok(cursor) => Attempt::Ready(Admitted::Replayed(cursor.sequence)),

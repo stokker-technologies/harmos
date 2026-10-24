@@ -1,0 +1,33 @@
+# Admitted Storage Completion
+
+## Evidence And Ownership
+
+Dokime's retained System failure contains a newly staged cycle-report file created less than a tenth of a second before the global retry epoch expired. The creating call then reported an expired identity. Harmos receipt insertion uses the global deadline; purge can remove pending entries, and completion currently returns without recording a result when the entry has disappeared. A synthetic pre-admission expiry alone does not reproduce this admitted-call failure.
+
+The storage owner is crates/harmos-storage. File mutations share staging/mutations.rs; deletion.rs has an equivalent suspended waiter. Schema, object and record mutations complete their receipt synchronously at queue admission and remain unchanged unless the shared internal representation requires adaptation. Internal completion ownership must be independent of whether a new caller may still replay the identity.
+
+## Locked Contract
+
+An original caller admitted before expiry retains access to its eventual outcome even when backend I/O crosses the ledger deadline. A duplicate attached before expiry may share that outcome. A newly submitted or retried expired identity remains rejected; no request is silently reissued with a fresh identity. Retention, producer leases, production operation budgets, fingerprint matching and durable receipt formats remain unchanged.
+
+Retained completion state remains charged to existing bounded admission/storage memory. Expiry, cancellation and completion release ownership without dropping a live outcome or leaking an unbounded side ledger. Backend failures remain visible and existing persistence retry rules remain intact. Avoid expanding the public API or adding a second generic retry mechanism.
+
+Each receipt holds a private reference-counted completion token. Only a caller attached during valid admission owns a matching token; its later lookup may read that same outcome after expiry, while a fresh lookup still enforces the unchanged deadline and fingerprint. Pending backend work and token-owned completed receipts are ineligible for purge or capacity eviction. Completed unowned entries remain reclaimable, including entries behind a pinned expired front. The token allocation is charged to the existing receipt budget and no additional outcome ledger or durable field is introduced.
+
+The public-manager regression uses the existing controlled backend and injected storage clock: it verifies the physical staged file before advancing from 299 to 301 seconds, then observes the original baseline's expired acknowledgement. With completion ownership, the original call succeeds and fresh expired identities remain rejected. Companion stories cover all file mutation variants and deletion, attached duplicate cancellation, late calls while pending and completed, backend failure visibility, eviction pressure and reclamation. Dokime's independent real-SQLite causal regression also changes from the same expired acknowledgement to success without changing its lease, RPC clock or assertions.
+
+## Source Inventory
+
+The implementation owner covers receipts.rs, staging/mutations.rs and deletion.rs. Review and minimally adapt completion/accounting owners staging/state.rs, worker.rs and manager/state.rs. Review manager/admission.rs and manager/writes.rs for shared compatibility; their synchronous admission semantics must not change.
+
+Use public StorageManager integration tests under tests/integration/manager/mod.rs and mutations.rs with existing support/storage.rs backend gates and public injected execution. Extend support/file_backend.rs to apply its existing abort gate to the resumable abandon helper as well. Cover completion across expiry, original and pre-expiry duplicate waiters, late retry refusal, cancellation and bounded reclamation. Preserve existing runtime mutation replay, eviction and expiry tests.
+
+The timeout slice owns stkr.toml's 42 thirty-second overrides and root deadlines, both cargo-harmos starter stkr.toml.tmpl files, ordinary fixture policies in runtime tests/support/native_streams/plugin.rs and services/main.rs and sidecar tests/fixtures/catalog_sidecar.rs and throughput_protocol.rs. Update CONTRIBUTING and superseded canonical-build-configuration timeout claims. Render through stkr project update --no-provider; never hand-edit generated policy defaults. Keep guards above 120 seconds, semantic short/virtual deadlines, polling intervals, production budgets and measured benchmark limits.
+
+## Coupled Development And Delivery
+
+The user also authorizes a stkr.toml impact rule selecting zero jobs for changes limited to skills, agent/Codex/Claude guidance, README and CONTRIBUTING files, including nested copies. Remove overlaps with existing prose rules, retain the lightweight required-status gate and preserve full selection for mixed source/policy or unknown changes. This depends on the approved Hub empty-job rule support; the parent owns this configuration/render slice after that override is available.
+
+Use Harmos's drop-2026-10-25 worktree and Dokime's hub-ci worktree. Dokime retains its declared dependencies and uses checkout-local, untracked patch.crates-io entries during development; verify Cargo package source resolution and never commit local paths or their lockfile resolution. Record the upstream capability disposition in Dokime's existing change.
+
+The user explicitly authorizes source-complete candidate pushes before local CI, followed immediately by local simulation in parallel with hosted checks. Hosted protected auto-merge may integrate independently of local completion. Publish the Harmos candidate through its PR, verify the remote revision, and replace Dokime's local patch with the published revision before consumer publication. No registry release is authorized by this change. Keep all required native checks and canonical profiles.

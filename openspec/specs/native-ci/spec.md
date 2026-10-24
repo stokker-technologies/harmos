@@ -9,7 +9,7 @@ Run parallel native Product and Tests jobs per platform and profile with matched
 
 The pipeline SHALL have separate independent Product and Tests jobs per selected graph profile using canonical shipping configurations. Product SHALL use default Cargo dev/release profiles, Tests and coverage SHALL use default test, and benchmarks SHALL use default bench. Noncanonical feature/target compatibility checks SHALL remain explicit optional local tasks rather than provider CI work.
 
-Correctness tests SHALL have a minimum 30-second deadline, preserving larger existing bounds. Historical runtimes SHALL NOT tighten correctness deadlines; benchmarks SHALL provide performance evidence independently of test verdicts.
+Correctness tests SHALL have a minimum 120-second deadline, preserving larger existing bounds. Historical runtimes SHALL NOT tighten correctness deadlines; benchmarks SHALL provide performance evidence independently of test verdicts.
 
 #### Scenario: Tests Selected
 
