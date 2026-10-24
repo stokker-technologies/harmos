@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:d007d3b7c1ee7ad07660ca702f64e4eb8c9098b74cd17c7b86db1ea1c79d79e5
-name: Build
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:408eb338ce09c4c5473608c12e0d0f44188337716e292941830d8715e4236563
+name: Build / Product / Linux
 "on":
   workflow_call:
     inputs:

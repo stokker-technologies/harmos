@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:04e2c11c0067a784117abb0f3807c75f7cccbc9a760080d053a490b9eab80af8
+# Rendered by stkr project update from templates/python/release/run.py; sha256:01590d724a0220e576e0feb2f1eb1a6504d1e62f8d72e3d28128afcd3b2aaabe
 # ***
 #
 # Harmos
@@ -41,7 +41,6 @@ from . import policy, registry, screenshots, version
 # === Constants === #
 
 STABLE = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-BUMPS = ("auto", "minor", "major")
 SUMS = "SHA256SUMS"
 STATE = "published.json"
 # Staged downloads live under <target>/; SHA256SUMS and the publication state span targets and live under any/.
@@ -150,14 +149,12 @@ def notes(directory: Path, tag: str, *, tagged: bool) -> str:
     return policy.execute(directory, command, capture=True).strip() + "\n"
 
 
-def planned_version(directory: Path, current: str, bump: str) -> str:
-    """The Next Version: The Current One Before Its First Tag, Else git-cliff's 0.x-Aware Bump Or The Explicit Override."""
+def planned_version(directory: Path, current: str) -> str:
+    """The Current Version Before Its First Tag, Else git-cliff's Configured Automatic Version."""
     if not policy.execute(directory, ["git", "tag", "--list", "v" + current], capture=True).strip():
         return current
     # Breaking changes bump the minor and everything else the patch while the version is 0.x, as the cliff.toml [bump] declares.
     command = ["git-cliff", "--bumped-version"]
-    if bump != "auto":
-        command += ["--bump", bump]
     planned = policy.execute(directory, command, capture=True).strip().removeprefix("v")
     if planned == current:
         since = policy.execute(directory, ["git", "log", "--format=%h %s", f"v{current}..HEAD"], capture=True).strip()
@@ -168,14 +165,11 @@ def planned_version(directory: Path, current: str, bump: str) -> str:
 
 def prepare(directory: Path, settings: dict) -> None:
     """Bump Every Version Carrier And Regenerate Release Inputs In The Working Tree."""
-    bump = os.environ.get("RELEASE_BUMP", "auto") or "auto"
-    if bump not in BUMPS:
-        raise policy.ToolError(f"RELEASE_BUMP must be one of {', '.join(BUMPS)}")
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("prepare requires clean committed source")
     _require_publication(directory, settings)
     current = release_tag(directory)[1:]
-    planned = planned_version(directory, current, bump)
+    planned = planned_version(directory, current)
     if re.fullmatch(STABLE, planned) is None:
         raise policy.ToolError(f"the next version is not a stable version: {planned}")
     _requirements(directory, current, planned)

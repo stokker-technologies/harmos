@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-windows.yml; sha256:3fb89fb83c5941792373496610f115a513a82e478ea5fbf26c1b09f790419811
-name: Check
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-windows.yml; sha256:130e9b06d0c959ea7b4758e68eafc374045a45e3da0db87ab77221913822895a
+name: Check / Windows
 "on":
   workflow_call:
     inputs:

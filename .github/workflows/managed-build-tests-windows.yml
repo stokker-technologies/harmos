@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-windows.yml; sha256:a4b893523cc5b99fd1f82f7f348da3dd9b9c48da1f3a141b4af01fbde37e7fcd
-name: Build
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-windows.yml; sha256:5cdac2bb10b572f7e974aa7002832a32cc2803ea17d7adfcead4ec764df9c8e6
+name: Build / Tests / Windows
 "on":
   workflow_call:
     inputs:

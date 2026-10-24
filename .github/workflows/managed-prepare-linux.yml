@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-linux.yml; sha256:6f73bae2066497313cc76bcb99e75ca7baffa3bf51bc458b8fe8f6996d6fab49
-name: Prepare
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-linux.yml; sha256:b7154245f5fe232d9c3d709139e79520e8aecdbb818df655397cc142afb4c666
+name: Prepare / Linux
 "on":
   workflow_call:
     inputs:

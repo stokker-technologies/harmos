@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/runners.py; sha256:40354f56d3e2e953e3e376015693ec9a5c62214ef87b1b1ace45c7e4ccad9d35
+# Rendered by stkr project update from templates/python/test/runners.py; sha256:e25cc48df0defb119b323517071907a6369451a2f634550609056035990f97d3
 # ***
 #
 # Harmos
@@ -7,7 +7,7 @@
 #
 # ***
 
-"""Check Selected-Workflow Access Before Preparing A Release."""
+"""Check Selected-Workflow Access Before Opening A Release Review."""
 
 # === Imports === #
 
@@ -19,6 +19,8 @@ import subprocess
 # Third Party Imports
 
 # Local Imports
+from ..release import policy
+from ..release.run import release_tag
 
 # Type Checking Imports
 
@@ -44,7 +46,7 @@ def main() -> None:
     organization = repository.split("/")[0]
     workflows = json.loads(os.environ["GITHUB_RUNNER_WORKFLOWS"])
     groups = None
-    references = [os.environ["GITHUB_REF"], "refs/heads/release/v" + os.environ["RELEASE_VERSION"]]
+    references = [os.environ["GITHUB_REF"], "refs/heads/release/" + release_tag(policy.root())]
     for workflow, requirements in workflows.items():
         labels = {label for platform, roles in requirements.items() if platform != "nightly" for label in roles.values()}
         for required in sorted(labels):

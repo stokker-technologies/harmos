@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-windows.yml; sha256:ecf56e878ff9d473e237ec8c9c5f4240df981b48d38d122938fb96a8ad2a7ab7
-name: Prepare
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-windows.yml; sha256:83df213657324281fb8d8e5e696771231e7ccad0d0d670e162792dcafa907ade
+name: Prepare / Windows
 "on":
   workflow_call:
     inputs:

@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:dd57180904a2287c86c5e1c0c6c26aa9b12b443b13077089ca94e0f501520b71
-name: Test
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:398f98ab5fdf9a8a114f8c80f6f97ba59a036aab9fb985383c6fefa2ab756d87
+name: Test / Nightly
 "on":
   workflow_call:
     inputs:
