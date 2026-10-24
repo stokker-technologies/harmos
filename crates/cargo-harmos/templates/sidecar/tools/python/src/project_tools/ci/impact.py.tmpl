@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:795c3ebca2b83299e6250bd3afcb65ccbbb87b72a09577f4d0fd974ec4dfea57
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:66f63778e66c728832c769b4b57ba8f896d4d5a98b898faa89d9ded8ddbf93ac
 # ***
 #
 # __PRODUCT_NAME__
@@ -35,12 +35,13 @@ from pathlib import Path
 # === Public Functions === #
 
 
-def changed_paths(target: str) -> set[str] | None:
+def changed_paths(target: str, root: Path | None = None) -> set[str] | None:
     """Include Deleted, Added, Dirty And Untracked Paths Against One Merge Base."""
 
     def git(*arguments: str) -> str:
         return subprocess.check_output(
             ["git", *arguments],
+            cwd=root,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             stderr=subprocess.DEVNULL,
             timeout=30,
@@ -74,8 +75,11 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
     if not paths or any(_matches(plan["protected"], path) for path in paths):
         return full
     selected = set()
-    for rule in plan["rules"]:
-        if all(_matches(rule["only"], path) and not _matches(rule["exclude"], path) for path in paths):
+    for path in paths:
+        matching = [rule for rule in plan["rules"] if _matches(rule["only"], path) and not _matches(rule["exclude"], path)]
+        if not matching:
+            return full
+        for rule in matching:
             selected.update(rule["jobs"])
     if not selected:
         return full
@@ -83,12 +87,17 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
     while pending:
         job = pending.pop()
         if job not in graph:
-            raise ValueError(f"impact plan references unknown job {job}")
+            return full
         for dependency in graph[job]:
             if dependency not in selected:
                 selected.add(dependency)
                 pending.append(dependency)
     return selected
+
+
+def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
+    """Resolve Portable Local Impact Without A Hub Installation Or Registration."""
+    return select(plan, changed_paths(target, root))
 
 
 def main(plan: dict) -> None:

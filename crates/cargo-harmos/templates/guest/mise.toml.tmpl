@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:9f2f56bf68c90de12e73de51742a7db1e1e59540167db7778a69f6cd13816d0c
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:fb2f1793ddae9f13de776a752e0966214e24f583484cb788003c84459acb37eb
 # === Settings === #
 
 [settings]
@@ -184,6 +184,16 @@ flag "--target <target>" default="native""""
 run = "uv run --locked --project tools/python python -m project_tools.package.run rust --profile {{usage.profile}} --target {{usage.target}}"
 
 # === CI === #
+
+[tasks."ci:simulate"]
+description = "Simulate The Declared CI Graph Locally"
+usage = """
+flag "--pipeline <kind>" default=pr
+flag "--platform <platform>"
+flag "--executor <executor>"
+flag "--cpus <count>"
+flag "--memory-gib <size>""""
+run = "uv run --locked --project tools/python python -m project_tools.ci.simulate {% if usage.pipeline %}--pipeline {{usage.pipeline}}{% endif %} {% if usage.platform %}--platform {{usage.platform}}{% endif %} {% if usage.executor %}--executor {{usage.executor}}{% endif %} {% if usage.cpus %}--cpus {{usage.cpus}}{% endif %} {% if usage.memory_gib %}--memory-gib {{usage.memory_gib}}{% endif %}"
 
 # === Release === #
 

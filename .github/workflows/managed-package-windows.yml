@@ -1,18 +1,24 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:0fc7ea2e2eab186ab42fc432e820bca074277ed59602a69f2600c9a9820a0dd4
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:70658b7fe993955c4ec5006e9551e0c17fb2a6ab54c0affdd6a9ff1cdc67bdc7
 name: Package
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
       timeouts:
         type: string
         required: true
+      impact:
+        type: string
+        required: true
 env:
   PROFILE: >-
-    ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref,
-    'release/v')) && 'release' || 'dev' }}
+    ${{ inputs.pipeline == 'nightly' && 'release' || ((startsWith(github.ref,
+    'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
@@ -279,7 +285,15 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.summary
     if: >-
-      (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
-      || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      github.ref == 'refs/heads/dev'))
+      contains(fromJSON(inputs.impact), 'package:rust') && ((inputs.pipeline ==
+      'nightly' || github.event_name == 'pull_request' || startsWith(github.ref,
+      'refs/tags/v') || ((github.event_name == 'push' || (github.event_name == 'workflow_dispatch'
+      && inputs.pipeline != 'nightly')) && github.ref == 'refs/heads/dev')))

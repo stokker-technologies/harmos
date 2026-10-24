@@ -186,7 +186,7 @@ impl Build {
         }
         let (artifacts, outputs) = read_messages(std::io::Cursor::new(message_bytes), &packages)?;
         let profile_directory = match receipt.profile {
-            BuildProfile::Dev => "debug",
+            BuildProfile::Dev | BuildProfile::Test => "debug",
             BuildProfile::Release | BuildProfile::Bench => "release",
         };
         let native = receipt.inputs.rustc.lines().find_map(|line| line.strip_prefix("host: "));

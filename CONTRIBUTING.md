@@ -1,23 +1,11 @@
-# Contributing To Harmos
+# Contributing
 
-Harmos is open to bug reports, documentation improvements, focused runtime
-changes, and examples that clarify how the journal model works in a real
-application.
-
-## Before You Start
-
-Use the [issue tracker](https://github.com/stokker-technologies/harmos/issues)
-for bugs and proposals. Open an issue before a substantial API, wire-format,
-storage-contract, or crate-boundary change. Harmos is pre-1.0, but clean breaks
-still need a clear reason and updated callers, docs, and examples.
-
-A useful bug report includes the Harmos revision, operating system, minimal
-reproduction, expected order or position, actual result, and relevant logs.
+Help improve Harmos with focused fixes, clear API feedback and useful examples.
+Discuss changes to public contracts before implementing them.
 
 ## Development Setup
 
-The repository supports Windows and Linux. Install
-[`mise`](https://mise.jdx.dev), then prepare the checkout:
+Install [mise](https://mise.jdx.dev), then prepare the checkout:
 
 ```sh
 mise trust
@@ -25,67 +13,47 @@ mise install --locked
 mise run prepare:tools
 ```
 
-Run the complete example with `mise run build`, then `target/build/dev/linux-x86_64/bin/schematic-cli` on Linux. Read the relevant source-level contracts and compiled examples before changing
-a public contract.
+Windows and Linux are supported. The [Schematic example](examples/schematic/README.md)
+is a complete application for understanding composition, plugins and storage.
 
-Each native CI lane prepares the locked Python tooling before running commands
-with `--no-sync`; runners do not share a prepared environment. Python type checks
-run with `lint:python`. Generated-client checks type-check the complete output
-and lint Harmos-emitted modules; protoc's `_wire` modules are excluded from Ruff.
-The native uv workspace keeps `uv.lock` and `.venv` at the repository root;
-`--project tools/python` selects its tooling member.
+## Development Workflow
 
-Embedded CLI starters live under `crates/cargo-harmos/templates/` with a `.tmpl`
-filename suffix so Cargo includes them in the tool's embedded resources. The build
-removes that suffix from embedded output names. Keep the suffix when editing
-authored starters; refresh Hub-owned starter files through `stkr project update`.
+Preserve clear boundaries between domain contracts, runtime resources and
+application-owned persistence. Update affected consumers and examples when
+changing a contract; flag unrelated stale examples rather than hiding them.
 
-## Make A Change
+Use Conventional Commit subjects and keep generated files with their source.
+The root uv workspace owns the Python environment and lockfile.
 
-- Preserve the direction of dependencies. Applications and adapters depend on
-  Harmos; the core runtime does not learn about their storage engine, UI, or
-  transport choices.
-- Keep optional facilities behind their named Cargo feature and maintain the
-  facade boundaries checked by the census tests.
-- Update the README and compiled examples with public API changes.
-- Add focused tests at the behavioral boundary. Prefer a complete journal,
-  recovery, work, or artifact workflow over many implementation-level tests.
-- Keep changes small enough to review and use Conventional Commit subjects,
-  such as `fix(journal): retain position across recovery` or `docs: explain
-  stream loss accounting`.
+## Tests And Checks
 
-Tests follow their behavior: pure unit assertions, in-process integration,
-command-line acceptance and three full schematic system walkthroughs. Keep each
-story cohesive and independent; preserve coverage when removing superseded
-fixtures. Project-wide authored-story limits and lane deadlines live in `stkr.toml`.
-Use notifications and controlled clocks rather than sleeps or nested timeout guards.
-
-Finish the combined source cutover before validation, then use the repository flow:
+Run targeted checks while implementing. After all agreed source work is
+complete, run the impact-selected local review gate:
 
 ```sh
-mise run ci
+mise run ci:simulate
 ```
 
-`mise run build` exports packageable products and generated clients.
-`mise run build:rust:tests` creates the shared workspace archive and stamps native/Wasm
-inputs in `target/build/dev/<target>/fixtures/stamp.json`.
-Ordinary test lanes consume those exact development
-artifacts and never rebuild fixtures. Their preflight refuses missing, stale or
-changed inputs. Narrow authoring acceptance executes the compiler only when
-compilation or dev/rebuild is the product behavior being tested, using the
-build-staged offline dependency closure. Keep preparation outside scenario timing.
+The default run covers all declared required platforms. Prose-only changes use
+lightweight checks; mixed and executable changes retain their affected proof.
+Hosted CI remains required before integration.
 
-If a platform, Wasm target, or throughput test cannot run locally, say so in
-the pull request instead of weakening the gate.
+Product and Tests compile independently with matching Clippy invocations.
+Tests use the default unoptimized test profile; optional extended tests remain
+explicit local work. Nightly runs ordinary verification with release Product
+builds and downloadable unsigned packages, plus coverage and benchmarks.
 
-## Benchmarks
+## Pull Requests
 
-Run `mise run build:rust:bench` followed by `mise run bench` for the Rust benchmark suites, or choose `bench:rust:unit`,
-`bench:rust:integration` or `bench:rust:system`. Pure codec work, managed runtime/storage
-behavior and executable transport have separate owners. Fixture activation and
-shutdown stay outside timed calls; report the payload, batching, carrier, profile,
-revision and hardware with any result.
+Target `dev` and explain the user-visible problem, resulting behavior and
+verification. Keep required checks enabled and include no private data or
+credentials. Contributions use the [Apache-2.0 license](LICENSE).
 
-The managed runner owns ignored evidence under `.stkr/benchmarks/`. Preserve its
-original inputs and measurements when comparing runs. A failed suite remains a
-failure; do not weaken a gate to publish a result.
+Release preparation and publication follow the separate protected release
+workflow; an ordinary pull request does not publish packages.
+
+## Reporting Issues
+
+Use the [issue tracker](https://github.com/stokker-technologies/harmos/issues).
+Include the revision, operating system, minimal reproduction, expected result,
+actual behavior and relevant sanitized logs.

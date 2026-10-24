@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:e61555cd44f75a1f812b977321afa775e4820cb617eee090c0dbd697d7089f93
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:14bdff4dc359dd85781842ed52d20c844f4f11bdb3d077fb0ac443672b788f8e
 Package / Rust (linux):
   stage: Package
   tags:
@@ -28,6 +28,7 @@ Package / Rust (linux):
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
   variables:
     MISE_ENABLE_TOOLS: >-
@@ -123,6 +124,7 @@ Package / Rust (windows):
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_TAG =~ /^v[0-9]/
   hooks:
     pre_get_sources_script:

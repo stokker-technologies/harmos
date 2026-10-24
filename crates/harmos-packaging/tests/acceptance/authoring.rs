@@ -103,7 +103,10 @@ impl Project {
         let inherited = std::env::vars_os().filter_map(|(name, _)| {
             let value = name.to_str()?;
             let isolated = value.starts_with("NEXTEST")
-                || matches!(value, "VIRTUAL_ENV" | "UV_PROJECT_ENVIRONMENT" | "RUSTC_WRAPPER" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS");
+                || matches!(
+                    value,
+                    "VIRTUAL_ENV" | "UV_PROJECT_ENVIRONMENT" | "RUSTC_WRAPPER" | "MISE_LOCKED" | "MISE_ENABLE_TOOLS" | "MISE_TASK_SKIP"
+                );
             isolated.then_some(name)
         });
         for name in inherited {

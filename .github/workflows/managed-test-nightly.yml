@@ -1,18 +1,24 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:f9275416843b6d9ac61b2a312fa68a9471bafaf370a832e56e47590464d3b7d3
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:695530750fe4bc3a9c64ce8c6dbf7b0886acf7c87a38f8e2e29aa074142c1b18
 name: Test
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
       timeouts:
         type: string
         required: true
+      impact:
+        type: string
+        required: true
 env:
   PROFILE: >-
-    ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref,
-    'release/v')) && 'release' || 'dev' }}
+    ${{ inputs.pipeline == 'nightly' && 'release' || ((startsWith(github.ref,
+    'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
@@ -288,7 +294,16 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
-    if: github.event_name == 'schedule'
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.summary
+    if: >-
+      contains(fromJSON(inputs.impact), 'test:rust:coverage') && (inputs.pipeline ==
+      'nightly')
     env:
       MISE_ENABLE_TOOLS: >-
         go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,npm:@fission-ai/openspec,taplo

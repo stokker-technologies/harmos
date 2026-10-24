@@ -159,6 +159,25 @@ fn test_harnesses_excluded() {
 }
 
 #[test]
+fn test_profile_keeps_identity() {
+    let (_directory, path) = fixture();
+    let messages = [artifact(&path, false), json!({"reason": "build-finished", "success": true})];
+    let profile: BuildProfile = "test".parse().unwrap();
+    assert_eq!(profile.name(), "test");
+    let mut capture = Captured::new(&messages, selected());
+    capture.settings.profile = profile;
+    capture.receipt["profile"] = json!("test");
+    capture.receipt["command"] = json!(["cargo", "build", "--locked", "--profile", "test"]);
+    let build = capture.collect().unwrap();
+    assert_eq!(build.profile, profile);
+    assert_eq!(build.artifacts[0].path, path);
+
+    let mut mismatched = Captured::new(&messages, selected());
+    mismatched.receipt["profile"] = json!("test");
+    assert!(matches!(mismatched.collect(), Err(Error::Settings(_))));
+}
+
+#[test]
 fn completion_refuses_invalid() {
     let (_directory, path) = fixture();
     let streams = [

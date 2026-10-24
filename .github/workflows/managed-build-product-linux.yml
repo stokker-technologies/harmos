@@ -1,18 +1,24 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:e984faf576a44c43e52bf1a0969e8ab2c68a98cad8023b51e96e562811d87ebf
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-linux.yml; sha256:972358a430ba46c9b2685e87b70582150ea491902fa88090bc4da4199b7505a0
 name: Build
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
       timeouts:
         type: string
         required: true
+      impact:
+        type: string
+        required: true
 env:
   PROFILE: >-
-    ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref,
-    'release/v')) && 'release' || 'dev' }}
+    ${{ inputs.pipeline == 'nightly' && 'release' || ((startsWith(github.ref,
+    'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
@@ -291,6 +297,13 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: >-
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,npm:@fission-ai/openspec,python,rust,sccache,taplo,uv
@@ -300,3 +313,4 @@ jobs:
         github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
         (github.event_name == 'pull_request' && startsWith(github.ref, 'refs/pull/') &&
         endsWith(github.ref, '/merge'))) && 'READ_WRITE' || 'READ_ONLY' }}
+    if: contains(fromJSON(inputs.impact), 'build') && (true)

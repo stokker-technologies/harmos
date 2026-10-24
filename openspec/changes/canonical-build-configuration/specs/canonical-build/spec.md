@@ -4,12 +4,21 @@
 
 ### Requirement: Canonical Native Configuration
 
-All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform and profile in independent parallel producer jobs. Independent feature sets are permitted. Clippy SHALL precede compilation with matching configuration. The existing release-tests compiler-profile exception SHALL remain. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
+All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Clippy SHALL precede compilation with matching configuration. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
 
 #### Scenario: Ordinary Review
 
 - **WHEN** an ordinary review requests Product and Tests
 - **THEN** independent Product and Tests jobs produce separate exports, and downstream Test and Package consume their declared inputs without rebuilding; fixture preparation may join both manifests without compilation
+
+### Requirement: Default Cargo Profiles
+
+Product SHALL use default Cargo dev or release settings, Bench SHALL use default bench settings, and all Tests and their compiler checks SHALL use the default unoptimized test profile. No manifest, package or build environment optimization overrides SHALL remain. Graph profile namespaces SHALL remain separate from compiler profiles.
+
+#### Scenario: Release Tests
+
+- **WHEN** a release pipeline builds Tests
+- **THEN** its test harness and test-owned fixtures compile with Cargo's test profile while their artifacts remain in the release graph namespace and receipts preserve the actual compiler profile
 
 ### Requirement: Measured Build Budget
 

@@ -60,14 +60,14 @@ def build(profile: str, scratch: Path, *, extended: bool = False) -> None:
     files: dict[str, str] = {}
 
     # Nextest Builds The CLI Test Harness; Sandbox Collection Needs Its Ordinary Executable.
-    compiler_profile = "release-tests" if profile == "release" else profile
+    compiler_profile = "test"
     collector = staging.capture("collector", ROOT, compiler_profile, ["-p", "cargo-harmos"], scratch)
     tool = staging.executable(staging.messages(collector), "cargo-harmos")
 
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]
-    capture = staging.capture(sandbox, manifest.parent, profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
-    built, receipt = staging.collect(tool, manifest, sandbox, "guest", profile, capture, scratch)
+    capture = staging.capture(sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
+    built, receipt = staging.collect(tool, manifest, sandbox, "guest", compiler_profile, capture, scratch)
     artifact, build = staging.stage_build(built, receipt, sandbox, files, fixtures)
     inputs = staging.offline_inputs(fixtures / "inputs")
     # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.

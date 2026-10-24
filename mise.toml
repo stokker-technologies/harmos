@@ -132,28 +132,25 @@ description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build --profile {{usage.profile}}"]
-env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."build:rust:bench"]
 description = "Build Benchmark Executables"
 usage = 'flag "--extended"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench{% if usage.extended %} -- --all-features{% endif %}"
-env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."build:rust:compatibility"]
 description = "Check Optional Local Compatibility Configurations"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {{usage.profile}} -p harmos-domain --target wasm32-unknown-unknown",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {{usage.profile}} -p harmos-domain --target wasm32-wasip2",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {{usage.profile}} --manifest-path examples/schematic/Cargo.toml -p schematic-domain --target wasm32-unknown-unknown",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {% if usage.profile == 'release' %}release-tests{% else %}dev{% endif %} --workspace --all-targets --no-default-features",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {% if usage.profile == 'release' %}release-tests{% else %}dev{% endif %} --workspace --examples --benches --all-features",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile {% if usage.profile == 'release' %}release-tests{% else %}dev{% endif %} --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test -p harmos-domain --target wasm32-unknown-unknown",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test -p harmos-domain --target wasm32-wasip2",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path examples/schematic/Cargo.toml -p schematic-domain --target wasm32-unknown-unknown",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --workspace --all-targets --no-default-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --workspace --examples --benches --all-features",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
-env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."build:rust:tests"]
 description = "Build The Shared Test Archive And Fixtures"
@@ -161,7 +158,6 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}}"]
 
-env = { CARGO_INCREMENTAL = "0" }
 
 # === Dev === #
 
@@ -182,7 +178,6 @@ depends = [
   "test:rust:acceptance --profile {{usage.profile}}",
   "test:rust:system --profile {{usage.profile}}",
 ]
-env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:rust:extended"]
 description = "Build And Test Optional Local Feature And Target Configurations"
@@ -195,7 +190,6 @@ run = [
   { task = "test --profile {{usage.profile}}" },
 ]
 
-env = { CARGO_INCREMENTAL = "0" }
 
 [tasks."test:rust:unit"]
 description = "Test Unit Rust"
@@ -204,7 +198,7 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
-env = { CARGO_INCREMENTAL = "0" }
+env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:integration"]
 description = "Test Integration Rust"
@@ -214,7 +208,7 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category integration --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
-env = { CARGO_INCREMENTAL = "0" }
+env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:acceptance"]
 description = "Test Acceptance Rust"
@@ -224,14 +218,14 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
-env = { CARGO_INCREMENTAL = "0" }
+env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}"
-env = { CARGO_INCREMENTAL = "0" }
+env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:system"]
 description = "Test System Rust"
@@ -241,7 +235,7 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
-env = { CARGO_INCREMENTAL = "0" }
+env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 # === Bench === #
 
@@ -306,18 +300,16 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 
 # === CI === #
 
-[tasks.ci]
-description = "Run Native Local CI"
-run = [
-  { task = "check" },
-  { task = "build" },
-  { task = "build:rust:tests" },
-  { task = "prepare:tests:fixtures" },
-  { task = "check:python:generated" },
-  { task = "test" },
-  { task = "package" },
-  { task = "release:publish:dry" },
-]
+[tasks."ci:simulate"]
+description = "Simulate The Declared CI Graph Locally"
+usage = '''
+flag "--pipeline <kind>" default=pr
+flag "--platform <platform>"
+flag "--executor <executor>"
+flag "--cpus <count>"
+flag "--memory-gib <size>"
+'''
+run = "uv run --locked --project tools/python python -m harmos_tools.ci.simulate {% if usage.pipeline %}--pipeline {{usage.pipeline}}{% endif %} {% if usage.platform %}--platform {{usage.platform}}{% endif %} {% if usage.executor %}--executor {{usage.executor}}{% endif %} {% if usage.cpus %}--cpus {{usage.cpus}}{% endif %} {% if usage.memory_gib %}--memory-gib {{usage.memory_gib}}{% endif %}"
 
 # === Release === #
 

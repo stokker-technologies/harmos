@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:b9c0460da8e4d6c0b907787a4b801450ef8b0f5fe709971ea2ba8d69520407db
+# Rendered by stkr project update from templates/python/ci/build.py; sha256:13a3e52d639ba48df965a2cae8e405aedc63108ddb8b1129df438e44b04689cc
 # ***
 #
 # __PRODUCT_NAME__
@@ -12,16 +12,18 @@
 
 # Standard Library Imports
 import argparse
+import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from . import compiler
+from . import compiler, summary
 
 # Type Checking Imports
 
@@ -30,20 +32,6 @@ from . import compiler
 # === Constants === #
 
 OUTPUTS = {"product": "Product Build", "tests": "Tests Build", "bench": "Bench Build"}
-METRICS = {
-    "cache_hits": "Hits",
-    "cache_misses": "Misses",
-    "requests_not_cacheable": "Noncacheable Requests",
-    "cache_errors": "Cache Errors",
-    "cache_read_errors": "Read Errors",
-    "cache_write_errors": "Write Errors",
-    "cache_writes": "Successful Writes",
-    "write_error_AlreadyExists": "Write Conflicts",
-    "write_error_PermissionDenied": "Write Permission Errors",
-    "write_error_RateLimited": "Write Rate Limits",
-    "write_error_Unexpected": "Unexpected Write Errors",
-    "write_error_Unknown": "Unclassified Write Errors",
-}
 
 # === Types === #
 
@@ -100,6 +88,10 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
         "STKR_SCCACHE_MODE",
         "READ_WRITE" if os.environ.get("STKR_CACHE_POLICY") == "pull-push" else "READ_ONLY",
     )
+    phase_store = tempfile.TemporaryDirectory(prefix="stkr-build-phases-")
+    phase_file = Path(phase_store.name) / "phases.jsonl"
+    previous_phase_file = os.environ.get("STKR_CI_PHASE_FILE")
+    os.environ["STKR_CI_PHASE_FILE"] = str(phase_file)
     status = 1
     print(f"{label}: starting", flush=True)
     try:
@@ -139,33 +131,32 @@ def _run(command: Sequence[str] | str, label: str, shell: str | None = None) -> 
         return status
     finally:
         elapsed = time.monotonic() - started
-        selected_backend = backend if backend in {"gha", "s3"} else "disabled" if backend is None else "unavailable"
-        selected_mode = mode if backend is not None and mode in {"READ_ONLY", "READ_WRITE"} else "unavailable"
-        rows = [
-            ("Backend", selected_backend),
-            ("Access Mode", selected_mode),
-            ("Elapsed", f"{elapsed:.2f}s"),
-            ("Exit", str(status)),
-        ]
-        rows.extend(
-            (
-                title,
-                str(statistics[key]) if statistics.get(key) is not None else "unavailable",
-            )
-            for key, title in METRICS.items()
-        )
+        try:
+            measured = summary.phases(phase_file)
+        finally:
+            if previous_phase_file is None:
+                os.environ.pop("STKR_CI_PHASE_FILE", None)
+            else:
+                os.environ["STKR_CI_PHASE_FILE"] = previous_phase_file
+            try:
+                phase_store.cleanup()
+            except OSError:
+                print("Phase telemetry cleanup unavailable", flush=True)
         print(
-            f"{label}: " + "; ".join(f"{name}={value}" for name, value in rows),
+            "STKR_BUILD_STATISTICS "
+            + json.dumps(
+                {
+                    "backend": backend,
+                    "mode": mode,
+                    "status": status,
+                    "statistics": {key: value for key, value in statistics.items() if value is None or type(value) is int},
+                    "phases": measured,
+                },
+                sort_keys=True,
+            ),
             flush=True,
         )
-        if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-            try:
-                with Path(summary).open("a", encoding="utf-8") as stream:
-                    stream.write(f"## {label}\n\n| Metric | Value |\n| --- | --- |\n")
-                    stream.writelines(f"| {name} | {value} |\n" for name, value in rows)
-                    stream.write("\n")
-            except OSError:
-                print(f"{label}: GitHub summary unavailable", flush=True)
+        summary.render(label, elapsed, statistics, phases=measured)
 
 
 # === Entry Point === #

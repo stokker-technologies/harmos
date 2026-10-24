@@ -322,9 +322,6 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
     if manifest.lifecycle[0].action() != lifecycle::Action::Initialize || manifest.lifecycle[1].action() != lifecycle::Action::Shutdown {
         return Err(Error::LifecycleOrder);
     }
-    for descriptor in &manifest.lifecycle {
-        lifecycle::Descriptor::new(descriptor.action(), descriptor.contract().operation().policy)?;
-    }
     Ok(())
 }
 

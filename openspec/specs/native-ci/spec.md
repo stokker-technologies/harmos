@@ -7,7 +7,7 @@ Run parallel native Product and Tests jobs per platform and profile with matched
 
 ### Requirement: Parallel Native Builds
 
-The pipeline SHALL have separate independent Product and Tests jobs per selected platform/profile using canonical shipping configurations. The existing release-tests compiler-profile exception SHALL remain. Test instrumentation and noncanonical feature/target compatibility checks SHALL remain explicit optional local tasks rather than provider CI work.
+The pipeline SHALL have separate independent Product and Tests jobs per selected graph profile using canonical shipping configurations. Product SHALL use default Cargo dev/release profiles, Tests and coverage SHALL use default test, and benchmarks SHALL use default bench. Noncanonical feature/target compatibility checks SHALL remain explicit optional local tasks rather than provider CI work.
 
 #### Scenario: Tests Selected
 
@@ -28,3 +28,8 @@ The pipeline SHALL have separate independent Product and Tests jobs per selected
 
 - **WHEN** any GitHub verification, nightly or release job is selected
 - **THEN** it uses a declared GitHub-hosted platform default, with unchanged tasks, profiles, deadlines and required native gates.
+
+#### Scenario: Nightly Verification
+
+- **WHEN** the nightly pipeline runs
+- **THEN** it performs ordinary canonical verification with release Product builds, downloadable unsigned packages, canonical coverage and benchmarks, without publishing.

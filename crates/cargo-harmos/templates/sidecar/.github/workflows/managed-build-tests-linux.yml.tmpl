@@ -1,8 +1,11 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-linux.yml; sha256:5d2d325d87edd67dcc2c56cf42b41351316f9b4e56708071bcc916aed1b85331
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-linux.yml; sha256:d78045abcc55a47dde3e95238e2d3d09a3255d82f140634cab302f28b77b4d18
 name: Build
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
@@ -10,7 +13,9 @@ name: Build
         type: string
         required: true
 env:
-  PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}
+  PROFILE: >-
+    ${{ inputs.pipeline == 'nightly' && 'release' || (startsWith(github.ref,
+    'refs/tags/v') && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
@@ -289,6 +294,13 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: >-
         aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv

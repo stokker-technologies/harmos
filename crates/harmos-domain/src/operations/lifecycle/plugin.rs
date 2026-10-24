@@ -184,6 +184,12 @@ impl Descriptor {
     }
 }
 
+impl From<Descriptor> for Contract {
+    fn from(descriptor: Descriptor) -> Self {
+        descriptor.contract
+    }
+}
+
 impl From<Descriptor> for EncodedDescriptor {
     fn from(descriptor: Descriptor) -> Self {
         Self { action: descriptor.action, version: descriptor.contract.version(), policy: descriptor.contract.operation().policy }

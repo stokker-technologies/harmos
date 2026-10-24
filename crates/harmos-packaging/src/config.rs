@@ -61,6 +61,7 @@ pub enum BuildBackend {
 #[serde(rename_all = "snake_case")]
 pub enum BuildProfile {
     Dev,
+    Test,
     Release,
     Bench,
 }
@@ -73,6 +74,7 @@ impl BuildProfile {
     pub const fn name(self) -> &'static str {
         match self {
             Self::Dev => "dev",
+            Self::Test => "test",
             Self::Release => "release",
             Self::Bench => "bench",
         }
@@ -84,9 +86,10 @@ impl std::str::FromStr for BuildProfile {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "dev" => Ok(Self::Dev),
+            "test" => Ok(Self::Test),
             "release" => Ok(Self::Release),
             "bench" => Ok(Self::Bench),
-            _ => Err("profile must be dev, release or bench"),
+            _ => Err("profile must be dev, test, release or bench"),
         }
     }
 }

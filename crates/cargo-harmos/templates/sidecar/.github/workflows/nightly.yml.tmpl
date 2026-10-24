@@ -1,8 +1,9 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:ae5129e0e280419e4536e214522ad72ec1575847608e7a1112d350248d93f6c1
-name: Nightly
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:a79d741773710e198100a9c309cd203aacd3b4532a6b5a5f04a2f9953b4d9ff6
+name: CI / Nightly
 "on":
   schedule:
-  - cron: 0 2 * * *
+  - cron: 0 0 * * *
+    timezone: Europe/Zurich
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -16,6 +17,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_linux\":120}"
+      pipeline: nightly
     secrets: inherit
   build_tests_linux:
     name: Build
@@ -23,6 +25,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_linux\":120}"
+      pipeline: nightly
     secrets: inherit
   build_product_windows:
     name: Build
@@ -30,6 +33,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_windows\":120}"
+      pipeline: nightly
     secrets: inherit
   build_tests_windows:
     name: Build
@@ -37,6 +41,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_windows\":120}"
+      pipeline: nightly
     secrets: inherit
   check:
     name: Check
@@ -44,6 +49,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_python\":120,\"source\":120}"
+      pipeline: nightly
     secrets: inherit
   check_linux:
     name: Check
@@ -51,6 +57,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_linux\":120}"
+      pipeline: nightly
     secrets: inherit
   check_windows:
     name: Check
@@ -58,6 +65,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_windows\":120}"
+      pipeline: nightly
     secrets: inherit
   package_linux:
     name: Package
@@ -65,6 +73,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_linux\":120}"
+      pipeline: nightly
     secrets: inherit
     needs:
     - build_product_linux
@@ -76,6 +85,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_windows\":120}"
+      pipeline: nightly
     secrets: inherit
     needs:
     - build_product_windows
@@ -87,6 +97,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_unit_linux\":120}"
+      pipeline: nightly
     secrets: inherit
     needs:
     - build_tests_linux
@@ -96,6 +107,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_unit_windows\":120}"
+      pipeline: nightly
     secrets: inherit
     needs:
     - build_tests_windows
@@ -105,6 +117,7 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_coverage_rust\":120}"
+      pipeline: nightly
     secrets: inherit
     needs:
     - build_tests_linux

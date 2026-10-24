@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:b204d6ab19b8be7593ecbc3c9c932353b8850da0f8ff412c00664ff1572d353a
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:26e65d65a1a520ca1b64290d82a9ed9c3a4d36d82ff26e1ee34e1f6378e2a922
 # ***
 #
 # __PRODUCT_NAME__
@@ -22,6 +22,7 @@ from typing import Any
 
 # Third Party Imports
 # Local Imports
+from ..ci import summary
 from . import paths
 
 # Type Checking Imports
@@ -39,16 +40,17 @@ from . import paths
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
     selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
-    subprocess.run(
-        ["cargo", "clippy", *arguments],
-        cwd=directory,
-        env=selected,
-        stdin=sys.stdin,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        check=True,
-    )
+    with summary.phase("Clippy"):
+        subprocess.run(
+            ["cargo", "clippy", *arguments],
+            cwd=directory,
+            env=selected,
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            check=True,
+        )
 
 
 def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
@@ -60,7 +62,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     path = reader.location(directory, profile)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
-    compiler_profile = "release-tests" if profile == "release" else profile
+    compiler_profile = "test"
     clippy(
         directory,
         ["--locked", "--workspace", "--tests", "--profile", compiler_profile, *extra],
@@ -80,7 +82,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         str(path),
         *extra,
     ]
-    with path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
+    with summary.phase("Compilation And Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
         result = subprocess.run(
             command,
             stdin=sys.stdin,

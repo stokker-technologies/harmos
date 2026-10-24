@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:35dcc2fa7ef17efd5eb0cd107b18c8384989340be01c223a17a89b95132f0d1d
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:0befc655f4c90e27639eb1be40d08c63143471b757cca788c62544a90d269ee9
 name: CI
 "on":
   push:
@@ -27,6 +27,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_linux\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -42,6 +45,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_linux\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -57,6 +63,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_windows\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -72,6 +81,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_windows\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -87,6 +99,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_python\":120,\"source\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -102,6 +117,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_linux\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -117,6 +135,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_windows\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - validated
@@ -132,6 +153,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_linux\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - build_product_linux
@@ -150,6 +174,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_windows\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - build_product_windows
@@ -168,6 +195,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_unit_linux\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - build_tests_linux
@@ -184,6 +214,9 @@ jobs:
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-latest\",\"large\":\"ubuntu-latest\"},\"windows\":{\"small\":\"windows-latest\",\"large\":\"windows-latest\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_test_rust_unit_windows\":120}"
+      pipeline: >-
+        ${{ github.event_name == 'pull_request' && 'pr' || startsWith(github.ref,
+        'refs/tags/v') && 'release' || 'dev' }}
     secrets: inherit
     needs:
     - build_tests_windows

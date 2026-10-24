@@ -1,8 +1,11 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-windows.yml; sha256:092ba350da7772f3fe67730823f3a58955a61a1f5758e617c2a4551d1a14b4d5
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-windows.yml; sha256:7c33b889da763c34cbf588be6fe22645095381804f72a03fa7163aea96325619
 name: Check
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
@@ -10,7 +13,9 @@ name: Check
         type: string
         required: true
 env:
-  PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}
+  PROFILE: >-
+    ${{ inputs.pipeline == 'nightly' && 'release' || (startsWith(github.ref,
+    'refs/tags/v') && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
@@ -251,6 +256,13 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: >-
         go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo

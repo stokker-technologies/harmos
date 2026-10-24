@@ -37,6 +37,12 @@ windows = "windows-2022"
 [ci.impact]
 default = "full"
 
+[[ci.impact.rules]]
+name = "prose"
+only = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
+exclude = ["docs/examples/**", "docs/tutorials/**", "docs/src/**"]
+jobs = ["check:repository"]
+
 # --- Stage / Check --- #
 
 [[ci.jobs]]
