@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:d1a69af769d95f6af351ff075b1dd4d89c91ff1d52e09ab87829c58e67339907
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:0a1095061f708ea8455558c82f6b15ae35e6fa82cc7ab90ac305fcf881551e28
 # ***
 #
 # __PRODUCT_NAME__
@@ -12,7 +12,6 @@
 
 # Standard Library Imports
 import argparse
-import concurrent.futures
 import ctypes
 import glob
 import hashlib
@@ -33,7 +32,6 @@ from pathlib import Path
 from . import environment as step_environment
 from . import impact
 from . import summary as reporting
-from .resources import Budget, NativeLimit, SimulationError, managed_image
 
 # Type Checking Imports
 
@@ -45,15 +43,120 @@ from .resources import Budget, NativeLimit, SimulationError, managed_image
 PLAN = json.loads(
     '{"platforms":["linux","windows"],"jobs":[{"key":"source","id":"check:repository","platform":"linux","independent":true,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{},"commands":[{"run":"mise run check:repository","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"check_python","id":"check:python","platform":"linux","independent":true,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{},"commands":[{"run":"mise run check:python","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"validate_coverage_rust","id":"test:rust:coverage","platform":"linux","independent":true,"pipelines":["nightly"],"needs":["build_tests_linux"],"inputs":["build:rust:tests#tests"],"outputs":{},"commands":[{"run":"mise run test:rust:coverage --profile ${{ env.PROFILE }}","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo","skip":"build:rust:tests","image":"managed:ubuntu-24.04","minutes":120},{"key":"check_rust_windows","id":"check:rust","platform":"windows","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{},"commands":[{"run":"mise run check:rust","cached":false,"shell":null}],"bootstrap":[],"setup":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","tools":"go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"build_product_windows","id":"build","platform":"windows","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{"product":["target/build/{profile}/{target}/bin","target/build/{profile}/{target}/lib","target/build/{profile}/{target}/product"]},"commands":[{"run":"mise exec -- uv run --locked --project tools/python python -m project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build","cached":false,"shell":null}],"bootstrap":[],"setup":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","tools":"aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"build_tests_windows","id":"build:rust:tests","platform":"windows","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{"tests":["target/build/{profile}/{target}/tests/archive.tar.zst","target/build/{profile}/{target}/tests/compiler.json"]},"commands":[{"run":"mise exec -- uv run --locked --project tools/python python -m project_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests","cached":false,"shell":null}],"bootstrap":[],"setup":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","tools":"aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"validate_test_rust_unit_windows","id":"test:rust:unit","platform":"windows","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":["build_tests_windows"],"inputs":["build:rust:tests#tests"],"outputs":{},"commands":[{"run":"mise run test:rust:unit --profile ${{ env.PROFILE }}","cached":false,"shell":null}],"bootstrap":[],"setup":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff","skip":"build:rust:tests","image":"managed:ubuntu-24.04","minutes":120},{"key":"check_rust_linux","id":"check:rust","platform":"linux","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{},"commands":[{"run":"mise run check:rust","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"build_product_linux","id":"build","platform":"linux","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{"product":["target/build/{profile}/{target}/bin","target/build/{profile}/{target}/lib","target/build/{profile}/{target}/product"]},"commands":[{"run":"mise exec -- uv run --locked --project tools/python python -m project_tools.ci.build --profile ${{ env.PROFILE }} --output product --task build","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"build_tests_linux","id":"build:rust:tests","platform":"linux","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":[],"inputs":[],"outputs":{"tests":["target/build/{profile}/{target}/tests/archive.tar.zst","target/build/{profile}/{target}/tests/compiler.json"]},"commands":[{"run":"mise exec -- uv run --locked --project tools/python python -m project_tools.ci.build --profile ${{ env.PROFILE }} --output tests --task build:rust:tests","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,python,rust,sccache,taplo,uv","skip":null,"image":"managed:ubuntu-24.04","minutes":120},{"key":"validate_test_rust_unit_linux","id":"test:rust:unit","platform":"linux","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":["build_tests_linux"],"inputs":["build:rust:tests#tests"],"outputs":{},"commands":[{"run":"mise run test:rust:unit --profile ${{ env.PROFILE }}","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff","skip":"build:rust:tests","image":"managed:ubuntu-24.04","minutes":120},{"key":"package_rust_linux","id":"package:rust","platform":"linux","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":["build_product_linux","check_python","check_rust_linux","source"],"inputs":["build#product"],"outputs":{"package":["target/package/{profile}/{target}"]},"commands":[{"run":"mise run package:rust --profile ${{ env.PROFILE }}","cached":false,"shell":null}],"bootstrap":[],"setup":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff","skip":"build","image":"managed:ubuntu-24.04","minutes":120},{"key":"package_rust_windows","id":"package:rust","platform":"windows","independent":false,"pipelines":["pr","dev","release","nightly"],"needs":["build_product_windows","check_python","check_rust_windows","source"],"inputs":["build#product"],"outputs":{"package":["target/package/{profile}/{target}"]},"commands":[{"run":"mise run package:rust --profile ${{ env.PROFILE }}","cached":false,"shell":null}],"bootstrap":[],"setup":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","tools":"go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff","skip":"build","image":"managed:ubuntu-24.04","minutes":120}],"mise_image":"ghcr.io/jdx/mise:2026.10.8-debian@sha256:8cc0b83dd86465df9ae4a813cce9ce24cb0b4f749617c419d3e4beb838b365b1","impact":{"rules":[],"protected":["^\\\\.github/workflows/.*$","^\\\\.github/actions/.*$","^\\\\.gitlab/.*$","^\\\\.mise/.*$","^\\\\.stkr/.*$","^\\\\.agents/.*$","^src/plugin/.*$","^src/templates/.*$","^src/guidance/.*$","^(?:/?|.*/)stkr\\\\.toml$","^(?:/?|.*/)mise.*\\\\.toml$","^(?:/?|.*/)mise\\\\.lock$","^(?:/?|.*/)\\\\.mise/.*$","^(?:/?|.*/)mise\\\\-tasks/.*$","^(?:/?|.*/)\\\\.cargo/.*$","^(?:/?|.*/)rust\\\\-toolchain.*$","^(?:/?|.*/)\\\\.gitlab\\\\-ci\\\\.yml$","^(?:/?|.*/)\\\\.gitlab\\\\-ci\\\\.yaml$","^(?:/?|.*/)Cargo\\\\.toml$","^(?:/?|.*/)Cargo\\\\.lock$","^(?:/?|.*/)build\\\\.rs$","^(?:/?|.*/)package\\\\.json$","^(?:/?|.*/)package\\\\-lock\\\\.json$","^(?:/?|.*/)npm\\\\-shrinkwrap\\\\.json$","^(?:/?|.*/)pnpm\\\\-workspace\\\\.yaml$","^(?:/?|.*/)pyproject\\\\.toml$","^(?:/?|.*/).*\\\\.lock$","^(?:/?|.*/)pnpm\\\\-lock\\\\.yaml$","^(?:/?|.*/)Dockerfile.*$","^(?:/?|.*/)Containerfile.*$","^(?:/?|.*/)Makefile$","^(?:/?|.*/)CMakeLists\\\\.txt$","^(?:/?|.*/)nextest\\\\.toml$","^(?:/?|.*/)deny\\\\.toml$","^(?:/?|.*/)ruff\\\\.toml$","^(?:/?|.*/)biome\\\\.json.*$","^(?:/?|.*/)tsconfig.*\\\\.json$","^(?:/?|.*/)AGENTS\\\\.md$","^(?:/?|.*/)CLAUDE\\\\.md$"],"dependencies":{"build":[],"build:rust:tests":[],"check:python":[],"check:repository":[],"check:rust":[],"package:rust":["build","check:python","check:repository","check:rust"],"test:rust:coverage":["build:rust:tests"],"test:rust:unit":["build:rust:tests"]}},"setup":{"windows":"$ErrorActionPreference = \'Stop\'\\n# === Setup === #\\n$vswhere = Join-Path ${env:ProgramFiles(x86)} \'Microsoft Visual Studio/Installer/vswhere.exe\'\\nif (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw \'The standard Windows image requires installed Visual Studio Build Tools\' }\\n$installation = & $vswhere -latest -products \'*\' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\\nif ($LASTEXITCODE -ne 0 -or !$installation) { throw \'The standard Windows image requires installed Visual Studio C++ tools\' }\\nImport-Module (Join-Path $installation \'Common7/Tools/Microsoft.VisualStudio.DevShell.dll\')\\nEnter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments \'-arch=x64 -host_arch=x64\' | Out-Null\\n$compiler = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'cl.exe\' } | Where-Object { (Test-Path -LiteralPath $_ -PathType Leaf) -and $_.StartsWith($installation, [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1\\nif (!$compiler -or !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $compiler) \'link.exe\') -PathType Leaf)) { throw \'MSVC compiler and linker are required from the selected installation\' }\\n$archiveRoot = Join-Path $PWD \'.cache/bootstrap/zstd-1.5.7\'\\n$archive = Join-Path $archiveRoot \'zstd.zip\'\\nNew-Item -ItemType Directory -Force $archiveRoot | Out-Null\\n$checksum = \'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9\'\\nif (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {\\n    Invoke-WebRequest \'https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip\' -OutFile $archive\\n}\\nif ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw \'Pinned zstd archive checksum mismatch\' }\\nExpand-Archive -LiteralPath $archive -DestinationPath $archiveRoot -Force\\n$compressor = Join-Path $archiveRoot \'zstd-v1.5.7-win64/zstd.exe\'\\nif (!(Test-Path -LiteralPath $compressor -PathType Leaf)) { throw \'Pinned zstd executable missing\' }\\n$compressorRoot = Split-Path -Parent $compressor\\n$env:PATH = (Split-Path -Parent $compiler) + [IO.Path]::PathSeparator + $compressorRoot + [IO.Path]::PathSeparator + $env:PATH\\n# === Verification === #\\n& $compressor --version\\nif ($LASTEXITCODE -ne 0) { throw \'Pinned zstd cannot execute\' }\\n$selectedLink = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { [IO.Path]::IsPathFullyQualified($_) } | ForEach-Object { Join-Path $_ \'link.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }) | Select-Object -First 1\\nif ($selectedLink -ne (Join-Path (Split-Path -Parent $compiler) \'link.exe\')) { throw \'MSVC linker precedence is required\' }\\n# === Entry Point === #\\n$paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim(\'\\"\') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })\\n$candidates = @($paths | ForEach-Object { Join-Path $_ \'tar.exe\' })\\nforeach ($git in @($paths | ForEach-Object { Join-Path $_ \'git.exe\' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {\\n  $root = Split-Path -Parent (Split-Path -Parent $git)\\n  $candidates += Join-Path $root \'usr/bin/tar.exe\'\\n}\\n$tar = $null\\nforeach ($candidate in @($candidates | Select-Object -Unique)) {\\n  if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }\\n  try {\\n    $version = & $candidate --version 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$version\\" -notmatch \'^tar \\\\(GNU tar\\\\)\') { continue }\\n    $capabilities = & $candidate --help 2>$null\\n    if ($LASTEXITCODE -ne 0 -or \\"$capabilities\\" -notmatch \'--force-local\' -or \\"$capabilities\\" -notmatch \'--use-compress-program\') { continue }\\n    $tar = $candidate\\n    break\\n  } catch { continue }\\n}\\nif (!$tar) { throw \'GNU tar with force-local and external-compressor support is required from the standard Git image baseline\' }\\n$env:PATH = (@((Split-Path -Parent $compiler), (Split-Path -Parent $tar), $compressorRoot) + @($env:PATH -split [IO.Path]::PathSeparator) | Select-Object -Unique) -join [IO.Path]::PathSeparator\\nif ($env:GITHUB_ENV) {\\n  foreach ($name in @(\'PATH\', \'INCLUDE\', \'LIB\', \'LIBPATH\')) {\\n    $value = [Environment]::GetEnvironmentVariable($name)\\n    if ($null -ne $value) { \\"$name=$value\\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }\\n  }\\n}","linux":"set -eu\\n# === Setup === #\\nnative_tools=\'tar zstd unzip zip\'\\ncase \\",${MISE_ENABLE_TOOLS:-rust},\\" in\\n    *,rust,*|*,cargo:*)\\n        native_tools=\\"$native_tools cc c++ make pkg-config\\"\\n        compiler=1\\n        ;;\\n    *) compiler=0 ;;\\nesac\\nmissing=\'\'\\nfor tool in $native_tools; do\\n    if ! command -v \\"$tool\\" >/dev/null 2>&1; then missing=\\"$missing $tool\\"; fi\\ndone\\ncase \\"$(tar --version 2>/dev/null || true)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) missing=\\"$missing GNU-tar\\" ;;\\nesac\\nif [ \\"$compiler\\" -eq 1 ] && ! pkg-config --exists openssl 2>/dev/null; then\\n    missing=\\"$missing openssl-development\\"\\nfi\\ninstall_prerequisites() {\\n    set -- tar zstd unzip zip\\n    if command -v apt-get >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-essential pkg-config libssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then\\n            apt-get update\\n            apt-get install -y --no-install-recommends \\"$@\\"\\n        else\\n            sudo -n apt-get update\\n            sudo -n apt-get install -y --no-install-recommends \\"$@\\"\\n        fi\\n    elif command -v apk >/dev/null 2>&1; then\\n        if [ \\"$compiler\\" -eq 1 ]; then set -- \\"$@\\" build-base pkgconf openssl-dev; fi\\n        if [ \\"$(id -u)\\" -eq 0 ]; then apk add --no-cache \\"$@\\"\\n        else sudo -n apk add --no-cache \\"$@\\"; fi\\n    else\\n        printf \'Missing shared CI prerequisites:%s; provide them through the declared job bootstrap or pinned image.\\\\n\' \\"$missing\\" >&2\\n        exit 1\\n    fi\\n}\\nif [ -n \\"$missing\\" ]; then install_prerequisites; fi\\n# === Verification === #\\ncase \\"$(tar --version)\\" in\\n    \'tar (GNU tar)\'*) ;;\\n    *) printf \'GNU tar is required.\\\\n\' >&2; exit 1 ;;\\nesac\\nzstd --version\\n# === Entry Point === #"}}'
 )
-GIB = 1024**3
 PRINT = threading.Lock()
-NATIVE_LIMIT: NativeLimit | None = None
-BUDGET = None
 
 
 # === Types === #
 
 # === Classes === #
+
+
+class SimulationError(RuntimeError):
+    pass
+
+
+class ProcessTree:
+    def __init__(self):
+        if sys.platform != "win32":
+            raise SimulationError("native process ownership requires Windows")
+
+        class Basic(ctypes.Structure):
+            _fields_ = [
+                ("process_time", ctypes.c_longlong),
+                ("job_time", ctypes.c_longlong),
+                ("flags", ctypes.c_ulong),
+                ("minimum", ctypes.c_size_t),
+                ("maximum", ctypes.c_size_t),
+                ("active", ctypes.c_ulong),
+                ("affinity", ctypes.c_size_t),
+                ("priority", ctypes.c_ulong),
+                ("scheduling", ctypes.c_ulong),
+            ]
+
+        class Counters(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_ulonglong) for name in ("read", "write", "other", "read_bytes", "write_bytes", "other_bytes")]
+
+        class Limits(ctypes.Structure):
+            _fields_ = [
+                ("basic", Basic),
+                ("io", Counters),
+                ("process_memory", ctypes.c_size_t),
+                ("job_memory", ctypes.c_size_t),
+                ("peak_process", ctypes.c_size_t),
+                ("peak_job", ctypes.c_size_t),
+            ]
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateJobObjectW.restype = ctypes.c_void_p
+        kernel.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+        kernel.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        self.kernel = kernel
+        self.handle = kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise SimulationError("cannot create native process tree")
+        limits = Limits()
+        limits.basic.flags = 0x2000
+        if not kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            self.close()
+            raise SimulationError("cannot configure owned process-tree cleanup")
+
+    def attach(self, process) -> None:
+        if sys.platform != "win32":
+            raise SimulationError("native process ownership requires Windows")
+
+        if not self.kernel.AssignProcessToJobObject(self.handle, int(process._handle)):
+            process.kill()
+            process.wait()
+            raise SimulationError("cannot attach the owned command to its owned process tree")
+
+        class Thread(ctypes.Structure):
+            _fields_ = [
+                ("size", ctypes.c_ulong),
+                ("usage", ctypes.c_ulong),
+                ("identity", ctypes.c_ulong),
+                ("owner", ctypes.c_ulong),
+                ("priority", ctypes.c_long),
+                ("delta", ctypes.c_long),
+                ("flags", ctypes.c_ulong),
+            ]
+
+        self.kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+        self.kernel.Thread32First.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.kernel.Thread32Next.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.kernel.OpenThread.restype = ctypes.c_void_p
+        self.kernel.ResumeThread.argtypes = [ctypes.c_void_p]
+        self.kernel.ResumeThread.restype = ctypes.c_ulong
+        snapshot = self.kernel.CreateToolhelp32Snapshot(4, 0)
+        resumed = False
+        try:
+            entry = Thread()
+            entry.size = ctypes.sizeof(entry)
+            present = self.kernel.Thread32First(snapshot, ctypes.byref(entry))
+            while present:
+                if entry.owner == process.pid:
+                    thread = self.kernel.OpenThread(2, False, entry.identity)
+                    if thread:
+                        try:
+                            resumed = self.kernel.ResumeThread(thread) != 0xFFFFFFFF
+                        finally:
+                            self.kernel.CloseHandle(thread)
+                        break
+                present = self.kernel.Thread32Next(snapshot, ctypes.byref(entry))
+        finally:
+            self.kernel.CloseHandle(snapshot)
+        if not resumed:
+            process.kill()
+            process.wait()
+            raise SimulationError("cannot resume the owned owned command")
+
+    def close(self) -> None:
+        if sys.platform != "win32":
+            return
+
+        if self.handle:
+            self.kernel.CloseHandle(self.handle)
+            self.handle = None
 
 
 # === Public Functions === #
@@ -75,18 +178,14 @@ def main() -> int:
     parser.add_argument("--pipeline", choices=("pr", "dev", "release", "nightly"), default="pr")
     parser.add_argument("--platform", action="append", choices=("windows", "linux"))
     parser.add_argument("--executor", action="append", help="platform=native|docker")
-    parser.add_argument("--cpus", type=int)
-    parser.add_argument("--memory-gib", type=float)
     parser.add_argument("--export", help=argparse.SUPPRESS)
     options = parser.parse_args()
     if options.export:
         export(Path.cwd(), json.loads(options.export), Path("target/ci/simulation-output.tar"))
         return 0
-    global NATIVE_LIMIT, BUDGET
     started = time.monotonic()
     results = {}
     output = None
-    peak_memory = None
     try:
         root = next(path for path in (Path.cwd(), *Path.cwd().parents) if (path / "mise.toml").is_file())
         platforms = options.platform or PLAN["platforms"]
@@ -122,9 +221,7 @@ def main() -> int:
         if not jobs:
             raise SimulationError("no jobs match the selected pipeline and platforms")
         needed = {job["execution_platform"] for job in jobs}
-        cpu, memory, limits = preflight(
-            {platform: executor for platform, executor in executors.items() if platform in needed}, options.cpus, options.memory_gib
-        )
+        preflight({platform: executor for platform, executor in executors.items() if platform in needed})
         docker_jobs = [job for job in jobs if job["executor"] == "docker"]
         if any(job["image"] == "managed:ubuntu-24.04" for job in docker_jobs):
             image = managed_image(PLAN["mise_image"], PLAN["setup"]["linux"])
@@ -142,16 +239,6 @@ def main() -> int:
                 raise SimulationError(
                     f"Linux image {image} must provide bash, Python3, mise and git before authored bootstrap; no fallback was applied"
                 )
-        BUDGET = Budget(cpu, memory, limits, report=lambda message: emit("Resources", message))
-        emit("Resources", f"CPU={cpu}; available RAM={memory / GIB:.2f} GiB; executor ceilings={limits}")
-        if os.name == "nt" and any(job["executor"] == "native" for job in jobs):
-            NATIVE_LIMIT = NativeLimit(cpu, memory)
-            emit(
-                "Resources",
-                "Native commands share one aggregate Windows process-tree CPU/RAM limit; Docker jobs share scheduler reservations and the engine ceiling",
-            )
-        BUDGET.native = NATIVE_LIMIT
-        BUDGET.update([], jobs)
         token = uuid.uuid4().hex[:12]
         output = root / "target/ci/simulation" / token
         output.mkdir(parents=True)
@@ -163,28 +250,18 @@ def main() -> int:
             candidate = Path(temporary) / "candidate"
             stage(root, candidate)
 
-            def execute(job, assigned_cpu, assigned_memory):
-                return run_job(job, candidate, output, cache, identity, token, profile, assigned_cpu, assigned_memory)
+            def execute(job):
+                return run_job(job, candidate, output, cache, identity, token, profile)
 
-            results = schedule(jobs, cpu, memory, limits, execute)
+            results = schedule(jobs, execute)
         return 0 if all(result["state"] == "passed" for result in results.values()) else 1
     except (OSError, ValueError, StopIteration, SimulationError, subprocess.SubprocessError) as error:
         emit("Preflight", str(error))
         return 1
     except KeyboardInterrupt:
-        if BUDGET:
-            BUDGET.cancel()
         return 130
     finally:
-        if NATIVE_LIMIT:
-            peak_memory = NATIVE_LIMIT.peak()
-            NATIVE_LIMIT.close()
-            NATIVE_LIMIT = None
-        BUDGET = None
         summary = summarize(results, time.monotonic() - started)
-        if peak_memory is not None:
-            summary["native_peak_memory_bytes"] = peak_memory
-            emit("Memory", f"Native Peak={peak_memory / GIB:.2f} GiB")
         statistics = summary["cache"] if isinstance(summary["cache"], dict) else {}
         reporting.render(
             "CI Simulation",
@@ -192,7 +269,7 @@ def main() -> int:
             statistics,
             phases={
                 "Critical Path": summary["critical_path_seconds"],
-                "Resource Wait": sum(result["wait_seconds"] for result in results.values()),
+                "Queue Wait": sum(result["wait_seconds"] for result in results.values()),
             },
             caches={name: {"Restore": "Unavailable"} for name in ("Cargo", "UV", "PNPM", "Mise")},
         )
@@ -201,91 +278,36 @@ def main() -> int:
                 f"{key} / {result['state']}",
                 result["seconds"],
                 result.get("cache"),
-                phases={"Resource Wait": result["wait_seconds"], **result.get("phases", {})},
+                phases={"Queue Wait": result["wait_seconds"], **result.get("phases", {})},
             )
-            if result.get("peak_memory_bytes") is not None:
-                emit(key, f"Memory / Peak={result['peak_memory_bytes'] / GIB:.2f} GiB")
         if output:
             (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
 
-def schedule(jobs: list[dict], cpu: int, memory: int, limits: dict, execute) -> dict:
+def schedule(jobs: list[dict], execute) -> dict:
     pending = {job["key"]: job for job in jobs}
     results = {}
-    active = {}
-    ready_at = {}
     queued = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=cpu) as pool:
-        while pending or active:
-            for key, job in list(pending.items()):
-                if any(results.get(need, {}).get("state") in ("failed", "blocked") for need in job["needs"]):
-                    results[key] = {
-                        "state": "blocked",
-                        "seconds": 0,
-                        "wait_seconds": time.monotonic() - queued,
-                        "needs": job["needs"],
-                        "cache": None,
-                    }
-                    emit(key, "blocked by failed prerequisite")
-                    del pending[key]
-            ready = [(key, job) for key, job in pending.items() if all(need in results for need in job["needs"])]
-            ready.sort(key=lambda item: not item[1].get("id", "").startswith("build"))
-            for key, _ in ready:
-                ready_at.setdefault(key, time.monotonic())
-            platforms = {job.get("execution_platform", job["executor"]) for job in jobs}
-            slots = min(cpu, 2 * len(platforms))
-            for key, job in ready:
-                if len(active) >= slots:
-                    break
-                platform = job.get("execution_platform", job["executor"])
-                if sum(item[4].get("execution_platform", item[3]) == platform for item in active.values()) >= 2:
-                    continue
-                assigned_cpu = max(1, cpu // slots)
-                assigned_memory = memory // slots
-                if job["executor"] == "docker":
-                    assigned_cpu = min(assigned_cpu, limits["docker"][0])
-                    assigned_memory = min(assigned_memory, limits["docker"][1] // 2)
-                job["wait_seconds"] = time.monotonic() - ready_at[key]
-                job["started"] = time.monotonic()
-                emit(f"{platform}/{key}", f"running; shared CPU budget={cpu}; reserved RAM={assigned_memory / GIB:.2f} GiB")
-                future = pool.submit(execute, job, assigned_cpu, assigned_memory)
-                active[future] = (key, assigned_cpu, assigned_memory, job["executor"], job)
-                del pending[key]
-            if BUDGET:
-                try:
-                    BUDGET.update([item[4] for item in active.values()], list(pending.values()))
-                except (OSError, SimulationError, subprocess.SubprocessError) as error:
-                    BUDGET.cancel()
-                    results["resource_budget"] = {
-                        "state": "failed",
-                        "seconds": time.monotonic() - queued,
-                        "wait_seconds": 0,
-                        "needs": [],
-                        "cache": None,
-                        "error": str(error),
-                    }
-                    for key, job in pending.items():
-                        results[key] = {"state": "blocked", "seconds": 0, "wait_seconds": 0, "needs": job["needs"], "cache": None}
-                    pending.clear()
-            if not active:
-                if pending:
-                    raise SimulationError("selected graph has an unavailable dependency or cycle")
-                break
+    while pending:
+        ready = [(key, job) for key, job in pending.items() if all(need in results for need in job["needs"])]
+        if not ready:
+            raise SimulationError("selected graph has an unavailable dependency or cycle")
+        key, job = ready[0]
+        wait = time.monotonic() - queued
+        started = time.monotonic()
+        result: dict
+        if any(results[need]["state"] != "passed" for need in job["needs"]):
+            result = {"state": "blocked", "seconds": 0, "cache": None}
+        else:
+            emit(key, "running")
             try:
-                done, _ = concurrent.futures.wait(active, return_when=concurrent.futures.FIRST_COMPLETED)
-            except KeyboardInterrupt:
-                if BUDGET:
-                    BUDGET.cancel()
-                raise
-            for future in done:
-                key, _, _, _, job = active.pop(future)
-                try:
-                    result = future.result()
-                except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
-                    result = {"state": "failed", "seconds": time.monotonic() - job["started"], "cache": None, "error": str(error)}
-                result.update(wait_seconds=job["wait_seconds"], needs=job["needs"])
-                results[key] = result
-                emit(key, str(result["state"]))
+                result = execute(job)
+            except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
+                result = {"state": "failed", "seconds": time.monotonic() - started, "cache": None, "error": str(error)}
+        result.update(wait_seconds=wait, needs=job["needs"])
+        results[key] = result
+        del pending[key]
+        emit(key, str(result["state"]))
     return results
 
 
@@ -323,38 +345,8 @@ def emit(job: str, message: str) -> None:
         print(f"[{job}] {message}", flush=True)
 
 
-def available_memory() -> int:
-    if os.name == "nt":
-
-        class Memory(ctypes.Structure):
-            _fields_ = [
-                ("length", ctypes.c_ulong),
-                ("load", ctypes.c_ulong),
-                *[
-                    (name, ctypes.c_ulonglong)
-                    for name in ("total", "available", "page_total", "page_available", "virtual_total", "virtual_available", "extended")
-                ],
-            ]
-
-        memory = Memory()
-        memory.length = ctypes.sizeof(memory)
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
-            raise SimulationError("cannot determine available host RAM")
-        return memory.available
-    return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-
-
-def preflight(executors: dict, requested_cpu: int | None, requested_memory: float | None) -> tuple[int, int, dict]:
-    cpu, memory = os.process_cpu_count() or 1, available_memory()
-    if requested_cpu is not None:
-        if requested_cpu < 1 or requested_cpu > cpu:
-            raise SimulationError("CPU limit must be positive and no larger than available host CPUs")
-        cpu = requested_cpu
-    if requested_memory is not None:
-        if requested_memory <= 0 or requested_memory * GIB > memory:
-            raise SimulationError("RAM limit must be positive and no larger than available host RAM")
-        memory = int(requested_memory * GIB)
-    limits = {}
+def preflight(executors: dict) -> None:
+    checked_docker = False
     for platform, executor in executors.items():
         if executor == "native":
             if platform != "windows" or os.name != "nt" or not shutil.which("mise") or not shutil.which("pwsh"):
@@ -363,13 +355,11 @@ def preflight(executors: dict, requested_cpu: int | None, requested_memory: floa
                 )
         elif platform != "linux":
             raise SimulationError("Docker supports Linux only; a native Windows host is required for Windows")
-        elif "docker" not in limits:
+        elif not checked_docker:
             command = subprocess.run(["docker", "info", "--format", "{" + "{json .}" + "}"], capture_output=True, text=True, check=True)
-            info = json.loads(command.stdout)
-            if info.get("OSType") != "linux":
+            if json.loads(command.stdout).get("OSType") != "linux":
                 raise SimulationError("required Docker Linux engine unavailable; start Docker Desktop with its WSL Linux backend")
-            limits["docker"] = (int(info["NCPU"]), int(info["MemTotal"]))
-    return cpu, memory, limits
+            checked_docker = True
 
 
 def stage(root: Path, destination: Path) -> None:
@@ -536,10 +526,8 @@ def source_archive(workspace: Path, archive: Path, modes: dict) -> dict:
     return records
 
 
-def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str, token: str, profile: str, cpu: int, memory: int) -> dict:
+def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str, token: str, profile: str) -> dict:
     started = time.monotonic()
-    if BUDGET and BUDGET.cancelled.is_set():
-        raise SimulationError("simulation cancelled before job start")
     key = job["key"]
     result: dict = {"state": "failed", "seconds": 0, "cache": None}
     with tempfile.TemporaryDirectory(prefix="stkr-ci-job-") as temporary:
@@ -588,8 +576,6 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
         environment.update(
             PROFILE=graph_profile,
             RELEASE_PROFILE=graph_profile,
-            CARGO_BUILD_JOBS=str(cpu),
-            CMAKE_BUILD_PARALLEL_LEVEL=str(cpu),
             CARGO_INCREMENTAL="0",
             MISE_YES="1",
             MISE_LOCKED="1",
@@ -612,9 +598,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
             commands.append(command)
         with (output / f"{key}.log").open("w", encoding="utf-8") as log:
             if job["executor"] == "docker":
-                status = docker(
-                    job, workspace, output, identity, token, environment, commands, outputs, cpu, memory, log, result, transferred_modes
-                )
+                status = docker(job, workspace, output, identity, token, environment, commands, outputs, log, result, transferred_modes)
             else:
                 local = cache / native
                 local.mkdir(parents=True, exist_ok=True)
@@ -627,7 +611,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                     pnpm_config_store_dir=str(local / "pnpm"),
                     STKR_SCCACHE_DIR=str(local / "sccache"),
                 )
-                evidence(output, job, commands, environment, cpu, memory)
+                evidence(output, job, commands, environment)
                 windows = os.name == "nt"
                 script = workspace.with_suffix(".ps1" if windows else ".sh")
                 for name, suffix in [("GITHUB_ENV", ".env"), ("GITHUB_PATH", ".path")]:
@@ -675,8 +659,6 @@ def docker(
     environment: dict,
     commands: list[str],
     outputs: dict,
-    cpu: int,
-    memory: int,
     log,
     result: dict,
     modes: dict | None = None,
@@ -689,7 +671,6 @@ def docker(
     lines = [
         "set -eo pipefail",
         ': > "$GITHUB_ENV"; : > "$GITHUB_PATH"',
-        "trap 'if [ -r /sys/fs/cgroup/memory.peak ]; then printf \"STKR_PEAK_MEMORY \"; cat /sys/fs/cgroup/memory.peak; fi' EXIT",
     ]
     for index, command in enumerate(commands):
         lines.extend([f"printf '%s\n' 'Command {index + 1}/{len(commands)}'", command])
@@ -707,8 +688,6 @@ def docker(
         in (
             "PROFILE",
             "RELEASE_PROFILE",
-            "CARGO_BUILD_JOBS",
-            "CMAKE_BUILD_PARALLEL_LEVEL",
             "CARGO_INCREMENTAL",
             "MISE_YES",
             "MISE_LOCKED",
@@ -731,16 +710,12 @@ def docker(
         GITHUB_ENV="/ci-environment",
         GITHUB_PATH="/ci-path",
     )
-    evidence(output, job, commands, child, cpu, memory)
+    evidence(output, job, commands, child)
     create = [
         "docker",
         "create",
         "--name",
         name,
-        "--cpus",
-        str(cpu),
-        "--memory",
-        str(memory),
         "--mount",
         f"type=volume,source={volume},target=/workspace",
         "--mount",
@@ -755,8 +730,6 @@ def docker(
     try:
         subprocess.run(create, check=True, capture_output=True, text=True)
         created = True
-        if BUDGET:
-            BUDGET.register(job["key"], name)
         archive = workspace.with_suffix(".tar")
         records = source_archive(workspace, archive, modes or {})
         (output / f"{job['key']}.source-modes.json").write_text(json.dumps(records), encoding="utf-8")
@@ -777,8 +750,6 @@ def docker(
     finally:
         if created:
             preserve_reports(workspace, output, job["key"], log, name)
-            if BUDGET:
-                BUDGET.unregister(job["key"])
             subprocess.run(["docker", "rm", "--force", name], check=False, capture_output=True)
             subprocess.run(["docker", "volume", "rm", volume], check=False, capture_output=True)
 
@@ -814,7 +785,7 @@ def preserve_reports(workspace: Path, output: Path, key: str, log, container: st
             pass
 
 
-def evidence(output: Path, job: dict, commands: list[str], environment: dict, cpu: int, memory: int) -> None:
+def evidence(output: Path, job: dict, commands: list[str], environment: dict) -> None:
     selected = {
         name: value
         for name, value in environment.items()
@@ -822,8 +793,6 @@ def evidence(output: Path, job: dict, commands: list[str], environment: dict, cp
         in (
             "PROFILE",
             "RELEASE_PROFILE",
-            "CARGO_BUILD_JOBS",
-            "CMAKE_BUILD_PARALLEL_LEVEL",
             "CARGO_INCREMENTAL",
             "CARGO_HOME",
             "UV_CACHE_DIR",
@@ -831,7 +800,7 @@ def evidence(output: Path, job: dict, commands: list[str], environment: dict, cp
         )
         or name.startswith(("MISE_", "STKR_SCCACHE_", "STKR_CI_SIMULATE"))
     }
-    recorded = {"job": job, "commands": commands, "environment": selected, "cpu": cpu, "memory_bytes": memory}
+    recorded = {"job": job, "commands": commands, "environment": selected}
     (output / f"{job['key']}.execution.json").write_text(json.dumps(recorded, indent=2) + "\n", encoding="utf-8")
 
 
@@ -839,30 +808,30 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
     if timeout <= 0:
         raise SimulationError("job deadline exceeded")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    if NATIVE_LIMIT and command[0] != "docker":
+    owner = ProcessTree() if os.name == "nt" and command[0] != "docker" else None
+    if owner:
         flags |= 4
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        creationflags=flags,
-        start_new_session=os.name != "nt",
-    )
-    owned = None
-    if NATIVE_LIMIT and command[0] != "docker":
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            creationflags=flags,
+            start_new_session=os.name != "nt",
+        )
+    except BaseException:
+        if owner:
+            owner.close()
+        raise
+    if owner:
         try:
-            NATIVE_LIMIT.attach(process, resume=False)
-            owned = NativeLimit(None, None)
-            owned.attach(process)
+            owner.attach(process)
         except BaseException:
-            if owned:
-                owned.close()
-            process.kill()
-            process.wait()
+            owner.close()
             raise
 
     def drain():
@@ -874,8 +843,6 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
             log.write(line)
             log.flush()
             emit(key, line.rstrip())
-            if line.startswith("STKR_PEAK_MEMORY "):
-                result["peak_memory_bytes"] = int(line.removeprefix("STKR_PEAK_MEMORY ").strip())
             if line.startswith("STKR_BUILD_STATISTICS "):
                 information = json.loads(line.removeprefix("STKR_BUILD_STATISTICS "))
                 metrics = {name: value for name, value in information["statistics"].items() if type(value) is int}
@@ -891,7 +858,7 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
     reader.start()
     try:
         return process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
         else:
@@ -899,13 +866,45 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
 
             os.killpg(process.pid, signal.SIGKILL)
         process.wait()
+        if isinstance(error, KeyboardInterrupt):
+            raise
         raise SimulationError("job deadline exceeded") from None
     finally:
-        if owned:
-            owned.close()
+        if owner:
+            owner.close()
+        elif os.name != "nt":
+            import signal
+
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         reader.join(timeout=5)
         if reader.is_alive():
             raise SimulationError("owned command retained its output stream after termination")
+
+
+def managed_image(mise_image: str, setup: str) -> str:
+    recipe = f"""FROM {mise_image} AS mise
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends python3 git curl ca-certificates sudo && rm -rf /var/lib/apt/lists/*
+COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
+COPY native-setup.sh /opt/stkr-ci/native-setup.sh
+RUN bash /opt/stkr-ci/native-setup.sh && rm -rf /var/lib/apt/lists/*
+ENTRYPOINT []
+"""
+    fingerprint = hashlib.sha256((recipe + setup).encode()).hexdigest()
+    image = f"stkr-ci-ubuntu24:{fingerprint}"
+    if subprocess.run(["docker", "image", "inspect", image], capture_output=True, check=False).returncode == 0:
+        return image
+    print(f"Preparing managed Ubuntu 24.04 executor image {image}", flush=True)
+    with tempfile.TemporaryDirectory(prefix="stkr-ci-image-") as temporary:
+        context = Path(temporary)
+        (context / "Dockerfile").write_text(recipe, encoding="utf-8", newline="\n")
+        (context / "native-setup.sh").write_text(setup, encoding="utf-8", newline="\n")
+        subprocess.run(["docker", "build", "--tag", image, str(context)], check=True)
+    return image
 
 
 # === Entry Point === #

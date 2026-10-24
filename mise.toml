@@ -310,10 +310,8 @@ usage = '''
 flag "--pipeline <kind>" default=pr
 flag "--platform <platform>"
 flag "--executor <executor>"
-flag "--cpus <count>"
-flag "--memory-gib <size>"
 '''
-run = "uv run --locked --project tools/python python -m harmos_tools.ci.simulate {% if usage.pipeline %}--pipeline {{usage.pipeline}}{% endif %} {% if usage.platform %}--platform {{usage.platform}}{% endif %} {% if usage.executor %}--executor {{usage.executor}}{% endif %} {% if usage.cpus %}--cpus {{usage.cpus}}{% endif %} {% if usage.memory_gib %}--memory-gib {{usage.memory_gib}}{% endif %}"
+run = "uv run --locked --project tools/python python -m harmos_tools.ci.simulate {% if usage.pipeline %}--pipeline {{usage.pipeline}}{% endif %} {% if usage.platform %}--platform {{usage.platform}}{% endif %} {% if usage.executor %}--executor {{usage.executor}}{% endif %}"
 
 # === Release === #
 
