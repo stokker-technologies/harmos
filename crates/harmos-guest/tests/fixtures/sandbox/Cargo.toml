@@ -87,15 +87,6 @@ harmos-guest = { path = "../../..", default-features = false, features = ["deriv
 
 # === Profiles === #
 
-# Guest Fuel Counts Wasm Instructions, Generated Schema Decoding Included: Keep Dev
-# Assertions But Optimize Enough That Initialization Fits The Host's Fuel Budget
-[profile.dev]
-opt-level = 1
-debug = false
-
-[profile.dev.package."*"]
-opt-level = 2
-
 # === Patches === #
 
 # === Other === #

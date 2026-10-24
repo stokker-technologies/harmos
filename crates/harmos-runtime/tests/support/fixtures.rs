@@ -123,7 +123,11 @@ pub fn protoc() -> PathBuf {
 /* === Private Functions === */
 
 fn directory() -> PathBuf {
-    let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
+    let profile = match std::env::var("STKR_TEST_PROFILE") {
+        Ok(profile) if matches!(profile.as_str(), "dev" | "release") => profile,
+        Err(std::env::VarError::NotPresent) => "dev".to_owned(),
+        _ => panic!("STKR_TEST_PROFILE must be dev or release"),
+    };
     let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
     workspace().join("target/build").join(profile).join(target).join("fixtures")
 }

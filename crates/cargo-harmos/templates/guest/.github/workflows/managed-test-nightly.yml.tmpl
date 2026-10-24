@@ -1,8 +1,11 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:5140324cf2c27013104f02e1465a4e8ebdf506ee41758cf592659ed8f93bd1c4
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-nightly.yml; sha256:ea9e75ea768fbaa08635078ac19ce5b5e7d5e3c837d9c8b4f68464a8b51b95d8
 name: Test
 "on":
   workflow_call:
     inputs:
+      pipeline:
+        type: string
+        required: true
       runners:
         type: string
         required: true
@@ -10,21 +13,20 @@ name: Test
         type: string
         required: true
 env:
-  PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'dev' }}
+  PROFILE: >-
+    ${{ inputs.pipeline == 'nightly' && 'release' || (startsWith(github.ref,
+    'refs/tags/v') && 'release' || 'dev') }}
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   validate_coverage_rust:
     name: Rust / Coverage
     runs-on: ${{ fromJSON(inputs.runners).nightly.coverage }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_coverage_rust }}
-    env:
-      MISE_ENABLE_TOOLS: >-
-        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
     steps:
     - name: Configure Checkout Git
       if: runner.os == 'Windows'
@@ -225,16 +227,13 @@ jobs:
         mise_dir: ${{ env.MISE_DATA_DIR }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        name: build-product-${{ env.PROFILE }}-linux
-    - name: Extract Build
-      shell: bash
-      run: tar --zstd -xf "build-product-${{ env.PROFILE }}-linux.tar.zst"
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
         name: build-tests-${{ env.PROFILE }}-linux
-    - name: Extract Build
-      shell: bash
-      run: tar --zstd -xf "build-tests-${{ env.PROFILE }}-linux.tar.zst"
+        path: target/ci
+    - name: Extract build:rust:tests / tests
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.artifacts extract --archive target/ci/build-tests-${{ env.PROFILE
+        }}-linux.tar.zst --profile ${{ env.PROFILE }}
     - run: mise run test:rust:coverage --profile ${{ env.PROFILE }}
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
@@ -274,4 +273,15 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
-    if: github.event_name == 'schedule'
+    - name: Cache Summary
+      if: always()
+      env:
+        STKR_CACHE_RESTORES: "{\"Mise\":\"${{ steps.mise.outputs.cache-hit == 'true' && 'Exact Hit' || steps.mise.outputs.cache-hit == 'false' && 'Partial Hit' || steps.mise.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"Cargo\":\"${{ steps.cargo_downloads.outputs.cache-hit == 'true' && 'Exact Hit' || steps.cargo_downloads.outputs.cache-hit == 'false' && 'Partial Hit' || steps.cargo_downloads.outcome == 'success' && 'Miss' || 'Unavailable' }}\",\"UV\":\"${{ steps.uv.outputs.cache-hit == 'true' && 'Exact Hit' || steps.uv.outputs.cache-hit == 'false' && 'Partial Hit' || steps.uv.outcome == 'success' && 'Miss' || 'Unavailable' }}\"}"
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        project_tools.ci.summary
+    if: inputs.pipeline == 'nightly'
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+      MISE_TASK_SKIP: build:rust:tests

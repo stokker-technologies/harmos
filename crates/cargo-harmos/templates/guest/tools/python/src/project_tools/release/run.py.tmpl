@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:46cf1ad16646f573cd1270a8089283644f8d01068483701c36e797d618c0a389
+# Rendered by stkr project update from templates/python/release/run.py; sha256:2d870f8f82e9dbac0f1dba8510b23b91e236cb8feac06dd72de3616544bce854
 # ***
 #
 # __PRODUCT_NAME__
@@ -749,7 +749,7 @@ def _rehearse_clean(directory: Path, settings: dict) -> None:
             "MISE_CACHE_DIR": str(scratch / "mise-cache"),
             "MISE_LOCKED": "1",
             "MISE_TRUSTED_CONFIG_PATHS": str(checkout),
-            "npm_config_store_dir": str(scratch / "pnpm"),
+            "pnpm_config_store_dir": str(scratch / "pnpm"),
             "CARGO_INCREMENTAL": "0",
             "RELEASE_PROFILE": "release",
         }

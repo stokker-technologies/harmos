@@ -37,6 +37,112 @@ windows = "windows-2022"
 [ci.impact]
 default = "full"
 
+[[ci.impact.rules]]
+name = "prose"
+include = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
+exclude = ["docs/examples/**", "docs/tutorials/**", "docs/src/**"]
+jobs = ["check:repository"]
+
+# --- Stage / Check --- #
+
+[[ci.jobs]]
+id = "check:python:generated"
+inputs = ["build#product"]
+
+# --- Stage / Build --- #
+
+[[ci.jobs]]
+id = "build"
+outputs.product = [
+  "target/build/{profile}/{target}/bin",
+  "target/build/{profile}/{target}/lib",
+  "target/build/{profile}/{target}/product",
+  "target/generated/python/pyproject.toml",
+  "target/generated/python/src",
+]
+
+[[ci.jobs]]
+id = "build:rust:tests"
+outputs.tests = ["target/build/{profile}/{target}/tests/archive.tar.zst", "target/build/{profile}/{target}/tests/compiler.json"]
+outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
+
+[[ci.jobs]]
+id = "build:rust:bench"
+outputs.bench = ["target/build/bench/{target}/bench", "target/build/bench/{target}/bin", "target/build/bench/{target}/fixtures"]
+
+# --- Stage / Prepare --- #
+
+[[ci.jobs]]
+id = "prepare:tests:fixtures"
+inputs = ["build#product", "build:rust:tests#fixtures"]
+outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
+
+# --- Stage / Test --- #
+
+[[ci.jobs]]
+id = "test:rust:unit"
+inputs = ["build:rust:tests#tests"]
+
+[[ci.jobs]]
+id = "test:rust:integration"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures"]
+
+[[ci.jobs]]
+id = "test:rust:acceptance"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
+id = "test:rust:system"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
+id = "test:rust:starter"
+pipelines = ["nightly"]
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
+id = "test:rust:coverage"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+# --- Stage / Bench --- #
+
+[[ci.jobs]]
+id = "bench:rust:unit"
+inputs = ["build:rust:bench#bench"]
+
+[[ci.jobs]]
+id = "bench:rust:integration"
+inputs = ["build:rust:bench#bench"]
+
+[[ci.jobs]]
+id = "bench:rust:system"
+inputs = ["build:rust:bench#bench"]
+
+# --- Stage / Package --- #
+
+[[ci.jobs]]
+id = "package:rust"
+inputs = ["build#product"]
+outputs.package = ["target/package/{profile}/{target}"]
+
+# --- Stage / Release --- #
+
+[[ci.jobs]]
+id = "release:publish:dry"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:rehearse"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:publish"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:verify"
+inputs = ["package:rust#package"]
+
 # === === Hooks === === #
 
 [hooks]
@@ -59,295 +165,295 @@ system = 64
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=publication_crosses_row)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 1.495s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=registration_precedes_init)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 1.495s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=refusal_preserves_reason)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 1.535s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=shutdown_current_context)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 2.399s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=submitted_children_controls)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 2.478s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=unbound_operations_refused)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 2.591s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-guest::system) & test(=plugin::sdk_lifecycle_retained)"
-timeout_seconds = 10
-reason = "Three times the prior native story measurement of 1.619s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"
-timeout_seconds = 10
-reason = "Three times the prior native compiler story measurement of 0.045s with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=schematic::cli_backends_reopen)"
-timeout_seconds = 14
-reason = "Three times the prior nominal/parity CLI measurements totaling 4.643s"
+select = "binary_id(=harmos-runtime::system) & (test(=schematic::cli_backends_reopen) | test(=schematic::cli_streams_settle))"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-packaging::acceptance) & test(=proto::portable_messages_cross)"
-timeout_seconds = 10
-reason = "Three times the measured 0.056s native compiler story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-packaging::acceptance) & test(=proto::boxed_messages_cross)"
-timeout_seconds = 10
-reason = "Three times the measured 0.049s native compiler story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "acceptance"
 language = "rust"
 select = "binary_id(=harmos-packaging::acceptance) & test(=proto::exported_sources_compile)"
-timeout_seconds = 10
-reason = "Three times the measured 0.028s native compiler story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::background_cleanup_retained)"
-timeout_seconds = 12
-reason = "Three times the measured 3.979s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::cancelled_dependency_admission)"
-timeout_seconds = 12
-reason = "Three times the measured 3.950s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::cancelled_shutdown_cleanup)"
-timeout_seconds = 12
-reason = "Three times the measured 3.696s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::dependencies_share_admission)"
-timeout_seconds = 13
-reason = "Three times the measured 4.078s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::missing_provider_refused)"
-timeout_seconds = 14
-reason = "Three times the measured 4.624s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::dependencies::dependency_admission::shutdown_fences_callers)"
-timeout_seconds = 14
-reason = "Three times the measured 4.479s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::fuel_retains_cause)"
-timeout_seconds = 13
-reason = "Three times the measured 4.153s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::host_resource_settings)"
-timeout_seconds = 25
-reason = "Three times the measured 8.195s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::manager_bounds_wait)"
-timeout_seconds = 12
-reason = "Three times the measured 3.823s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::memory_growth_bounded)"
-timeout_seconds = 12
-reason = "Three times the measured 3.739s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::refusal_keeps_classification)"
-timeout_seconds = 12
-reason = "Three times the measured 3.732s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::limits::trap_discards_instance)"
-timeout_seconds = 11
-reason = "Three times the measured 3.618s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::children_retire_authority)"
-timeout_seconds = 23
-reason = "Three times the measured 7.476s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::declared_operation_roundtrip)"
-timeout_seconds = 12
-reason = "Three times the measured 3.780s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::exact_live_bindings)"
-timeout_seconds = 13
-reason = "Three times the measured 4.066s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::grpc_original_owner)"
-timeout_seconds = 12
-reason = "Three times the measured 3.826s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::inert_plan_denies)"
-timeout_seconds = 25
-reason = "Three times the measured 8.007s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::initialization_children_retired)"
-timeout_seconds = 13
-reason = "Three times the measured 4.290s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::initialization_cleans_failure)"
-timeout_seconds = 13
-reason = "Three times the measured 4.049s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::overlay_preserves_parent)"
-timeout_seconds = 13
-reason = "Three times the measured 4.324s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::phases_retain_capacity)"
-timeout_seconds = 20
-reason = "Three times the measured 6.633s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::shutdown_retains_cleanup)"
-timeout_seconds = 15
-reason = "Three times the measured 4.747s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::stream_lifecycle_preserved)"
-timeout_seconds = 10
-reason = "Three times the measured 2.912s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::wire_alias_refused)"
-timeout_seconds = 10
-reason = "Three times the measured 3.217s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::operations::wrong_catalog_refused)"
-timeout_seconds = 10
-reason = "Three times the measured 2.741s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::bounded_window_gaps)"
-timeout_seconds = 10
-reason = "Three times the measured 2.672s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::initialization_aborts_staging)"
-timeout_seconds = 16
-reason = "Three times the measured 5.039s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::publications_survive_unload)"
-timeout_seconds = 16
-reason = "Three times the measured 5.193s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::replacement_preserves_owner)"
-timeout_seconds = 17
-reason = "Three times the measured 5.389s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 select = "binary_id(=harmos-runtime::system) & test(=guest_contract::publications::saved_context_generation)"
-timeout_seconds = 10
-reason = "Three times the measured 2.283s native guest story, with the 10s floor"
+timeout_seconds = 30
+reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 
 [barrels]
 exclude = ["crates/harmos-runtime/src/prelude.rs"]

@@ -59,7 +59,7 @@ async fn main() -> ExitCode {
     match dispatch(args).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("schematic: {error}");
+            eprintln!("schematic: {}", harmos::failure::Report(&error));
             ExitCode::FAILURE
         }
     }

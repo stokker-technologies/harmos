@@ -119,16 +119,14 @@ where
             }
             return Ok(Arc::clone(&instance.table));
         }
-        std::hint::black_box(P::markers().map_err(refusal)?);
+        let markers = P::markers().map_err(refusal)?;
+        std::hint::black_box(&markers);
         let required = harmos_domain::inventory::contracts::Required::from_tree(P::REQUIRES).map_err(refusal)?;
         let provides = Contracts::from_tree(P::PROVIDES).map_err(refusal)?;
         let listeners = harmos_domain::listeners::Declarations::from_tree(P::LISTENERS).map_err(refusal)?;
         harmos_domain::inventory::listeners::validate(&listeners, &provides).map_err(refusal)?;
-        let declaration = harmos_domain::inventory::Declaration::inspect(
-            &P::markers().map_err(refusal)?.concat(),
-            harmos_domain::inventory::Facility::Guest,
-        )
-        .map_err(refusal)?;
+        let declaration = harmos_domain::inventory::Declaration::inspect(&markers.concat(), harmos_domain::inventory::Facility::Guest)
+            .map_err(refusal)?;
         harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams).map_err(refusal)?;
         let contracts = &declaration.contracts;
         let sdk = [

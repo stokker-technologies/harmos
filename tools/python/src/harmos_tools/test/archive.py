@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:2b0043f8c2893af19171253ae5fc653c7e3f927e19c6c8394f36d64b48ffe1bc
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:9a1832af2849a42055a2029e3bd804a787036316cdad0c7520c285ec87cc048c
 # ***
 #
 # Harmos
@@ -6,7 +6,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-"""Build One Nextest Archive And Check The Fixture Files Consumed By Lanes."""
+"""Read Nextest Archives And Check The Fixture Files Consumed By Lanes."""
 
 # === Imports === #
 
@@ -23,7 +23,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from ..build import cargo, paths
+from ..build import paths
 from . import policy
 
 # Type Checking Imports
@@ -56,55 +56,6 @@ def revision(directory: Path) -> str | None:
 
 def location(directory: Path, profile: str) -> Path:
     return paths.output(directory, "build", profile) / "tests" / ARCHIVE
-
-
-def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
-    if profile not in policy.PROFILES:
-        raise policy.TestError("unknown build profile")
-    path = location(directory, profile)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.unlink(missing_ok=True)
-    compiler_profile = "release-tests" if profile == "release" else profile
-    cargo.clippy(
-        directory,
-        ["--locked", "--workspace", "--tests", "--profile", compiler_profile, *extra],
-    )
-    command = [
-        "cargo",
-        "nextest",
-        "archive",
-        "--locked",
-        "--workspace",
-        "--tests",
-        "--cargo-profile",
-        compiler_profile,
-        "--cargo-message-format",
-        "json",
-        "--archive-file",
-        str(path),
-        *extra,
-    ]
-    with path.with_name(MESSAGES).open("w", encoding="utf-8") as output:
-        result = subprocess.run(
-            command,
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            cwd=directory,
-            stdout=output,
-            check=False,
-        )
-    if result.returncode:
-        path.unlink(missing_ok=True)
-        for line in path.with_name(MESSAGES).read_text(encoding="utf-8").splitlines():
-            message = json.loads(line)
-            diagnostic = message.get("message", {}).get("rendered")
-            if diagnostic:
-                print(diagnostic, file=sys.stderr, end="")
-        raise policy.TestError(f"nextest archive build failed; compiler messages: {path.with_name(MESSAGES)}")
-    require(directory, profile)
-    prune(path.parent, {ARCHIVE, MESSAGES}, archives=True)
-    return path
 
 
 def prune(directory: Path, keep: set[str], *, archives: bool = False) -> None:
@@ -238,18 +189,16 @@ def fixtures(
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build The Workspace Nextest Archive")
+    parser = argparse.ArgumentParser(description="Validate Existing Test Inputs")
     parser.add_argument("--profile", choices=policy.PROFILES, default="dev")
     parser.add_argument("--install-wheels", action="store_true")
     parser.add_argument("--target")
-    parser.add_argument("extra", nargs=argparse.REMAINDER)
     options = parser.parse_args(arguments)
-    extra = options.extra[1:] if options.extra[:1] == ["--"] else options.extra
     try:
         if options.install_wheels:
             install_wheels(policy.root(), options.profile, options.target)
             return 0
-        print(build(policy.root(), options.profile, extra))
+        print(require(policy.root(), options.profile))
         return 0
     except (policy.TestError, OSError, ValueError) as error:
         print(f"archive: {error}", file=sys.stderr)

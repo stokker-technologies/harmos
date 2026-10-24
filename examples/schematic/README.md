@@ -40,8 +40,8 @@ The domain crate and SDKs compile without the host runtime.
 After running the build tasks above, add `--advanced` to the CLI:
 
 ```sh
-cargo run -p schematic-cli -- --advanced
-cargo run -p schematic-cli -- --guest target/artifacts/schematic-tools.wasm --advanced
+target/build/dev/linux-x86_64/bin/schematic-cli --advanced
+target/build/dev/linux-x86_64/bin/schematic-cli --guest --advanced
 ```
 
 [advanced.rs](cli/src/advanced.rs) drains three analysis findings, joins the
@@ -89,7 +89,7 @@ Examples and test reports remain GitHub Actions artifacts; Rust crates publish t
 ## Tests And Persistence
 
 Product Build exports the CLI and plugins under `target/build/dev/<target>/bin/`.
-Tests Build stamps those exact Product bytes in
+Fixture preparation joins the Product and Tests manifests and stamps those exact bytes in
 `target/build/dev/<target>/fixtures/stamp.json`, and the system stories in
 `crates/*/tests/system/` drive those artifacts.
 

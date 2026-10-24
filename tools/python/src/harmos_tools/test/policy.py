@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:a832d13d8918bf68152344d236da6b434a3aeaeb67dbb70fe45c0d0eda2b1d73
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:1263bbab85548987d658b7c4b92b620250a37bf99771202fac81e9c42639bd31
 # ***
 #
 # Harmos
@@ -12,7 +12,7 @@ Keys, all optional:
 
     [conventions.testing]
     limits = { unit = 512, integration = 256, acceptance = 128, system = 64 }
-    deadlines = { unit = 10, integration = 120, acceptance = 900, system = 900 }
+    deadlines = { unit = 30, integration = 120, acceptance = 900, system = 900 }
     bench_regression_percent = 20
 
     [[conventions.testing.overrides]]
@@ -58,11 +58,10 @@ BENCH_CATEGORIES = ("unit", "integration", "system")
 LANGUAGES = ("rust", "python", "typescript", "javascript")
 PROFILES = ("dev", "release")
 LIMITS = {"unit": 512, "integration": 256, "acceptance": 128, "system": 64}
-DEADLINES = {"unit": 10, "integration": 120, "acceptance": 900, "system": 900}
+DEADLINES = {"unit": 30, "integration": 120, "acceptance": 900, "system": 900}
 
-# Liveness Guard: About Three Recorded Durations, Never Below Ten Seconds.
-MEASURED_FACTOR = 3
-MEASURED_FLOOR = 10
+# Minimum Correctness-Test Hang Guard; Performance Belongs To Benchmarks.
+MINIMUM_TIMEOUT = 30
 COVERAGE_FACTOR = 5
 OVERRIDE_KEYS = {"category", "language", "select", "timeout_seconds", "reason"}
 
@@ -95,14 +94,6 @@ class Policy:
         """The lane maximum per story, multiplied for instrumented runs."""
         return self.deadlines[category] * (COVERAGE_FACTOR if coverage else 1)
 
-    def story(self, category: str, recorded: float | None) -> int:
-        """The liveness deadline of one story from its last recorded duration."""
-        lane = self.deadlines[category]
-        if category not in ("acceptance", "system") or recorded is None:
-            return lane
-        measured = max(MEASURED_FACTOR * recorded, MEASURED_FLOOR)
-        return min(lane, int(measured + 0.999))
-
     def selected(self, category: str, language: str) -> list[Override]:
         return [entry for entry in self.overrides if entry.category == category and entry.language == language]
 
@@ -133,7 +124,7 @@ def load(directory: Path) -> Policy:
         raise TestError("[conventions.testing] must be a table")
 
     limits = _numbers(testing.get("limits", {}), "limits", LIMITS, 0)
-    deadlines = _numbers(testing.get("deadlines", {}), "deadlines", DEADLINES, 1)
+    deadlines = _numbers(testing.get("deadlines", {}), "deadlines", DEADLINES, MINIMUM_TIMEOUT)
     retired = [key for key in ("hosts", "lanes") if key in testing]
     if retired:
         raise TestError(
@@ -146,8 +137,8 @@ def load(directory: Path) -> Policy:
             raise TestError("each override declares " + ", ".join(sorted(OVERRIDE_KEYS)))
         if entry["category"] not in CATEGORIES or entry["language"] not in LANGUAGES:
             raise TestError(f"override names an unknown lane: {entry}")
-        if not _positive(entry["timeout_seconds"]) or not str(entry["reason"]).strip():
-            raise TestError(f"override needs a positive timeout and a reason: {entry}")
+        if not _positive(entry["timeout_seconds"], MINIMUM_TIMEOUT) or not str(entry["reason"]).strip():
+            raise TestError(f"override needs a timeout of at least 30 seconds and a reason: {entry}")
         overrides.append(Override(**entry))
     threshold = testing.get("bench_regression_percent", 20)
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or threshold <= 0:

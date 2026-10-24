@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:ca78621c03c93accd635aab522e6df7dc2ea0e2bbe51ede6e8aa0529174808ab
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:54c39a9357fe4bd10d1f98f6fcd015231c36d23edf54f0a4d3444d4e6fbd8984
 # ***
 #
 # Harmos
@@ -35,12 +35,13 @@ from pathlib import Path
 # === Public Functions === #
 
 
-def changed_paths(target: str) -> set[str] | None:
+def changed_paths(target: str, root: Path | None = None) -> set[str] | None:
     """Include Deleted, Added, Dirty And Untracked Paths Against One Merge Base."""
 
     def git(*arguments: str) -> str:
         return subprocess.check_output(
             ["git", *arguments],
+            cwd=root,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             stderr=subprocess.DEVNULL,
             timeout=30,
@@ -71,11 +72,14 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
     """Match Every Changed Path And Preserve The Complete Dependency Closure."""
     graph = plan["dependencies"]
     full = set(graph)
-    if not paths or any(_matches(plan["protected"], path) for path in paths):
+    if not paths:
         return full
     selected = set()
-    for rule in plan["rules"]:
-        if all(_matches(rule["only"], path) and not _matches(rule["exclude"], path) for path in paths):
+    for path in paths:
+        matching = [rule for rule in plan["rules"] if _matches(rule["include"], path) and not _matches(rule["exclude"], path)]
+        if not matching:
+            return full
+        for rule in matching:
             selected.update(rule["jobs"])
     if not selected:
         return full
@@ -83,12 +87,17 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
     while pending:
         job = pending.pop()
         if job not in graph:
-            raise ValueError(f"impact plan references unknown job {job}")
+            return full
         for dependency in graph[job]:
             if dependency not in selected:
                 selected.add(dependency)
                 pending.append(dependency)
     return selected
+
+
+def selection(root: Path, plan: dict, target: str = "origin/dev") -> set[str]:
+    """Resolve Portable Local Impact Without A Hub Installation Or Registration."""
+    return select(plan, changed_paths(target, root))
 
 
 def main(plan: dict) -> None:
@@ -110,13 +119,6 @@ def main(plan: dict) -> None:
         for name in list(document):
             if isinstance(document[name], dict) and "stage" in document[name] and name not in selected:
                 del document[name]
-        for producer, consumers in plan.get("test_outputs", {}).items():
-            if producer in document:
-                enabled = bool(selected.intersection(consumers))
-                document[producer].setdefault("variables", {})["STKR_BUILD_TESTS"] = str(enabled).lower()
-                if not enabled:
-                    artifacts = document[producer].get("artifacts", {})
-                    artifacts["paths"] = [path for path in artifacts.get("paths", []) if not path.startswith("target/ci/build-tests-")]
         # Original Event Rules Remain Meaningful Inside The Native Child Pipeline.
         text = json.dumps(document).replace("CI_PIPELINE_SOURCE", "STKR_PIPELINE_SOURCE")
         destination = Path("target/ci/impact-child.yml")

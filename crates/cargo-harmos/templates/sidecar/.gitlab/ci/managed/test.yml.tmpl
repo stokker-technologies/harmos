@@ -1,17 +1,20 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:6019d9a6dadedcac90f59d6bbfb65d6d838f1a5d33d439d6462089a6aceb0eec
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:d7a16371a1e5896a1c7dad831da03855ef53999cf21ade1152e777fcc33f38ac
 Test / Rust / Unit (linux):
   stage: Test
   tags:
   - saas-linux-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Native (linux)
+  - job: Build / Tests (linux)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
     optional: true
   script:
-  - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.ci.artifacts extract --archive target/ci/build-tests-$PROFILE-linux.tar.zst
+    --profile $PROFILE
   - mise run test:rust:unit --profile $PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -29,6 +32,7 @@ Test / Rust / Unit (linux):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build:rust:tests
   before_script:
   - >-
     if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
@@ -92,34 +96,16 @@ Test / Rust / Unit (windows):
   - saas-windows-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Native (windows)
+  - job: Build / Tests (windows)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
     optional: true
   script:
-  - |-
-    $paths = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim('"') } | Where-Object { [IO.Path]::GetPathRoot($_).Length -ge 3 })
-    $candidates = @($paths | ForEach-Object { Join-Path $_ 'tar.exe' })
-    foreach ($git in @($paths | ForEach-Object { Join-Path $_ 'git.exe' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })) {
-      $root = Split-Path -Parent (Split-Path -Parent $git)
-      $candidates += Join-Path $root 'usr/bin/tar.exe'
-    }
-    $tar = $null
-    foreach ($candidate in @($candidates | Select-Object -Unique)) {
-      if ([IO.Path]::GetPathRoot($candidate).Length -lt 3 -or !(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-      try {
-        $version = & $candidate --version 2>$null
-        if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^tar \(GNU tar\)') { continue }
-        $capabilities = & $candidate --help 2>$null
-        if ($LASTEXITCODE -ne 0 -or "$capabilities" -notmatch '--force-local' -or "$capabilities" -notmatch '--use-compress-program') { continue }
-        $tar = $candidate
-        break
-      } catch { continue }
-    }
-    if (!$tar) { throw 'GNU tar with force-local and external-compressor support is required from the standard Git image baseline' }
-    & $tar -xf "target/ci/build-tests-$env:PROFILE-windows.tar.zst" --force-local --use-compress-program "zstd -d"
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.ci.artifacts extract --archive target/ci/build-tests-$env:PROFILE-windows.tar.zst
+    --profile $env:PROFILE
   - mise run test:rust:unit --profile $env:PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -246,17 +232,20 @@ Test / Rust / Unit (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build:rust:tests
 Test / Rust / Coverage:
   stage: Test
   tags:
   - saas-linux-medium-amd64
   timeout: 120 minutes
   needs:
-  - job: Build / Native (linux)
+  - job: Build / Tests (linux)
     artifacts: true
   script:
-  - tar --zstd -xf "target/ci/build-product-$PROFILE-linux.tar.zst"
-  - tar --zstd -xf "target/ci/build-tests-$PROFILE-linux.tar.zst"
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.ci.artifacts extract --archive target/ci/build-tests-$PROFILE-linux.tar.zst
+    --profile $PROFILE
   - mise run test:rust:coverage --profile $PROFILE
   rules:
   - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -268,3 +257,4 @@ Test / Rust / Coverage:
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+    MISE_TASK_SKIP: build:rust:tests

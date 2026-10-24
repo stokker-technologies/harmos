@@ -1,0 +1,229 @@
+# Rendered by stkr project update from templates/python/ci/containers.py; sha256:b12240f310452133415862f084c109793db6cb91a7ef74284f362c201a8586bd
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Own Exact Simulation Docker Resources Across Cancellation."""
+
+# === Imports === #
+
+# Standard Library Imports
+import json
+import os
+import re
+import subprocess
+import sys
+import uuid
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
+from pathlib import Path
+
+# Third Party Imports
+
+# Local Imports
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+LABEL = "stkr.simulation."
+
+# === Types === #
+
+# === Classes === #
+
+
+class Busy(RuntimeError):
+    pass
+
+
+class Owner:
+    def __init__(self, path: Path, record: dict):
+        self.path = path
+        self.record = record
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {LABEL + key: self.record[key] for key in ("repository", "run", "job", "nonce")}
+
+    def save(self) -> None:
+        staging = self.path.with_suffix(".tmp")
+        if staging.is_symlink() or staging.is_junction():
+            raise ValueError("Docker ownership staging must not be a link")
+        staging.write_text(json.dumps(self.record), encoding="utf-8")
+        staging.replace(self.path)
+
+    def create(self, command: list[str]) -> None:
+        if (
+            command[:2] != ["docker", "create"]
+            or "--name" not in command
+            or command[command.index("--name") + 1] != self.record["container"]
+        ):
+            raise ValueError("Docker creation must use its recorded job identity")
+        labels = [argument for key, value in self.labels.items() for argument in ("--label", f"{key}={value}")]
+        try:
+            subprocess.run(["docker", "volume", "create", *labels, self.record["volume"]], check=True, capture_output=True, text=True)
+            volume = _inspect("volume", self.record["volume"])
+            if volume is None or not self.matches(volume, "volume"):
+                raise ValueError("Docker work volume ownership does not match its record")
+            self.record["phase"] = "container"
+            self.save()
+            subprocess.run([*command[:2], *labels, *command[2:]], check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError:
+            self.record["phase"] = "settled"
+            self.save()
+            raise
+        self.record["phase"] = "settled"
+        self.save()
+
+    def cleanup(self, preserve: Callable[[str], None]) -> bool:
+        container = _inspect("container", self.record["container"])
+        volume = _inspect("volume", self.record["volume"])
+        if container is not None and not self.matches(container, "container"):
+            return False
+        if volume is not None and not self.matches(volume, "volume"):
+            return False
+        if container is None and self.record["phase"] == "container":
+            return False
+        if container is None and volume is None and self.record["phase"] != "settled":
+            return False
+        if container is not None:
+            try:
+                preserve(self.record["container"])
+            finally:
+                self.remove(volume, True)
+        else:
+            self.remove(volume, False)
+        return True
+
+    def matches(self, metadata: dict, kind: str) -> bool:
+        labels = metadata.get("Config", {}).get("Labels", {}) if kind == "container" else metadata.get("Labels", {})
+        name = metadata.get("Name", "").lstrip("/")
+        return name == self.record[kind] and all((labels or {}).get(key) == value for key, value in self.labels.items())
+
+    def remove(self, volume: dict | None, container: bool) -> None:
+        if container:
+            subprocess.run(["docker", "rm", "--force", self.record["container"]], check=True, capture_output=True, text=True)
+        if volume is not None:
+            subprocess.run(["docker", "volume", "rm", self.record["volume"]], check=True, capture_output=True, text=True)
+        self.record["phase"] = "clean"
+        self.save()
+
+
+# === Public Functions === #
+
+
+@contextmanager
+def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[str], None]) -> Generator[Owner]:
+    path = output / f"{key}.docker-owner.json"
+    lock = path.with_suffix(".lock")
+    if path.exists() or path.is_symlink() or lock.is_symlink() or lock.is_junction():
+        raise ValueError("Docker job ownership already exists or is linked")
+    lock.touch(exist_ok=True)
+    with _lease(lock):
+        name = f"stkr-ci-{run}-{key.replace('_', '-')}"
+        record = {
+            "version": 1,
+            "repository": repository,
+            "output": str(output.resolve()),
+            "run": run,
+            "job": key,
+            "nonce": uuid.uuid4().hex,
+            "container": name,
+            "volume": name + "-work",
+            "phase": "volume",
+        }
+        owner = Owner(path, record)
+        owner.save()
+        try:
+            yield owner
+        finally:
+            if not owner.cleanup(preserve):
+                print(f"Simulation retained unverified or unsettled Docker ownership: {path}", file=sys.stderr, flush=True)
+
+
+def reconcile(root: Path, repository: str, preserve: Callable[[Path, str, str], None]) -> None:
+    if not root.exists():
+        return
+    for path in sorted(root.glob("*/*.docker-owner.json")):
+        if any(part.is_symlink() or part.is_junction() for part in (root, path.parent, path)):
+            continue
+        lock = path.with_suffix(".lock")
+        if not lock.is_file() or lock.is_symlink() or lock.is_junction():
+            continue
+        try:
+            with _lease(lock):
+                record = json.loads(path.read_text(encoding="utf-8"))
+                if not _valid(path, record, repository) or record["phase"] == "clean":
+                    continue
+                owner = Owner(path, record)
+                owner.cleanup(lambda container, output=path.parent, key=record["job"]: preserve(output, key, container))
+        except (Busy, OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"Simulation retained Docker ownership {path}: {error}", file=sys.stderr, flush=True)
+
+
+# === Private Functions === #
+
+
+def _valid(path: Path, record: object, repository: str) -> bool:
+    if not isinstance(record, dict) or record.get("version") != 1 or record.get("repository") != repository:
+        return False
+    run = record.get("run", "")
+    key = record.get("job", "")
+    nonce = record.get("nonce", "")
+    if not all(isinstance(value, str) for value in (run, key, nonce)):
+        return False
+    if (
+        re.fullmatch(r"[a-zA-Z0-9_-]+", run) is None
+        or re.fullmatch(r"[a-zA-Z0-9_-]+", key) is None
+        or re.fullmatch(r"[a-f0-9]{32}", nonce) is None
+    ):
+        return False
+    name = f"stkr-ci-{run}-{key.replace('_', '-')}"
+    return (
+        record.get("output") == str(path.parent.resolve())
+        and path.name == f"{key}.docker-owner.json"
+        and record.get("container") == name
+        and record.get("volume") == name + "-work"
+        and record.get("phase") in ("volume", "container", "settled", "clean")
+    )
+
+
+def _inspect(kind: str, name: str) -> dict | None:
+    filters = f"name=^/{name}$" if kind == "container" else f"name={name}"
+    command = ["docker", kind, "ls", "--quiet", "--filter", filters]
+    if kind == "container":
+        command.append("--all")
+    found = subprocess.run(command, check=True, capture_output=True, text=True).stdout.splitlines()
+    if kind == "volume":
+        found = [value for value in found if value == name]
+    if not found:
+        return None
+    metadata = subprocess.run(["docker", kind, "inspect", name], check=True, capture_output=True, text=True)
+    return json.loads(metadata.stdout)[0]
+
+
+@contextmanager
+def _lease(path: Path) -> Generator[None]:
+    with path.open("r+b") as handle:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise Busy("Docker job owner lease is busy") from error
+        yield
+
+
+# === Entry Point === #

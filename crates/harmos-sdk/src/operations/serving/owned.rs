@@ -230,7 +230,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         }
         self.bind_owned_contract::<T>(
             resources,
-            descriptor.contract().clone(),
+            descriptor.into(),
             true,
             true,
             || {

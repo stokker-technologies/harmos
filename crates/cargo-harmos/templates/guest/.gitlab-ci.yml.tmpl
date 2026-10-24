@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:2e9b2b8953897b472307534b5008374a0e3c7f9c08fecf7a266f0ea1a86d72bd
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:f1c08a9122c9d14c4b9fdd5a21f2026c0c1227c91505dbba5c0806c0dc6274d2
 stages:
 - Check
 - Build
@@ -78,7 +78,7 @@ variables:
   MISE_DATA_DIR: $CI_PROJECT_DIR/.cache/mise
   CARGO_HOME: $CI_PROJECT_DIR/.cache/cargo
   MISE_DOWNLOADS_DIR: $CI_PROJECT_DIR/.cache/mise/downloads
-  npm_config_store_dir: $CI_PROJECT_DIR/.cache/pnpm
+  pnpm_config_store_dir: $CI_PROJECT_DIR/.cache/pnpm
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
 workflow:
   rules:
@@ -100,6 +100,11 @@ workflow:
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|main)$/
     variables:
       PROFILE: dev
+    auto_cancel:
+      on_new_commit: none
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+    variables:
+      PROFILE: release
     auto_cancel:
       on_new_commit: none
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"

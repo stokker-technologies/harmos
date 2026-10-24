@@ -15,6 +15,7 @@
 
 // Standard Library Imports
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
@@ -26,6 +27,9 @@ use crate::schema::graph::{Kind, Schema, View};
 use crate::schema::{self, Described};
 
 /* === Constants === */
+
+static INITIALIZE_CONTRACT: OnceLock<Contract> = OnceLock::new();
+static SHUTDOWN_CONTRACT: OnceLock<Contract> = OnceLock::new();
 
 /* === Macros === */
 
@@ -191,11 +195,24 @@ impl Contract {
 
     // Only The Closed SDK Action Can Construct Reserved Metadata
     pub(crate) fn lifecycle(action: crate::operations::lifecycle::Action, policy: super::OperationPolicy) -> Result<Self, ContractError> {
-        use crate::operations::lifecycle::{Action, Initialize, Shutdown};
-        match action {
-            Action::Initialize => Self::reserved::<Initialize>(policy),
-            Action::Shutdown => Self::reserved::<Shutdown>(policy),
-        }
+        use crate::operations::lifecycle::{self, Action, Initialize, Shutdown};
+        policy.validate().map_err(crate::Error::from)?;
+        let cache = match action {
+            Action::Initialize => &INITIALIZE_CONTRACT,
+            Action::Shutdown => &SHUTDOWN_CONTRACT,
+        };
+        let template = if let Some(contract) = cache.get() {
+            contract
+        } else {
+            let contract = match action {
+                Action::Initialize => Self::reserved::<Initialize>(lifecycle::POLICY)?,
+                Action::Shutdown => Self::reserved::<Shutdown>(lifecycle::POLICY)?,
+            };
+            cache.get_or_init(|| contract)
+        };
+        let mut contract = template.clone();
+        contract.operation.policy = policy;
+        Ok(contract)
     }
 
     // The Contract Of A Built-In Operation Under The Reserved `harmos.` Namespace,
@@ -412,6 +429,41 @@ mod tests {
             exposed["grpc"] = json!({"package": "forged.v1", "service": "Exposed", "method": "Invoke"});
             assert!(serde_json::from_value::<Contract>(exposed).is_err());
         }
+    }
+
+    #[test]
+    fn sdk_lifecycle_refuses_invalid() {
+        let delay = std::time::Duration::from_secs(1);
+        let backoff = Backoff::Fixed { delay, jitter: Jitter::None };
+        let descriptors = [
+            Descriptor::new(Action::Initialize, lifecycle::POLICY).unwrap(),
+            Descriptor::new(Action::Shutdown, lifecycle::POLICY).unwrap(),
+        ];
+        for descriptor in &descriptors {
+            assert_eq!(Contract::from(descriptor.clone()), *descriptor.contract());
+            let encoded = serde_json::to_value(descriptor).unwrap();
+            assert_eq!(serde_json::from_value::<Descriptor>(encoded.clone()).unwrap(), *descriptor);
+            for (pointer, replacement) in [
+                ("/version", json!(2)),
+                ("/policy/attempt_timeout/secs", json!(0)),
+                ("/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/policy/restart", json!(RestartPolicy::OnTransient { credit: 1, sustained_health: delay, backoff })),
+            ] {
+                let mut forged = encoded.clone();
+                *forged.pointer_mut(pointer).unwrap() = replacement;
+                assert!(serde_json::from_value::<Descriptor>(forged).is_err(), "{pointer}");
+            }
+        }
+        let mut manifest = crate::inventory::contracts::Manifest {
+            facility: "guest".into(),
+            owner: "fixture".into(),
+            provides: Vec::new(),
+            requires: Vec::new(),
+            lifecycle: descriptors,
+        };
+        crate::inventory::contracts::validate(&manifest).unwrap();
+        manifest.lifecycle.swap(0, 1);
+        assert!(crate::inventory::contracts::validate(&manifest).is_err());
     }
 
     #[test]

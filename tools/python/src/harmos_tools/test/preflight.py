@@ -17,6 +17,7 @@ import os
 import stat
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 # Third Party Imports
@@ -42,6 +43,7 @@ def main(arguments: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--category", choices=("integration", "acceptance", "system"), required=True)
+    parser.add_argument("--starter", action="store_true")
     options = parser.parse_args(arguments)
     profile, category = options.profile, options.category
     fixtures = paths.output(ROOT, "build", profile) / "fixtures"
@@ -57,19 +59,24 @@ def main(arguments: list[str] | None = None) -> None:
     else:
         executable = "cargo-harmos" if category == "acceptance" else "schematic-cli"
         selected = [selectors["artifacts"][name] for name in (executable, "schematic-sidecar", "schematic-guest")]
-        if category == "system":
-            selected.append(selectors["artifacts"]["harmos-sandbox-guest"])
+    if category == "system":
+        selected.append(selectors["artifacts"]["harmos-sandbox-guest"])
     if category == "acceptance":
         selected.extend(selectors["libraries"].values())
         selected.extend(selectors[name] for name in ("vendor", "wheels", "requirements"))
-    for relative in selected:
-        if not _input(fixtures, relative).exists():
-            sys.exit(f"fixture input {relative} is absent; run mise run build:rust:tests")
+    missing = [relative for relative in selected if not _input(fixtures, relative).exists()]
+    if missing:
+        sys.exit(f"fixture input {missing[0]} is absent; run mise run build:rust:tests")
 
-    if category == "acceptance":
-        # Starter Stories Share Mise's Runtime Links; Install Their Full Toolset Before Nextest Starts Them.
+    if options.starter:
+        # Starter Stories Share Mise's Runtime Links; Install Only Their Declared Tools Before Nextest Starts Them.
         environment = dict(os.environ)
-        environment.pop("MISE_ENABLE_TOOLS", None)
+        templates = ROOT / "crates/cargo-harmos/templates"
+        guest = (templates / "guest/mise.toml.tmpl").read_text(encoding="utf-8")
+        sidecar = (templates / "sidecar/mise.toml.tmpl").read_text(encoding="utf-8")
+        tools = set(tomllib.loads(guest)["tools"]) | set(tomllib.loads(sidecar)["tools"])
+        names = sorted(tools)
+        environment["MISE_ENABLE_TOOLS"] = ",".join(names)
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
         subprocess.run(
             ["mise", "install"],

@@ -22,6 +22,33 @@ roots = ["tools/python"]
 
 # === === CI === === #
 
+# --- Stage / Build --- #
+
+[[ci.jobs]]
+id = "build"
+outputs.product = ["target/build/{profile}/{target}/bin", "target/build/{profile}/{target}/lib", "target/build/{profile}/{target}/product"]
+
+[[ci.jobs]]
+id = "build:rust:tests"
+outputs.tests = ["target/build/{profile}/{target}/tests/archive.tar.zst", "target/build/{profile}/{target}/tests/compiler.json"]
+
+# --- Stage / Test --- #
+
+[[ci.jobs]]
+id = "test:rust:unit"
+inputs = ["build:rust:tests#tests"]
+
+[[ci.jobs]]
+id = "test:rust:coverage"
+inputs = ["build:rust:tests#tests"]
+
+# --- Stage / Package --- #
+
+[[ci.jobs]]
+id = "package:rust"
+inputs = ["build#product"]
+outputs.package = ["target/package/{profile}/{target}"]
+
 # === === Agents === === #
 
 # === === Hooks === === #
