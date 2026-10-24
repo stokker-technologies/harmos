@@ -62,17 +62,22 @@ fn cli_backends_reopen() {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
-        children.push(child);
+        children.push((backend, child));
     }
 
     let mut outputs = Vec::new();
-    for child in children {
+    for (backend, child) in children {
         let output = child.and_then(Child::wait_with_output);
-        outputs.push(output);
+        outputs.push((backend, output));
     }
-    for output in outputs {
-        let output = output.unwrap();
-        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    for (backend, output) in outputs {
+        let output = output.unwrap_or_else(|error| panic!("{backend}: {error}"));
+        assert!(
+            output.status.success(),
+            "{backend}: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
         let stdout = String::from_utf8(output.stdout).unwrap();
         let lines: Vec<_> = stdout.lines().collect();
         assert_eq!(lines.first().copied(), Some("Placed R1 and U1, connected POWER, moved R1"));
@@ -103,18 +108,23 @@ fn cli_streams_settle() {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
-        children.push(child);
+        children.push((backend, child));
     }
 
     let mut outputs = Vec::new();
-    for child in children {
+    for (backend, child) in children {
         let output = child.and_then(Child::wait_with_output);
-        outputs.push(output);
+        outputs.push((backend, output));
     }
     let mut advanced_outputs = Vec::new();
-    for output in outputs {
-        let output = output.unwrap();
-        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    for (backend, output) in outputs {
+        let output = output.unwrap_or_else(|error| panic!("{backend}: {error}"));
+        assert!(
+            output.status.success(),
+            "{backend}: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
         let stdout = String::from_utf8(output.stdout).unwrap();
         let lines = stdout.lines().map(str::to_owned);
         advanced_outputs.push(lines.collect::<Vec<_>>());

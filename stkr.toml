@@ -39,7 +39,7 @@ default = "full"
 
 [[ci.impact.rules]]
 name = "prose"
-only = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
+include = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
 exclude = ["docs/examples/**", "docs/tutorials/**", "docs/src/**"]
 jobs = ["check:repository"]
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:47d8b0298a1606d401cea2988303e46e8a3602afb2346035b3d8ba7b5d0c8aef
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:5dc58cb2d67cd3d6f1e8b66a7a07a44863b9fde42ae55c903b6c26f5424585aa
 # ***
 #
 # Harmos
@@ -23,7 +23,7 @@ from typing import Any
 # Third Party Imports
 # Local Imports
 from ..ci import summary
-from . import paths
+from . import paths, storage
 
 # Type Checking Imports
 
@@ -39,6 +39,7 @@ from . import paths
 
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
+    storage.preflight(directory)
     selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
     with summary.phase("Clippy"):
         subprocess.run(

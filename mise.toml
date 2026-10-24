@@ -119,7 +119,12 @@ run = [
 
 [tasks."check:repository"]
 description = "Check Repository Configuration And Conventions"
-run = [{ task = "format:toml --check" }, "shellcheck --version", "actionlint"]
+run = [
+  { task = "format:toml --check" },
+  "uv run --locked --project tools/python python -m harmos_tools.ci.mise",
+  "shellcheck --version",
+  "actionlint",
+]
 
 [tasks."check:rust"]
 description = "Check Rust"
@@ -238,7 +243,7 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
 ]
 
 # === Bench === #
