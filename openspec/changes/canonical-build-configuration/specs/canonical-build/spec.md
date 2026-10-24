@@ -22,7 +22,7 @@ Product SHALL use default Cargo dev or release settings, Bench SHALL use default
 
 ### Requirement: Measured Build Budget
 
-Tests Build SHALL take no longer than Product Build for the same platform/profile under comparable cache conditions. The complete warm-cache pipeline SHALL finish below 45 minutes, with 30 minutes advisory. Cold timings SHALL remain separate, and warm-cache claims SHALL rely on observed restoration/compiler reuse. Breaches SHALL trigger investigation and repair without silent coverage removal or deadline relaxation.
+Tests Build SHALL take no longer than Product Build for the same platform/profile under comparable cache conditions. The complete warm-cache pipeline SHALL finish below 45 minutes, with 30 minutes advisory. Cold timings SHALL remain separate, and warm-cache claims SHALL rely on observed restoration/compiler reuse. Breaches SHALL trigger investigation and repair without silent coverage removal; correctness-test deadlines SHALL NOT serve as performance criteria.
 
 #### Scenario: Tests Exceeds Product
 
@@ -38,3 +38,12 @@ The explicit optional local `test:rust:extended` suite SHALL preserve noncanonic
 - **WHEN** a developer requests `mise run test:rust:extended`
 - **THEN** the optional task builds its required artifacts and runs all preserved feature-dependent stories and compatibility checks
 
+
+### Requirement: Correctness And Performance Budgets
+
+Every correctness test SHALL have at least a 30-second deadline, preserving larger bounds. Historical runtime measurements SHALL NOT tighten correctness deadlines. Performance SHALL be assessed through benchmarks, with the application objective remaining under 10 seconds. Cargo defaults and product runtime limits SHALL remain unchanged.
+
+#### Scenario: Slow System Story
+
+- **WHEN** a System story exceeds its former optimized-runtime deadline
+- **THEN** the correctness test retains the 30-second minimum while each observed failure is investigated separately for fixture I/O, validation/JIT, startup and actual-operation cost; the application performance objective remains open until measured

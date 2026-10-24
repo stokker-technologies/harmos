@@ -2,7 +2,7 @@
 
 ## Parallel Producer Decision
 
-Product and Tests now use separate parallel provider jobs, superseding single-job consolidation. Independent feature sets are permitted, but CI remains canonical-only and extended configurations remain local opt-in. Tests Build must take no longer than Product Build on the same candidate/platform/profile; measured breaches require investigation and repair of redundant compilation, feature sprawl or testing structure, not silent coverage removal or raised timeouts. Preserve actual artifact dependencies and report relocated work in the full critical path. Repository owner must reconcile obsolete single-job clauses before closure. The latest user directive permits superseding existing pipelines after the new candidate passes its local gate.
+Product and Tests now use separate parallel provider jobs, superseding single-job consolidation. Independent feature sets are permitted, but CI remains canonical-only and extended configurations remain local opt-in. Tests Build must take no longer than Product Build on the same candidate/platform/profile; measured breaches require investigation and repair of redundant compilation, feature sprawl or testing structure, not silent coverage removal or using correctness-test deadlines as performance criteria. Preserve actual artifact dependencies and report relocated work in the full critical path. Repository owner must reconcile obsolete single-job clauses before closure. The latest user directive permits superseding existing pipelines after the new candidate passes its local gate.
 
 ## Superseding User Decision
 
@@ -16,11 +16,13 @@ Mise owns canonical configurations per platform/profile; independent producer fe
 
 The exported shipping library closure measures 986,433,545 bytes uncompressed on the existing Windows development build. This transfer moves from Tests to Product and is included in the actual critical path. Fixture preparation is a real manifest join after both producers; it is not independent of Product or a way to hide compiler time. Unit tests can use the Tests-only base fixture stamp. Other fixture consumers need the prepared combination.
 
-Tests Build must not exceed Product Build under comparable cache conditions. The complete warm-cache pipeline must finish below 45 minutes, with 30 minutes advisory. Cold timings are reported separately. Warmth requires observed successful restoration/compiler reuse evidence, never the assumption that an earlier run warmed the cache. A breach requires reassessment, not relaxed deadlines or silent coverage removal; material architecture or feature changes require a user decision.
+Tests Build must not exceed Product Build under comparable cache conditions. The complete warm-cache pipeline must finish below 45 minutes, with 30 minutes advisory. Cold timings are reported separately. Warmth requires observed successful restoration/compiler reuse evidence, never the assumption that an earlier run warmed the cache. A breach requires reassessment without silent coverage removal; material architecture or feature changes require a user decision.
 
 ## Ownership And Delivery
 
 The existing harmos owner implements in its current worktree, updates the inventory, and owns final local proof after source closure. Root coordinates Hub dependencies. The previous branch merged. Preserve its owned specification retirement changes, then use an authorized new fix/canonical-build-configuration branch based on current dev in this same worktree; never discard changes. Changes require protected review into dev. Do not publish releases.
+
+Correctness tests have a minimum 30-second deadline, with larger existing bounds preserved. Historical measured runtimes never tighten these deadlines; performance is measured through benchmarks. This does not waive the separate objective that application work completes within 10 seconds. Investigate all eight observed System timeouts individually, separating fixture I/O, validation/JIT, startup and actual operations; do not assume a shared cause. Product lifecycle deadlines, fuel limits and Cargo defaults remain unchanged.
 
 ## Source Inventory
 

@@ -12,3 +12,5 @@ Run independent parallel Product and Tests jobs using existing canonical shippin
 
 Build tasks, authored build/test producers, CI selection, affected tests, maintained specifications and README claims. Hub owns shared guidance and generated tooling. No release publication is authorized.
 
+
+Correctness tests use a minimum 30-second deadline and retain larger limits. Past runtimes do not tighten those bounds. Benchmarks own performance evidence; the separate under-10-second application objective requires investigation of every observed System timeout without compiler-profile exceptions or product runtime-limit changes.
