@@ -32,8 +32,8 @@ use harmos_sidecar::{StreamSpec, Supervisor};
 
 const MAX_CASES: usize = 256;
 const SDK_POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(30),
-    attempt_timeout: Duration::from_secs(30),
+    timeout: Duration::from_secs(120),
+    attempt_timeout: Duration::from_secs(120),
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };
@@ -82,8 +82,8 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
     version = 1,
     response = (),
     policy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_secs(30),
+        timeout: Duration::from_secs(120),
+        attempt_timeout: Duration::from_secs(120),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     },

@@ -56,7 +56,7 @@ impl<C> StorageManager<C> {
             if !state.ready || !state.status.running {
                 return Err(Error::NotReady { domain: "storage" });
             }
-            if let ReceiptState::Complete(value) = state.receipts.lookup(mutation.id, &mutation.fingerprint)? {
+            if let ReceiptState::Complete(value) = state.receipts.lookup(mutation.id, &mutation.fingerprint, None)? {
                 return value.cursor();
             }
         }

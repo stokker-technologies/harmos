@@ -60,6 +60,7 @@ impl<C> StorageManager<C> {
         }
         let fingerprint = fingerprint(file);
         let mut retry = true;
+        let mut completion = None;
         let mut changed = self.inner.changed.subscribe();
         loop {
             let mut notify = false;
@@ -71,9 +72,13 @@ impl<C> StorageManager<C> {
                 if !state.ready || !state.status.running {
                     return Err(Error::NotReady { domain: "file deletion" });
                 }
-                match state.receipts.lookup(mutation, &fingerprint)? {
+                match state.receipts.lookup(mutation, &fingerprint, completion.as_ref())? {
                     ReceiptState::Complete(value) => return value.deleted(),
                     ReceiptState::Pending => {
+                        if completion.is_none() {
+                            let owner = state.receipts.completion(mutation);
+                            completion = Some(owner);
+                        }
                         let deletion = state.deletions.get(mutation).ok_or_else(|| invalid("pending identity owns different work"))?;
                         if let Some(source) = deletion.failure.clone() {
                             if !retry {
@@ -121,6 +126,8 @@ impl<C> StorageManager<C> {
                         }
                         let outcome = MutationValue::Deleted(file.clone());
                         state.receipts.insert(mutation, fingerprint, outcome.memory_size())?;
+                        let owner = state.receipts.completion(mutation);
+                        completion = Some(owner);
                         let receipt = state.receipts.prepared(mutation, outcome);
                         let target = state.data_accepted;
                         state.deletions.insert(

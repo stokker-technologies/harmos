@@ -88,6 +88,7 @@ impl<C> StorageManager<C> {
             return Err(invalid("backend does not support mutation receipts"));
         }
         let mut retry = true;
+        let mut completion = None;
         let mut changed = self.inner.changed.subscribe();
         loop {
             let mut queued = false;
@@ -101,9 +102,13 @@ impl<C> StorageManager<C> {
                 }
                 state.expire_files();
                 state.collect();
-                match state.receipts.lookup(mutation, &fingerprint)? {
+                match state.receipts.lookup(mutation, &fingerprint, completion.as_ref())? {
                     ReceiptState::Complete(value) => return Ok(value),
                     ReceiptState::Pending => {
+                        if completion.is_none() {
+                            let owner = state.receipts.completion(mutation);
+                            completion = Some(owner);
+                        }
                         let file = state
                             .files
                             .values_mut()
@@ -134,6 +139,8 @@ impl<C> StorageManager<C> {
                         admission(&state)?;
                         queued = admit(&mut state)?;
                         if queued {
+                            let owner = state.receipts.completion(mutation);
+                            completion = Some(owner);
                             retry = false;
                         }
                     }

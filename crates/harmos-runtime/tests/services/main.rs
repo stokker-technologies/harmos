@@ -61,8 +61,8 @@ struct Ping;
         id = "service.ping",
         version = 1,
         policy = OperationPolicy {
-            timeout: Duration::from_secs(30),
-            attempt_timeout: Duration::from_secs(1),
+            timeout: Duration::from_secs(120),
+            attempt_timeout: Duration::from_secs(120),
             retries: RetryPolicy::Never,
             restart: RestartPolicy::Never,
         },

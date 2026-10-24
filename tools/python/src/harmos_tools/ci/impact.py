@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/impact.py; sha256:54c39a9357fe4bd10d1f98f6fcd015231c36d23edf54f0a4d3444d4e6fbd8984
+# Rendered by stkr project update from templates/python/ci/impact.py; sha256:4f6b526abb9ac5c869786e5ff588c42916de7cf07c1d3b19caf8587a6841669d
 # ***
 #
 # Harmos
@@ -81,8 +81,6 @@ def select(plan: dict, paths: set[str] | None) -> set[str]:
             return full
         for rule in matching:
             selected.update(rule["jobs"])
-    if not selected:
-        return full
     pending = list(selected)
     while pending:
         job = pending.pop()
@@ -107,6 +105,8 @@ def main(plan: dict) -> None:
     selected = select(plan, paths)
     if "document" in plan:
         document = plan["document"]
+        original = [job for job in document.values() if isinstance(job, dict) and "stage" in job]
+        routing = next((job for job in original if job["stage"] == "Check"), original[0] if original else {})
         # Only Native Protected Non-MR Refs May Receive Shared Cache Configuration.
         protected = os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
         source = os.environ.get("CI_PIPELINE_SOURCE")
@@ -119,6 +119,20 @@ def main(plan: dict) -> None:
         for name in list(document):
             if isinstance(document[name], dict) and "stage" in document[name] and name not in selected:
                 del document[name]
+        if not selected:
+            gate = {
+                "stage": "Check",
+                "before_script": [],
+                "after_script": [],
+                "cache": [],
+                "needs": [],
+                "script": ['echo "No CI Jobs Selected"'],
+            }
+            if tags := routing.get("tags"):
+                gate["tags"] = tags
+            if image := routing.get("image", document.get("default", {}).get("image")):
+                gate["image"] = image
+            document["CI / No Jobs"] = gate
         # Original Event Rules Remain Meaningful Inside The Native Child Pipeline.
         text = json.dumps(document).replace("CI_PIPELINE_SOURCE", "STKR_PIPELINE_SOURCE")
         destination = Path("target/ci/impact-child.yml")

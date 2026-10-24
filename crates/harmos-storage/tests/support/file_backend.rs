@@ -282,6 +282,10 @@ impl<C: ObjectCatalog> Data<C> {
 
     pub(super) fn fixture_abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            if self.control.block_abort.load(Ordering::SeqCst) {
+                self.control.abort_entered.notify_one();
+                self.control.abort_release.notified().await;
+            }
             let _io = self.file_io.lock().unwrap();
             self.history.check(&staging.history)?;
             if self.blobs.lock().unwrap().values().any(|(file, _)| file.metadata.id == staging.id) {

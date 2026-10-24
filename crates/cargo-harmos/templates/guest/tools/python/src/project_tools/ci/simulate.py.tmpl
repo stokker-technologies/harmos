@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:16c47653d00cbf17657bd439a1591447c7e59600f76355afb240676659499d46
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:c4ea57bce182c949bc4549e2c97ecc237cd4dcab4b65bf0baf22d172c778bff5
 # ***
 #
 # __PRODUCT_NAME__
@@ -186,6 +186,7 @@ def main() -> int:
     started = time.monotonic()
     results = {}
     output = None
+    impact_empty = False
     try:
         root = next(path for path in (Path.cwd(), *Path.cwd().parents) if (path / "mise.toml").is_file())
         containers.reconcile(root / "target/ci/simulation", cache_root(root).name, recover_reports)
@@ -205,6 +206,7 @@ def main() -> int:
         release_review = options.pipeline == "pr" and branch.startswith("release/v")
         if options.pipeline in ("pr", "dev") and not release_review:
             selected = impact.selection(root, PLAN["impact"])
+            impact_empty = bool(jobs) and not selected
             jobs = [job for job in jobs if job["id"] in selected]
         if set(platforms) != set(PLAN["platforms"]):
             jobs = [job for job in jobs if job["id"] != "release:publish:dry"]
@@ -220,7 +222,12 @@ def main() -> int:
             job["setup"] = PLAN["setup"][platform]
             job["executor"] = executors[platform]
         if not jobs:
-            raise SimulationError("no jobs match the selected pipeline and platforms")
+            if not impact_empty:
+                raise SimulationError("no jobs match the selected pipeline and platforms")
+            output = root / "target/ci/simulation" / uuid.uuid4().hex[:12]
+            output.mkdir(parents=True)
+            emit("Scope", "Matched Impact Rules Select No Execution Jobs")
+            return 0
         needed = {job["execution_platform"] for job in jobs}
         preflight({platform: executor for platform, executor in executors.items() if platform in needed})
         docker_jobs = [job for job in jobs if job["executor"] == "docker"]
@@ -263,6 +270,8 @@ def main() -> int:
         return 130
     finally:
         summary = summarize(results, time.monotonic() - started)
+        if impact_empty:
+            summary["selection"] = "explicit-empty-impact"
         statistics = summary["cache"] if isinstance(summary["cache"], dict) else {}
         reporting.render(
             "CI Simulation",

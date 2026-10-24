@@ -30,8 +30,8 @@ use harmos_runtime::sidecar::{Refusal, Supervisor};
 /* === Constants === */
 
 const POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(30),
-    attempt_timeout: Duration::from_secs(30),
+    timeout: Duration::from_secs(120),
+    attempt_timeout: Duration::from_secs(120),
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };

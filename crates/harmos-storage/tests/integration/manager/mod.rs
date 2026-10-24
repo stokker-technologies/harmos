@@ -21,6 +21,7 @@ mod exhaustion;
 mod files;
 mod fixture;
 mod mapping;
+mod mutations;
 mod nominal;
 mod objects;
 mod query_pressure;
