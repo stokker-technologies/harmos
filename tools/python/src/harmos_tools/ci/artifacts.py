@@ -1,0 +1,175 @@
+# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:da00d9f1049121a5326898786610195f48a16eaf6d43401ebe84ae0d3463e9ab
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+"""Transport Required Declared Job Artifacts"""
+
+# === Imports === #
+
+# Standard Library Imports
+import argparse
+import glob
+import json
+import shutil
+import subprocess
+import sys
+import tarfile
+from pathlib import Path, PurePosixPath
+
+# Third Party Imports
+# Local Imports
+from ..build.paths import target
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def pack(directory: Path, archive: Path, patterns: list[str], profile: str, native: str) -> None:
+    root = directory.resolve()
+    owned = root / "target"
+    if not archive.resolve().is_relative_to(owned / "ci"):
+        raise ValueError("artifact archive escapes its owned transport directory")
+    selected: set[str] = set()
+    for pattern in patterns:
+        pattern = pattern.replace("{profile}", profile).replace("{target}", native)
+        if not pattern.startswith("target/") or any(part in (".", "..") for part in pattern.split("/")) or "\\" in pattern:
+            raise ValueError("unsafe artifact path")
+        matches = glob.glob(pattern.rstrip("/"), root_dir=root, recursive=True)
+        if not matches:
+            raise ValueError(f"required artifact output is missing: {pattern}")
+        for name in matches:
+            path = root / name
+            if not path.resolve().is_relative_to(owned):
+                raise ValueError("artifact path escapes the repository")
+            for child in [path] if path.is_file() else [path, *path.rglob("*")]:
+                if child.is_symlink() and not child.resolve().is_relative_to(owned):
+                    raise ValueError("artifact link escapes the repository")
+            selected.add(Path(name).as_posix())
+    if not selected:
+        raise ValueError("artifact has no required outputs")
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            _tar(),
+            "--force-local",
+            "--use-compress-program",
+            "zstd -T0",
+            "-cf",
+            str(archive),
+            "--",
+            *sorted(selected),
+        ],
+        cwd=root,
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=True,
+    )
+
+
+def extract(directory: Path, archive: Path) -> None:
+    root = directory.resolve()
+    if not archive.resolve().is_relative_to(root / "target/ci"):
+        raise ValueError("artifact archive escapes its owned transport directory")
+    with subprocess.Popen(
+        ["zstd", "-dc", str(archive)],
+        stdout=subprocess.PIPE,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    ) as decompressor:
+        if decompressor.stdout is None:
+            raise RuntimeError("artifact decompressor has no output stream")
+        try:
+            with tarfile.open(fileobj=decompressor.stdout, mode="r|") as source:
+                source.extractall(root, filter=_member)
+        finally:
+            decompressor.stdout.close()
+        status = decompressor.wait()
+        if status:
+            raise subprocess.CalledProcessError(status, "zstd")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Transport Declared Job Artifacts")
+    parser.add_argument("operation", choices=("pack", "extract"))
+    parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--paths")
+    parser.add_argument("--profile", choices=("dev", "release", "bench"), default="dev")
+    parser.add_argument("--target", choices=("native", "any"), default="native")
+    options = parser.parse_args()
+    if options.operation == "pack":
+        patterns = json.loads(bytes.fromhex(options.paths).decode())
+        pack(
+            Path.cwd(),
+            options.archive,
+            patterns,
+            options.profile,
+            "any" if options.target == "any" else target(),
+        )
+    else:
+        extract(Path.cwd(), options.archive)
+
+
+# === Private Functions === #
+
+
+def _tar() -> str:
+    found = shutil.which("tar")
+    if found is None:
+        raise RuntimeError("artifact transport requires GNU tar from the configured image")
+    version = subprocess.run(
+        [found, "--version"],
+        capture_output=True,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=True,
+    ).stdout
+    capabilities = subprocess.run(
+        [found, "--help"],
+        capture_output=True,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=True,
+    ).stdout
+    if not version.startswith("tar (GNU tar)") or not all(option in capabilities for option in ("--force-local", "--use-compress-program")):
+        raise RuntimeError("configured tar lacks required GNU archive capabilities")
+    return found
+
+
+def _member(member: tarfile.TarInfo, destination: str) -> tarfile.TarInfo:
+    root = Path(destination).resolve()
+    owned = root / "target"
+    name = PurePosixPath(member.name)
+    if name.is_absolute() or not name.parts or name.parts[0] != "target" or any(part == ".." for part in name.parts) or "\\" in member.name:
+        raise ValueError("artifact member escapes target outputs")
+    if not (root / member.name).resolve().is_relative_to(owned):
+        raise ValueError("artifact member escapes target outputs")
+    if member.issym() or member.islnk():
+        link = PurePosixPath(member.linkname)
+        origin = root / member.name if member.issym() else root / "anchor"
+        resolved = origin.parent / member.linkname
+        if link.is_absolute() or "\\" in member.linkname or not resolved.resolve().is_relative_to(owned):
+            raise ValueError("artifact link escapes target outputs")
+    result = tarfile.data_filter(member, destination)
+    if result is None:
+        raise ValueError("artifact contains a disallowed member")
+    return result
+
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    main()

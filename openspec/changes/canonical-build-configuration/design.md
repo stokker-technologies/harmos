@@ -1,0 +1,104 @@
+# Canonical Build Design
+
+## Parallel Producer Decision
+
+Product and Tests now use separate parallel provider jobs, superseding single-job consolidation. Independent feature sets are permitted, but CI remains canonical-only and extended configurations remain local opt-in. Tests Build must take no longer than Product Build on the same candidate/platform/profile; measured breaches require investigation and repair of redundant compilation, feature sprawl or testing structure, not silent coverage removal or raised timeouts. Preserve actual artifact dependencies and report relocated work in the full critical path. Repository owner must reconcile obsolete single-job clauses before closure. The current Dokime pipeline remains uninterrupted.
+
+## Superseding User Decision
+
+All provider CI contexts cover only the canonical shipping configuration. Simulation and other noncanonical feature/target compatibility coverage are local-only, explicitly requested extended validation. Preserve shipping behavior and all test sources. Keep canonical-capable tests in CI rather than excluding whole packages. Repository-owned `build:rust:compatibility` is a local compiler-proof helper; `test:rust:extended` is the optional local behavioral suite and arranges its needed builds. Ordinary installers and CI never invoke extended tasks implicitly. The current Dokime pipeline must complete without cancellation or a superseding push.
+
+## Locked Decisions
+
+Clippy runs before compilation with matching feature, target and profile settings and child-scoped warning denial. Independent parallel Product and Tests jobs use separate checkout-local Cargo directories; cache transport may reuse compatible outputs but is not an artifact dependency. Installer tasks request Product only. Test and Package consume exported artifacts without compilation.
+
+Mise owns canonical configurations per platform/profile; independent producer feature sets are permitted. Preserve shipping defaults; do not expand SDK APIs or dependencies to accommodate tests. Root Product and Tests use workspace defaults. Retain the existing release-tests compiler-profile exception. Product exports libraries already compiled for the shipping schematic's two carriers while its compiler capture paths exist. Tests independently builds its archive, the default-feature Cargo CLI needed by sandbox collection, the sandbox component, and offline inputs. The optional fixture preparation joins both manifests and copies inert inspection bytes without compilation. Avoid a new generic framework or duplicating feature lists in CI. Preserve noncanonical stories and matching Clippy in the optional extended suite.
+
+The exported shipping library closure measures 986,433,545 bytes uncompressed on the existing Windows development build. This transfer moves from Tests to Product and is included in the actual critical path. Fixture preparation is a real manifest join after both producers; it is not independent of Product or a way to hide compiler time. Unit tests can use the Tests-only base fixture stamp. Other fixture consumers need the prepared combination.
+
+Tests Build must not exceed Product Build under comparable cache conditions. The complete warm-cache pipeline must finish below 45 minutes, with 30 minutes advisory. Cold timings are reported separately. Warmth requires observed successful restoration/compiler reuse evidence, never the assumption that an earlier run warmed the cache. A breach requires reassessment, not relaxed deadlines or silent coverage removal; material architecture or feature changes require a user decision.
+
+## Ownership And Delivery
+
+The existing harmos owner implements in its current worktree, updates the inventory, and owns final local proof after source closure. Root coordinates Hub dependencies. The previous branch merged. Preserve its owned specification retirement changes, then use an authorized new fix/canonical-build-configuration branch based on current dev in this same worktree; never discard changes. Changes require protected review into dev. Do not publish releases.
+
+## Source Inventory
+
+- `mise.toml`: canonical Product/Tests selectors, optional `build:rust:compatibility` and `test:rust:extended`, with Product-only installer dependencies unchanged.
+- `stkr.toml`: named Product, Tests archive and fixture outputs; preparation consumes Product plus Tests fixtures, Unit consumes only the archive, Integration adds prepared fixtures, and Acceptance/System also consume Product. Tests exports only the exact archive and compiler metadata paths, excluding retained local listing diagnostics.
+- Explicit inputs also cover generated Python checking, canonical coverage/benchmarks, package assembly and existing package-consuming release jobs. `crates/cargo-harmos/templates/{guest,sidecar}/stkr.toml.tmpl` declares the corresponding minimal Product/Tests/unit/coverage/package artifact contracts so generated starter CI remains complete.
+- The same file's benchmark producer/category selectors use shipping defaults in CI; optional `bench:rust:extended` retains existing all-feature benchmark execution locally. Benchmark execution is not a delivery gate.
+- `tools/python/src/harmos_tools/build/__main__.py`: the existing root `build` task's Product command. Export actual shipping libraries with their hashes while compiler paths exist.
+- `tools/python/src/harmos_tools/build/rust/tests.py`: `build:rust:tests`, independent archive, narrow default CLI, sandbox and offline-input production; no Product reads.
+- `tools/python/src/harmos_tools/prepare/tests/fixtures.py`: `prepare:tests:fixtures`, checksummed manifest join after both artifacts arrive, with no Cargo invocation.
+- `tools/python/src/harmos_tools/build/fixtures.py`: shared capture/staging helpers with no public task CLI. Keep existing package and preflight imports valid. Retain schematic and sandbox selectors and all assertions.
+- Hub-owned generated guidance, native Build workflows and embedded guest/sidecar starter copies: canonical-only CI policy, regenerated after the shared owner hands off.
+- Authored Product uses shared `build.cargo.artifacts` and `build.cargo.record_target`; Tests uses `build.cargo.archive`. The retired `build.run` producer and `test.archive.build` compiler entry point have no authored callers. `test.archive` remains the fixture stamp/archive reader owner. Shared generation retires obsolete managed modules; it preserves authored task modules.
+- `README.md`, this change's requirements, and maintained `openspec/specs/native-ci/spec.md`: canonical CI configuration and optional local extended coverage.
+- `Cargo.toml`, crate manifests and `examples/schematic/Cargo.toml` are audit inputs. Retain the existing `release-tests` compiler-profile exception and all existing story coverage; no manifest feature defaults or public APIs change without an explicit decision.
+- Preserve the completed `shared-native-build` retirement metadata and leave `reduce-compile-time` untouched.
+
+## Compatibility Selection
+
+Move the existing three Wasm helper Clippy checks, workspace no-default-feature all-targets Clippy, workspace all-feature examples/benches Clippy, and schematic all-targets Clippy into `build:rust:compatibility --profile dev|release`. Preserve their exact selectors. `test:rust:extended` runs Product, this helper, the existing all-feature archive/fixtures producer with matched Clippy, fixture preparation, and all test lanes. This replaces the local archive selection rather than adding a second archive protocol. CI never calls either optional task. Keep the existing release-tests profile for test-oriented compatibility checks.
+
+## Extended Coverage Inventory
+
+Existing Rust feature guards select the following runtime coverage only in the all-feature extended suite:
+
+- Integration `plugin`, `sidecar` and `simulation` story modules; state and stream `listeners`; storage `operations::plugins`.
+- Operations wire `artifact`, `host` and `plugin` modules require carrier/plugin features; `dynamic`, `grpc` and `grpc_manager` require gRPC.
+- Operations wire endpoint stories `half_close_joins`, `settlement_never_wait`, `failure_preserves_cleanup`, `input_drop_cancels`, `deadline_settles_peer`, `grpc_exchange_polls`, `failure_retains_cleanup`, `exchange_drop_cancels` and `opening_admission_exchange` require gRPC. Their neighboring canonical endpoint stories remain in CI.
+- Acceptance `storage` requires gRPC. System `guest`, `guest_contract` and `sidecar` require their respective carrier features; canonical runtime and shipping schematic system stories remain in CI.
+- Existing conditional plugin assertions in stream macro tests execute in extended validation; the canonical portions of those tests remain in CI.
+- Runtime `integration-sidecar`, `system-sidecar` and `integration-simulation` benchmark targets retain their existing required-feature guards and execute through local extended benchmarks rather than ordinary nightly benchmarks.
+
+No test source, assertion or whole package is excluded. Macro authoring stories retain their full fixture selection using the shipping schematic's compiler capture.
+
+## Product Transport Closure
+
+Product exports both `target/generated/python/pyproject.toml` and `target/generated/python/src`. The package manifest is part of the checksummed Product catalog consumed by fixture preparation and packaging; exporting only the source subtree leaves those consumers incomplete on a fresh job. Every catalog hash and artifact/library/build selector must resolve using only declared Product outputs. An actual declared-output archive pack/extract verified all 296 catalog hashes through both consumer preflight functions, without a checkout or compiler outputs outside the exported paths.
+
+## Extended Case Partition
+
+The current Windows archive partition contains 637 canonical cases and the following 263 additional cases selected by the existing noncanonical feature guards. A namespace ending in `::*` includes every existing testcase below that namespace; individual entries identify one testcase. These cases remain in `test:rust:extended`, with their original assertions. No canonical identity is absent from the previous 900-case selection.
+
+| Binary | Namespace Or Case | Cases |
+|---|---|---|
+| `harmos-runtime` | `operations::*` | 1 |
+| `harmos-runtime::acceptance` | `storage::*` | 1 |
+| `harmos-runtime::integration` | `application::macros::unified_plugins::*` | 5 |
+| `harmos-runtime::integration` | `observers::execution::*` | 8 |
+| `harmos-runtime::integration` | `observers::host_accessor::*` | 3 |
+| `harmos-runtime::integration` | `observers::lifecycle::*` | 11 |
+| `harmos-runtime::integration` | `observers::native::*` | 6 |
+| `harmos-runtime::integration` | `operations::execution::reboot_reruns_initialize` | 1 |
+| `harmos-runtime::integration` | `operations::execution::simulation_reboot_rebinds` | 1 |
+| `harmos-runtime::integration` | `operations::wire::artifact::*` | 2 |
+| `harmos-runtime::integration` | `operations::wire::authored::response_awaits_cleanup` | 1 |
+| `harmos-runtime::integration` | `operations::wire::authored::response_drop_retains` | 1 |
+| `harmos-runtime::integration` | `operations::wire::authored::response_keeps_owner` | 1 |
+| `harmos-runtime::integration` | `operations::wire::dynamic::*` | 2 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::deadline_settles_peer` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::exchange_drop_cancels` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::failure_preserves_cleanup` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::failure_retains_cleanup` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::grpc_exchange_polls` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::half_close_joins` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::input_drop_cancels` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::opening_admission_exchange` | 1 |
+| `harmos-runtime::integration` | `operations::wire::endpoints::settlement_never_wait` | 1 |
+| `harmos-runtime::integration` | `operations::wire::grpc::*` | 8 |
+| `harmos-runtime::integration` | `operations::wire::grpc_manager::*` | 15 |
+| `harmos-runtime::integration` | `operations::wire::host::*` | 2 |
+| `harmos-runtime::integration` | `operations::wire::plugin::*` | 15 |
+| `harmos-runtime::integration` | `plugin::*` | 26 |
+| `harmos-runtime::integration` | `runtime::plugin::*` | 6 |
+| `harmos-runtime::integration` | `sidecar::*` | 72 |
+| `harmos-runtime::integration` | `simulation::*` | 15 |
+| `harmos-runtime::integration` | `state::listeners::*` | 8 |
+| `harmos-runtime::integration` | `storage::operations::plugins::*` | 2 |
+| `harmos-runtime::integration` | `streams::listeners::*` | 9 |
+| `harmos-runtime::system` | `guest::*` | 1 |
+| `harmos-runtime::system` | `guest_contract::*` | 30 |
+| `harmos-runtime::system` | `sidecar::*` | 1 |

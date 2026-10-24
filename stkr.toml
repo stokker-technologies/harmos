@@ -37,6 +37,101 @@ windows = "windows-2022"
 [ci.impact]
 default = "full"
 
+# --- Stage / Check --- #
+
+[[ci.jobs]]
+id = "check:python:generated"
+inputs = ["build#product"]
+
+# --- Stage / Build --- #
+
+[[ci.jobs]]
+id = "build"
+outputs.product = [
+  "target/build/{profile}/{target}/bin",
+  "target/build/{profile}/{target}/lib",
+  "target/build/{profile}/{target}/product",
+  "target/generated/python/pyproject.toml",
+  "target/generated/python/src",
+]
+
+[[ci.jobs]]
+id = "build:rust:tests"
+outputs.tests = ["target/build/{profile}/{target}/tests/archive.tar.zst", "target/build/{profile}/{target}/tests/compiler.json"]
+outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
+
+[[ci.jobs]]
+id = "build:rust:bench"
+outputs.bench = ["target/build/bench/{target}/bench", "target/build/bench/{target}/bin", "target/build/bench/{target}/fixtures"]
+
+# --- Stage / Prepare --- #
+
+[[ci.jobs]]
+id = "prepare:tests:fixtures"
+inputs = ["build#product", "build:rust:tests#fixtures"]
+outputs.fixtures = ["target/build/{profile}/{target}/fixtures"]
+
+# --- Stage / Test --- #
+
+[[ci.jobs]]
+id = "test:rust:unit"
+inputs = ["build:rust:tests#tests"]
+
+[[ci.jobs]]
+id = "test:rust:integration"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures"]
+
+[[ci.jobs]]
+id = "test:rust:acceptance"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
+id = "test:rust:system"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
+id = "test:rust:coverage"
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+# --- Stage / Bench --- #
+
+[[ci.jobs]]
+id = "bench:rust:unit"
+inputs = ["build:rust:bench#bench"]
+
+[[ci.jobs]]
+id = "bench:rust:integration"
+inputs = ["build:rust:bench#bench"]
+
+[[ci.jobs]]
+id = "bench:rust:system"
+inputs = ["build:rust:bench#bench"]
+
+# --- Stage / Package --- #
+
+[[ci.jobs]]
+id = "package:rust"
+inputs = ["build#product"]
+outputs.package = ["target/package/{profile}/{target}"]
+
+# --- Stage / Release --- #
+
+[[ci.jobs]]
+id = "release:publish:dry"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:rehearse"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:publish"
+inputs = ["package:rust#package"]
+
+[[ci.jobs]]
+id = "release:verify"
+inputs = ["package:rust#package"]
+
 # === === Hooks === === #
 
 [hooks]

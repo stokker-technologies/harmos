@@ -743,11 +743,24 @@ and offline authoring inputs.
 publication locally. Native provider CI proves every required platform.
 
 Rust compilation runs Clippy first with matching features, targets and profiles.
-`check:rust` performs formatting and dependency checks without compiling; Build
-also preserves explicit no-default-feature and Wasm compatibility proofs.
-CI runs Product and optional Tests producers in one native Build job per platform,
-then Test and Package consume their separate artifacts in parallel. Product-only
+`check:rust` performs formatting and dependency checks without compiling.
+CI tests use the shipping workspace defaults. Optional local
+`mise run test:rust:extended` also builds and runs noncanonical feature stories,
+including runtime plugins, gRPC and simulation, and invokes
+`build:rust:compatibility` for no-default-feature, all-feature and Wasm checks.
+CI and ordinary installers do not invoke these extended tasks.
+`mise run bench:rust:extended` explicitly builds and runs feature-dependent
+benchmarks locally; ordinary nightly benchmarks use shipping defaults.
+CI runs Product and Tests producers in separate parallel native jobs per platform,
+then Test and Package consume the required artifacts. Product-only
 builds do not implicitly produce the test archive.
+Each producer uses Cargo's `target/` directory in its own checkout. Release test harnesses retain
+the existing `release-tests` profile without LTO; shipping Product keeps its
+release profile. Macro authoring fixtures reuse the shipping schematic's
+exported compiler libraries instead of compiling another SDK configuration.
+`prepare:tests:fixtures` joins the Product and Tests fixture manifests after
+both exports arrive, without compiling. Tests independently builds the default
+Cargo CLI needed to assemble its sandbox component.
 
 CI runs the Check, Build and Test stages on Linux and Windows, and both
 platforms are required for `dev`, `main` and releases. Pull requests and pushes

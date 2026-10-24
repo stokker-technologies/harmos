@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-generated.yml; sha256:14e2fe162ebb42a1f6434bff9cc7bedd5cd50192dd1a920e52e086c80272abff
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-generated.yml; sha256:5a9243357b203257a6ae080ff0a8b6774dbee656118839a71686b0ecfa9fd24b
 name: Check
 "on":
   workflow_call:
@@ -24,9 +24,6 @@ jobs:
     name: Python / Generated
     runs-on: ${{ fromJSON(inputs.runners).linux.small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).check_generated_python }}
-    env:
-      MISE_ENABLE_TOOLS: >-
-        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
     steps:
     - name: Configure Checkout Git
       if: runner.os == 'Windows'
@@ -228,9 +225,12 @@ jobs:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-linux
-    - name: Extract Build
-      shell: bash
-      run: tar --zstd -xf "build-product-${{ env.PROFILE }}-linux.tar.zst"
+        path: target/ci
+    - name: Extract build / product
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/build-product-${{ env.PROFILE
+        }}-linux.tar.zst --profile ${{ env.PROFILE }}
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.test.archive --profile ${{ env.PROFILE }} --install-wheels
@@ -265,3 +265,7 @@ jobs:
       with:
         key: ${{ steps.uv.outputs.cache-primary-key }}
         path: .cache/uv/
+    env:
+      MISE_ENABLE_TOOLS: >-
+        go,node,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+      MISE_TASK_SKIP: build

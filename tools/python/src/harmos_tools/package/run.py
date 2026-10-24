@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:27faa05a3c1fcc00be8fbcca2003f186445450a81f1a4c26564011b2c969c51b
+# Rendered by stkr project update from templates/python/package/run.py; sha256:ad1995c1ded6e25ef70e952b9b7e3c482b877eb5b66dd8d71379ee5faf9bee02
 # ***
 #
 # Harmos
@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-
 """Collect Packages Under Their Matching Profile And Native Target"""
 
 # === Imports === #
@@ -17,6 +16,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import zipfile
@@ -57,6 +57,11 @@ def definitions(directory: Path, profile: str, target: str) -> list[dict]:
         result.append({**item, "language": "rust", "output": name, "triple": triple, "binary": item["command"] + extension})
     for item in config.get("package", {}).get("bundles", []):
         if profile in item["profiles"] and target in item["targets"]:
+            fields = [item["name"], *(entry[key] for entry in item["inputs"] for key in ("path", "destination"))]
+            if any("{version}" in field for field in fields) and (
+                not isinstance(version, str) or re.fullmatch(r"[A-Za-z0-9_.-]+", version) is None or version in {".", ".."}
+            ):
+                raise policy.ToolError("versioned bundles require a safe version.value")
             result.append({**item, "output": item["name"].format(version=version, target=target)})
     names = [item["output"].casefold() for item in result]
     if len(names) != len(set(names)):
@@ -103,6 +108,7 @@ def regular(root: Path, relative: str) -> Path:
 
 def assemble(directory: Path, language: str, profile: str, target: str, staging: Path) -> None:
     build = paths.output(directory, "build", profile, target)
+    substitutions = {"profile": profile, "target": target, "version": policy.config(directory).get("version", {}).get("value")}
     if language in {"python", "typescript"}:
         source = build / {"python": "python", "typescript": "web"}[language]
         canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"
@@ -135,9 +141,9 @@ def assemble(directory: Path, language: str, profile: str, target: str, staging:
                 prefix = "target/build/{profile}/{target}/"
                 if not entry["path"].startswith(prefix):
                     raise policy.ToolError("bundle inputs must come from the matching Product Build")
-                relative = entry["path"][len(prefix) :].format(profile=profile, target=target)
+                relative = entry["path"][len(prefix) :].format(**substitutions)
                 source = regular(build, relative)
-                name = entry["destination"]
+                name = entry["destination"].format(**substitutions)
                 parts = name.split("/")
                 unsafe = (
                     not name
@@ -153,7 +159,18 @@ def assemble(directory: Path, language: str, profile: str, target: str, staging:
                 if unsafe or overlaps:
                     raise policy.ToolError("unsafe or duplicate bundle destination")
                 destinations.add(name.casefold())
-                archive.write(source, name)
+                mode = entry.get("mode")
+                if mode is None:
+                    archive.write(source, name)
+                    continue
+                if type(mode) is not int or not 0 <= mode <= 0o777:
+                    raise policy.ToolError("bundle mode must contain only ordinary permission bits")
+                metadata = zipfile.ZipInfo.from_file(source, name)
+                metadata.create_system = 3
+                metadata.external_attr = (stat.S_IFREG | mode) << 16
+                metadata.compress_type = zipfile.ZIP_DEFLATED
+                with source.open("rb") as original, archive.open(metadata, "w") as destination:
+                    shutil.copyfileobj(original, destination)
 
 
 def verify(directory: Path, profile: str, target: str, root: Path | None = None) -> None:

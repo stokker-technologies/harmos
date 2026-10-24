@@ -6,12 +6,11 @@
 #
 # ***
 
-"""Build Shipping Products And Their Separate Shared Test Fixtures"""
+"""Capture And Stage Exact Cargo And Offline Fixture Inputs"""
 
 # === Imports === #
 
 # Standard Library Imports
-import argparse
 import hashlib
 import importlib.resources
 import json
@@ -25,9 +24,8 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
-from ..test import archive
 from .. import temporary
-from . import cargo, paths, run
+from . import cargo
 
 # Type Checking Imports
 
@@ -49,135 +47,10 @@ LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
 # === Public Functions === #
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=("dev", "release"), default="dev")
-    parser.add_argument("--product", action="store_true")
-    options = parser.parse_args()
-    action = product if options.product else build
-    with temporary.directory() as scratch:
-        action(options.profile, scratch)
-
-
-def build(profile: str, scratch: Path) -> None:
-    export = paths.output(ROOT, "build", profile)
-    catalog = json.loads((export / "product/examples/catalog.json").read_text(encoding="utf-8"))
-    for relative, expected in catalog["files"].items():
-        source = ROOT / relative
-        _verify(_digest(source), expected, f"product bytes differ from their catalog: {source}")
-
-    fixtures = paths.output(ROOT, "build", profile) / "fixtures"
-    os.environ["CARGO_TARGET_DIR"] = str(TARGET)
-    archive.build(ROOT, profile, ["--all-features"])
-    # Authoring Stories Need A Facade With Every Carrier Enabled.
-    tooling = _compile("tooling", ROOT, profile, ["-p", "cargo-harmos", "-p", "harmos", "--all-features"], scratch)
-    # Staging Starts From An Empty Fixture Directory, So The Stamp Names Only What This Build Produced.
-    shutil.rmtree(fixtures, ignore_errors=True)
-    fixtures.mkdir(parents=True)
-    files = dict(catalog["files"])
-    artifacts = {name: os.path.relpath(export / path, fixtures) for name, path in catalog["artifacts"].items()}
-    builds = {name: os.path.relpath(export / path, fixtures) for name, path in catalog["builds"].items()}
-
-    # Integration Inspects Immutable Bytes Without Downloading Or Running Product Hosts.
-    inspections = {}
-    for name in ("schematic-sidecar", "schematic-guest"):
-        source = export / catalog["artifacts"][name]
-        destination = fixtures / "inspection" / source.name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination)
-        relative = destination.relative_to(ROOT).as_posix()
-        files[relative] = _digest(destination)
-        _verify(files[relative], catalog["files"][source.relative_to(ROOT).as_posix()], f"inspection bytes differ from Product: {name}")
-        inspections[name] = destination.relative_to(fixtures).as_posix()
-
-    sandbox = "harmos-sandbox-guest"
-    manifest = GUESTS[sandbox]
-    capture = _compile(sandbox, manifest.parent, profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
-    tool = export / catalog["artifacts"]["cargo-harmos"]
-    built, receipt = _collect(tool, manifest, sandbox, "guest", profile, capture, scratch)
-    artifacts[sandbox], builds[sandbox] = _stage_build(built, receipt, sandbox, files, fixtures)
-    inspections[sandbox] = artifacts[sandbox]
-    # One Capture Supplies Every Library, So The Facade Links Exactly The Builds Beside It.
-    libraries = _libraries(_messages(tooling), files, fixtures)
-    inputs = _offline_inputs(fixtures / "inputs")
-    # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
-    selected_inputs = (path for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR)
-    executables = [path.relative_to(fixtures).as_posix() for path in selected_inputs]
-    executables.sort()
-    archive.stamp(
-        ROOT,
-        profile,
-        sorted(files),
-        {
-            "artifacts": artifacts,
-            "inspections": inspections,
-            "libraries": libraries,
-            "builds": builds,
-            "build_roots": {**catalog["build_roots"], sandbox: str(ROOT)},
-            "dependencies": "libraries",
-            "vendor": "inputs/vendor",
-            "wheels": "inputs/wheels",
-            "requirements": "inputs/requirements.txt",
-            "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
-            "input_executables": executables,
-        },
-    )
-
-
-def product(profile: str, scratch: Path) -> None:
-    os.environ["CARGO_TARGET_DIR"] = str(TARGET)
-    run.rust(ROOT, profile)
-    export = paths.output(ROOT, "build", profile)
-    examples = export / "product/examples"
-    shutil.rmtree(examples, ignore_errors=True)
-    examples.mkdir(parents=True)
-    tool = export / "bin" / ("cargo-harmos.exe" if os.name == "nt" else "cargo-harmos")
-    native = _compile("schematic", SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"], scratch)
-    files: dict[str, str] = {}
-    artifacts = {"cargo-harmos": tool.relative_to(export).as_posix()}
-    files[tool.relative_to(ROOT).as_posix()] = _digest(tool)
-    cli = _executable(_messages(native), "schematic-cli")
-    _copy(cli, export / "bin" / cli.name, files)
-    artifacts["schematic-cli"] = f"bin/{cli.name}"
-
-    builds = {}
-    for package in ("schematic-sidecar", "schematic-guest"):
-        capture = (
-            _compile(package, SCHEMATIC.parent, profile, ["-p", package, "--target", "wasm32-unknown-unknown"], scratch)
-            if package == "schematic-guest"
-            else native
-        )
-        backend = "sidecar" if package == "schematic-sidecar" else "guest"
-        built, receipt = _collect(tool, SCHEMATIC, package, backend, profile, capture, scratch)
-        artifact, staged = _stage_build(built, receipt, package, files, examples)
-        source = examples / artifact
-        filename = source.name if package == "schematic-sidecar" else "schematic-guest.wasm"
-        destination = export / "bin/plugins" / filename
-        _copy(source, destination, files)
-        artifacts[package] = destination.relative_to(export).as_posix()
-        builds[package] = f"product/examples/{staged}"
-
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--locked", "--format-version", "1"],
-            cwd=ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-    )
-    platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
-    package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
-    protoc = Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
-    _generate_python(tool, export / builds["schematic-sidecar"], protoc, files)
-    catalog = {"artifacts": artifacts, "builds": builds, "build_roots": {name: str(ROOT) for name in builds}, "files": files}
-    (examples / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
-
-
 # === Private Functions === #
 
 
-def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch: Path) -> dict:
+def capture(name: str, directory: Path, profile: str, extra: list[str], scratch: Path) -> dict:
     """Compile One Cargo Selection And Record The Collection Input `cargo harmos` Requires."""
     destination = scratch / "captures" / name / profile
     shutil.rmtree(destination, ignore_errors=True)
@@ -245,8 +118,8 @@ def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch
         "target": target,
         "command": command,
         "inputs": {"rustc": rustc},
-        "messages": {"path": str(messages), "sha256": _digest(messages)},
-        "metadata": {"path": str(metadata), "sha256": _digest(metadata)},
+        "messages": {"path": str(messages), "sha256": digest(messages)},
+        "metadata": {"path": str(metadata), "sha256": digest(metadata)},
         "artifacts": _digests(produced),
         "generated": _digests(generated),
     }
@@ -256,12 +129,12 @@ def _compile(name: str, directory: Path, profile: str, extra: list[str], scratch
     return record
 
 
-def _messages(record: dict) -> list[dict]:
+def messages(record: dict) -> list[dict]:
     content = Path(record["messages"]["path"]).read_text(encoding="utf-8")
     return [json.loads(line) for line in content.splitlines() if line.startswith("{")]
 
 
-def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: str, capture: dict, scratch: Path) -> tuple[dict, Path]:
+def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str, capture: dict, scratch: Path) -> tuple[dict, Path]:
     destination = scratch / "collected" / package
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
@@ -302,7 +175,7 @@ def _collect(tool: Path, manifest: Path, package: str, backend: str, profile: st
     return json.loads(result.read_text(encoding="utf-8")), result
 
 
-def _offline_inputs(destination: Path) -> Path:
+def offline_inputs(destination: Path) -> Path:
     """Export The Locked Native Dependencies The Offline Authoring Stories Build From."""
     manifests = sorted({ROOT / "Cargo.toml", SCHEMATIC, *GUESTS.values()})
     vendor = ["cargo", "vendor", "--locked", "--versioned-dirs"]
@@ -381,7 +254,7 @@ def _requirements(project: Path, destination: Path) -> None:
         )
 
 
-def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
+def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
     """Generate The Schematic Sidecar's Python Client, Which `check:python:generated` Checks."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
     catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar"}
@@ -430,10 +303,10 @@ def _generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None
     generated = sorted(output.rglob("*"))
     generated_files = (path for path in generated if path.is_file())
     for path in generated_files:
-        files[path.relative_to(ROOT).as_posix()] = _digest(path)
+        files[path.relative_to(ROOT).as_posix()] = digest(path)
 
 
-def _stage_build(build: dict, collected: Path, package: str, files: dict, fixtures: Path) -> tuple[str, str]:
+def stage_build(build: dict, collected: Path, package: str, files: dict, fixtures: Path) -> tuple[str, str]:
     selected = [artifact for artifact in build["artifacts"] if artifact["producer"] == package]
     if len(selected) != 1:
         raise RuntimeError(f"{package} did not produce exactly one artifact: {selected}")
@@ -441,13 +314,13 @@ def _stage_build(build: dict, collected: Path, package: str, files: dict, fixtur
     root = fixtures / "builds" / package
     source = Path(artifact["path"])
     destination = root / source.relative_to(ROOT)
-    if _copy(source, destination, files) != artifact["sha256"]:
+    if copy(source, destination, files) != artifact["sha256"]:
         raise RuntimeError("typed artifact digest differs from its collected build")
     for schema in build["schemas"]:
         _stage_schema(schema, root, files)
     # Original Build JSON Remains Byte-Exact; Packaging Relocates Its Typed Paths.
     receipt = fixtures / "receipts" / f"{package}.json"
-    _copy(collected, receipt, files)
+    copy(collected, receipt, files)
     return destination.relative_to(fixtures).as_posix(), receipt.relative_to(fixtures).as_posix()
 
 
@@ -455,19 +328,19 @@ def _stage_schema(schema: dict, root: Path, files: dict) -> None:
     source = Path(schema["directory"])
     for name, expected in schema["files"].items():
         original = source / name
-        copied = _copy(original, root / original.relative_to(ROOT), files)
-        _verify(copied, expected, "typed schema digest differs from its collected build")
+        copied = copy(original, root / original.relative_to(ROOT), files)
+        verify(copied, expected, "typed schema digest differs from its collected build")
 
 
-def _copy(source: Path, destination: Path, files: dict) -> str:
+def copy(source: Path, destination: Path, files: dict) -> str:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-    digest = _digest(destination)
-    files[destination.relative_to(ROOT).as_posix()] = digest
-    return digest
+    checksum = digest(destination)
+    files[destination.relative_to(ROOT).as_posix()] = checksum
+    return checksum
 
 
-def _digest(path: Path) -> str:
+def digest(path: Path) -> str:
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
@@ -476,16 +349,16 @@ def _digests(names: set[str]) -> dict[str, str]:
     result = {}
     for name in sorted(names):
         path = Path(name)
-        result[name] = _digest(path)
+        result[name] = digest(path)
     return result
 
 
-def _verify(actual: str, expected: str, reason: str) -> None:
+def verify(actual: str, expected: str, reason: str) -> None:
     if actual != expected:
         raise RuntimeError(reason)
 
 
-def _executable(messages: list[dict], name: str) -> Path:
+def executable(messages: list[dict], name: str) -> Path:
     found = {
         message["executable"]
         for message in messages
@@ -499,7 +372,7 @@ def _executable(messages: list[dict], name: str) -> Path:
     return Path(found.pop())
 
 
-def _libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, str]:
+def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, str]:
     """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
 
     A library built twice (a build-dependency feature set beside the normal one) resolves to
@@ -533,7 +406,7 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
         return None
     destination = fixtures / "libraries" / source.name
     if not destination.exists():
-        _copy(source, destination, files)
+        copy(source, destination, files)
 
     name = message["target"]["name"]
     if name not in LIBRARIES:
@@ -551,6 +424,3 @@ def _widest(builds: dict[str, set[str]]) -> str | None:
 
 
 # === Entry Point === #
-
-if __name__ == "__main__":
-    main()

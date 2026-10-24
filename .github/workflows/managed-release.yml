@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:53066e31590f471ade05a7e278ed09b712b4d58d69717bd8776127c5b2077715
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:214648790cad315c92b8b66c47c56316cafb9c7cff4d7ced64d9d851a97ea564
 name: Release
 "on":
   workflow_call:
@@ -269,20 +269,32 @@ jobs:
           }
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        pattern: package-${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}-*
-        merge-multiple: true
+        name: package-${{ env.PROFILE }}-rust-linux
         path: target/ci
         run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
         github-token: ${{ github.token }}
-    - name: Extract Packages
-      shell: bash
-      run: for archive in target/ci/*.tar; do tar -xf "$archive"; done
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-linux.tar.zst --profile ${{ env.PROFILE }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.ci.sccache
+        harmos_tools.ci.build
       env:
         RELEASE_PROFILE: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
-        STKR_SCCACHE_SCRIPT: mise run release:publish:dry
+        _STKR_CI_BUILD_SCRIPT: mise run release:publish:dry
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-
         success() && ((github.event_name == 'push' && (github.ref == 'refs/heads/dev'
@@ -315,6 +327,7 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
+      MISE_TASK_SKIP: package:rust
       STKR_SCCACHE_BACKEND: gha
       STKR_SCCACHE_MODE: >-
         ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
@@ -787,12 +800,26 @@ jobs:
         mise_dir: ${{ env.MISE_DATA_DIR }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        pattern: package-release-*
-        merge-multiple: true
+        name: package-${{ env.PROFILE }}-rust-linux
         path: target/ci
-    - name: Extract Packages
-      shell: bash
-      run: for archive in target/ci/*.tar; do tar -xf "$archive"; done
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-linux.tar.zst --profile ${{ env.PROFILE }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - run: mise run release:rehearse
       env:
         GH_TOKEN: ${{ github.token }}
@@ -835,6 +862,7 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_TASK_SKIP: package:rust
     if: >-
       ${{ inputs.ready && (github.event_name == 'pull_request' && github.base_ref ==
       'dev' && startsWith(github.head_ref, 'release/v')) }}
@@ -1047,18 +1075,6 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: package-${{ inputs.review_profile }}-*
-        merge-multiple: true
-        path: target/ci
-        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
-        github-token: ${{ github.token }}
-      if: inputs.review_run != ''
-    - name: Extract Packages
-      shell: bash
-      run: for archive in target/ci/*.tar; do tar -xf "$archive"; done
-      if: inputs.review_run != ''
     - id: crates
       uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18
       if: env.CARGO_REGISTRY_TOKEN == ''
@@ -1330,24 +1346,36 @@ jobs:
           }
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        pattern: package-release-*
-        merge-multiple: true
+        name: package-${{ env.PROFILE }}-rust-linux
         path: target/ci
         run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
         github-token: ${{ github.token }}
-    - name: Extract Packages
-      shell: bash
-      run: for archive in target/ci/*.tar; do tar -xf "$archive"; done
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-linux.tar.zst --profile ${{ env.PROFILE }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - name: Show Trusted Publishing Identity
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.release.run identity
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.ci.sccache
+        harmos_tools.ci.build
       env:
         GH_TOKEN: ${{ github.token }}
-        STKR_SCCACHE_SCRIPT: mise run release:publish
+        _STKR_CI_BUILD_SCRIPT: mise run release:publish
     - name: Attest Release Downloads
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
       with:
@@ -1384,6 +1412,7 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: gh,git-cliff,glab,go,node,python,rust,sccache,uv
+      MISE_TASK_SKIP: package:rust
       STKR_SCCACHE_BACKEND: gha
       STKR_SCCACHE_MODE: >-
         ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
@@ -1602,6 +1631,17 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-linux
+        path: target/ci
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-linux.tar.zst --profile ${{ env.PROFILE }}
     - run: mise run release:verify
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1637,6 +1677,7 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_TASK_SKIP: package:rust
     environment: release
     needs:
     - publish
@@ -1845,6 +1886,17 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ env.PROFILE }}-rust-windows
+        path: target/ci
+        run-id: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Extract package:rust / package
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts extract --archive target/ci/package-${{ env.PROFILE
+        }}-rust-windows.tar.zst --profile ${{ env.PROFILE }}
     - run: mise run release:verify
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1880,6 +1932,7 @@ jobs:
         path: .cache/uv/
     env:
       MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
+      MISE_TASK_SKIP: package:rust
     environment: release
     needs:
     - publish
