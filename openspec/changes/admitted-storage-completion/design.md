@@ -26,6 +26,8 @@ The timeout slice owns stkr.toml's 42 thirty-second overrides and root deadlines
 
 ## Coupled Development And Delivery
 
+The release review exposed two valid serde compiler libraries with identical features but distinct Cargo profiles: a build dependency at optimization level zero and the shipping dependency at level three. The authored fixture exporter must retain emitted profile provenance and resolve widest-feature candidates against the authoritative shipping Harmos profile. Keep genuinely missing or ambiguous inputs rejected, preserve every emitted dependency library for rustc resolution, and leave Cargo profiles, package versions and dependencies unchanged. Validate through actual native Cargo release artifacts and the existing authoring fixture boundary; do not introduce a Python test framework.
+
 The user also authorizes a stkr.toml impact rule selecting zero jobs for changes limited to skills, agent/Codex/Claude guidance, README and CONTRIBUTING files, including nested copies. Remove overlaps with existing prose rules, retain the lightweight required-status gate and preserve full selection for mixed source/policy or unknown changes. This depends on the approved Hub empty-job rule support; the parent owns this configuration/render slice after that override is available.
 
 Use Harmos's drop-2026-10-25 worktree and Dokime's hub-ci worktree. Dokime retains its declared dependencies and uses checkout-local, untracked patch.crates-io entries during development; verify Cargo package source resolution and never commit local paths or their lockfile resolution. Record the upstream capability disposition in Dokime's existing change.
