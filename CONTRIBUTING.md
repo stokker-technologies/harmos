@@ -28,15 +28,19 @@ The root uv workspace owns the Python environment and lockfile.
 ## Tests And Checks
 
 Run targeted checks while implementing. After all agreed source work is
-complete, run the impact-selected local review gate:
+complete and targeted proof passes, push the authorized candidate and immediately
+run local validation in parallel with hosted CI:
 
 ```sh
 mise run ci:simulate
 ```
 
-The default run covers all declared required platforms. Prose-only changes use
-lightweight checks; mixed and executable changes retain their affected proof.
-Hosted CI remains required before integration.
+The default run covers all declared required platforms. Changes limited to skills,
+agent guidance, README or CONTRIBUTING files select no execution jobs; the
+required status gate still completes. Other documentation uses its declared
+checks, while mixed source or policy changes retain full selection.
+Required hosted CI controls integration. Keep auto-merge enabled; it may merge
+independently of local completion. Report and investigate local failures.
 
 Product and Tests compile independently with matching Clippy invocations.
 Tests use the default unoptimized test profile; optional extended tests remain

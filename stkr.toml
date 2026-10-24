@@ -38,9 +38,41 @@ windows = "windows-2022"
 default = "full"
 
 [[ci.impact.rules]]
+name = "guidance"
+include = [
+  "**/skills/**",
+  "**/.agents/**",
+  "**/.codex/**",
+  "**/.claude/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+  "**/.github/copilot-instructions.md",
+  "**/README.md",
+  "**/readme.md",
+  "**/CONTRIBUTING.md",
+  "**/contributing.md",
+]
+jobs = []
+
+[[ci.impact.rules]]
 name = "prose"
-include = ["README.md", "CONTRIBUTING.md", "LICENSE", "LICENSE.*", "docs/**/*.md"]
-exclude = ["docs/examples/**", "docs/tutorials/**", "docs/src/**"]
+include = ["LICENSE", "LICENSE.*", "docs/**/*.md"]
+exclude = [
+  "docs/examples/**",
+  "docs/tutorials/**",
+  "docs/src/**",
+  "**/skills/**",
+  "**/.agents/**",
+  "**/.codex/**",
+  "**/.claude/**",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+  "**/.github/copilot-instructions.md",
+  "**/README.md",
+  "**/readme.md",
+  "**/CONTRIBUTING.md",
+  "**/contributing.md",
+]
 jobs = ["check:repository"]
 
 # --- Stage / Check --- #
