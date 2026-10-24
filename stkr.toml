@@ -220,7 +220,7 @@ reason = "Reviewed correctness bound with the 30-second test minimum; performanc
 [[conventions.testing.overrides]]
 category = "system"
 language = "rust"
-select = "binary_id(=harmos-runtime::system) & test(=schematic::cli_backends_reopen)"
+select = "binary_id(=harmos-runtime::system) & (test(=schematic::cli_backends_reopen) | test(=schematic::cli_streams_settle))"
 timeout_seconds = 30
 reason = "Reviewed correctness bound with the 30-second test minimum; performance is measured by benchmarks"
 

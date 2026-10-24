@@ -47,11 +47,7 @@ const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 #[test]
 fn cli_backends_reopen() {
     let directory = tempfile::tempdir().unwrap();
-    std::fs::create_dir(directory.path().join("zeta")).unwrap();
-    std::fs::create_dir(directory.path().join("alpha")).unwrap();
-    std::fs::write(directory.path().join("file.txt"), "not a directory").unwrap();
     let cli = fixtures::artifact("schematic-cli");
-    let mut advanced_outputs = Vec::new();
 
     for (backend, artifact) in [("--sidecar", "schematic-sidecar"), ("--guest", "schematic-guest")] {
         let plugin = fixtures::artifact(artifact);
@@ -65,6 +61,20 @@ fn cli_backends_reopen() {
         assert!(lines.contains(&"Undid and redid the route"));
         assert_eq!(lines.last().copied(), Some(REOPENED));
         assert!(!lines.iter().any(|line| line.starts_with("Analysis")));
+    }
+}
+
+#[test]
+fn cli_streams_settle() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir(directory.path().join("zeta")).unwrap();
+    std::fs::create_dir(directory.path().join("alpha")).unwrap();
+    std::fs::write(directory.path().join("file.txt"), "not a directory").unwrap();
+    let cli = fixtures::artifact("schematic-cli");
+    let mut advanced_outputs = Vec::new();
+
+    for (backend, artifact) in [("--sidecar", "schematic-sidecar"), ("--guest", "schematic-guest")] {
+        let plugin = fixtures::artifact(artifact);
 
         // Advanced Analysis And Cancellation Use The Same Caller Directory.
         let output = fixtures::command(&cli).current_dir(directory.path()).arg(backend).arg(&plugin).arg("--advanced").output().unwrap();
