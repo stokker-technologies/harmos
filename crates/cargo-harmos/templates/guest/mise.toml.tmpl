@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:5a02468e71b37b4963176393013b1b6db3a5ceca37c79674c6668206af11b9d6
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:9f2f56bf68c90de12e73de51742a7db1e1e59540167db7778a69f6cd13816d0c
 # === Settings === #
 
 [settings]
@@ -109,12 +109,20 @@ run = [{ task = "format:rust --check" }, "cargo-machete --skip-target-dir"]
 description = "Build Packageable Products"
 env.CARGO_INCREMENTAL = "0"
 usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --project tools/python python -m project_tools.build.run rust --profile {{usage.profile}}"
+run = "uv run --locked --project tools/python python -m project_tools.build.rust --profile {{usage.profile}}"
+
+[tasks."build:rust:compatibility"]
+description = "Validate Rust Compatibility"
+usage = 'flag "--profile <profile>" default="dev"'
+run = [
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --all-features",
+  "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --no-default-features",
+]
 
 [tasks."build:rust:tests"]
 description = "Build Test Binaries And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
-run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}} -- --all-features"
+run = "uv run --locked --project tools/python python -m project_tools.build.cargo archive --profile {{usage.profile}}"
 
 # === Dev === #
 

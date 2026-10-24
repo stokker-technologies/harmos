@@ -1,0 +1,95 @@
+# ***
+#
+# __PRODUCT_NAME__
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Build Packageable Products Without Test Harnesses Or Fixtures"""
+
+# === Imports === #
+
+# Standard Library Imports
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# Third Party Imports
+# Local Imports
+from ... import temporary
+from .. import cargo, paths
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def build(directory: Path, profile: str, native: str | None = None) -> None:
+    destination = paths.output(directory, "build", profile, native)
+    messages = destination / "product/compiler.json"
+    messages.parent.mkdir(parents=True, exist_ok=True)
+    arguments = ["--locked", "--workspace", "--profile", profile]
+    cargo.clippy(directory, arguments)
+    command = ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"]
+    with messages.open("w", encoding="utf-8") as output:
+        subprocess.run(
+            command,
+            stdin=sys.stdin,
+            stderr=sys.stderr,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            cwd=directory,
+            stdout=output,
+            check=True,
+        )
+    with temporary.directory() as staging:
+        for name in ("bin", "lib"):
+            (staging / name).mkdir()
+        for event in cargo.artifacts(directory, messages):
+            executable = event.get("executable")
+            if executable and event.get("target", {}).get("kind") == ["bin"]:
+                source = Path(executable)
+                shutil.copy2(source, staging / "bin" / source.name)
+            elif any(
+                kind in event.get("target", {}).get("kind", [])
+                for kind in (
+                    "lib",
+                    "rlib",
+                    "cdylib",
+                    "dylib",
+                    "staticlib",
+                    "proc-macro",
+                )
+            ):
+                for filename in event.get("filenames", []):
+                    source = Path(filename)
+                    shutil.copy2(source, staging / "lib" / source.name)
+        for name in ("bin", "lib"):
+            paths.replace(directory, staging / name, destination / name, origin=staging)
+    cargo.record_target(directory, messages, profile, native)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build Canonical Rust Products")
+    parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--target")
+    options = parser.parse_args()
+    build(Path.cwd(), options.profile, options.target)
+
+
+# === Private Functions === #
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    main()

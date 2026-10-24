@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:7c6492773611996c3919d1d2b94e3925328cf3dd5ab5a7e5ee1e4cf362276410
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:cb924a474c349e819269fba28ecdbbd610c634163af515e9518a17925df5d9ce
 name: CI
 "on":
   push:
@@ -21,13 +21,12 @@ name: CI
 permissions:
   contents: read
 jobs:
-  build_linux:
+  build_product_linux:
     name: Build
-    uses: ./.github/workflows/managed-build-native.yml
+    uses: ./.github/workflows/managed-build-product-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":120}"
-      platform: linux
+      timeouts: "{\"build_product_linux\":120}"
     secrets: inherit
     needs:
     - validated
@@ -35,15 +34,14 @@ jobs:
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
     concurrency:
-      group: "ci-${{ github.workflow }}-build_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      group: "ci-${{ github.workflow }}-build_product_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
-  build_windows:
+  build_tests_linux:
     name: Build
-    uses: ./.github/workflows/managed-build-native.yml
+    uses: ./.github/workflows/managed-build-tests-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":120}"
-      platform: windows
+      timeouts: "{\"build_tests_linux\":120}"
     secrets: inherit
     needs:
     - validated
@@ -51,7 +49,37 @@ jobs:
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
       'cancelled') && needs.validated.outputs.validated != 'true'
     concurrency:
-      group: "ci-${{ github.workflow }}-build_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      group: "ci-${{ github.workflow }}-build_tests_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
+  build_product_windows:
+    name: Build
+    uses: ./.github/workflows/managed-build-product-windows.yml
+    with:
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
+      timeouts: "{\"build_product_windows\":120}"
+    secrets: inherit
+    needs:
+    - validated
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-build_product_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
+  build_tests_windows:
+    name: Build
+    uses: ./.github/workflows/managed-build-tests-windows.yml
+    with:
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
+      timeouts: "{\"build_tests_windows\":120}"
+    secrets: inherit
+    needs:
+    - validated
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-build_tests_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check:
     name: Check
@@ -76,7 +104,7 @@ jobs:
       timeouts: "{\"check_generated_python\":120}"
     secrets: inherit
     needs:
-    - build_linux
+    - build_product_linux
     - validated
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
@@ -86,11 +114,10 @@ jobs:
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check_linux:
     name: Check
-    uses: ./.github/workflows/managed-check-native.yml
+    uses: ./.github/workflows/managed-check-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust\":120}"
-      platform: linux
+      timeouts: "{\"check_rust_linux\":120}"
     secrets: inherit
     needs:
     - validated
@@ -102,11 +129,10 @@ jobs:
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   check_windows:
     name: Check
-    uses: ./.github/workflows/managed-check-native.yml
+    uses: ./.github/workflows/managed-check-windows.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"check_rust\":120}"
-      platform: windows
+      timeouts: "{\"check_rust_windows\":120}"
     secrets: inherit
     needs:
     - validated
@@ -118,14 +144,13 @@ jobs:
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   package_linux:
     name: Package
-    uses: ./.github/workflows/managed-package-native.yml
+    uses: ./.github/workflows/managed-package-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust\":120}"
-      platform: linux
+      timeouts: "{\"package_rust_linux\":120}"
     secrets: inherit
     needs:
-    - build_linux
+    - build_product_linux
     - check
     - check_generated
     - check_linux
@@ -138,14 +163,13 @@ jobs:
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   package_windows:
     name: Package
-    uses: ./.github/workflows/managed-package-native.yml
+    uses: ./.github/workflows/managed-package-windows.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"package_rust\":120}"
-      platform: windows
+      timeouts: "{\"package_rust_windows\":120}"
     secrets: inherit
     needs:
-    - build_windows
+    - build_product_windows
     - check
     - check_generated
     - check_windows
@@ -156,16 +180,51 @@ jobs:
     concurrency:
       group: "ci-${{ github.workflow }}-package_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
-  test_linux:
-    name: Test
-    uses: ./.github/workflows/managed-test-native.yml
+  prepare_linux:
+    name: Prepare
+    uses: ./.github/workflows/managed-prepare-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_acceptance\":120,\"validate_test_rust_integration\":120,\"validate_test_rust_system\":120,\"validate_test_rust_unit\":120}"
-      platform: linux
+      timeouts: "{\"prepare_test_fixtures_linux\":120}"
     secrets: inherit
     needs:
-    - build_linux
+    - build_product_linux
+    - build_tests_linux
+    - validated
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-prepare_linux-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
+  prepare_windows:
+    name: Prepare
+    uses: ./.github/workflows/managed-prepare-windows.yml
+    with:
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
+      timeouts: "{\"prepare_test_fixtures_windows\":120}"
+    secrets: inherit
+    needs:
+    - build_product_windows
+    - build_tests_windows
+    - validated
+    if: >-
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
+      'cancelled') && needs.validated.outputs.validated != 'true'
+    concurrency:
+      group: "ci-${{ github.workflow }}-prepare_windows-${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v'))) && github.ref || github.run_id }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
+  test_linux:
+    name: Test
+    uses: ./.github/workflows/managed-test-linux.yml
+    with:
+      runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
+      timeouts: "{\"validate_test_rust_acceptance_linux\":120,\"validate_test_rust_integration_linux\":120,\"validate_test_rust_system_linux\":120,\"validate_test_rust_unit_linux\":120}"
+    secrets: inherit
+    needs:
+    - build_product_linux
+    - build_tests_linux
+    - prepare_linux
     - validated
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
@@ -175,14 +234,15 @@ jobs:
       cancel-in-progress: "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore(release): prepare v')) }}"
   test_windows:
     name: Test
-    uses: ./.github/workflows/managed-test-native.yml
+    uses: ./.github/workflows/managed-test-windows.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_acceptance\":120,\"validate_test_rust_integration\":120,\"validate_test_rust_system\":120,\"validate_test_rust_unit\":120}"
-      platform: windows
+      timeouts: "{\"validate_test_rust_acceptance_windows\":120,\"validate_test_rust_integration_windows\":120,\"validate_test_rust_system_windows\":120,\"validate_test_rust_unit_windows\":120}"
     secrets: inherit
     needs:
-    - build_windows
+    - build_product_windows
+    - build_tests_windows
+    - prepare_windows
     - validated
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
@@ -427,14 +487,18 @@ jobs:
   release:
     name: Release
     needs:
-    - build_linux
-    - build_windows
+    - build_product_linux
+    - build_tests_linux
+    - build_product_windows
+    - build_tests_windows
     - check
     - check_generated
     - check_linux
     - check_windows
     - package_linux
     - package_windows
+    - prepare_linux
+    - prepare_windows
     - test_linux
     - test_windows
     - validated

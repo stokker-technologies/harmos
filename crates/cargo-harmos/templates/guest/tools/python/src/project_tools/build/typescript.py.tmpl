@@ -1,0 +1,53 @@
+# ***
+#
+# __PRODUCT_NAME__
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Build Packageable Products Without Test Harnesses Or Fixtures"""
+
+# === Imports === #
+
+# Standard Library Imports
+import argparse
+from pathlib import Path
+
+# Third Party Imports
+# Local Imports
+from . import paths
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build Canonical Products")
+    parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--project", default=".")
+    parser.add_argument("--target")
+    options = parser.parse_args()
+    directory = Path.cwd()
+    project = directory / options.project
+    if not project.resolve().is_relative_to(directory.resolve()):
+        raise ValueError("build project escapes the repository")
+    destination = paths.output(directory, "build", options.profile, options.target)
+    paths.replace(directory, project / "dist", destination / "web")
+
+
+# === Private Functions === #
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:8018fe27176a0dd8d32f7b9e7703717e42de0f0f0a56ae9dd8b50dc82f38c018
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:11b40121740132446a1287d848e1ca189ec19430d208159d396e57e6e767b24a
 name: Build
 "on":
   workflow_call:
@@ -233,32 +233,22 @@ jobs:
           if (process.env.ACTIONS_CACHE_SERVICE_V2) {
             core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2);
           }
-    - run: >-
+    - name: Bench Build
+      run: >-
         mise exec -- uv run --locked --project tools/python python -m
-        harmos_tools.ci.sccache
-      env:
-        STKR_SCCACHE_SCRIPT: mise run build:rust:bench
-    - name: Archive Build
-      shell: bash
-      run: |-
-        native="$(mise exec -- uv run --locked --project tools/python python -m harmos_tools.build.paths build --profile bench)"
-        native="${native##*/}"
-        mkdir -p target/ci
-        candidates=("target/build/bench/${native}/")
-        outputs=()
-        for path in "${candidates[@]}"; do
-          if [ -e "$path" ]; then outputs+=("$path"); fi
-        done
-        [ ${#outputs[@]} -gt 0 ]
-        tar --zstd -cf "target/ci/build-bench-linux.tar.zst"  -- "${outputs[@]}"
+        harmos_tools.ci.build --profile bench --output bench --task build:rust:bench
+    - name: Archive bench
+      run: >-
+        mise exec -- uv run --locked --project tools/python python -m
+        harmos_tools.ci.artifacts pack --archive target/ci/build-bench-bench-linux.tar.zst --profile bench
+        --paths
+        5b227461726765742f6275696c642f62656e63682f7b7461726765747d2f62656e6368222c227461726765742f6275696c642f62656e63682f7b7461726765747d2f62696e222c227461726765742f6275696c642f62656e63682f7b7461726765747d2f6669787475726573225d
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
       with:
-        name: build-bench
-        path: target/ci/build-bench-linux.tar.zst
-        if-no-files-found: ignore
+        name: build-bench-bench-linux
+        path: target/ci/build-bench-bench-linux.tar.zst
+        if-no-files-found: error
         retention-days: 7
-        include-hidden-files: true
         compression-level: 0
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-

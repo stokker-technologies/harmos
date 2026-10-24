@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/trusted-cache.yml; sha256:9ebc126d9841ad67b02f7c1694ce246628ffa6ed52064a74b72de618f48dec98
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/trusted-cache.yml; sha256:4b25a84a45c551e7322cf35b704ec491f5d790ab2150d8cb4594c21b18db2cae
 Check / Repository:
   cache:
   - key:
@@ -86,7 +86,7 @@ Check / Rust (linux):
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
     STKR_CACHE_POLICY: pull-push
-Build / Native (linux):
+Build / Product (linux):
   cache:
   - key:
       prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
@@ -112,7 +112,35 @@ Build / Native (linux):
     - .cache/uv/
     policy: $STKR_CACHE_POLICY
   variables:
-    STKR_BUILD_TESTS: "true"
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Tests (linux):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
     STKR_CACHE_POLICY: pull-push
@@ -144,6 +172,7 @@ Test / Rust / Unit (linux):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build:rust:tests
     STKR_CACHE_POLICY: pull-push
 Package / Rust (linux):
   cache:
@@ -173,6 +202,7 @@ Package / Rust (linux):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build
     STKR_CACHE_POLICY: pull-push
 Check / Rust (windows):
   cache:
@@ -203,7 +233,7 @@ Check / Rust (windows):
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
     STKR_CACHE_POLICY: pull-push
-Build / Native (windows):
+Build / Product (windows):
   cache:
   - key:
       prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
@@ -229,7 +259,35 @@ Build / Native (windows):
     - .cache/uv/
     policy: $STKR_CACHE_POLICY
   variables:
-    STKR_BUILD_TESTS: "true"
+    MISE_ENABLE_TOOLS: >-
+      go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+    STKR_CACHE_POLICY: pull-push
+Build / Tests (windows):
+  cache:
+  - key:
+      prefix: stkr-v4-cargo-downloads-linux-$CI_RUNNER_ID
+      files:
+      - Cargo.lock
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-mise-linux-$CI_RUNNER_ID
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/downloads/
+    policy: $STKR_CACHE_POLICY
+  - key:
+      prefix: stkr-v4-uv-linux-$CI_RUNNER_ID
+      files:
+      - uv.lock
+      - mise.lock
+    paths:
+    - .cache/uv/
+    policy: $STKR_CACHE_POLICY
+  variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
     STKR_CACHE_POLICY: pull-push
@@ -261,6 +319,7 @@ Test / Rust / Unit (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build:rust:tests
     STKR_CACHE_POLICY: pull-push
 Package / Rust (windows):
   cache:
@@ -290,6 +349,7 @@ Package / Rust (windows):
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
+    MISE_TASK_SKIP: build
     STKR_CACHE_POLICY: pull-push
 Test / Rust / Coverage:
   cache:
@@ -319,6 +379,7 @@ Test / Rust / Coverage:
   variables:
     MISE_ENABLE_TOOLS: >-
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
+    MISE_TASK_SKIP: build:rust:tests
     STKR_CACHE_POLICY: pull-push
 Validated / Repository:
   cache:
