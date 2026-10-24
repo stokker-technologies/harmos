@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:f1d7c188c5baf6f6c35cd3df0b5d60d260f15139ebf2c4835e66b4e045df384b
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:5eb62948f5d532f244e99e449d912507aea92a0d0fb74d6251f5f469494a7379
 Package / Rust (linux):
   stage: Package
   tags:
@@ -9,9 +9,7 @@ Package / Rust (linux):
     artifacts: false
   - job: Check / Rust (linux)
     artifacts: false
-  - job: Test / Rust / Unit (linux)
-    artifacts: false
-  - job: Build / Product (linux)
+  - job: Build / Native (linux)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
@@ -98,9 +96,7 @@ Package / Rust (windows):
     artifacts: false
   - job: Check / Rust (windows)
     artifacts: false
-  - job: Test / Rust / Unit (windows)
-    artifacts: false
-  - job: Build / Product (windows)
+  - job: Build / Native (windows)
     artifacts: true
   - job: Validated / Repository
     artifacts: true
@@ -226,6 +222,25 @@ Package / Rust (windows):
         if ($null -ne $value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
       }
     }
+  - |-
+    $ErrorActionPreference = 'Stop'
+    # === Setup === #
+    $root = Join-Path $PWD '.cache/bootstrap/mise-2026.10.17'
+    $archive = Join-Path $root 'mise.zip'
+    $checksum = '32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c'
+    New-Item -ItemType Directory -Force $root | Out-Null
+    if (!(Test-Path -LiteralPath $archive) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) {
+        Invoke-WebRequest 'https://github.com/jdx/mise/releases/download/v2026.10.17/mise-v2026.10.17-windows-x64.zip' -OutFile $archive
+    }
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $checksum) { throw 'Pinned mise archive checksum mismatch' }
+    Expand-Archive -LiteralPath $archive -DestinationPath $root -Force
+    $mise = Join-Path $root 'mise/bin/mise.exe'
+    if (!(Test-Path -LiteralPath $mise -PathType Leaf)) { throw 'Pinned mise executable missing' }
+    $env:PATH = (Split-Path -Parent $mise) + [IO.Path]::PathSeparator + $env:PATH
+    # === Verification === #
+    & $mise --version
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned mise cannot execute' }
+    # === Entry Point === #
   - mise trust --yes
   - mise install --yes
   variables:

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/bench.py; sha256:407e2c4bf0e638ee24330417b4369dcaf0412fd656f84202475e7c73e1f713ec
+# Rendered by stkr project update from templates/python/build/bench.py; sha256:c491fb5edb02dc92b03481e892991b572c4259a5f50a0e184428829c67ad89f5
 # ***
 #
 # Harmos
@@ -16,6 +16,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from pathlib import Path
 # Local Imports
 from .. import temporary
 from ..test import archive
-from . import paths
+from . import cargo, paths
 
 # Type Checking Imports
 
@@ -44,6 +45,18 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
     messages = output / "bench/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     messages.unlink(missing_ok=True)
+    cargo.clippy(
+        directory,
+        [
+            "--locked",
+            "--workspace",
+            "--bins",
+            "--benches",
+            "--profile",
+            "bench",
+            *extra,
+        ],
+    )
     command = [
         "cargo",
         "build",
@@ -59,7 +72,15 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
     with temporary.directory() as staging:
         raw = staging / "compiler.json"
         with raw.open("w", encoding="utf-8") as written:
-            subprocess.run(command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), cwd=directory, stdout=written, check=True)
+            subprocess.run(
+                command,
+                stdin=sys.stdin,
+                stderr=sys.stderr,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                cwd=directory,
+                stdout=written,
+                check=True,
+            )
         for kind in ("bin", "bench"):
             (staging / kind).mkdir()
 

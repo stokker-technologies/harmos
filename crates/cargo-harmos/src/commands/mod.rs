@@ -12,11 +12,18 @@
 /* === Modules === */
 
 mod bindings;
+
 #[cfg(feature = "guest")]
 mod guest;
+
+#[cfg(any(feature = "sidecar", feature = "guest"))]
 mod inspect;
+
 mod new;
+
+#[cfg(any(feature = "sidecar", feature = "guest"))]
 mod package;
+
 #[cfg(feature = "sidecar")]
 mod sidecar;
 
@@ -46,15 +53,15 @@ pub enum Command {
     New(new::Arguments),
 
     #[command(about = "Generate Producer-Owned Transport Bindings.")]
-    Bindings(bindings::Arguments),
+    Bindings(Box<bindings::Arguments>),
 
     #[command(about = "Build Or Watch Native Sidecar Plugins.")]
     #[cfg(feature = "sidecar")]
-    Sidecar(sidecar::Arguments),
+    Sidecar(Box<sidecar::Arguments>),
 
     #[command(about = "Build Or Watch Sandboxed Guest Plugins.")]
     #[cfg(feature = "guest")]
-    Guest(guest::Arguments),
+    Guest(Box<guest::Arguments>),
 }
 
 /* === Traits === */
@@ -67,11 +74,11 @@ impl Command {
         let _ = cancellation;
         match self {
             Self::New(arguments) => new::run(arguments).map_err(Into::into),
-            Self::Bindings(arguments) => bindings::run(arguments),
+            Self::Bindings(arguments) => bindings::run(*arguments),
             #[cfg(feature = "sidecar")]
-            Self::Sidecar(arguments) => sidecar::run(arguments, cancellation).map_err(Into::into),
+            Self::Sidecar(arguments) => sidecar::run(*arguments, cancellation).map_err(Into::into),
             #[cfg(feature = "guest")]
-            Self::Guest(arguments) => guest::run(arguments, cancellation).map_err(Into::into),
+            Self::Guest(arguments) => guest::run(*arguments, cancellation).map_err(Into::into),
         }
     }
 }

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:d7360d66028cf573b2c8a26bd63d1ba14dfb62ef16e678dccf4e5d2b9b88fe4b
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:8018fe27176a0dd8d32f7b9e7703717e42de0f0f0a56ae9dd8b50dc82f38c018
 name: Build
 "on":
   workflow_call:
@@ -22,7 +22,7 @@ env:
 jobs:
   build_bench:
     name: Bench
-    runs-on: stokker-local-linux-x64
+    runs-on: ${{ fromJSON(inputs.runners).nightly.small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).build_bench }}
     steps:
     - name: Configure Checkout Git

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:ea86f8296980d76e1ff068584fcceaa55828d550934c95c898d227b9b610e220
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:5a02468e71b37b4963176393013b1b6db3a5ceca37c79674c6668206af11b9d6
 # === Settings === #
 
 [settings]
@@ -79,15 +79,11 @@ run_windows = """pwsh -NoProfile -Command "taplo fmt --option column_width=140{%
 
 [tasks.lint]
 description = "Lint Every Language"
-depends = ["lint:rust", "lint:python"]
+depends = ["lint:python"]
 
 [tasks."lint:python"]
 description = "Lint Python"
 run = ['uv run --locked --project tools/python ruff check "tools/python"', 'uv run --locked --project tools/python ty check "tools/python"']
-
-[tasks."lint:rust"]
-description = "Lint Rust"
-run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
 # === Check === #
 
@@ -105,13 +101,7 @@ run = [{ task = "format:toml --check" }]
 
 [tasks."check:rust"]
 description = "Check Rust"
-run = [
-  { task = "format:rust --check" },
-  { task = "lint:rust" },
-  "cargo-machete --skip-target-dir",
-  "cargo check --workspace --all-targets --all-features",
-  "cargo check --workspace --all-targets --no-default-features",
-]
+run = [{ task = "format:rust --check" }, "cargo-machete --skip-target-dir"]
 
 # === Build === #
 

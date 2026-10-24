@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:33e1463038028925163ef749deef3c689d780308b3a3f5ec8abeeb2b803dd9d4
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:2e9b2b8953897b472307534b5008374a0e3c7f9c08fecf7a266f0ea1a86d72bd
 stages:
 - Check
 - Build
@@ -70,6 +70,7 @@ default:
 variables:
   STKR_CACHE_POLICY: pull
   GIT_DEPTH: "0"
+  GIT_STRATEGY: clone
   MISE_YES: "1"
   MISE_LOCKED: "1"
   MISE_EXPERIMENTAL: "1"

@@ -311,7 +311,7 @@ impl Instance {
         }
     }
 
-    #[cfg(any(feature = "plugin-sidecar", test))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn depend_on(self: &Arc<Self>, provider: &Arc<Self>, retirement: bool) -> crate::Result<()> {
         if Arc::ptr_eq(self, provider) {
             return Err(Error::InvalidInput { field: "physical provider", reason: "an instance cannot retain itself" });

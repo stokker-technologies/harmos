@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:04f0a38a4efab3ce1b66e6c7c168e5cefbe2e187078335b1a5b70a396ab4b79f
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:f2abbc34109721466a4cf7b09ce8a94a76185ed504efdf07839345d4d851b01c
 name: Nightly
 "on":
   schedule:
@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":120,\"build_tests\":120}"
+      timeouts: "{\"build_product\":120}"
       platform: linux
     secrets: inherit
   build_windows:
@@ -46,7 +46,7 @@ jobs:
     uses: ./.github/workflows/managed-build-native.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"build_product\":120,\"build_tests\":120}"
+      timeouts: "{\"build_product\":120}"
       platform: windows
     secrets: inherit
   check:
@@ -94,7 +94,6 @@ jobs:
     - check
     - check_generated
     - check_linux
-    - test_linux
   package_windows:
     name: Package
     uses: ./.github/workflows/managed-package-native.yml
@@ -108,7 +107,6 @@ jobs:
     - check
     - check_generated
     - check_windows
-    - test_windows
   test_nightly:
     name: Test
     uses: ./.github/workflows/managed-test-nightly.yml

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-native.yml; sha256:b556aa1395823c3b0a1c477965423341e6b86553355c2fcadd8bd27ea74d436b
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-native.yml; sha256:f2475ef4a5942b9a3afc2ef85cec4dcfb8f7c7ce5b60bedeae926804d21e6498
 name: Test
 "on":
   workflow_call:
@@ -577,10 +577,7 @@ jobs:
         path: .cache/uv/
   validate_test_rust_acceptance:
     name: Rust / Acceptance (${{ inputs.platform }})
-    runs-on: >-
-      ${{ inputs.platform == 'windows' && 'stokker-local-windows-x64' ||
-      (inputs.platform == 'linux' && 'stokker-local-linux-x64' ||
-      (fromJSON(inputs.runners)[inputs.platform].small)) }}
+    runs-on: ${{ fromJSON(inputs.runners)[inputs.platform].small }}
     timeout-minutes: ${{ fromJSON(inputs.timeouts).validate_test_rust_acceptance }}
     env:
       MISE_ENABLE_TOOLS: >-
