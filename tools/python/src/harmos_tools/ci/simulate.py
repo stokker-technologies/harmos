@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:90ebc2cdcd7c1cb93323238a15eb6b35bd72e53bd45555039e8bb296fafd8209
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:338ebbae2be3b2175b309fb3141561290bb909aeab3fe9b8be1473fc45a0696a
 # ***
 #
 # Harmos
@@ -376,6 +376,12 @@ def stage(root: Path, destination: Path) -> None:
     git = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     if git.returncode == 0:
         subprocess.run(["git", "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--local", str(root), str(destination)], check=True)
+        for key, default in (("core.autocrlf", "false"), ("core.eol", "native")):
+            setting = subprocess.run(["git", "-C", str(root), "config", "--get", key], capture_output=True, text=True, check=False)
+            if setting.returncode not in (0, 1):
+                raise SimulationError(f"could not read candidate Git setting: {key}")
+            value = setting.stdout.strip() if setting.returncode == 0 else default
+            subprocess.run(["git", "-C", str(destination), "config", "--local", key, value], check=True)
         index = subprocess.run(["git", "-C", str(root), "ls-files", "--stage", "-z"], capture_output=True, check=True).stdout
         subprocess.run(["git", "-C", str(destination), "read-tree", "--empty"], check=True)
         subprocess.run(["git", "-C", str(destination), "update-index", "-z", "--index-info"], input=index, check=True)

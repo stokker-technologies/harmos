@@ -17,6 +17,7 @@ import os
 import stat
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 # Third Party Imports
@@ -67,9 +68,15 @@ def main(arguments: list[str] | None = None) -> None:
             sys.exit(f"fixture input {relative} is absent; run mise run build:rust:tests")
 
     if category == "acceptance":
-        # Starter Stories Share Mise's Runtime Links; Install Their Full Toolset Before Nextest Starts Them.
+        # Starter Stories Share Mise's Runtime Links; Install Only Their Declared Tools Before Nextest Starts Them.
         environment = dict(os.environ)
-        environment.pop("MISE_ENABLE_TOOLS", None)
+        templates = ROOT / "crates/cargo-harmos/templates"
+        tools = {
+            name
+            for kind in ("guest", "sidecar")
+            for name in tomllib.loads((templates / kind / "mise.toml.tmpl").read_text(encoding="utf-8"))["tools"]
+        }
+        environment["MISE_ENABLE_TOOLS"] = ",".join(sorted(tools))
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
         subprocess.run(
             ["mise", "install"],
