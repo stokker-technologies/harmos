@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:4b6f972a5945bb83c021a86b2af033bd9ba56e4c4e236a184262d200b8f3ce3c
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:b5e37316ce782cddd1dadde117e357b5dc6f498a8a17cffd0d351c2db56017fc
 # ***
 #
 # __PRODUCT_NAME__
@@ -615,6 +615,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                 local.mkdir(parents=True, exist_ok=True)
                 environment.update(
                     MISE_DATA_DIR=str(local / "mise"),
+                    MISE_CACHE_DIR=str(local / "mise-cache"),
                     MISE_DOWNLOADS_DIR=str(local / "mise-downloads"),
                     CARGO_HOME=str(local / "cargo"),
                     UV_CACHE_DIR=str(local / "uv"),
@@ -716,6 +717,7 @@ def docker(
     }
     child.update(
         MISE_DATA_DIR="/cache/mise",
+        MISE_CACHE_DIR="/cache/mise-cache",
         MISE_DOWNLOADS_DIR="/cache/downloads",
         CARGO_HOME="/cache/cargo",
         UV_CACHE_DIR="/cache/uv",

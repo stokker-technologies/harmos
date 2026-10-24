@@ -198,7 +198,6 @@ depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}}",
 ]
-env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:integration"]
 description = "Test Integration Rust"
@@ -208,7 +207,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category integration --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}}",
 ]
-env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:acceptance"]
 description = "Test Acceptance Rust"
@@ -218,14 +216,12 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
 ]
-env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:coverage"]
 description = "Measure Coverage Over Instrumented Lanes"
 usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust --profile {{usage.profile}}"
-env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 [tasks."test:rust:system"]
 description = "Test System Rust"
@@ -235,7 +231,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}}",
 ]
-env.HARMOS_TEST_PROFILE = "{{usage.profile}}"
 
 # === Bench === #
 

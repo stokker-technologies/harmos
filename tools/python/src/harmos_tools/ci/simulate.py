@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:6f403909a6f68a0e08853b28638eff47e164826d6d4e6342de6c3f308d047aa0
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:90ebc2cdcd7c1cb93323238a15eb6b35bd72e53bd45555039e8bb296fafd8209
 # ***
 #
 # Harmos
@@ -615,6 +615,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                 local.mkdir(parents=True, exist_ok=True)
                 environment.update(
                     MISE_DATA_DIR=str(local / "mise"),
+                    MISE_CACHE_DIR=str(local / "mise-cache"),
                     MISE_DOWNLOADS_DIR=str(local / "mise-downloads"),
                     CARGO_HOME=str(local / "cargo"),
                     UV_CACHE_DIR=str(local / "uv"),
@@ -716,6 +717,7 @@ def docker(
     }
     child.update(
         MISE_DATA_DIR="/cache/mise",
+        MISE_CACHE_DIR="/cache/mise-cache",
         MISE_DOWNLOADS_DIR="/cache/downloads",
         CARGO_HOME="/cache/cargo",
         UV_CACHE_DIR="/cache/uv",
