@@ -96,6 +96,11 @@ id = "test:rust:system"
 inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
 
 [[ci.jobs]]
+id = "test:rust:starter"
+pipelines = ["nightly"]
+inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
+
+[[ci.jobs]]
 id = "test:rust:coverage"
 inputs = ["build:rust:tests#tests", "prepare:tests:fixtures#fixtures", "build#product"]
 

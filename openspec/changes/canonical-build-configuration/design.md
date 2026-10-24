@@ -26,6 +26,7 @@ Correctness tests have a minimum 30-second deadline, with larger existing bounds
 
 ## Source Inventory
 
+- The user directs the four existing `harmos-packaging::acceptance` `authoring::*` compiler stories into nightly-only `test:rust:starter`, using the same Tests archive, prepared fixtures and Product inputs. Ordinary acceptance excludes only that module; nightly coverage retains it. Starter tool installation runs only in the explicit starter preflight. No test source or assertion is removed. README claims are unaffected; CONTRIBUTING owns the changed validation cadence.
 - `mise.toml`: canonical Product/Tests selectors, optional `build:rust:compatibility` and `test:rust:extended`, with Product-only installer dependencies unchanged.
 - The authored `ci:simulate` task replaces the duplicated sequential `ci` recipe with the rendered provider graph, using the canonical pipeline/platform/executor/resource flags. The authored pull-request template and contributor instructions name that gate.
 - `stkr.toml`: named Product, Tests archive and fixture outputs; preparation consumes Product plus Tests fixtures, Unit consumes only the archive, Integration adds prepared fixtures, and Acceptance/System also consume Product. Tests exports only the exact archive and compiler metadata paths, excluding retained local listing diagnostics.
@@ -41,6 +42,23 @@ Correctness tests have a minimum 30-second deadline, with larger existing bounds
 - `README.md`, `CONTRIBUTING.md`, `docs/product-guide.md`, `examples/schematic/README.md`, this change's requirements, and maintained `openspec/specs/native-ci/spec.md`: canonical CI configuration, current released assets and optional local extended coverage. Preserve the detailed authored examples while correcting verified executable paths and fixture-producer ownership.
 - Remove profile overrides from `Cargo.toml`, `examples/schematic/Cargo.toml`, `crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml`, and authored guest/sidecar starter Cargo manifests. Preserve story coverage and feature defaults. Extend native `BuildProfile` parsing and captured-output debug-directory recognition to the default Cargo test profile, retaining the actual compiler profile in receipts.
 - Preserve the completed `shared-native-build` retirement metadata and leave `reduce-compile-time` untouched.
+
+## Windows System Investigation
+
+The existing canonical archive's eight failures are individually inventoried below. The seven guest stories compile their selected component before initialization. The current single-story probe preserves the 30-second correctness guard and fails at 30.022 seconds, with one Nextest test thread and an eight-CPU Job Object rate limit. Dokime validation was active concurrently, so this is diagnostic failure evidence rather than a standalone performance measurement. No application deadline or compiler profile changed.
+
+| Story | Fixture | Known Phase And Remaining Measurement |
+|---|---|---|
+| `publication_crosses_row` | Sandbox | File read 8ms; separate validation 746ms; standalone JIT did not finish within the earlier 10–16s probes. Current unchanged story exceeds 30s. Initialization and operations remain unmeasured. |
+| `registration_precedes_init` | Sandbox | Same `instantiate` path at `crates/harmos-guest/tests/system/main.rs:217`; individual JIT, initialization and operation timing remains unmeasured. |
+| `refusal_preserves_reason` | Sandbox | Same `initialize`/`instantiate` path; individual phase timing remains unmeasured. |
+| `shutdown_current_context` | Sandbox | Same `instantiate` path before shutdown; individual phase timing remains unmeasured. |
+| `submitted_children_controls` | Sandbox | Same initialization path before submitted-child operations; individual phase timing remains unmeasured. |
+| `unbound_operations_refused` | Schematic | Same `instantiate` path with the separate Schematic component; individual phase timing remains unmeasured. |
+| `plugin::sdk_lifecycle_retained` | Schematic | Test-local Wasmtime `Component::new` in `crates/harmos-guest/tests/system/plugin.rs`, followed by SDK lifecycle calls; individual phase timing remains unmeasured. |
+| `schematic::cli_backends_reopen` | Schematic Sidecar And Guest | Runs the real CLI with both carriers; individual CLI startup, guest JIT and operation timing remains unmeasured. |
+
+The simulator currently controls aggregate native CPU rate and RAM, but not processor affinity or Nextest/Rayon worker discovery. A reserved eight-CPU job can still discover all host processors; that shared infrastructure finding belongs to Hub. It does not establish the cause of any individual timeout. Keep 1.7 and the under-10-second application objective open until measurements distinguish default-profile host JIT from worker contention and actual application work. The original complete simulation is `c8b98a022a2d`; its summary records failed Linux builds and Windows System, so retained successes require the affected repair closure rather than a claim of a green gate.
 
 ## Compatibility Selection
 

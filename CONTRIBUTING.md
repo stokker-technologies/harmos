@@ -41,7 +41,9 @@ Hosted CI remains required before integration.
 Product and Tests compile independently with matching Clippy invocations.
 Tests use the default unoptimized test profile; optional extended tests remain
 explicit local work. Nightly runs ordinary verification with release Product
-builds and downloadable unsigned packages, plus coverage and benchmarks.
+builds and downloadable unsigned packages, plus coverage, benchmarks and
+`test:rust:starter` for generated guest/sidecar compilation and development lifecycles.
+Ordinary acceptance retains the other product stories without compiling starters.
 Correctness tests have a minimum 30-second deadline, preserving larger bounds.
 Use benchmarks for performance measurements rather than tightening test deadlines.
 

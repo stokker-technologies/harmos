@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:a0c45efcc96a900ea4fe44489967169226c74432bb318e1a2c94de6bd6af3f65
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:5d782da21d268682b11c0066aa39404c8fc91809ee42b2842521406b0e83fb0f
 name: CI / Nightly
 "on":
   schedule:
@@ -18,7 +18,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"bench_rust_integration\":120,\"bench_rust_system\":120,\"bench_rust_unit\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_nightly
@@ -36,7 +36,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   build_tests_linux:
     name: Build
@@ -45,7 +45,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   build_product_windows:
     name: Build
@@ -54,7 +54,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_product_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   build_tests_windows:
     name: Build
@@ -63,7 +63,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_tests_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   build_nightly:
     name: Build
@@ -72,7 +72,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"build_bench\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   check:
     name: Check
@@ -81,7 +81,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_python\":120,\"source\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   check_generated:
     name: Check
@@ -90,7 +90,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_generated_python\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_linux
@@ -101,7 +101,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   check_windows:
     name: Check
@@ -110,7 +110,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"check_rust_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
   package_linux:
     name: Package
@@ -119,7 +119,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_linux
@@ -133,7 +133,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"package_rust_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_windows
@@ -147,7 +147,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"prepare_test_fixtures_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_linux
@@ -159,7 +159,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"prepare_test_fixtures_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_windows
@@ -171,7 +171,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"release_dry_nightly\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - check
@@ -187,9 +187,9 @@ jobs:
     uses: ./.github/workflows/managed-test-linux.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_acceptance_linux\":120,\"validate_test_rust_integration_linux\":120,\"validate_test_rust_system_linux\":120,\"validate_test_rust_unit_linux\":120}"
+      timeouts: "{\"validate_test_rust_acceptance_linux\":120,\"validate_test_rust_integration_linux\":120,\"validate_test_rust_starter_linux\":120,\"validate_test_rust_system_linux\":120,\"validate_test_rust_unit_linux\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_linux
@@ -200,9 +200,9 @@ jobs:
     uses: ./.github/workflows/managed-test-windows.yml
     with:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
-      timeouts: "{\"validate_test_rust_acceptance_windows\":120,\"validate_test_rust_integration_windows\":120,\"validate_test_rust_system_windows\":120,\"validate_test_rust_unit_windows\":120}"
+      timeouts: "{\"validate_test_rust_acceptance_windows\":120,\"validate_test_rust_integration_windows\":120,\"validate_test_rust_starter_windows\":120,\"validate_test_rust_system_windows\":120,\"validate_test_rust_unit_windows\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_windows
@@ -215,7 +215,7 @@ jobs:
       runners: "{\"linux\":{\"small\":\"ubuntu-24.04\",\"large\":\"ubuntu-24.04\"},\"windows\":{\"small\":\"windows-2022\",\"large\":\"windows-2022\"},\"nightly\":{\"small\":\"ubuntu-latest\",\"coverage\":\"ubuntu-latest\"}}"
       timeouts: "{\"validate_coverage_rust\":120}"
       pipeline: nightly
-      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:system\",\"test:rust:unit\"]"
+      impact: "[\"bench:rust:integration\",\"bench:rust:system\",\"bench:rust:unit\",\"build\",\"build:rust:bench\",\"build:rust:tests\",\"check:python\",\"check:python:generated\",\"check:repository\",\"check:rust\",\"package:rust\",\"prepare:tests:fixtures\",\"release:prepare\",\"release:publish\",\"release:publish:dry\",\"release:rehearse\",\"release:tag\",\"release:verify\",\"test:rust:acceptance\",\"test:rust:coverage\",\"test:rust:integration\",\"test:rust:starter\",\"test:rust:system\",\"test:rust:unit\"]"
     secrets: inherit
     needs:
     - build_product_linux

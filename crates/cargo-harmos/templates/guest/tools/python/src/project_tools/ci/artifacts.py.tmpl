@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:b28c95f59533716c8af6e2a45d44160d7964bbd687a7dedbe15ea7336b4aa566
+# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:52758f40e04999ccca801dc718fa8bed5a042acba7c23229971fcd60bc1ded35
 # ***
 #
 # __PRODUCT_NAME__
@@ -95,6 +95,8 @@ def extract(directory: Path, archive: Path) -> None:
         try:
             with tarfile.open(fileobj=decompressor.stdout, mode="r|") as source:
                 source.extractall(root, filter=_member)
+            while decompressor.stdout.read(1024 * 1024):
+                pass
         finally:
             decompressor.stdout.close()
         status = decompressor.wait()

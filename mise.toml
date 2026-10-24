@@ -214,7 +214,16 @@ usage = 'flag "--profile <profile>" default="dev"'
 depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E '!test(/^authoring::/)'",
+]
+
+[tasks."test:rust:starter"]
+description = "Prove Standalone Starter Compiler Contracts In Nightly Validation"
+usage = 'flag "--profile <profile>" default="release"'
+depends = ["prepare:tools"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category acceptance --starter --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} -- -E 'test(/^authoring::/)'",
 ]
 
 [tasks."test:rust:coverage"]
