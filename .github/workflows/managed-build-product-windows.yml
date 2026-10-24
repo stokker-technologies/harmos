@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-windows.yml; sha256:c782faed609cd2ea0abaea1920f66ee137acbf7818a2223ce79205dda9a945d4
-name: Build
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-windows.yml; sha256:7121d325a85bde4b3be790e92980b47154f4bbc75b9012730e38f8b62c9bebb2
+name: Build / Product / Windows
 "on":
   workflow_call:
     inputs:

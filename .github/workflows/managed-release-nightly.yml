@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release-nightly.yml; sha256:2304f3bb8f9d161ae37061bdda8e5645f70ecd5a645c9ec935861f1e62bcf0e3
-name: Release
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release-nightly.yml; sha256:df1a6cfdfe2c47ed85e4ca91d95b9d9451a26cc1654c095b6723cf8ce0b63fc2
+name: Release / Nightly
 "on":
   workflow_call:
     inputs:

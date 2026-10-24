@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:53ca151b77e7c56e373d22724060c48a10ffc262157d0c183214f88f1b33fe99
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:1fe20277578f74e71328293d30965b5685c6dd4c09c6cba170084a78ade43917
 name: Release
 "on":
   workflow_call:
@@ -22,10 +22,6 @@ name: Release
       review_version:
         type: string
         default: ""
-      bump:
-        type: string
-        default: auto
-        description: auto, minor or major; Release / Prepare only
     secrets:
       release_token:
         required: false
@@ -550,6 +546,7 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ env.MISE_DATA_DIR }}
+    - run: mise run release:prepare
     - name: Check Runner Group Allowlist
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
@@ -557,7 +554,6 @@ jobs:
       env:
         GITHUB_RUNNER_WORKFLOWS: "{\"ci.yml\":${{ inputs.runners }}}"
         GH_TOKEN: ${{ secrets.runner_group_read_token || github.token }}
-    - run: mise run release:prepare
     - run: >-
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.release.run review
@@ -600,7 +596,6 @@ jobs:
         harmos_tools.ci.summary
     env:
       MISE_ENABLE_TOOLS: go,node,python,rust,uv,gh,git-cliff,glab
-      RELEASE_BUMP: ${{ inputs.bump }}
       RELEASE_TOKEN: ${{ secrets.release_token }}
       GH_TOKEN: ${{ github.token }}
       CRATES_BOOTSTRAP_AVAILABLE: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}

@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:507d0d41923caf434c283244a921f00caf5b5384b563cc355668e45aae8467a4
-name: Package
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:40e5b3a8876c1c8f39d164f4f7cb76eb85ed0eab6dcf3c23c2a1b9678a8c5fab
+name: Package / Windows
 "on":
   workflow_call:
     inputs:

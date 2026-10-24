@@ -1,5 +1,5 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:bfb372448e93eb348d7817572f0025f810359269a9857cb7f91a418103031c5a
-name: Build
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-nightly.yml; sha256:8eeb0fd8736a5be1db8afa8ee6898871510ab2901f145690da839f2f744586f1
+name: Build / Nightly
 "on":
   workflow_call:
     inputs:
