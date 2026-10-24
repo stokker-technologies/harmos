@@ -375,10 +375,10 @@ def executable(messages: list[dict], name: str) -> Path:
 def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, str]:
     """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
 
-    A library built twice (a build-dependency feature set beside the normal one) resolves to
-    the build whose features include every other's.
+    Prefer the build whose features include every other's. Equal-feature host and
+    shipping builds resolve against the authoritative shipping Harmos profile.
     """
-    found: dict[str, dict[str, set[str]]] = {name: {} for name in LIBRARIES}
+    found: dict[str, dict[str, tuple[set[str], dict]]] = {name: {} for name in LIBRARIES}
     destination = fixtures / "libraries"
     destination.mkdir()
 
@@ -386,23 +386,26 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
         (message, filename) for message in messages if message.get("reason") == "compiler-artifact" for filename in message["filenames"]
     )
     staged = (_library(message, filename, files, fixtures) for message, filename in inputs)
-    for name, library, features in filter(None, staged):
-        found[name][library] = features
+    for name, library, features, profile in filter(None, staged):
+        found[name][library] = features, profile
 
-    selected = {name: _widest(builds) for name, builds in found.items()}
+    shipping = _widest(found["harmos"])
+    profile = found["harmos"][shipping][1] if shipping is not None else None
+    selected = {name: _widest(builds, profile) for name, builds in found.items()}
     ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
     if ambiguous:
         raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
     return {name: path for name, path in selected.items() if path is not None}
 
 
-def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple[str, str, set[str]] | None:
+def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple[str, str, set[str], dict] | None:
     source = Path(filename)
     if source.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
         return None
     # Matching Emitted Libraries Already Carry Their Metadata.
     companion = source.with_suffix(".rlib")
-    if source.suffix == ".rmeta" and any(Path(name) == companion for name in message["filenames"]):
+    emitted = {Path(name) for name in message["filenames"]}
+    if source.suffix == ".rmeta" and companion in emitted:
         return None
     destination = fixtures / "libraries" / source.name
     if not destination.exists():
@@ -414,12 +417,15 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
     suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
     if source.suffix != suffix:
         return None
-    return name, destination.relative_to(fixtures).as_posix(), set(message["features"])
+    return name, destination.relative_to(fixtures).as_posix(), set(message["features"]), message["profile"]
 
 
-def _widest(builds: dict[str, set[str]]) -> str | None:
-    required = set().union(*builds.values())
-    widest = [path for path, features in builds.items() if required <= features]
+def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = None) -> str | None:
+    features = [enabled for enabled, _ in builds.values()]
+    required = set().union(*features)
+    widest = [path for path, (features, _) in builds.items() if required <= features]
+    if len(widest) > 1 and profile is not None:
+        widest = [path for path in widest if builds[path][1] == profile]
     return widest[0] if len(widest) == 1 else None
 
 
