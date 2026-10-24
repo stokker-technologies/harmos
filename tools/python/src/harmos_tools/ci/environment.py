@@ -1,0 +1,118 @@
+# Rendered by stkr project update from templates/python/ci/environment.py; sha256:d3b33def0a53ebf9a4d79d3bbfd5399784bc047ba046f0039d2390dfc7072247
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+"""Import Step Environment Files As Data Into The Persistent Job Shell."""
+
+# === Imports === #
+
+# Standard Library Imports
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+# Third Party Imports
+
+# Local Imports
+
+# Type Checking Imports
+
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+def read(environment: Path, paths: Path, current: dict[str, str]) -> dict[str, str]:
+    lines = environment.read_text(encoding="utf-8-sig").split("\n")
+    result = {}
+    position = 0
+    while position < len(lines):
+        line = lines[position]
+        position += 1
+        if not line:
+            continue
+        if "<<" in line and ("=" not in line or line.index("<<") < line.index("=")):
+            name, delimiter = line.split("<<", 1)
+            if not delimiter:
+                raise ValueError("empty environment delimiter")
+            values = []
+            while position < len(lines) and lines[position] != delimiter:
+                values.append(lines[position])
+                position += 1
+            if position == len(lines):
+                raise ValueError("unterminated environment value")
+            position += 1
+            value = "\n".join(values)
+        elif "=" in line:
+            name, value = line.split("=", 1)
+        else:
+            raise ValueError("invalid environment record")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or "\0" in value:
+            raise ValueError("invalid environment name or value")
+        if name.upper().startswith(("GITHUB_", "RUNNER_")) or name.upper() == "NODE_OPTIONS":
+            raise ValueError("reserved provider environment variable")
+        result[name] = value
+    additions = [line for line in paths.read_text(encoding="utf-8-sig").split("\n") if line]
+    if any("\0" in entry for entry in additions):
+        raise ValueError("invalid PATH entry")
+    if additions:
+        base = result.get("PATH", current.get("PATH", ""))
+        if os.name == "nt":
+            base = next((value for name, value in reversed(result.items()) if name.upper() == "PATH"), base)
+        selected = base.split(os.pathsep)
+        for entry in additions:
+            selected = [value for value in selected if os.path.normcase(value) != os.path.normcase(entry)]
+            selected.insert(0, entry)
+        result["PATH"] = os.pathsep.join(selected)
+    environment.write_text("", encoding="utf-8")
+    paths.write_text("", encoding="utf-8")
+    return result
+
+
+def commands(windows: bool, python: str, helper: str) -> list[str]:
+    if windows:
+        python, helper = (value.replace("'", "''") for value in (python, helper))
+        return [
+            f"$stkrStepEnvironment = & '{python}' '{helper}' --format json",
+            "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+            "$stkrStepEnvironment = $stkrStepEnvironment | ConvertFrom-Json -AsHashtable",
+            "foreach ($stkrEntry in $stkrStepEnvironment.GetEnumerator()) { [Environment]::SetEnvironmentVariable($stkrEntry.Key, [string]$stkrEntry.Value, 'Process') }",
+        ]
+    python, helper = ("'" + value.replace("'", "'\"'\"'") + "'" for value in (python, helper))
+    return [
+        f'{python} {helper} --format nul > "$GITHUB_ENV.exports"',
+        "while IFS= read -r -d '' stkrName && IFS= read -r -d '' stkrValue; do export \"$stkrName=$stkrValue\"; done < \"$GITHUB_ENV.exports\"",
+    ]
+
+
+# === Private Functions === #
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--format", choices=("json", "nul"), required=True)
+    options = parser.parse_args()
+    try:
+        values = read(Path(os.environ["GITHUB_ENV"]), Path(os.environ["GITHUB_PATH"]), dict(os.environ))
+    except (OSError, UnicodeError, ValueError, KeyError) as error:
+        parser.exit(1, f"Step environment import failed: {type(error).__name__}\n")
+    if options.format == "json":
+        print(json.dumps(values))
+    else:
+        for key, value in values.items():
+            sys.stdout.buffer.write(key.encode() + b"\0" + value.encode() + b"\0")

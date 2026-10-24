@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:b0437e80a0e520f962ff4fdea9da4eb371cd4fab2b4b9fd5c6d33ce53590cac5
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:9d3e483ef6d5bb820f9164e797cc0637fab97957d2fbd617b1f8ce889f669cb5
 # ***
 #
 # Harmos
@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -29,6 +30,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from . import environment as step_environment
 from . import impact
 from . import summary as reporting
 from .resources import Budget, NativeLimit, SimulationError, managed_image
@@ -615,6 +617,10 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                 evidence(output, job, commands, environment, cpu, memory)
                 windows = os.name == "nt"
                 script = workspace.with_suffix(".ps1" if windows else ".sh")
+                for name, suffix in [("GITHUB_ENV", ".env"), ("GITHUB_PATH", ".path")]:
+                    scratch = workspace.with_suffix(suffix)
+                    scratch.write_text("", encoding="utf-8")
+                    environment[name] = str(scratch)
                 lines = ["$ErrorActionPreference='Stop'" if windows else "set -eo pipefail"]
                 for index, command in enumerate(commands):
                     label = f"Command {index + 1}/{len(commands)}: {command.splitlines()[0]}".replace("'", "''" if windows else "'\"'\"'")
@@ -629,6 +635,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                         )
                     else:
                         lines.extend([f"printf '%s\\n' '{label}'", command])
+                    lines.extend(step_environment.commands(windows, sys.executable, str(Path(__file__).with_name("environment.py"))))
                 script.write_text("\n".join(lines) + "\n", encoding="utf-8")
                 shell = ["pwsh", "-NoProfile", "-NonInteractive", "-File", str(script)] if windows else ["bash", str(script)]
                 status = stream(shell, workspace, environment, label, log, job["minutes"] * 60 - (time.monotonic() - started), result)
@@ -665,10 +672,12 @@ def docker(
     script = workspace.with_suffix(".sh")
     lines = [
         "set -eo pipefail",
+        ': > "$GITHUB_ENV"; : > "$GITHUB_PATH"',
         "trap 'if [ -r /sys/fs/cgroup/memory.peak ]; then printf \"STKR_PEAK_MEMORY \"; cat /sys/fs/cgroup/memory.peak; fi' EXIT",
     ]
     for index, command in enumerate(commands):
         lines.extend([f"printf '%s\n' 'Command {index + 1}/{len(commands)}'", command])
+        lines.extend(step_environment.commands(False, "python3", "/ci-environment.py"))
 
     export_argument = json.dumps(outputs).replace("'", "'\"'\"'")
     lines.append(
@@ -702,6 +711,8 @@ def docker(
         UV_CACHE_DIR="/cache/uv",
         pnpm_config_store_dir="/cache/pnpm",
         STKR_SCCACHE_DIR="/cache/sccache",
+        GITHUB_ENV="/ci-environment",
+        GITHUB_PATH="/ci-path",
     )
     evidence(output, job, commands, child, cpu, memory)
     create = [
@@ -735,6 +746,9 @@ def docker(
         with archive.open("rb") as source:
             subprocess.run(["docker", "cp", "-", name + ":/workspace"], stdin=source, check=True, capture_output=True)
         subprocess.run(["docker", "cp", str(script), name + ":/ci-simulation.sh"], check=True, capture_output=True)
+        subprocess.run(
+            ["docker", "cp", str(Path(__file__).with_name("environment.py")), name + ":/ci-environment.py"], check=True, capture_output=True
+        )
         status = stream(["docker", "start", "--attach", name], workspace, None, f"linux/{job['key']}", log, job["minutes"] * 60, result)
         if status == 0:
             archive = workspace / "simulation-output.tar"
