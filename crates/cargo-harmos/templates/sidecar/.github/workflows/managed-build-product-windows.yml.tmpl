@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-windows.yml; sha256:22becc8563d42f66b08e351bfa7b0c3d019a5ba6363663199c2819571d949953
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-product-windows.yml; sha256:448edd4c8fd81aed84e1c00855fd1d5689ca2cbd9866d4df55b07a0fef62d440
 name: Build
 "on":
   workflow_call:
@@ -20,7 +20,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   build_product_windows:

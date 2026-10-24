@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:6b8fa51a89d2b5fb950c9eafd1a0ad6a062dca4a7f779f5dc05dfdb7807d5ed8
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:b0437e80a0e520f962ff4fdea9da4eb371cd4fab2b4b9fd5c6d33ce53590cac5
 # ***
 #
 # Harmos
@@ -367,7 +367,9 @@ def stage(root: Path, destination: Path) -> None:
     git = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     if git.returncode == 0:
         subprocess.run(["git", "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--local", str(root), str(destination)], check=True)
-        subprocess.run(["git", "-C", str(destination), "read-tree", "HEAD"], check=True)
+        index = subprocess.run(["git", "-C", str(root), "ls-files", "--stage", "-z"], capture_output=True, check=True).stdout
+        subprocess.run(["git", "-C", str(destination), "read-tree", "--empty"], check=True)
+        subprocess.run(["git", "-C", str(destination), "update-index", "-z", "--index-info"], input=index, check=True)
         listed = subprocess.run(
             ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"], capture_output=True, check=True
         )
@@ -381,13 +383,16 @@ def stage(root: Path, destination: Path) -> None:
         ]
     for relative in files:
         source = root / relative
-        if not source.is_file():
+        if not source.is_file() and not source.is_symlink():
             continue
         if not source.resolve().is_relative_to(root.resolve()):
             raise SimulationError(f"candidate file escapes repository: {relative}")
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        if source.is_symlink():
+            target.symlink_to(os.readlink(source))
+        else:
+            shutil.copy2(source, target)
 
 
 def export(root: Path, outputs: dict, archive: Path) -> None:
@@ -400,19 +405,32 @@ def export(root: Path, outputs: dict, archive: Path) -> None:
                     raise SimulationError(f"required output missing: {pattern}")
                 for name in selected:
                     path = root / name
-                    for file in [path] if path.is_file() else path.rglob("*"):
-                        if file.is_file():
-                            if not file.resolve().is_relative_to(root.resolve()) or file.is_symlink():
-                                raise SimulationError("artifact escapes job workspace")
+                    for file in [path] if path.is_file() else [path, *path.rglob("*")]:
+                        if not file.resolve().is_relative_to(root.resolve()) or file.is_symlink():
+                            raise SimulationError("artifact escapes job workspace")
+                        if file.is_file() or file.is_dir():
                             transport.add(file, arcname=f"{output}/{file.relative_to(root).as_posix()}", recursive=False)
 
 
 def transport(archive: Path, destination: Path) -> None:
+    modes = {}
+    directories = []
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(archive, destination.with_name(destination.name + ".tar"))
     with tarfile.open(archive) as source:
         for member in source:
             path = destination / member.name
-            if not member.isfile() or not path.resolve().is_relative_to(destination.resolve()):
+            if (
+                not (member.isfile() or member.isdir())
+                or not relative_path(member.name)
+                or not path.resolve().is_relative_to(destination.resolve())
+            ):
                 raise SimulationError("unsafe local artifact")
+            modes[member.name] = {"type": "file" if member.isfile() else "directory", "mode": member.mode & 0o777}
+            if member.isdir():
+                path.mkdir(parents=True, exist_ok=True)
+                directories.append((path, member.mode & 0o777))
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             data = source.extractfile(member)
             if data is None:
@@ -420,6 +438,87 @@ def transport(archive: Path, destination: Path) -> None:
             with data, path.open("wb") as target:
                 shutil.copyfileobj(data, target)
             path.chmod(member.mode & 0o777)
+    for path, mode in sorted(directories, key=lambda item: len(item[0].parts), reverse=True):
+        path.chmod(mode)
+    destination.with_name(destination.name + ".modes.json").write_text(json.dumps({"version": 1, "files": modes}), encoding="utf-8")
+
+
+def relative_path(name: str) -> bool:
+    return (
+        bool(name)
+        and not name.startswith("/")
+        and not any(part in ("", ".", "..") for part in name.split("/"))
+        and "\\" not in name
+        and ":" not in name
+    )
+
+
+def artifact_modes(path: Path) -> dict:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or document.get("version") != 1 or not isinstance(document.get("files"), dict):
+        raise SimulationError("invalid artifact mode metadata")
+    result = {}
+    for name, item in document["files"].items():
+        if (
+            not relative_path(name)
+            or not isinstance(item, dict)
+            or item.get("type") not in ("file", "directory")
+            or type(item.get("mode")) is not int
+            or not 0 <= item["mode"] <= 0o777
+        ):
+            raise SimulationError("unsafe artifact mode metadata")
+        root = path.with_name(path.name.removesuffix(".modes.json"))
+        entry = root / name
+        if (
+            entry.is_symlink()
+            or not entry.resolve().is_relative_to(root.resolve())
+            or not (entry.is_file() if item["type"] == "file" else entry.is_dir())
+        ):
+            raise SimulationError("artifact mode metadata does not match the retained artifact")
+        result[name] = item["mode"]
+    return result
+
+
+def source_archive(workspace: Path, archive: Path, modes: dict) -> dict:
+    indexed = subprocess.run(["git", "ls-files", "--stage", "-z"], cwd=workspace, capture_output=True, check=False)
+    tracked = {}
+    if indexed.returncode == 0:
+        for entry in indexed.stdout.split(b"\0"):
+            if entry:
+                metadata, name = entry.split(b"\t", 1)
+                tracked[os.fsdecode(name)] = int(metadata.split()[0], 8)
+    records = {}
+    with tarfile.open(archive, "w") as target:
+        for path in workspace.rglob("*"):
+            relative = path.relative_to(workspace).as_posix()
+            member = target.gettarinfo(str(path), arcname=relative)
+            if member.issym() or tracked.get(relative) == 0o120000:
+                link = os.readlink(path) if path.is_symlink() else path.read_text(encoding="utf-8")
+                if not (path.parent / link).resolve().is_relative_to(workspace.resolve()):
+                    raise SimulationError("candidate symlink escapes repository")
+                member.type, member.linkname, member.size = tarfile.SYMTYPE, link, 0
+            member.mode = (
+                modes.get(relative, tracked.get(relative, (0o755 if path.is_dir() else 0o644) if os.name == "nt" else member.mode)) & 0o777
+            )
+            if member.isfile():
+                with path.open("rb") as source:
+                    target.addfile(member, source)
+            elif member.isdir() or member.issym():
+                target.addfile(member)
+            else:
+                raise SimulationError("unsupported candidate file type")
+            records[relative] = {
+                "type": "file" if member.isfile() else "directory" if member.isdir() else "symlink",
+                "mode": member.mode,
+                "origin": "artifact"
+                if relative in modes
+                else "git"
+                if relative in tracked
+                else "windows-default"
+                if os.name == "nt"
+                else "filesystem",
+            }
+    return records
 
 
 def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str, token: str, profile: str, cpu: int, memory: int) -> dict:
@@ -430,7 +529,8 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
     result: dict = {"state": "failed", "seconds": 0, "cache": None}
     with tempfile.TemporaryDirectory(prefix="stkr-ci-job-") as temporary:
         workspace = Path(temporary) / "workspace"
-        shutil.copytree(candidate, workspace)
+        shutil.copytree(candidate, workspace, symlinks=True)
+        transferred_modes = {}
         transfer_started = time.monotonic()
         for reference in job["inputs"]:
             producer, name = reference.split("#", 1)
@@ -442,6 +542,10 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                 if not artifact.is_dir():
                     raise SimulationError(f"missing input {reference}")
                 shutil.copytree(artifact, workspace, dirs_exist_ok=True)
+                metadata = artifact.parent.with_name(artifact.parent.name + ".modes.json")
+                for relative, mode in artifact_modes(metadata).items():
+                    if relative.startswith(name + "/"):
+                        transferred_modes[relative.removeprefix(name + "/")] = mode
         transfer_seconds = time.monotonic() - transfer_started
         native = job.get("execution_platform", job["platform"] if job["platform"] != "any" else "linux")
         label = f"{native}/{key}"
@@ -494,7 +598,9 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
             commands.append(command)
         with (output / f"{key}.log").open("w", encoding="utf-8") as log:
             if job["executor"] == "docker":
-                status = docker(job, workspace, output, identity, token, environment, commands, outputs, cpu, memory, log, result)
+                status = docker(
+                    job, workspace, output, identity, token, environment, commands, outputs, cpu, memory, log, result, transferred_modes
+                )
             else:
                 local = cache / native
                 local.mkdir(parents=True, exist_ok=True)
@@ -503,7 +609,7 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                     MISE_DOWNLOADS_DIR=str(local / "mise-downloads"),
                     CARGO_HOME=str(local / "cargo"),
                     UV_CACHE_DIR=str(local / "uv"),
-                    npm_config_store_dir=str(local / "pnpm"),
+                    pnpm_config_store_dir=str(local / "pnpm"),
                     STKR_SCCACHE_DIR=str(local / "sccache"),
                 )
                 evidence(output, job, commands, environment, cpu, memory)
@@ -550,6 +656,7 @@ def docker(
     memory: int,
     log,
     result: dict,
+    modes: dict | None = None,
 ) -> int:
     name = f"stkr-ci-{token}-{job['key'].replace('_', '-')}"
     volume = name + "-work"
@@ -593,7 +700,7 @@ def docker(
         MISE_DOWNLOADS_DIR="/cache/downloads",
         CARGO_HOME="/cache/cargo",
         UV_CACHE_DIR="/cache/uv",
-        npm_config_store_dir="/cache/pnpm",
+        pnpm_config_store_dir="/cache/pnpm",
         STKR_SCCACHE_DIR="/cache/sccache",
     )
     evidence(output, job, commands, child, cpu, memory)
@@ -622,7 +729,11 @@ def docker(
         created = True
         if BUDGET:
             BUDGET.register(job["key"], name)
-        subprocess.run(["docker", "cp", str(workspace) + "/.", name + ":/workspace"], check=True, capture_output=True)
+        archive = workspace.with_suffix(".tar")
+        records = source_archive(workspace, archive, modes or {})
+        (output / f"{job['key']}.source-modes.json").write_text(json.dumps(records), encoding="utf-8")
+        with archive.open("rb") as source:
+            subprocess.run(["docker", "cp", "-", name + ":/workspace"], stdin=source, check=True, capture_output=True)
         subprocess.run(["docker", "cp", str(script), name + ":/ci-simulation.sh"], check=True, capture_output=True)
         status = stream(["docker", "start", "--attach", name], workspace, None, f"linux/{job['key']}", log, job["minutes"] * 60, result)
         if status == 0:
@@ -653,7 +764,7 @@ def evidence(output: Path, job: dict, commands: list[str], environment: dict, cp
             "CARGO_INCREMENTAL",
             "CARGO_HOME",
             "UV_CACHE_DIR",
-            "npm_config_store_dir",
+            "pnpm_config_store_dir",
         )
         or name.startswith(("MISE_", "STKR_SCCACHE_", "STKR_CI_SIMULATE"))
     }

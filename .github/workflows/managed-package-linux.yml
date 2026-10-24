@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-linux.yml; sha256:3069a54be53c8279cc47847ed2370fbcb893cb1c40994a13fa08af7cdc68f5d5
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-linux.yml; sha256:b2ea0fcbb8868696bbdfa06b2b050d92cd48f0cf5b016eaeeb190b9f798a9864
 name: Package
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   package_rust_linux:

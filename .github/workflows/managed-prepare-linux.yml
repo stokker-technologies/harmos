@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-linux.yml; sha256:fe03fd702c32b5f6174d6c3c230ffc7ca4187545aabedc44f1802af5dab10455
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-prepare-linux.yml; sha256:6f73bae2066497313cc76bcb99e75ca7baffa3bf51bc458b8fe8f6996d6fab49
 name: Prepare
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   prepare_test_fixtures_linux:

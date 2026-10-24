@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-windows.yml; sha256:1a6f3a2b95f5bc4ece9774829ce98f476c99529f701b042b63364b863c3b6f0b
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-build-tests-windows.yml; sha256:51c3c0c54aaa6b364a261e92ee297e30858a1ced48b5ead4c7b3bea3eb8cb8db
 name: Build
 "on":
   workflow_call:
@@ -20,7 +20,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   build_tests_windows:

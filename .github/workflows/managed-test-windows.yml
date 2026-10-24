@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:45fcdb498047ceb10b5e8cc5d4645082706b97414c25691cfda25533f4320178
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:0845d1cf2f8a3f9b38eb10218be086eae461d830df899711b67234cb64859976
 name: Test
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   validate_test_rust_unit_windows:

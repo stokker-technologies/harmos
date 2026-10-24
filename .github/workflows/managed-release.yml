@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:663175219af75a4d1ed6480051326ba6b630008fb2745d58c1be3b66299f67e2
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:53ca151b77e7c56e373d22724060c48a10ffc262157d0c183214f88f1b33fe99
 name: Release
 "on":
   workflow_call:
@@ -48,7 +48,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
   RELEASE_BUILD_RUN_ID: ${{ inputs.review_run != '' && inputs.review_run || github.run_id }}
   RELEASE_BUILD_SHA: ${{ inputs.review_sha != '' && inputs.review_sha || github.sha }}

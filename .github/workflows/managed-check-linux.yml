@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-linux.yml; sha256:0e47a84bad995169a56f993fc125cea588b16dd6ae15561d2819f8e39ed74276
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-check-linux.yml; sha256:a4d4619d6da28f22ac57fa6c98995b7fe2cbbcfc96a2f3429e7bf59edd7c42f8
 name: Check
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   check_rust_linux:

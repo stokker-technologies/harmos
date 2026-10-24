@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:70658b7fe993955c4ec5006e9551e0c17fb2a6ab54c0affdd6a9ff1cdc67bdc7
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-package-windows.yml; sha256:507d0d41923caf434c283244a921f00caf5b5384b563cc355668e45aae8467a4
 name: Package
 "on":
   workflow_call:
@@ -23,7 +23,7 @@ env:
   MISE_EXPERIMENTAL: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_HOME: ${{ github.workspace }}/.cache/cargo
-  npm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
   package_rust_windows:
