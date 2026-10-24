@@ -55,6 +55,10 @@ Existing Rust feature guards select the following runtime coverage only in the a
 
 No test source, assertion or whole package is excluded. Macro authoring stories retain their full fixture selection using the shipping schematic's compiler capture.
 
+## Product Transport Closure
+
+Product exports both `target/generated/python/pyproject.toml` and `target/generated/python/src`. The package manifest is part of the checksummed Product catalog consumed by fixture preparation and packaging; exporting only the source subtree leaves those consumers incomplete on a fresh job. Every catalog hash and artifact/library/build selector must resolve using only declared Product outputs. An actual declared-output archive pack/extract verified all 296 catalog hashes through both consumer preflight functions, without a checkout or compiler outputs outside the exported paths.
+
 ## Extended Case Partition
 
 The current Windows archive partition contains 637 canonical cases and the following 263 additional cases selected by the existing noncanonical feature guards. A namespace ending in `::*` includes every existing testcase below that namespace; individual entries identify one testcase. These cases remain in `test:rust:extended`, with their original assertions. No canonical identity is absent from the previous 900-case selection.

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:8bfcaa96a0121b30d253143c892b4f51a9b9153882599ede86248fc03d94c280
+# Rendered by stkr project update from templates/python/ci/build.py; sha256:b9c0460da8e4d6c0b907787a4b801450ef8b0f5fe709971ea2ba8d69520407db
 # ***
 #
 # __PRODUCT_NAME__
@@ -37,6 +37,12 @@ METRICS = {
     "cache_errors": "Cache Errors",
     "cache_read_errors": "Read Errors",
     "cache_write_errors": "Write Errors",
+    "cache_writes": "Successful Writes",
+    "write_error_AlreadyExists": "Write Conflicts",
+    "write_error_PermissionDenied": "Write Permission Errors",
+    "write_error_RateLimited": "Write Rate Limits",
+    "write_error_Unexpected": "Unexpected Write Errors",
+    "write_error_Unknown": "Unclassified Write Errors",
 }
 
 # === Types === #

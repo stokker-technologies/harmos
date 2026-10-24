@@ -51,6 +51,7 @@ outputs.product = [
   "target/build/{profile}/{target}/bin",
   "target/build/{profile}/{target}/lib",
   "target/build/{profile}/{target}/product",
+  "target/generated/python/pyproject.toml",
   "target/generated/python/src",
 ]
 

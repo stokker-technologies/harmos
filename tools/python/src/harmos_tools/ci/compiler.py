@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:09d8afdd534c72249b44b9e92e868e0d021e20d8d20ff3d28a09f4638edc9466
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:bcd59835391f39b122372a1d01c3f59a0dcd3d7c21529fce82321b2af8ed0c8b
 # ***
 #
 # Harmos
@@ -101,11 +101,12 @@ def _execute(
     statistics: dict | None = None,
 ) -> int:
     endpoint: queue.Queue[str] = queue.Queue(maxsize=1)
+    write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
     server_environment = environment | {
         "SCCACHE_START_SERVER": "1",
         "SCCACHE_NO_DAEMON": "1",
         "SCCACHE_SERVER_PORT": "0",
-        "SCCACHE_LOG": "info",
+        "SCCACHE_LOG": "off,sccache::server=debug/^(server started, listening on |Error executing cache write: )",
         "SCCACHE_IDLE_TIMEOUT": "0",
     }
     # Pinned 0.18.0 Logs This Only After Backend Readiness And Binding Port 0.
@@ -121,6 +122,8 @@ def _execute(
         def read_endpoint() -> None:
             assert server.stderr is not None
             for line in server.stderr:
+                if category := _write_error(line):
+                    write_errors[category] += 1
                 match = re.search(r"server started, listening on 127\.0\.0\.1:([1-9][0-9]*)\s*$", line)
                 if match and endpoint.empty():
                     endpoint.put(match[1])
@@ -231,6 +234,17 @@ def _execute(
                 server.kill()
                 server.wait(timeout=10)
             reader.join(timeout=1)
+            if statistics is not None:
+                statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
+
+
+def _write_error(line: str) -> str | None:
+    """Classify Native Write Failures Without Exposing Backend URLs Or Credentials."""
+    _, marker, reason = line.partition("Error executing cache write: ")
+    if not marker:
+        return None
+    category = re.match(r"(AlreadyExists|PermissionDenied|RateLimited|Unexpected)\b", reason)
+    return category[1] if category else "Unknown"
 
 
 def _statistics(information: dict) -> dict[str, int | None]:
@@ -247,6 +261,7 @@ def _statistics(information: dict) -> dict[str, int | None]:
         "requests_not_cacheable",
         "cache_read_errors",
         "cache_write_errors",
+        "cache_writes",
     ):
         value = stats.get(key)
         if key in {"cache_hits", "cache_misses", "cache_errors"}:

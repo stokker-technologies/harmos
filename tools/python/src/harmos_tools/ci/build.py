@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/build.py; sha256:cc59b569ea12f65bcff47ce47c69943c3c8a5170803230f88802405227bdd735
+# Rendered by stkr project update from templates/python/ci/build.py; sha256:bff99b5097da8913af21eae120697740c6f88d7ae70b3c029cd208f371d00035
 # ***
 #
 # Harmos
@@ -37,6 +37,12 @@ METRICS = {
     "cache_errors": "Cache Errors",
     "cache_read_errors": "Read Errors",
     "cache_write_errors": "Write Errors",
+    "cache_writes": "Successful Writes",
+    "write_error_AlreadyExists": "Write Conflicts",
+    "write_error_PermissionDenied": "Write Permission Errors",
+    "write_error_RateLimited": "Write Rate Limits",
+    "write_error_Unexpected": "Unexpected Write Errors",
+    "write_error_Unknown": "Unclassified Write Errors",
 }
 
 # === Types === #
