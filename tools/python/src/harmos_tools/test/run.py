@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:8a13885cdd1fb9896ae118734ee46323af82593574b1dcd747da8097cf893483
+# Rendered by stkr project update from templates/python/test/run.py; sha256:4bbd131e348f56d63664234b2e3116cb786a35c6e3225fecbb44495fcd1b8b19
 # ***
 #
 # Harmos
@@ -63,7 +63,6 @@ def test(
     _preflight(directory, category, language, profile)
     if language == "python":
         archive.install_wheels(directory, profile)
-    recorded = report.load(report.location(directory, profile, key) / "durations.json")
     with _scratch(directory, key, profile) as scratch:
         deadline = rules.deadline(category)
 
@@ -75,7 +74,7 @@ def test(
             binaries = archive.binaries(directory, profile)
             names = sorted(set(binaries.values()))
             expression, rest = nextest.selection(category, extra, names)
-            measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=binaries)
+            measured = nextest.overrides(rules, category, coverage=False, binaries=binaries)
             configuration = scratch / "nextest.toml"
             store = str(scratch / "store")
             configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
@@ -104,7 +103,6 @@ def test(
             environment,
             junit,
             scratch,
-            recorded,
         )
         lane["arguments"] = list(extra)
         return 0 if lane["outcome"] == "passed" else 1
@@ -133,7 +131,7 @@ def coverage(
             binaries = archive.binaries(directory, profile)
             names = sorted(set(binaries.values()))
             expression, rest = nextest.selection(category, extra, names)
-            measured = nextest.overrides(rules, category, {}, coverage=True, binaries=binaries)
+            measured = nextest.overrides(rules, category, coverage=True, binaries=binaries)
             configuration = scratch / "nextest.toml"
             store = str(scratch / "store")
             configuration.write_text(nextest.config(store, deadline, measured), encoding="utf-8")
@@ -163,7 +161,6 @@ def coverage(
             environment,
             junit,
             scratch,
-            {},
         )
         if language == "rust" and _execute(nextest.report(profile, cobertura), directory, environment) != 0:
             lane["outcome"] = "failed"
@@ -343,7 +340,6 @@ def _lane(
     environment: dict[str, str] | None,
     junit: Path,
     scratch: Path,
-    recorded: dict[str, dict],
 ) -> dict:
     """Execute a lane command and turn its JUnit report into a lane record."""
     started = time.time()
@@ -374,7 +370,7 @@ def _lane(
     text = junit.read_text(encoding="utf-8")
     package = Path(project).name if project != "." else directory.name
     found = report.cases(text, category, language, package)
-    deadlines = {(case.suite, case.name): _deadline(rules, language, case, recorded) for case in found}
+    deadlines = {(case.suite, case.name): _deadline(rules, language, case) for case in found}
     overruns = [
         f"{case.file}::{case.story}"
         for case in found
@@ -417,15 +413,14 @@ def _lane(
     }
 
 
-def _deadline(rules: policy.Policy, language: str, case: report.Case, recorded: dict) -> int:
+def _deadline(rules: policy.Policy, language: str, case: report.Case) -> int:
     if language != "rust":
         entry = rules.matched(case.category, language, f"{case.file}::{case.story}")
         if entry is not None:
             return entry.timeout_seconds
     if case.category not in policy.CATEGORIES:
         return 0
-    seconds = recorded.get(case.suite, {}).get(case.name, {}).get("seconds")
-    return rules.story(case.category, seconds)
+    return rules.deadline(case.category)
 
 
 def _console() -> dict:
