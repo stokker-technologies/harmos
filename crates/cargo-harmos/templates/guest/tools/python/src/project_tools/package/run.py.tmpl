@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:bd12d79eb13762d18e6c6bac856c183167f45b1d8d04c1cc9317b791fae3cbec
+# Rendered by stkr project update from templates/python/package/run.py; sha256:e2f3f49971b7e3c5974c53d9c8bff590d9de16d6133c183a9a226ce6ac58ce22
 # ***
 #
 # __PRODUCT_NAME__
@@ -217,7 +217,7 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                         stdout=sys.stdout,
                         stderr=sys.stderr,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        cwd=install,
+                        cwd=install.parent,
                         env=environment,
                         check=True,
                     )

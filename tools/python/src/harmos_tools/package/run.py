@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/package/run.py; sha256:ad1995c1ded6e25ef70e952b9b7e3c482b877eb5b66dd8d71379ee5faf9bee02
+# Rendered by stkr project update from templates/python/package/run.py; sha256:545bf51b1a24fc010ded0354f6fca806b814800fa0b93931c80f11aaaafafe01
 # ***
 #
 # Harmos
@@ -217,7 +217,7 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                         stdout=sys.stdout,
                         stderr=sys.stderr,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        cwd=install,
+                        cwd=install.parent,
                         env=environment,
                         check=True,
                     )
