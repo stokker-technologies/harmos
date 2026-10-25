@@ -329,26 +329,7 @@ fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) 
     budget.claim(construction)?;
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     // Count Expansion Before Allocating Trees Or Arrow Buffers.
-    for bytes in payloads {
-        budget.claim(bytes.len().checked_mul(4).ok_or_else(exhausted)?)?;
-        validator
-            .visit(bytes, |path, event| {
-                budget.claim(256)?;
-                for part in path {
-                    if let PathElement::Field { name, .. } = part {
-                        budget.claim(name.len().checked_mul(4).ok_or_else(exhausted)?)?;
-                    }
-                }
-                if let Event::BeginRepeated { length } = event {
-                    budget.claim(length.checked_mul(256).ok_or_else(exhausted)?)?;
-                }
-                Ok::<_, Error>(())
-            })
-            .map_err(|error| match error {
-                schema::VisitError::Consumer(error) => error,
-                schema::VisitError::Payload(_) => invalid("payload differs from its schema"),
-            })?;
-    }
+    account_expansion(&validator, payloads, |bytes| budget.claim(bytes))?;
     let mut roots = Vec::with_capacity(payloads.len());
     for bytes in payloads {
         let mut root = Node::Null;
@@ -375,6 +356,46 @@ fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) 
     }
     let refs = roots.iter().map(Some).collect::<Vec<_>>();
     array(&DataType::Struct(payload_fields(&schema.schema)?), &refs)
+}
+
+fn account_expansion(validator: &schema::Validator, payloads: &[&[u8]], claim: impl FnOnce(usize) -> Result<()>) -> Result<()> {
+    if payloads.is_empty() {
+        return Ok(());
+    }
+    let mut bytes = 0usize;
+    let result = count_expansion(validator, payloads, &mut bytes);
+    // Claim Even A Malformed Prefix Before Reporting Its Validation Failure.
+    claim(bytes)?;
+    result
+}
+
+fn count_expansion(validator: &schema::Validator, payloads: &[&[u8]], total: &mut usize) -> Result<()> {
+    for bytes in payloads {
+        add_expansion(total, bytes.len().checked_mul(4).ok_or_else(exhausted)?)?;
+        validator
+            .visit(bytes, |path, event| {
+                add_expansion(total, 256)?;
+                for part in path {
+                    if let PathElement::Field { name, .. } = part {
+                        add_expansion(total, name.len().checked_mul(4).ok_or_else(exhausted)?)?;
+                    }
+                }
+                if let Event::BeginRepeated { length } = event {
+                    add_expansion(total, length.checked_mul(256).ok_or_else(exhausted)?)?;
+                }
+                Ok::<_, Error>(())
+            })
+            .map_err(|error| match error {
+                schema::VisitError::Consumer(error) => error,
+                schema::VisitError::Payload(_) => invalid("payload differs from its schema"),
+            })?;
+    }
+    Ok(())
+}
+
+fn add_expansion(total: &mut usize, bytes: usize) -> Result<()> {
+    *total = total.checked_add(bytes).ok_or_else(exhausted)?;
+    Ok(())
 }
 
 fn node_at<'n, 'a>(root: &'n mut Node<'a>, path: &[PathElement<'_>]) -> Result<&'n mut Node<'a>> {
@@ -548,3 +569,91 @@ fn exhausted() -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harmos_domain::Message;
+    use harmos_domain::schema::Described;
+
+    #[harmos_domain::message]
+    struct Detail {
+        label: String,
+    }
+
+    #[harmos_domain::message]
+    struct Accounted {
+        value: u64,
+        optional: Option<u32>,
+        samples: Vec<u32>,
+        detail: Detail,
+    }
+
+    fn fixture() -> (schema::Validator, Vec<u8>) {
+        let settings = harmos_domain::config::SchemaSettings::default();
+        let graph = graph::Schema::from_declaration(Accounted::DEFINITION, &settings).unwrap();
+        let validator = schema::Validator::from_schema(&graph, &settings).unwrap();
+        let row = Accounted { value: 1, optional: None, samples: vec![1, 2], detail: Detail { label: "x".into() } };
+        (validator, row.encode_to_vec())
+    }
+
+    #[test]
+    fn accounting_charges_once() {
+        let (validator, bytes) = fixture();
+        assert_eq!(bytes.len(), 7);
+        let mut claims = Vec::new();
+        account_expansion(&validator, &[bytes.as_slice(), bytes.as_slice()], |bytes| {
+            claims.push(bytes);
+            Ok(())
+        })
+        .unwrap();
+        // Each Row: Seven Encoded Bytes Times Four, 11 Events, Ancestor Names And Two Repeated Slots.
+        assert_eq!(claims, [7_224]);
+        account_expansion(&validator, &[], |_| panic!("empty input has no expansion claim")).unwrap();
+    }
+
+    #[test]
+    fn accounting_respects_budget() {
+        let (validator, bytes) = fixture();
+        for (limit, accepted) in [(3_611, false), (3_612, true)] {
+            let mut claims = Vec::new();
+            let result = account_expansion(&validator, &[&bytes], |bytes| {
+                claims.push(bytes);
+                if bytes > limit { Err(exhausted()) } else { Ok(()) }
+            });
+            assert_eq!(claims, [3_612]);
+            assert_eq!(result.is_ok(), accepted);
+            if !accepted {
+                assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_prefix_claims_first() {
+        let (validator, mut bytes) = fixture();
+        bytes.pop();
+        for limit in [2_771, 2_772] {
+            let mut claims = Vec::new();
+            let result = account_expansion(&validator, &[&bytes], |bytes| {
+                claims.push(bytes);
+                if bytes > limit { Err(exhausted()) } else { Ok(()) }
+            });
+            assert_eq!(claims, [2_772]);
+            if limit < 2_772 {
+                assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
+            } else {
+                assert!(matches!(result, Err(Error::InvalidInput { .. })));
+            }
+        }
+    }
+
+    #[test]
+    fn accounting_rejects_overflow() {
+        let (validator, bytes) = fixture();
+        let mut total = usize::MAX - 1;
+        let error = count_expansion(&validator, &[&bytes], &mut total).unwrap_err();
+        assert!(matches!(error, Error::ResourceExhausted { .. }));
+        assert_eq!(total, usize::MAX - 1);
+    }
+}
