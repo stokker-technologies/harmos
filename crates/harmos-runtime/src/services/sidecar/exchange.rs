@@ -19,6 +19,8 @@
 
 // Local Imports
 use super::*;
+use crate::supervision::executor::InContext;
+use tracing::Instrument;
 
 /* === Constants === */
 
@@ -111,7 +113,8 @@ where
                         return false;
                     }
                 }
-                Step::Requested(request) => {
+                Step::Requested(mut request) => {
+                    request.trace.dequeued();
                     if request.answer.is_closed() {
                         continue;
                     }
@@ -128,7 +131,7 @@ where
                         )));
                         continue;
                     }
-                    match self.send(frame).await {
+                    match self.send(frame).instrument(request.trace.span.clone()).in_context(request.trace.dispatcher.clone()).await {
                         Ok(()) => {
                             if let Some(children) = request.children {
                                 self.child_scopes.insert(id, children);

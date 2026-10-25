@@ -42,6 +42,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.manager.status.retry_transient_persistence", level = "trace", skip_all)]
     pub fn retry_transient_persistence(&self) -> bool {
         let mut state = self.inner.state.lock().unwrap();
         let Some(failure) = &state.status.failure else {
@@ -61,6 +62,7 @@ impl<C> StorageManager<C> {
         true
     }
 
+    #[tracing::instrument(name = "storage.manager.status.reserve_arrow_memory", level = "trace", skip_all)]
     pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
         Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error)
     }
@@ -69,17 +71,19 @@ impl<C> StorageManager<C> {
         self.inner.settings.request.max_pending_write_batches.get()
     }
 
+    #[tracing::instrument(name = "storage.manager.status.await_durable", level = "debug", skip_all)]
     pub async fn await_durable(&self, cursor: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&cursor.history)?;
         self.flush_domain(Domain::Data, Some(cursor)).await
     }
 
+    #[tracing::instrument(name = "storage.manager.status.release_object_history", level = "debug", skip_all)]
     pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
             return Err(Error::InvalidInput { field: "object retention", reason: "release exceeds durable frontier" });
         }
-        self.inner.bounded(self.inner.primary.release_object_history(schema, item, through)).await?;
+        self.inner.bounded("primary.release_object_history", self.inner.primary.release_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())

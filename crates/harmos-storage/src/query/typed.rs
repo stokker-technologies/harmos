@@ -72,6 +72,7 @@ pub struct RecordReader<T> {
 // Scan State Shared By Both Readers. The Active Slot And Snapshot Release Once
 // The Source Is Exhausted; Dropping An In-Progress `next` Poisons The Reader.
 struct Pages<E: Entry> {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
     selection: E::Selection,
@@ -91,6 +92,7 @@ struct Pages<E: Entry> {
 /* === Implementations === */
 
 impl<C: ObjectCatalog> StorageManager<C> {
+    #[tracing::instrument(name = "storage.query.typed.read_objects", level = "trace", skip_all)]
     pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
     where
         C: Contains<T>,
@@ -104,6 +106,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.query.typed.read_records", level = "trace", skip_all)]
     pub async fn read_records<T: Message>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
         read.selection.schema.require_postcard()?;
@@ -114,6 +117,7 @@ impl<C> StorageManager<C> {
 }
 
 impl<T: StoredObject> ObjectReader<T> {
+    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
     pub async fn next(&mut self) -> Result<Option<Vec<ObjectRevision<T>>>> {
         let schema = &self.schema;
         self.pages
@@ -130,6 +134,7 @@ impl<T: StoredObject> ObjectReader<T> {
             .await
     }
 
+    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
     pub async fn collect(mut self) -> Result<Vec<ObjectRevision<T>>> {
         let mut values = Vec::new();
         while let Some(page) = self.next().await? {
@@ -140,6 +145,7 @@ impl<T: StoredObject> ObjectReader<T> {
 }
 
 impl<T: Message> RecordReader<T> {
+    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
     pub async fn next(&mut self) -> Result<Option<Vec<StoredRecord<T>>>> {
         self.pages
             .next(
@@ -160,6 +166,7 @@ impl<T: Message> RecordReader<T> {
             .await
     }
 
+    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
     pub async fn collect(mut self) -> Result<Vec<StoredRecord<T>>> {
         let mut values = Vec::new();
         while let Some(page) = self.next().await? {
@@ -173,6 +180,7 @@ impl<E: Entry> Pages<E>
 where
     E::Selection: MemorySize,
 {
+    #[tracing::instrument(name = "storage.query.typed.open", level = "trace", skip_all)]
     async fn open<C>(manager: &StorageManager<C>, at: StorageCursor, selection: E::Selection) -> Result<Self> {
         let inner = &manager.inner;
         let active = query_slot(inner).await?;
@@ -181,6 +189,7 @@ where
         let description = Reservation::wait(inner, Pool::Read, &held, description, None).await.map_err(Refusal::into_error)?;
         let snapshot = manager.snapshot(&at).await?;
         Ok(Self {
+            context: crate::execution::Context::current(),
             inner: Arc::clone(inner),
             held,
             selection,
@@ -197,19 +206,25 @@ where
 
 impl<E: Entry> Pages<E> {
     async fn next<V>(&mut self, memory: impl Fn(&E) -> Result<usize>, build: impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
-        if self.failed || self.inflight {
-            self.fail();
-            return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
-        }
-        self.inflight = true;
-        let result = self.advance(&memory, &build).await;
-        self.inflight = false;
-        if result.is_err() {
-            self.fail();
-        }
-        result
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            if self.failed || self.inflight {
+                self.fail();
+                return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
+            }
+            self.inflight = true;
+            let result = self.advance(&memory, &build).await;
+            self.inflight = false;
+            if result.is_err() {
+                self.fail();
+            }
+            result
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
+    #[tracing::instrument(name = "storage.query.typed.advance", level = "trace", skip_all)]
     async fn advance<V>(&mut self, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
         while self.snapshot.is_some() {
             let mut credit = 0usize;
@@ -242,6 +257,7 @@ impl<E: Entry> Pages<E> {
     }
 
     // Scan And Decode One Page; State Advances Only After Every Claim Succeeded.
+    #[tracing::instrument(name = "storage.query.typed.attempt", level = "trace", skip_all)]
     async fn attempt<V>(
         &mut self, bank: &MemoryBank, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
     ) -> Result<Option<Vec<V>>> {

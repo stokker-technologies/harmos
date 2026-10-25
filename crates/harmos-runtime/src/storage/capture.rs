@@ -60,6 +60,7 @@ impl<'a> ProjectedRecords<'a> {
         Self { permit, limits, refused: false }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.push", level = "debug", skip_all)]
     pub async fn push(&mut self, record: RecordWrite<'_>) -> Result<()> {
         if self.refused {
             return Err(limit());

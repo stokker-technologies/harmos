@@ -502,6 +502,7 @@ impl Registry {
 
     // Lease the instance of `id` over `scope`, starting it when none runs.
     // A stopping instance is joined before its replacement starts.
+    #[tracing::instrument(target = "harmos::operations", name = "operations.activate", level = "debug", skip_all)]
     pub(super) async fn activate(
         &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
     ) -> Result<Lease> {
@@ -521,6 +522,7 @@ impl Registry {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
     fn acquire(
         &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
         internal: bool, holder: &Identity,
@@ -580,6 +582,10 @@ impl Registry {
                 index.forget_resident(instance);
             }
         }));
+        lifecycle.trace().record("instance_id", instance.value());
+        lifecycle.trace().record("operation", tracing::field::display(registration.definition.id()));
+        lifecycle.trace().record("generation", tracing::field::debug(registration.generation));
+        let _trace = lifecycle.trace().entered();
         let report = Report { owner: Arc::downgrade(&self.shared), key: key.clone(), id: instance, kind };
         let (task, settlement) = Arc::clone(&registration.runner).spawn(Start {
             resources: Arc::clone(&scope.resources),
@@ -653,6 +659,7 @@ impl Registry {
 
     // Stop every instance over a scope, settle them and forget the scope with
     // the definitions bound to it. The first outcome is retained.
+    #[tracing::instrument(target = "harmos::operations", name = "operations.retire_scope", level = "debug", skip_all)]
     pub(crate) async fn retire_scope(&self, scope: &Arc<Scope>) -> Result<Retirement> {
         self.check_scope(scope)?;
         if let Some(outcome) = scope.retirement.lock().expect("resident scope is healthy").clone() {
@@ -701,6 +708,7 @@ impl Registry {
         Ok(Retirement { outcome, _scope: original, _running: running, _definitions: definitions })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
     pub(crate) async fn unregister(&self, id: &str) -> Result<()> {
         let (registration, running) = {
             let mut state = self.state();
@@ -754,6 +762,7 @@ impl Registry {
 
     // Stop every instance of one kind and settle them; a failed cleanup stays
     // retained and the next stop retries it.
+    #[tracing::instrument(target = "harmos::operations", name = "operations.stop_kind", level = "debug", skip_all)]
     pub(crate) async fn stop_kind(&self, kind: Kind) -> Result<()> {
         let running = {
             let mut state = self.state();
@@ -807,6 +816,7 @@ impl Registry {
         settle(running).await
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.shutdown", level = "debug", skip_all)]
     pub(crate) async fn shutdown(&self) -> Result<()> {
         let running = {
             let mut state = self.state();
@@ -963,6 +973,7 @@ impl Running {
         self.settlement.lifecycle().cancel();
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     async fn settle(&self) -> std::result::Result<Arc<Outcome>, Arc<tokio::task::JoinError>> {
         if let Err(failure) = self.settlement.lifecycle().settle_dependents().await {
             return Ok(Arc::new(Err(failure)));
@@ -1222,6 +1233,7 @@ impl Drop for Shared {
 
 /* === Private Functions === */
 
+#[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
 pub(crate) async fn settle(running: Vec<Running>) -> Result<()> {
     let pending = running.into_iter().map(|running| async move {
         let domain = running.report.kind.domain();

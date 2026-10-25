@@ -21,6 +21,7 @@ use std::time::Duration;
 
 // Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, watch};
+use tracing::Instrument;
 
 // Local Imports
 use super::OperationInstanceId;
@@ -122,6 +123,7 @@ impl<O> Prepared<O> {
 
 /* === Public Functions === */
 
+#[tracing::instrument(target = "harmos::operations", name = "operations.execute", level = "debug", skip_all)]
 pub(super) async fn execute<O: Send + 'static>(
     instances: Arc<Instances>, mut prepared: Prepared<O>, execution: Execution, cause: Option<Position>,
 ) -> Result<O> {
@@ -157,7 +159,9 @@ pub(super) async fn execute<O: Send + 'static>(
 
     instance.complete(outcome(&answer));
     instance.transition(prepared.body.cleanup_phase());
-    if let Err(cleanup) = prepared.body.finalize().await {
+    if let Err(cleanup) =
+        prepared.body.finalize().instrument(tracing::debug_span!(target: "harmos::operations", "operations.finalize")).await
+    {
         let logical = match answer {
             Err(error) => Some(error),
             Ok(_) if *cancelled.borrow() => Some(Refusal::Cancelled.into()),
@@ -198,6 +202,7 @@ pub(super) async fn execute<O: Send + 'static>(
 
 /* === Private Functions === */
 
+#[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
 async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
     if *cancelled.borrow() {
         return Err(Refusal::Cancelled.into());
@@ -214,6 +219,7 @@ async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::
     }
 }
 
+#[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
 async fn initialize<O: Send + 'static>(
     instances: &Arc<Instances>, admission: &Admission, body: &mut dyn Body<O>, cancelled: &mut watch::Receiver<bool>, budget: &Budget,
     instance: &Arc<Instance>, cause: Option<Position>,
@@ -232,6 +238,7 @@ async fn initialize<O: Send + 'static>(
     }
 }
 
+#[tracing::instrument(target = "harmos::operations", name = "operations.attempts", level = "debug", skip_all)]
 async fn attempts<O: Send + 'static>(
     instances: &Arc<Instances>, admission: &Admission, prepared: &mut Prepared<O>, cancelled: &mut watch::Receiver<bool>, budget: &Budget,
     instance: &Arc<Instance>, cause: Option<Position>,
@@ -249,7 +256,17 @@ async fn attempts<O: Send + 'static>(
             return Err(Refusal::Cancelled.into());
         }
         let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
-        let answer = bounded(prepared.policy.attempt_timeout.min(remaining), prepared.body.run(Scope::over(&core)), cancelled).await;
+        let answer = bounded(
+            prepared.policy.attempt_timeout.min(remaining),
+            Box::pin(
+                prepared
+                    .body
+                    .run(Scope::over(&core))
+                    .instrument(tracing::debug_span!(target: "harmos::operations", "operations.attempt", attempt)),
+            ),
+            cancelled,
+        )
+        .await;
         let mut children = core.close();
         if *cancelled.borrow() {
             children.drain().await;
@@ -281,7 +298,9 @@ async fn attempts<O: Send + 'static>(
         };
         instance.transition(Phase::RetryWaiting);
         futures_util::future::join(children.drain(), async {
-            let _ = executor::timeout(budget.remaining(), interruptible(executor::sleep(delay), cancelled)).await;
+            let _ = executor::timeout(budget.remaining(), interruptible(executor::sleep(delay), cancelled))
+                .instrument(tracing::debug_span!(target: "harmos::operations", "operations.retry_wait"))
+                .await;
         })
         .await;
         if *cancelled.borrow() {

@@ -99,6 +99,7 @@ impl<A: Application> Serving<A> {
         Ok(async move { endpoint.settle().await })
     }
 
+    #[tracing::instrument(target = "harmos::guest", name = "guest.finalize", level = "debug", skip_all)]
     pub async fn finalize(&mut self, within: Duration) -> crate::Result<()> {
         let cleanup = match self.finalization.take() {
             None => {
@@ -166,6 +167,7 @@ impl<A: Application> Serving<A> {
 }
 
 impl<A: Application> Cleanup<A> {
+    #[tracing::instrument(target = "harmos::guest", name = "guest.finalize", level = "debug", skip_all)]
     async fn finalize(&mut self) -> Result<(), Error> {
         if let Some(instance) = &mut self.instance {
             instance.quiesce();

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:5dc58cb2d67cd3d6f1e8b66a7a07a44863b9fde42ae55c903b6c26f5424585aa
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:8888fee722b2df7a9adb0d53ed2b6123c07e5c7e4a76153ef7363ed4a430630a
 # ***
 #
 # Harmos
@@ -106,6 +106,38 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     return path
 
 
+def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
+    if operation not in ("build", "test", "clippy", "run"):
+        raise ValueError("focused compilation requires build, test, clippy or run")
+    profile = None
+    compiler_arguments = list(arguments[: arguments.index("--")]) if "--" in arguments else list(arguments)
+    if any(argument == "--target-dir" or argument.startswith("--target-dir=") for argument in compiler_arguments):
+        raise ValueError("focused tasks use the repository Cargo target")
+    for index, argument in enumerate(compiler_arguments):
+        if argument == "--profile" and index + 1 < len(compiler_arguments):
+            profile = compiler_arguments[index + 1]
+        elif argument.startswith("--profile="):
+            profile = argument.partition("=")[2]
+    if profile is not None and profile not in ("dev", "release", "test", "bench"):
+        raise ValueError("focused compilation requires a canonical Cargo profile")
+    if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
+        raise ValueError("focused tests use Cargo's default test profile")
+    if operation in ("build", "test", "run"):
+        clippy(directory, [argument for argument in compiler_arguments if argument != "--no-run"])
+    else:
+        storage.preflight(directory)
+    return subprocess.run(
+        ["cargo", operation, *arguments],
+        cwd=directory,
+        env=dict(os.environ, CARGO_BUILD_WARNINGS="deny"),
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=False,
+    ).returncode
+
+
 def record_target(directory: Path, messages: Path, profile: str, native: str | None = None) -> None:
     """Record The Actual Rust Target For Generic And Authored Product Builders."""
     compiler = subprocess.run(
@@ -148,6 +180,12 @@ def artifacts(directory: Path, messages: Path) -> Iterator[dict[str, Any]]:
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["focused"]:
+        parser = argparse.ArgumentParser(description="Compile An Explicit Local Rust Selection")
+        parser.add_argument("operation", choices=("build", "test", "clippy"))
+        parser.add_argument("arguments", nargs=argparse.REMAINDER)
+        options = parser.parse_args(sys.argv[2:])
+        raise SystemExit(focused(Path.cwd(), options.operation, options.arguments))
     if sys.argv[1:2] == ["archive"]:
         parser = argparse.ArgumentParser(description="Build A Nextest Archive")
         parser.add_argument("--profile", choices=("dev", "release"), default="dev")

@@ -160,6 +160,7 @@ impl<C> ObjectGroup<'_, C> {
 }
 
 impl<C: ObjectCatalog> StorageManager<C> {
+    #[tracing::instrument(name = "storage.objects.write_object", level = "debug", skip_all)]
     pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt>
     where
         C: Contains<T>,
@@ -168,12 +169,14 @@ impl<C: ObjectCatalog> StorageManager<C> {
         Ok(receipts.into_iter().next().unwrap())
     }
 
+    #[tracing::instrument(name = "storage.objects.write_object_group", level = "debug", skip_all)]
     pub async fn write_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 
+    #[tracing::instrument(name = "storage.objects.read_object", level = "debug", skip_all)]
     pub async fn read_object<T: StoredObject>(&self, key: &T::Key, version: ObjectVersion) -> Result<Option<ObjectRevision<T>>>
     where
         C: Contains<T>,
@@ -225,14 +228,16 @@ impl<C> StorageManager<C> {
         .unwrap()
     }
 
+    #[tracing::instrument(name = "storage.objects.admit_object_group", level = "debug", skip_all)]
     pub(super) async fn admit_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
         build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
-        let _writer = self.inner.object_writes.lock().await;
+        let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         self.admit_object_group_locked(max_bytes, count, mutation, build).await
     }
 
+    #[tracing::instrument(name = "storage.objects.admit_object_group_locked", level = "debug", skip_all)]
     pub(super) async fn admit_object_group_locked(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
         build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,

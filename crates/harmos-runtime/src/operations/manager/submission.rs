@@ -88,6 +88,7 @@ impl OperationManager {
         self.admit_at::<O, P>(O::ID, input, scope, ancestors, source, cause)
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.admit_at", level = "debug", skip_all, fields(operation = %id))]
     pub(in crate::operations) fn admit_at<O: OperationDeclaration, P: Send + 'static>(
         &self, id: &str, input: (crate::operations::binding::Request<O>, P), scope: Option<&Scope<'_>>, ancestors: &[&'static str],
         source: &Source, cause: Option<Position>,
@@ -98,6 +99,7 @@ impl OperationManager {
         self.admit_entry::<O, P>(input, scope, ancestors, source, Submission { submitted, entry, cause, preparation: None })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane, outcome = "refused"))]
     pub(in crate::operations) fn admit_entry<O: OperationDeclaration, P: Send + 'static>(
         &self, (mut request, endpoints): (crate::operations::binding::Request<O>, P), scope: Option<&Scope<'_>>,
         ancestors: &[&'static str], source: &Source, submission: Submission,
@@ -151,6 +153,8 @@ impl OperationManager {
             None => self.instances.reserve(id, entry.lane, submitted, privileged, retired)?,
         };
         let control = reservation.control();
+        control.trace().record("operation", tracing::field::display(&entry.definition.id));
+        control.trace().record("generation", tracing::field::debug(entry.generation));
         self.instances.assign(id, origin.identity.clone());
         pending.insert(id, Arc::clone(&control));
         drop(pending);
@@ -195,6 +199,7 @@ impl OperationManager {
             job.refusal = Some(error);
         }
         let outcome = reservation.submit(job, cause);
+        tracing::Span::current().record("outcome", "admitted");
         Ok(OperationInstance {
             id,
             generation: entry.generation,

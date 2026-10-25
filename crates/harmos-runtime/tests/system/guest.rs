@@ -63,6 +63,7 @@ fn corner() -> [Point; 3] {
 
 #[tokio::test]
 async fn guest_composition_walks() {
+    let _report = crate::report::system();
     // Scene 1: The Host Boots Without Any Guest Operation
     let runtime = Runtime::builder(support::Ledger::default(), ())
         .register(Lanes::catalog())

@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
+use tracing::Instrument;
 // Local Imports
 use super::entry::{CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 use super::envelope::Recorded;
@@ -29,6 +30,7 @@ use super::record::{PreparationError, Prepared, PreparedCommit};
 use super::transaction::Inverting;
 use super::transaction::{Transaction, TransactionError};
 use super::{Context, TrackedState};
+use crate::supervision::executor::InContext;
 use crate::{Application, state::At};
 
 /* === Constants === */
@@ -36,6 +38,8 @@ use crate::{Application, state::At};
 /* === Macros === */
 
 /* === Type Aliases === */
+
+pub(crate) type QueuedRequest<A> = (Request<A>, crate::supervision::executor::SpanContext);
 
 /* === Structs === */
 
@@ -137,7 +141,7 @@ impl Unsealed {
 /* === Public Functions === */
 
 pub(crate) async fn run<A: Application>(
-    mut requests: mpsc::Receiver<Request<A>>, tracked: Arc<TrackedState<A>>, stored: watch::Sender<Position>, inverses: Inverting<A>,
+    mut requests: mpsc::Receiver<QueuedRequest<A>>, tracked: Arc<TrackedState<A>>, stored: watch::Sender<Position>, inverses: Inverting<A>,
     mut undos: Undos<A>, mut capture: Option<super::capture::Capture<A>>,
 ) {
     let mut receipts = capture.as_mut().map(|capture| capture.take_receipts()).unwrap_or_default();
@@ -151,253 +155,315 @@ pub(crate) async fn run<A: Application>(
 /* === Private Functions === */
 
 async fn run_admissions<A: Application>(
-    requests: &mut mpsc::Receiver<Request<A>>, tracked: &Arc<TrackedState<A>>, stored: &watch::Sender<Position>, inverses: Inverting<A>,
-    undos: &mut Undos<A>, capture: Option<&super::capture::Capture<A>>, receipts: &mut HashMap<RequestKey, Receipt>,
+    requests: &mut mpsc::Receiver<QueuedRequest<A>>, tracked: &Arc<TrackedState<A>>, stored: &watch::Sender<Position>,
+    inverses: Inverting<A>, undos: &mut Undos<A>, capture: Option<&super::capture::Capture<A>>,
+    receipts: &mut HashMap<RequestKey, Receipt>,
 ) {
     let mut sealing = tracked.sealing.subscribe();
 
-    while let Some(request) = next_request(requests, &mut sealing, capture).await {
-        match request {
-            Request::Commit { transaction, key, context, reply } => {
-                if let Some(seen) = key.as_ref().and_then(|key| receipts.get(key)) {
-                    let _ = reply.send(Ok(*seen));
-                    continue;
-                }
-
-                let transaction = Arc::new(transaction);
-                let draft = Unsealed::mint(&context, key.clone(), None, tracked.clock);
-
-                // Prepare against the pre-state, release it while reserving capture
-                // capacity, then lock through apply and publication. Only this
-                // task mutates state, so the prepared pre-state cannot change.
-                let sealed = {
-                    let state = tracked.state.read().await;
-
-                    if let Err(refusal) = transaction.check(&state.value) {
-                        let _ = reply.send(Err(Admission::Rejected(refusal)));
-                        continue;
+    while let Some((request, mut trace)) = next_request(requests, &mut sealing, capture).await {
+        let span = tracing::dispatcher::with_default(
+            &trace.dispatcher,
+            || tracing::debug_span!(target: "harmos::state", parent: &trace.span, "state.write", outcome = "pending", position = tracing::field::Empty, frontier = tracing::field::Empty),
+        );
+        span.follows_from(trace.predecessor());
+        trace.dequeued();
+        let proceed = async {
+            match request {
+                Request::Commit { transaction, key, context, reply } => {
+                    if let Some(seen) = key.as_ref().and_then(|key| receipts.get(key)) {
+                        let _ = reply.send(Ok(*seen));
+                        return true;
                     }
 
-                    if !context_fits(&context, key.as_ref()) {
-                        let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
-                        continue;
-                    }
-                    let prepared = match super::record::prepare::<A>(&transaction, &state.value, &tracked.catalog) {
-                        Ok(prepared) => prepared,
-                        Err(refusal) => {
-                            let _ = reply.send(Err(Admission::Preparation(refusal)));
-                            continue;
+                    let transaction = Arc::new(transaction);
+                    let draft = Unsealed::mint(&context, key.clone(), None, tracked.clock);
+
+                    // Prepare against the pre-state, release it while reserving capture
+                    // capacity, then lock through apply and publication. Only this
+                    // task mutates state, so the prepared pre-state cannot change.
+                    let sealed = {
+                        let state = tracked.state.read().instrument(tracing::debug_span!(target: "harmos::state", "state.read_lock")).await;
+
+                        if let Err(refusal) =
+                            tracing::debug_span!(target: "harmos::state", "state.validate").in_scope(|| transaction.check(&state.value))
+                        {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Admission::Rejected(refusal)));
+                            return true;
                         }
-                    };
-                    let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
-                        let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
-                        continue;
-                    };
-                    // Inverse capture belongs here, between check and apply,
-                    // because an inverse is a function of the state before it.
-                    drop(state);
-                    let permit = match reserve(
-                        capture,
-                        &prepared.transaction,
-                        prepared.records.iter().map(|(_, prepared)| prepared),
-                        &draft,
-                        (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
-                    )
-                    .await
-                    {
-                        Ok(permit) => permit,
-                        Err(error) => {
-                            let failed = error == PreparationError::CaptureFailed;
+
+                        if !context_fits(&context, key.as_ref()) {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
+                            return true;
+                        }
+                        let prepared = match tracing::debug_span!(target: "harmos::state", "state.prepare")
+                            .in_scope(|| super::record::prepare::<A>(&transaction, &state.value, &tracked.catalog))
+                        {
+                            Ok(prepared) => prepared,
+                            Err(refusal) => {
+                                tracing::Span::current().record("outcome", "refused");
+                                let _ = reply.send(Err(Admission::Preparation(refusal)));
+                                return true;
+                            }
+                        };
+                        let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
+                            return true;
+                        };
+                        // Inverse capture belongs here, between check and apply,
+                        // because an inverse is a function of the state before it.
+                        drop(state);
+                        let permit = match reserve(
+                            capture,
+                            &prepared.transaction,
+                            prepared.records.iter().map(|(_, prepared)| prepared),
+                            &draft,
+                            (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
+                        )
+                        .await
+                        {
+                            Ok(permit) => permit,
+                            Err(error) => {
+                                let failed = error == PreparationError::CaptureFailed;
+                                tracing::Span::current().record("outcome", "refused");
+                                let _ = reply.send(Err(Admission::Preparation(error)));
+                                if failed {
+                                    return false;
+                                }
+                                return true;
+                            }
+                        };
+                        let mut state =
+                            tracked.state.write().instrument(tracing::debug_span!(target: "harmos::state", "state.write_lock")).await;
+                        if let Some(capture) = capture
+                            && let Err(error) = capture.check()
+                        {
+                            tracing::Span::current().record("outcome", "refused");
                             let _ = reply.send(Err(Admission::Preparation(error)));
-                            if failed {
-                                return;
-                            }
-                            continue;
+                            return false;
                         }
-                    };
-                    let mut state = tracked.state.write().await;
-                    if let Some(capture) = capture
-                        && let Err(error) = capture.check()
-                    {
-                        let _ = reply.send(Err(Admission::Preparation(error)));
-                        return;
-                    }
-                    let inverse = inverses(&transaction, &state.value);
-                    let applied = catch_unwind(AssertUnwindSafe(|| transaction.apply(&mut state.value)));
-                    if applied.is_err() {
-                        tracked.poison();
-                        return;
-                    }
-
-                    let position = Position(state.position.0 + 1);
-                    state.position = Position(frontier);
-                    (state, position, inverse, prepared, permit)
-                };
-
-                let (state, position, inverse, prepared, permit) = sealed;
-                let receipt =
-                    publish_group(tracked, stored, position, draft, Arc::clone(&transaction), prepared, capture.zip(permit)).await;
-                drop(state);
-
-                undos.record(position, context.principal.as_ref(), None, &transaction, inverse);
-                if let Some(key) = key {
-                    receipts.insert(key, receipt);
-                }
-                let _ = reply.send(Ok(receipt));
-            }
-            Request::Revert { principal, focus, direction, mut context, reply } => {
-                let chosen = match direction {
-                    Direction::Undo => undos.undoable(&principal, &focus),
-                    Direction::Redo => undos.redoable(&principal, &focus),
-                };
-                let Some((original, answer)) = chosen else {
-                    let _ = reply.send(Err(Refusal::Nothing));
-                    continue;
-                };
-
-                // The principal doing the undoing is the one witnessed on the
-                // entry it appends, whichever handle carried the request.
-                context.principal = Some(principal);
-                let link = direction.link(original);
-                let draft = Unsealed::mint(&context, None, Some(link), tracked.clock);
-
-                // Prepare against the pre-state, release it while reserving capture
-                // capacity, then lock through apply and publication. Only this
-                // task mutates state, so the prepared pre-state cannot change.
-                let sealed = {
-                    let state = tracked.state.read().await;
-
-                    // The inverse is an ordinary transaction, so it runs its
-                    // ordinary check against the *current* state. A refusal is
-                    // the world having moved on, and it appends nothing.
-                    if let Err(refusal) = answer.check(&state.value) {
-                        let _ = reply.send(Err(Refusal::Conflict(refusal)));
-                        continue;
-                    }
-
-                    if !context_fits(&context, None) {
-                        let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
-                        continue;
-                    }
-                    let prepared = match super::record::prepare::<A>(&answer, &state.value, &tracked.catalog) {
-                        Ok(prepared) => prepared,
-                        Err(refusal) => {
-                            let _ = reply.send(Err(Refusal::Preparation(refusal)));
-                            continue;
+                        let inverse = inverses(&transaction, &state.value);
+                        let applied = tracing::debug_span!(target: "harmos::state", "state.apply")
+                            .in_scope(|| catch_unwind(AssertUnwindSafe(|| transaction.apply(&mut state.value))));
+                        if applied.is_err() {
+                            tracked.poison();
+                            return false;
                         }
+
+                        let position = Position(state.position.0 + 1);
+                        state.position = Position(frontier);
+                        (state, position, inverse, prepared, permit)
                     };
-                    let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
-                        let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
-                        continue;
-                    };
+
+                    let (state, position, inverse, prepared, permit) = sealed;
+                    let receipt =
+                        publish_group(tracked, stored, position, draft, Arc::clone(&transaction), prepared, capture.zip(permit)).await;
                     drop(state);
-                    let permit = match reserve(
-                        capture,
-                        &prepared.transaction,
-                        prepared.records.iter().map(|(_, prepared)| prepared),
-                        &draft,
-                        (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
-                    )
-                    .await
+
+                    undos.record(position, context.principal.as_ref(), None, &transaction, inverse);
+                    if let Some(key) = key {
+                        receipts.insert(key, receipt);
+                    }
+                    tracing::Span::current().record("outcome", "applied");
+                    tracing::Span::current().record("position", receipt.position.0);
+                    tracing::Span::current().record("frontier", receipt.frontier.0);
+                    let _ = reply.send(Ok(receipt));
+                }
+                Request::Revert { principal, focus, direction, mut context, reply } => {
+                    let chosen = match direction {
+                        Direction::Undo => undos.undoable(&principal, &focus),
+                        Direction::Redo => undos.redoable(&principal, &focus),
+                    };
+                    let Some((original, answer)) = chosen else {
+                        tracing::Span::current().record("outcome", "refused");
+                        let _ = reply.send(Err(Refusal::Nothing));
+                        return true;
+                    };
+
+                    // The principal doing the undoing is the one witnessed on the
+                    // entry it appends, whichever handle carried the request.
+                    context.principal = Some(principal);
+                    let link = direction.link(original);
+                    let draft = Unsealed::mint(&context, None, Some(link), tracked.clock);
+
+                    // Prepare against the pre-state, release it while reserving capture
+                    // capacity, then lock through apply and publication. Only this
+                    // task mutates state, so the prepared pre-state cannot change.
+                    let sealed = {
+                        let state = tracked.state.read().instrument(tracing::debug_span!(target: "harmos::state", "state.read_lock")).await;
+
+                        // The inverse is an ordinary transaction, so it runs its
+                        // ordinary check against the *current* state. A refusal is
+                        // the world having moved on, and it appends nothing.
+                        if let Err(refusal) = answer.check(&state.value) {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Refusal::Conflict(refusal)));
+                            return true;
+                        }
+
+                        if !context_fits(&context, None) {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
+                            return true;
+                        }
+                        let prepared = match super::record::prepare::<A>(&answer, &state.value, &tracked.catalog) {
+                            Ok(prepared) => prepared,
+                            Err(refusal) => {
+                                tracing::Span::current().record("outcome", "refused");
+                                let _ = reply.send(Err(Refusal::Preparation(refusal)));
+                                return true;
+                            }
+                        };
+                        let Some(frontier) = state.position.0.checked_add(1 + prepared.records.len() as u64) else {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
+                            return true;
+                        };
+                        drop(state);
+                        let permit = match reserve(
+                            capture,
+                            &prepared.transaction,
+                            prepared.records.iter().map(|(_, prepared)| prepared),
+                            &draft,
+                            (Position(frontier - prepared.records.len() as u64), crate::state::Kind::Transaction, true),
+                        )
+                        .await
+                        {
+                            Ok(permit) => permit,
+                            Err(error) => {
+                                let failed = error == PreparationError::CaptureFailed;
+                                tracing::Span::current().record("outcome", "refused");
+                                let _ = reply.send(Err(Refusal::Preparation(error)));
+                                if failed {
+                                    return false;
+                                }
+                                return true;
+                            }
+                        };
+                        let mut state =
+                            tracked.state.write().instrument(tracing::debug_span!(target: "harmos::state", "state.write_lock")).await;
+                        if let Some(capture) = capture
+                            && let Err(error) = capture.check()
+                        {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(Refusal::Preparation(error)));
+                            return false;
+                        }
+                        let inverse = inverses(&answer, &state.value);
+                        let applied = catch_unwind(AssertUnwindSafe(|| answer.apply(&mut state.value)));
+                        if applied.is_err() {
+                            tracked.poison();
+                            return false;
+                        }
+
+                        let position = Position(state.position.0 + 1);
+                        state.position = Position(frontier);
+                        (state, position, inverse, prepared, permit)
+                    };
+
+                    let (state, position, inverse, prepared, permit) = sealed;
+                    let receipt = publish_group(tracked, stored, position, draft, Arc::clone(&answer), prepared, capture.zip(permit)).await;
+                    drop(state);
+
+                    undos.record(position, context.principal.as_ref(), Some(link), &answer, inverse);
+                    tracing::Span::current().record("outcome", "applied");
+                    tracing::Span::current().record("position", receipt.position.0);
+                    tracing::Span::current().record("frontier", receipt.frontier.0);
+                    let _ = reply.send(Ok(receipt));
+                }
+                Request::Record { value, prepared, preparation: _preparation, context, reply } => {
+                    if !context_fits(&context, None) {
+                        tracing::Span::current().record("outcome", "refused");
+                        let _ = reply.send(Err(PreparationError::Limit));
+                        return true;
+                    }
+                    let draft = Unsealed::mint(&context, None, None, tracked.clock);
+                    let Some(next) = tracked
+                        .state
+                        .read()
+                        .instrument(tracing::debug_span!(target: "harmos::state", "state.read_lock"))
+                        .await
+                        .position
+                        .0
+                        .checked_add(1)
+                    else {
+                        tracing::Span::current().record("outcome", "refused");
+                        let _ = reply.send(Err(PreparationError::Limit));
+                        return true;
+                    };
+                    let permit = match reserve(capture, &prepared, std::iter::empty(), &draft, (Position(next), value.kind(), false)).await
                     {
                         Ok(permit) => permit,
                         Err(error) => {
                             let failed = error == PreparationError::CaptureFailed;
-                            let _ = reply.send(Err(Refusal::Preparation(error)));
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(error));
                             if failed {
-                                return;
+                                return false;
                             }
-                            continue;
+                            return true;
                         }
                     };
-                    let mut state = tracked.state.write().await;
-                    if let Some(capture) = capture
-                        && let Err(error) = capture.check()
-                    {
-                        let _ = reply.send(Err(Refusal::Preparation(error)));
-                        return;
-                    }
-                    let inverse = inverses(&answer, &state.value);
-                    let applied = catch_unwind(AssertUnwindSafe(|| answer.apply(&mut state.value)));
-                    if applied.is_err() {
-                        tracked.poison();
-                        return;
-                    }
 
-                    let position = Position(state.position.0 + 1);
-                    state.position = Position(frontier);
-                    (state, position, inverse, prepared, permit)
-                };
+                    // Keep state locked until the tail and applied frontier publish.
+                    // Every At returned by a reader must already name queryable history.
+                    let sealed = {
+                        let mut state =
+                            tracked.state.write().instrument(tracing::debug_span!(target: "harmos::state", "state.write_lock")).await;
+                        if let Some(capture) = capture
+                            && let Err(error) = capture.check()
+                        {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(error));
+                            return false;
+                        }
+                        let Some(next) = state.position.0.checked_add(1) else {
+                            tracing::Span::current().record("outcome", "refused");
+                            let _ = reply.send(Err(PreparationError::Limit));
+                            return true;
+                        };
+                        let position = Position(next);
+                        state.position = position;
+                        (state, position)
+                    };
 
-                let (state, position, inverse, prepared, permit) = sealed;
-                let receipt = publish_group(tracked, stored, position, draft, Arc::clone(&answer), prepared, capture.zip(permit)).await;
-                drop(state);
+                    let (state, position) = sealed;
+                    let receipt = publish(tracked, stored, position, draft, value, prepared, capture.zip(permit)).await;
+                    drop(state);
 
-                undos.record(position, context.principal.as_ref(), Some(link), &answer, inverse);
-                let _ = reply.send(Ok(receipt));
-            }
-            Request::Record { value, prepared, preparation: _preparation, context, reply } => {
-                if !context_fits(&context, None) {
-                    let _ = reply.send(Err(PreparationError::Limit));
-                    continue;
+                    tracing::Span::current().record("outcome", "applied");
+                    tracing::Span::current().record("position", receipt.position.0);
+                    tracing::Span::current().record("frontier", receipt.frontier.0);
+                    let _ = reply.send(Ok(receipt));
                 }
-                let draft = Unsealed::mint(&context, None, None, tracked.clock);
-                let Some(next) = tracked.state.read().await.position.0.checked_add(1) else {
-                    let _ = reply.send(Err(PreparationError::Limit));
-                    continue;
-                };
-                let permit = match reserve(capture, &prepared, std::iter::empty(), &draft, (Position(next), value.kind(), false)).await {
-                    Ok(permit) => permit,
-                    Err(error) => {
-                        let failed = error == PreparationError::CaptureFailed;
-                        let _ = reply.send(Err(error));
-                        if failed {
-                            return;
-                        }
-                        continue;
-                    }
-                };
+                Request::Reversals { principal, focus, reply } => {
+                    // Stamped from the same state a `read` is stamped from, because
+                    // a view compares the two: an answer a caller cannot place in
+                    // history is one it cannot tell from a stale one.
+                    let position =
+                        tracked.state.read().instrument(tracing::debug_span!(target: "harmos::state", "state.read_lock")).await.position;
 
-                // Keep state locked until the tail and applied frontier publish.
-                // Every At returned by a reader must already name queryable history.
-                let sealed = {
-                    let mut state = tracked.state.write().await;
-                    if let Some(capture) = capture
-                        && let Err(error) = capture.check()
-                    {
-                        let _ = reply.send(Err(error));
-                        return;
-                    }
-                    let Some(next) = state.position.0.checked_add(1) else {
-                        let _ = reply.send(Err(PreparationError::Limit));
-                        continue;
-                    };
-                    let position = Position(next);
-                    state.position = position;
-                    (state, position)
-                };
-
-                let (state, position) = sealed;
-                let receipt = publish(tracked, stored, position, draft, value, prepared, capture.zip(permit)).await;
-                drop(state);
-
-                let _ = reply.send(Ok(receipt));
+                    let _ = reply.send(At { value: undos.reversals(&principal, &focus), position });
+                }
             }
-            Request::Reversals { principal, focus, reply } => {
-                // Stamped from the same state a `read` is stamped from, because
-                // a view compares the two: an answer a caller cannot place in
-                // history is one it cannot tell from a stale one.
-                let position = tracked.state.read().await.position;
-
-                let _ = reply.send(At { value: undos.reversals(&principal, &focus), position });
+            if let Some(capture) = capture {
+                capture.snapshot(tracked, undos, receipts, false).await;
             }
+            true
         }
-        if let Some(capture) = capture {
-            capture.snapshot(tracked, undos, receipts, false).await;
+        .instrument(span)
+        .in_context(trace.dispatcher.clone())
+        .await;
+        if !proceed {
+            return;
         }
     }
 }
 
+#[tracing::instrument(target = "harmos::state", name = "state.publish", level = "debug", skip_all, fields(position = position.0))]
 async fn publish<A: Application>(
     tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed, value: Recorded<A>,
     prepared: Prepared, capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
@@ -423,6 +489,7 @@ async fn publish<A: Application>(
     Receipt { frontier: position, position, correlation }
 }
 
+#[tracing::instrument(target = "harmos::state", name = "state.publish", level = "debug", skip_all, fields(position = position.0))]
 async fn publish_group<A: Application>(
     tracked: &TrackedState<A>, stored: &watch::Sender<Position>, position: Position, draft: Unsealed, transaction: Arc<A::Transaction>,
     prepared: PreparedCommit<A>, capture: Option<(&super::capture::Capture<A>, super::capture::Permit)>,
@@ -468,8 +535,8 @@ fn witnessed_at(now: Timestamp) -> Timestamp {
 }
 
 async fn next_request<A: Application>(
-    requests: &mut mpsc::Receiver<Request<A>>, sealing: &mut watch::Receiver<bool>, capture: Option<&super::capture::Capture<A>>,
-) -> Option<Request<A>> {
+    requests: &mut mpsc::Receiver<QueuedRequest<A>>, sealing: &mut watch::Receiver<bool>, capture: Option<&super::capture::Capture<A>>,
+) -> Option<QueuedRequest<A>> {
     if *sealing.borrow_and_update() {
         requests.close();
     }
@@ -499,6 +566,7 @@ async fn next_request<A: Application>(
     .await
 }
 
+#[tracing::instrument(target = "harmos::state", name = "state.reserve", level = "debug", skip_all)]
 async fn reserve<'a, A: Application>(
     capture: Option<&super::capture::Capture<A>>, prepared: &'a Prepared, others: impl Iterator<Item = &'a Prepared>, draft: &Unsealed,
     group: (Position, crate::state::Kind, bool),

@@ -48,6 +48,8 @@ pub(super) struct Snapshot {
 }
 
 pub(super) struct SnapshotState {
+    pub(super) context: crate::execution::Context,
+    pub(super) queued: Option<tracing::Span>,
     at: StorageCursor,
     opened: Option<std::result::Result<BackendSnapshot, Arc<Error>>>,
     opening: bool,
@@ -65,39 +67,62 @@ pub(super) enum SnapshotAction {
 
 /* === Implementations === */
 
+impl Drop for SnapshotState {
+    fn drop(&mut self) {
+        self.context.sync(|| drop(self.queued.take()));
+    }
+}
+
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
-        self.inner.primary.history().check(&at.history)?;
-        let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
-        {
-            let mut state = self.inner.state.lock().unwrap();
-            super::capacity::admitting(&state, super::capacity::Pool::Read)?;
-            if !state.status.saved.covers(at)? {
-                return Err(Error::InvalidInput { field: "query cursor", reason: "cursor exceeds the durable storage frontier" });
+        let result = async {
+            self.inner.primary.history().check(&at.history)?;
+            let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
+            {
+                let mut state = self.inner.state.lock().unwrap();
+                super::capacity::admitting(&state, super::capacity::Pool::Read)?;
+                if !state.status.saved.covers(at)? {
+                    return Err(Error::InvalidInput { field: "query cursor", reason: "cursor exceeds the durable storage frontier" });
+                }
+                state.snapshots.insert(
+                    id,
+                    SnapshotState {
+                        context: crate::execution::Context::current(),
+                        queued: Some(tracing::debug_span!("storage.snapshot.queue", snapshot = id)),
+                        at: at.clone(),
+                        opened: None,
+                        opening: false,
+                        released: false,
+                    },
+                );
             }
-            state.snapshots.insert(id, SnapshotState { at: at.clone(), opened: None, opening: false, released: false });
+            // The Guard Exists Before Waiting, So Cancellation Releases Registration.
+            let mut guard = Snapshot { inner: Arc::clone(&self.inner), id, backend: BackendSnapshot { at: at.clone(), token: Vec::new() } };
+            self.inner.notify();
+            let opened = self
+                .inner
+                .wait(None, |state| match state.snapshots.get(&id) {
+                    None => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
+                    Some(held) if held.released => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
+                    Some(SnapshotState { opened: Some(result), .. }) => match result {
+                        Ok(snapshot) => Attempt::Ready(snapshot.clone()),
+                        Err(source) => Attempt::Refuse(Refusal::Failed(Error::Persistence { source: source.clone() })),
+                    },
+                    Some(_) if !state.status.running => Attempt::Refuse(Refusal::Failed(Error::NotReady { domain: "storage worker" })),
+                    Some(_) => Attempt::Wait,
+                })
+                .await
+                .map_err(Refusal::into_error)?;
+            guard.backend = opened;
+            Ok(guard)
         }
-        // The Guard Exists Before Waiting, So Cancellation Releases Registration.
-        let mut guard = Snapshot { inner: Arc::clone(&self.inner), id, backend: BackendSnapshot { at: at.clone(), token: Vec::new() } };
-        self.inner.notify();
-        let opened = self
-            .inner
-            .wait(None, |state| match state.snapshots.get(&id) {
-                None => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
-                Some(held) if held.released => Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" })),
-                Some(SnapshotState { opened: Some(result), .. }) => match result {
-                    Ok(snapshot) => Attempt::Ready(snapshot.clone()),
-                    Err(source) => Attempt::Refuse(Refusal::Failed(Error::Persistence { source: source.clone() })),
-                },
-                Some(_) if !state.status.running => Attempt::Refuse(Refusal::Failed(Error::NotReady { domain: "storage worker" })),
-                Some(_) => Attempt::Wait,
-            })
-            .await
-            .map_err(Refusal::into_error)?;
-        guard.backend = opened;
-        Ok(guard)
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
+    #[tracing::instrument(name = "storage.snapshot.release_snapshots", level = "trace", skip_all)]
     pub(super) async fn release_snapshots(&self) -> Result<()> {
         {
             let mut state = self.inner.state.lock().unwrap();
@@ -122,10 +147,11 @@ impl<C> StorageManager<C> {
 }
 
 impl Snapshot {
+    #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let entries = self.inner.bounded(T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
+        let entries = self.inner.bounded("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
         let mut previous = page.after;
         let mut bytes = 0usize;
         for entry in &entries {
@@ -143,10 +169,11 @@ impl Snapshot {
         Ok((entries, bytes))
     }
 
+    #[tracing::instrument(name = "storage.snapshot.read_object", level = "trace", skip_all)]
     pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let object = self.inner.bounded(self.inner.primary.read_object(&self.backend, point)).await?;
+        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point)).await?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
             if object.position.sequence == 0
@@ -160,10 +187,11 @@ impl Snapshot {
         Ok(object)
     }
 
+    #[tracing::instrument(name = "storage.snapshot.read_file", level = "trace", skip_all)]
     pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        self.inner.bounded(self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await
+        self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await
     }
 
     fn check(&self) -> Result<()> {
@@ -179,6 +207,8 @@ impl Drop for Snapshot {
     fn drop(&mut self) {
         let mut state = self.inner.state.lock().unwrap();
         if let Some(held) = state.snapshots.get_mut(&self.id) {
+            held.context.sync(|| drop(held.queued.take()));
+            held.queued = Some(held.context.sync(|| tracing::debug_span!("storage.snapshot.release.queue", snapshot = self.id)));
             held.released = true;
         }
         drop(state);

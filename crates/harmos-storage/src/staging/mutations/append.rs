@@ -35,6 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.mutations.append.append_file_once", level = "debug", skip_all)]
     pub async fn append_file_once(&self, mutation: &MutationId, token: &FileSession, offset: u64, bytes: &[u8]) -> Result<FileProducer> {
         self.inner.primary.history().check(&token.history)?;
         let mut hash = Sha256::new();
@@ -59,7 +60,9 @@ impl<C> StorageManager<C> {
             reserve(state, mutation, fingerprint, outcome.memory_size(), bytes.len(), &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.ticket = ticket;
-            file.command = Some(Command::Write(Arc::from(bytes)));
+            file.context = crate::execution::Context::current();
+                        file.queued = Some(tracing::debug_span!("storage.file.queue"));
+                        file.command = Some(Command::Write(Arc::from(bytes)));
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Append });
             Ok(true)
         }).await?.producer()

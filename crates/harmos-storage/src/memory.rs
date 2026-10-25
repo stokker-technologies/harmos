@@ -69,6 +69,7 @@ impl MemoryBank {
         Self { state: Arc::new(Mutex::new(BankState { requested: reservation.bytes(), reservation, used: 0, retained: 0, refusal: None })) }
     }
 
+    #[tracing::instrument(name = "storage.memory.admit", level = "debug", skip_all)]
     pub(super) async fn admit(
         inner: &Arc<Inner>, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
@@ -88,6 +89,7 @@ impl MemoryBank {
         MemoryScope { bank: self, used: 0 }
     }
 
+    #[tracing::instrument(name = "storage.memory.reserve", level = "trace", skip_all)]
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
         let mut state = self.state.lock().unwrap();
         state.ensure(bytes)?;
@@ -97,6 +99,7 @@ impl MemoryBank {
 }
 
 impl MemoryScope<'_> {
+    #[tracing::instrument(name = "storage.memory.claim", level = "trace", skip_all)]
     pub(super) fn claim(&mut self, bytes: usize) -> Result<()> {
         let mut state = self.bank.state.lock().unwrap();
         state.ensure(bytes)?;
@@ -114,6 +117,7 @@ impl Drop for MemoryScope<'_> {
 
 impl BankState {
     // Grow The Attempt's Reservation So `bytes` More Fit Beside Current Claims.
+    #[tracing::instrument(name = "storage.memory.ensure", level = "trace", skip_all)]
     fn ensure(&mut self, bytes: usize) -> Result<()> {
         let required = self.used.checked_add(bytes).ok_or(Error::ResourceExhausted { resource: "storage read memory" })?;
         self.requested = self.requested.max(required.saturating_add(self.retained));

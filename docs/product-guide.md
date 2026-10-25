@@ -563,6 +563,42 @@ authoring imports. See the [crate manifest](../crates/harmos/Cargo.toml) and
 
 ## Performance
 
+Harmos emits structured `tracing` spans around operations, managed state and
+storage interfaces. Spans remain available in release builds without a separate
+feature. Applications own subscriber installation, runtime filters and export;
+Harmos does not install a process-wide subscriber.
+
+Request context follows internal queues and tasks. Shared storage work exposes
+one causal contribution per request; shared batch fields connect these to the
+physical write, including across scoped subscribers. Existing operation identities,
+invocation IDs and storage positions support correlation. Cross-process lifecycle phases expose
+invocation identities for joins; process-local span IDs are not portable trace IDs.
+Instrumentation excludes request and response payloads. Native system-test traces
+also contain exporter metadata, including executable and command-line paths;
+they are not sanitized artifacts.
+
+Span lifetimes measure elapsed time, including suspension. Queue, admission,
+preparation and durability waits are distinct from backend execution. Overlapping
+spans cannot be added to obtain total latency, and span duration is not CPU time.
+Use a CPU or allocation profiler to investigate work inside an expensive stage.
+
+System stories and the schematic fixture applications opt into native `.pftrace`
+capture through `STKR_TEST_REPORT_DIR`, with process-specific files in its `traces/`
+child. Normal completion explicitly flushes the exporter; a killed process may
+leave a partial trace. Local parent and causal-flow relationships are native trace
+data. Cross-process phases use invocation and process fields for joins.
+
+For shared writes, join `storage.batch.contribution` to `storage.batching.write`
+using `store`, `epoch`, `domain`, `first_index`, `last_index` and `through`, then
+match overlapping attempt lifetimes. Contributions also carry `request_index`,
+`request_sequence` and `request_domain`. Retries create new spans with the same
+logical batch fields. Checkpoint contributions use the storage identity and
+`frontier`, with file or mutation fields identifying their sources.
+
+Context propagation restores the owning subscriber during polling and cancellation.
+Some asynchronous handoffs allocate a boxed future for this teardown guarantee;
+instrumentation overhead has not been benchmarked.
+
 Streams and native plugin transport have separate benchmark suites, so codec
 cost, transport throughput, and application consumption can be examined
 independently.
@@ -576,6 +612,11 @@ The paced rate is a benchmark input, not a claimed throughput result. Run
 `mise run bench` to measure your checkout. Published comparisons need the
 revision, hardware, payload, batching, and carrier alongside the results;
 these native benchmarks do not establish Wasm guest performance.
+
+Native Criterion HTML and raw measurements live under `.stkr/benchmarks/criterion/`,
+partitioned by compatibility identity and benchmark executable. The runner compares
+against the compatible `dev` baseline and reports missing baselines or regressions
+in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 

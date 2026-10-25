@@ -55,6 +55,7 @@ pub enum InputError {
 
 /* === Public Functions === */
 
+#[tracing::instrument(target = "harmos::grpc", name = "grpc.open", level = "debug", skip_all)]
 pub async fn open<R, I, S>(
     incoming: S,
 ) -> Result<(StreamItem<R>, impl Stream<Item = Result<StreamItem<I>, tonic::Status>> + Send), tonic::Status>

@@ -200,6 +200,7 @@ impl<T> StreamInput<T> {
         self.receiver.try_recv()
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.recv", level = "trace", skip_all)]
     pub async fn recv(&mut self) -> Option<StreamItem<T>> {
         self.receiver.recv().await
     }
@@ -244,6 +245,7 @@ impl<T, E: From<Error>> StreamOutput<T, E> {
         self.sender.is_closed()
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.reserve", level = "trace", skip_all)]
     pub async fn reserve(&self, bytes: usize) -> Result<StreamPermit<'_, T, E>, E> {
         let bytes = bytes.max(std::mem::size_of::<T>()).max(1);
         if bytes > self.limit {
@@ -269,6 +271,7 @@ impl<T, E: From<Error>> StreamOutput<T, E> {
 }
 
 impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
+    #[tracing::instrument(target = "harmos::streams", name = "streams.send_item", level = "trace", skip_all)]
     pub async fn send_item(&self, mut item: StreamItem<T>) -> Result<(), E> {
         let original = Arc::ptr_eq(&self.budget, item._bytes.semaphore());
         let current = item.delivery.as_ref().is_some_and(|claim| Arc::ptr_eq(&self.budget, claim.semaphore()));
@@ -296,6 +299,7 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.send_with", level = "trace", skip_all)]
     pub async fn send_with(&self, bytes: usize, make: impl FnOnce() -> Result<T, E>) -> Result<(), E> {
         self.reserve(bytes).await?.send_with(make)
     }
@@ -315,6 +319,7 @@ impl<T: MemorySize, E: From<Error>> StreamPermit<'_, T, E> {
 }
 
 impl<T: MemorySize + Send + Sync + 'static, E: From<Error>> StreamOutput<T, E> {
+    #[tracing::instrument(target = "harmos::streams", name = "streams.send_owned", level = "trace", skip_all)]
     pub async fn send_owned(&self, value: super::Response<T>) -> Result<(), E> {
         let bytes = value.memory_size().checked_add(std::mem::size_of::<StreamItem<T>>()).ok_or(Error::Capacity)?;
         self.reserve(bytes).await?.send_owned(value)
@@ -334,6 +339,7 @@ impl<T: MemorySize + Send + Sync + 'static, E: From<Error>> StreamPermit<'_, T, 
 }
 
 impl<T: Message + MemorySize, E: From<Error>> StreamOutput<T, E> {
+    #[tracing::instrument(target = "harmos::streams", name = "streams.decode", level = "trace", skip_all)]
     pub async fn decode(&self, encoded: &[u8]) -> Result<(), E> {
         let bytes = T::decoding_memory(encoded).map_err(decoding)?;
         self.send_with(bytes, || T::decode(encoded).map_err(|error| decoding(error).into())).await

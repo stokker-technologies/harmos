@@ -23,7 +23,9 @@ use std::sync::{
 };
 // Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
+use tracing::Instrument;
 // Local Imports
+use crate::supervision::executor::InContext;
 use crate::{Application, state::Entry, state::Position, state::PreparationError, state::Receipt, state::Recorded, state::RequestKey};
 
 /* === Constants === */
@@ -46,6 +48,7 @@ pub(crate) struct CallbackDeclaration<A: Application> {
 }
 
 struct Group<A: Application> {
+    trace: crate::supervision::executor::SpanContext,
     entries: Vec<Arc<Entry<Recorded<A>>>>,
     frontier: Position,
     _permit: OwnedSemaphorePermit,
@@ -97,7 +100,7 @@ pub(crate) enum Capture<A: Application> {
 
 pub(crate) enum Permit {
     Callback(OwnedSemaphorePermit),
-    Managed(crate::storage::state::Permit),
+    Managed(Box<crate::storage::state::Permit>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -159,8 +162,16 @@ impl<A: Application> CallbackDeclaration<A> {
         let mut guard = Failure { shared: shared.clone(), clean: false };
         let mut consumer = self.consumer;
         let worker = tokio::spawn(async move {
-            while let Some(group) = receiver.recv().await {
-                if consumer.capture(group.entries, group.frontier).await.is_err() {
+            while let Some(mut group) = receiver.recv().await {
+                group.trace.span.follows_from(group.trace.predecessor());
+                group.trace.dequeued();
+                if consumer
+                    .capture(group.entries, group.frontier)
+                    .instrument(group.trace.span.clone())
+                    .in_context(group.trace.dispatcher.clone())
+                    .await
+                    .is_err()
+                {
                     return;
                 }
                 // Capacity includes the callback until successful acknowledgement.
@@ -175,6 +186,7 @@ impl<A: Application> CallbackDeclaration<A> {
 }
 
 impl<A: Application> Callback<A> {
+    #[tracing::instrument(target = "harmos::state", name = "state.reserve", level = "debug", skip_all)]
     pub async fn reserve(&self, bytes: usize) -> Result<OwnedSemaphorePermit, PreparationError> {
         self.check()?;
         if bytes > self.limits.max_group_bytes as usize {
@@ -188,7 +200,19 @@ impl<A: Application> Callback<A> {
     }
 
     pub fn submit(&self, entries: Vec<Arc<Entry<Recorded<A>>>>, frontier: Position, permit: OwnedSemaphorePermit) {
-        if self.sender.send(Group { entries, frontier, _permit: permit }).is_err() {
+        if self
+            .sender
+            .send(Group {
+                entries,
+                frontier,
+                _permit: permit,
+                trace: crate::supervision::executor::SpanContext::new(
+                    tracing::debug_span!(target: "harmos::state", "state.capture_group", frontier = frontier.0),
+                    tracing::debug_span!(target: "harmos::state", "state.capture_queue"),
+                ),
+            })
+            .is_err()
+        {
             self.shared.fail();
         }
     }
@@ -201,6 +225,7 @@ impl<A: Application> Callback<A> {
         self.shared.signal.subscribe()
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.finish", level = "debug", skip_all)]
     pub async fn finish(self) {
         drop(self.sender);
         let _ = self.worker.await;
@@ -225,6 +250,7 @@ impl<A: Application> Declaration<A> {
 }
 
 impl<A: Application> Capture<A> {
+    #[tracing::instrument(target = "harmos::state", name = "state.snapshot", level = "debug", skip_all)]
     pub(crate) async fn snapshot(
         &self, tracked: &super::TrackedState<A>, undos: &super::Undos<A>, receipts: &HashMap<RequestKey, Receipt>, final_save: bool,
     ) {
@@ -240,17 +266,20 @@ impl<A: Application> Capture<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.reserve", level = "debug", skip_all)]
     pub(crate) async fn reserve(
         &self, bytes: usize, group: &crate::state::recovery::Group<&serde_json::Value>,
     ) -> Result<Permit, PreparationError> {
         match self {
             Self::Callback(callback) => callback.reserve(bytes).await.map(Permit::Callback),
             Self::Managed { storage, projection, .. } => {
-                storage.reserve_group(group, projection.as_ref()).await.map(Permit::Managed).map_err(|error| match error {
-                    crate::Error::InvalidInput { .. } => PreparationError::Limit,
-                    _ => {
-                        self.fail();
-                        PreparationError::CaptureFailed
+                storage.reserve_group(group, projection.as_ref()).await.map(|permit| Permit::Managed(Box::new(permit))).map_err(|error| {
+                    match error {
+                        crate::Error::InvalidInput { .. } => PreparationError::Limit,
+                        _ => {
+                            self.fail();
+                            PreparationError::CaptureFailed
+                        }
                     }
                 })
             }
@@ -276,7 +305,7 @@ impl<A: Application> Capture<A> {
         match (self, permit) {
             (Self::Callback(callback), Permit::Callback(permit)) => callback.submit(entries, frontier, permit),
             (Self::Managed { progress, .. }, Permit::Managed(permit)) => {
-                permit.commit(frontier);
+                (*permit).commit(frontier);
                 let _ = progress.send_replace(Ok(frontier));
             }
             _ => unreachable!("capture owns its reservation"),
@@ -305,6 +334,7 @@ impl<A: Application> Capture<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.finish", level = "debug", skip_all)]
     pub(crate) async fn finish(self) {
         if let Self::Callback(callback) = self {
             callback.finish().await;

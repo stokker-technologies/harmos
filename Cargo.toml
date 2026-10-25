@@ -35,7 +35,8 @@ thiserror = { version = "2", default-features = false }
 
 # Logging
 tracing = { version = "0.1", default-features = false }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+tracing-perfetto-file = { version = "0.1.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
 
 # Utilities
 bytes = { version = "1.12", default-features = false }
@@ -122,7 +123,7 @@ tower-http = { version = "0.7", default-features = false, features = ["cors"] }
 # UI
 
 # Testing
-criterion = { version = "0.8.2", default-features = false }
+criterion = { version = "0.8.2", default-features = false, features = ["html_reports", "plotters"] }
 
 # === Workspace Lints === #
 

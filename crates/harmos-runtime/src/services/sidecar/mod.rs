@@ -122,6 +122,7 @@ enum Staging {
 }
 
 struct Request {
+    trace: crate::supervision::executor::SpanContext,
     method: String,
     params: Vec<u8>,
     answer: oneshot::Sender<Result<Vec<u8>, SidecarError>>,

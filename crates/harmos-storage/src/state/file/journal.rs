@@ -65,6 +65,7 @@ struct Header {
 /* === Implementations === */
 
 impl StateLog {
+    #[tracing::instrument(name = "storage.state.file.open", level = "debug", skip_all)]
     pub(super) fn open(root: &Path, history: StoreHistory, settings: StorageStateSettings, opener: JournalOpener) -> Result<Self> {
         let entry_bytes = settings.max_entry_bytes.get();
         let checkpoint_bytes = settings.max_checkpoint_bytes.get();
@@ -121,6 +122,7 @@ impl StateLog {
         Ok(Self { files, file, poisoned: false, history, saved, base, entry_bytes, checkpoint_bytes })
     }
 
+    #[tracing::instrument(name = "storage.state.file.check", level = "debug", skip_all)]
     pub(super) fn check(&self) -> Result<()> {
         if self.poisoned {
             return Err(io(std::io::Error::other("state journal requires close and reopen after an unresolved I/O failure")));
@@ -128,15 +130,18 @@ impl StateLog {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.state.file.position", level = "debug", skip_all)]
     pub(super) fn position(&self) -> RecoveryPosition {
         RecoveryPosition { history: self.history.clone(), sequence: self.saved }
     }
 
+    #[tracing::instrument(name = "storage.state.file.snapshot", level = "debug", skip_all)]
     pub(super) fn snapshot(&self, maximum: usize) -> Result<Option<RecoverySnapshot>> {
         let bound = maximum.saturating_add(format::OVERHEAD);
         self.files.snapshot(bound.min(self.checkpoint_bytes))
     }
 
+    #[tracing::instrument(name = "storage.state.file.page", level = "debug", skip_all)]
     pub(super) fn page(&mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits) -> Result<RecoveryPage> {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
@@ -174,6 +179,7 @@ impl StateLog {
         Ok(page)
     }
 
+    #[tracing::instrument(name = "storage.state.file.append", level = "debug", skip_all)]
     pub(super) fn append(&mut self, entries: &[RecoveryEntry]) -> Result<()> {
         let mut next = self.saved;
         let mut lines = Vec::new();
@@ -224,6 +230,7 @@ impl StateLog {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.state.file.flush", level = "debug", skip_all)]
     pub(super) fn flush(&mut self, through: &RecoveryPosition) -> Result<RecoveryPosition> {
         self.history.check(&through.history)?;
         if through.sequence > self.saved {
@@ -233,6 +240,7 @@ impl StateLog {
         Ok(self.position())
     }
 
+    #[tracing::instrument(name = "storage.state.file.checkpoint", level = "debug", skip_all)]
     pub(super) fn checkpoint(&mut self, snapshot: &RecoverySnapshot) -> Result<()> {
         self.history.check(&snapshot.through.history)?;
         let base = snapshot.through.sequence;
@@ -276,6 +284,7 @@ impl StateLog {
         replaced
     }
 
+    #[tracing::instrument(name = "storage.state.file.reader", level = "debug", skip_all)]
     fn reader(&self) -> Result<BufReader<File>> {
         let mut reader = BufReader::new(self.file.try_clone().map_err(io)?);
         reader.seek(SeekFrom::Start(0)).map_err(io)?;
@@ -283,6 +292,7 @@ impl StateLog {
         Ok(reader)
     }
 
+    #[tracing::instrument(name = "storage.state.file.scan", level = "debug", skip_all)]
     fn scan(&self, mut visit: impl FnMut(RecoveryEntry) -> Result<bool>) -> Result<()> {
         let mut reader = self.reader()?;
         loop {

@@ -31,6 +31,7 @@ use crate::{Error, MemorySize, Result};
 /* === Structs === */
 
 pub struct FileFollower {
+    context: crate::execution::Context,
     manager: StorageManager<ErasedCatalog>,
     file: StagedFile,
     offset: u64,
@@ -47,6 +48,7 @@ pub struct FileFollower {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
     pub async fn follow_file(&self, file: &StagedFile, offset: u64) -> Result<FileFollower> {
         self.inner.primary.history().check(&file.history)?;
         let held = Held::default();
@@ -60,12 +62,22 @@ impl<C> StorageManager<C> {
             tracing::error!(file = %file.id, offset, available = progress.length, reason = "offset exceeds retained bytes", "file following rejected");
             return Err(Error::InvalidInput { field: "file offset", reason: "offset exceeds retained bytes" });
         }
-        Ok(FileFollower { manager: self.erased(), file: file.clone(), offset, progress, changed, held, _metadata: metadata })
+        Ok(FileFollower {
+            context: crate::execution::Context::current(),
+            manager: self.erased(),
+            file: file.clone(),
+            offset,
+            progress,
+            changed,
+            held,
+            _metadata: metadata,
+        })
     }
 
+    #[tracing::instrument(name = "storage.file_follow.file_progress", level = "debug", skip_all)]
     pub async fn file_progress(&self, file: &StagedFile) -> Result<FileProgress> {
         self.inner.primary.history().check(&file.history)?;
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         {
             let state = self.inner.state.lock().unwrap();
             if state.status.closing || !state.ready {
@@ -75,7 +87,7 @@ impl<C> StorageManager<C> {
                 return progress;
             }
         }
-        self.inner.bounded(self.inner.primary.file_progress(file)).await
+        self.inner.bounded("primary.file_progress", self.inner.primary.file_progress(file)).await
     }
 }
 
@@ -89,42 +101,52 @@ impl FileFollower {
     }
 
     pub async fn next_batch(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileBatch>> {
-        loop {
-            self.changed.borrow_and_update();
-            let progress = self.manager.file_progress(&self.file).await?;
-            if self.offset > progress.length {
-                return Err(Error::InvalidInput { field: "file offset", reason: "retained bytes moved behind reader offset" });
-            }
-            self.progress = progress;
-            if self.offset < progress.length {
-                let size = max_bytes
-                    .get()
-                    .min(self.manager.inner.settings.response.batch_bytes.get())
-                    .min(usize::try_from(progress.length - self.offset).unwrap_or(usize::MAX));
-                let maximum = NonZeroUsize::new(size).expect("nonempty file prefix");
-                let _transfer =
-                    Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None).await.map_err(Refusal::into_error)?;
-                let _lifecycle = self.manager.inner.lifecycle.read().await;
-                if self.manager.inner.state.lock().unwrap().status.closing {
-                    return Err(Error::Closing { domain: "storage file reader" });
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            loop {
+                self.changed.borrow_and_update();
+                let progress = self.manager.file_progress(&self.file).await?;
+                if self.offset > progress.length {
+                    return Err(Error::InvalidInput { field: "file offset", reason: "retained bytes moved behind reader offset" });
                 }
-                let bytes =
-                    self.manager.inner.bounded(self.manager.inner.primary.read_production(&self.file, self.offset, maximum)).await?;
-                if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
-                    return Err(Error::InvalidInput {
-                        field: "file batch",
-                        reason: "backend returned an empty or oversized retained prefix",
-                    });
+                self.progress = progress;
+                if self.offset < progress.length {
+                    let size = max_bytes
+                        .get()
+                        .min(self.manager.inner.settings.response.batch_bytes.get())
+                        .min(usize::try_from(progress.length - self.offset).unwrap_or(usize::MAX));
+                    let maximum = NonZeroUsize::new(size).expect("nonempty file prefix");
+                    let _transfer =
+                        Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None).await.map_err(Refusal::into_error)?;
+                    let _lifecycle =
+                        tracing::Instrument::instrument(self.manager.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait"))
+                            .await;
+                    if self.manager.inner.state.lock().unwrap().status.closing {
+                        return Err(Error::Closing { domain: "storage file reader" });
+                    }
+                    let bytes = self
+                        .manager
+                        .inner
+                        .bounded("primary.read_production", self.manager.inner.primary.read_production(&self.file, self.offset, maximum))
+                        .await?;
+                    if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
+                        return Err(Error::InvalidInput {
+                            field: "file batch",
+                            reason: "backend returned an empty or oversized retained prefix",
+                        });
+                    }
+                    let offset = self.offset;
+                    self.offset += bytes.len() as u64;
+                    return Ok(Some(FileBatch { offset, bytes }));
                 }
-                let offset = self.offset;
-                self.offset += bytes.len() as u64;
-                return Ok(Some(FileBatch { offset, bytes }));
+                if progress.phase != FilePhase::Producing {
+                    return Ok(None);
+                }
+                self.changed.changed().await.map_err(|_| Error::Closing { domain: "storage file reader" })?;
             }
-            if progress.phase != FilePhase::Producing {
-                return Ok(None);
-            }
-            self.changed.changed().await.map_err(|_| Error::Closing { domain: "storage file reader" })?;
-        }
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 }
 

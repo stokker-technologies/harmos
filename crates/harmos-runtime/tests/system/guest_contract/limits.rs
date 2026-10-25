@@ -43,6 +43,7 @@ use harmos_runtime::guest::{Error, Host};
 
 #[tokio::test]
 async fn host_resource_settings() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let bytes = schematic();
     let settings = harmos_runtime::config::PluginGuestSettings {
@@ -68,6 +69,7 @@ async fn host_resource_settings() {
 
 #[tokio::test]
 async fn memory_growth_bounded() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
@@ -81,6 +83,7 @@ async fn memory_growth_bounded() {
 
 #[tokio::test]
 async fn fuel_retains_cause() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
@@ -94,6 +97,7 @@ async fn fuel_retains_cause() {
 
 #[tokio::test]
 async fn manager_bounds_wait() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     // The Embedded Provider Never Answers The Waiting Probe
     let mut lifecycle = Lifecycle::sandbox(&runtime);
@@ -108,6 +112,7 @@ async fn manager_bounds_wait() {
 
 #[tokio::test]
 async fn trap_discards_instance() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
@@ -124,6 +129,7 @@ async fn trap_discards_instance() {
 
 #[tokio::test]
 async fn refusal_keeps_classification() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();

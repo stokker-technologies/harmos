@@ -42,6 +42,7 @@ use harmos_domain::operations::storage::ReadFile;
 /* === Structs === */
 
 pub struct FileReader {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
     snapshot: Option<Snapshot>,
@@ -61,6 +62,7 @@ pub struct FileReader {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
     pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
         let ReadFile { file, range } = request;
         let end = range.end(file.length)?;
@@ -102,6 +104,7 @@ impl<C> StorageManager<C> {
             }
         }
         Ok(FileReader {
+            context: crate::execution::Context::current(),
             inner: Arc::clone(&self.inner),
             held,
             snapshot: Some(snapshot),
@@ -126,45 +129,50 @@ impl FileReader {
     }
 
     pub async fn next(&mut self) -> Result<Option<FileBatch>> {
-        let Some(snapshot) = &self.snapshot else {
-            return Ok(None);
-        };
-        if self.offset == self.end {
-            // An Empty Whole File Still Proves Its Digest.
-            if self.verify && self.end == 0 && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256 {
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            let Some(snapshot) = &self.snapshot else {
+                return Ok(None);
+            };
+            if self.offset == self.end {
+                // An Empty Whole File Still Proves Its Digest.
+                if self.verify && self.end == 0 && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256 {
+                    return Err(corrupt("file digest mismatch"));
+                }
+                self.snapshot = None;
+                return Ok(None);
+            }
+
+            // The Response Envelope Shares The Batch Byte Ceiling.
+            let ceiling = self.inner.settings.response.batch_bytes.get();
+            let overhead = 2 + varint_bytes(self.offset) + varint_bytes(ceiling as u64);
+            let remaining = usize::try_from(self.end - self.offset).unwrap_or(usize::MAX);
+            let maximum = ceiling
+                .checked_sub(overhead)
+                .map(|bytes| bytes.min(remaining))
+                .and_then(NonZeroUsize::new)
+                .ok_or(Error::ResourceExhausted { resource: "file response batch bytes" })?;
+            let charge = maximum.get().saturating_mul(2).saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
+            let _transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
+            let bytes = snapshot.read_file(&self.file, self.offset, maximum).await?;
+            if bytes.is_empty() || bytes.len() > maximum.get() || bytes.len() as u64 > self.end - self.offset {
+                return Err(corrupt("file batch is empty or outside the immutable length"));
+            }
+            // Verify The Whole-File Digest Before Delivering Its Final Batch.
+            let mut hash = self.hash.clone();
+            hash.update(&bytes);
+            let next = self.offset + bytes.len() as u64;
+            if self.verify && next == self.end && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256 {
                 return Err(corrupt("file digest mismatch"));
             }
-            self.snapshot = None;
-            return Ok(None);
-        }
-
-        // The Response Envelope Shares The Batch Byte Ceiling.
-        let ceiling = self.inner.settings.response.batch_bytes.get();
-        let overhead = 2 + varint_bytes(self.offset) + varint_bytes(ceiling as u64);
-        let remaining = usize::try_from(self.end - self.offset).unwrap_or(usize::MAX);
-        let maximum = ceiling
-            .checked_sub(overhead)
-            .map(|bytes| bytes.min(remaining))
-            .and_then(NonZeroUsize::new)
-            .ok_or(Error::ResourceExhausted { resource: "file response batch bytes" })?;
-        let charge = maximum.get().saturating_mul(2).saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
-        let _transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
-        let bytes = snapshot.read_file(&self.file, self.offset, maximum).await?;
-        if bytes.is_empty() || bytes.len() > maximum.get() || bytes.len() as u64 > self.end - self.offset {
-            return Err(corrupt("file batch is empty or outside the immutable length"));
-        }
-        // Verify The Whole-File Digest Before Delivering Its Final Batch.
-        let mut hash = self.hash.clone();
-        hash.update(&bytes);
-        let next = self.offset + bytes.len() as u64;
-        if self.verify && next == self.end && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256 {
-            return Err(corrupt("file digest mismatch"));
-        }
-        let offset = self.offset;
-        self.hash = hash;
-        self.offset = next;
-        self.bytes += bytes.len() as u64;
-        Ok(Some(FileBatch { offset, bytes }))
+            let offset = self.offset;
+            self.hash = hash;
+            self.offset = next;
+            self.bytes += bytes.len() as u64;
+            Ok(Some(FileBatch { offset, bytes }))
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
     pub fn completion(&self) -> Result<FileCompletion> {

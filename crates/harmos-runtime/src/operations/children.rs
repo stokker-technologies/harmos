@@ -63,6 +63,7 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl Children {
+    #[tracing::instrument(target = "harmos::operations", name = "operations.call", level = "trace", skip_all)]
     pub(crate) async fn call(
         &self, call: WireChildCall, submitted: tokio::time::Instant, mut cancelled: oneshot::Receiver<()>,
     ) -> Result<Vec<u8>, Refusal> {
@@ -89,6 +90,7 @@ impl Children {
         drained(invocation, cancelled).await
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.control", level = "trace", skip_all)]
     pub(crate) async fn control(&self, control: WireChildControl, cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
         let instance = control.instance;
         let take = || self.submitted.lock().expect("submitted child lock is healthy").remove(&instance).ok_or_else(|| unknown(instance));
@@ -139,6 +141,7 @@ impl Drop for Child {
 /* === Public Functions === */
 
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[tracing::instrument(target = "harmos::operations", name = "operations.lifecycle", level = "trace", skip_all)]
 pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: oneshot::Receiver<()>) -> crate::Result<Vec<u8>> {
     let control = std::sync::Arc::clone(&invocation.control);
     let mut invocation = Child { invocation: Some(invocation) };
@@ -187,6 +190,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
 
 // Await one child; cancellation requests interruption and the same child still
 // drains before its outcome is reported.
+#[tracing::instrument(target = "harmos::operations", name = "operations.drained", level = "trace", skip_all)]
 async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
     tokio::select! {
         biased;

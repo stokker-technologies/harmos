@@ -92,6 +92,7 @@ fn plugin_settings() -> PluginSidecarSettings {
 
 #[tokio::test]
 async fn sidecar_composition_walks() {
+    let _report = crate::report::system();
     if std::env::var(ENV_SCENE).as_deref() != Ok("1") {
         // The Current-Thread Test Host Tolerates This Ambient Setting; A Native
         // Multithread Sidecar Must Clear It Before A Fresh Valid Generation Starts.
@@ -118,7 +119,10 @@ async fn sidecar_composition_walks() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("boards")).unwrap();
     std::fs::write(directory.path().join("notes.txt"), b"not a directory").unwrap();
-    let executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
+    let mut executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
+    if let Some(directory) = std::env::var_os("STKR_TEST_REPORT_DIR") {
+        executable = executable.variable("STKR_TEST_REPORT_DIR", directory);
+    }
     assert_eq!(executable.declaration().id, PLUGIN);
     // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
     let runtime = Runtime::<Host>::builder((), ())

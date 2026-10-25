@@ -96,6 +96,7 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 
 #[tokio::test]
 async fn runtime_baseline_walks() {
+    let _report = crate::report::system();
     // Boot The Host Over A Journal On Disk
     let root = tempfile::tempdir().unwrap();
     let data = Arc::new(Data::<()>::journaled(root.path(), history()).unwrap());

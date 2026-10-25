@@ -167,6 +167,8 @@ pub(super) struct Target {
 }
 
 pub(super) struct Pending {
+    pub(super) context: crate::execution::Context,
+    pub(super) queued: Mutex<Option<tracing::Span>>,
     pub(super) journal: Option<harmos_domain::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
@@ -222,6 +224,12 @@ pub trait WorkerOwner: Send + Sync {
 
 /* === Implementations === */
 
+impl Drop for Pending {
+    fn drop(&mut self) {
+        self.context.sync(|| drop(self.queued.get_mut().unwrap().take()));
+    }
+}
+
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone(), catalog: PhantomData }
@@ -239,6 +247,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         Self::with_execution(backends, settings, Execution::default())
     }
 
+    #[tracing::instrument(name = "storage.manager.new", level = "debug", skip_all)]
     pub fn with_execution(backends: StorageBackends, settings: StorageSettings, execution: Execution) -> Result<Self> {
         C::validate()?;
         settings.validate()?;

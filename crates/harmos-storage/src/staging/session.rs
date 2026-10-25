@@ -81,6 +81,7 @@ impl Session {
 }
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.session.produce_file", level = "debug", skip_all)]
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         if !self.inner.primary.supports_file_sessions() {
             return Err(Error::InvalidInput { field: "file session", reason: "backend does not support resumable file sessions" });
@@ -88,6 +89,7 @@ impl<C> StorageManager<C> {
         self.create(metadata, true).await
     }
 
+    #[tracing::instrument(name = "storage.staging.session.resume_file", level = "debug", skip_all)]
     pub async fn resume_file(&self, token: &FileSession) -> Result<StorageFile> {
         if let Err(error) = self.inner.primary.history().check(&token.history) {
             tracing::error!(file = %token.id, generation = token.generation, reason = "history mismatch", %error, "file resume rejected");
@@ -132,6 +134,8 @@ impl<C> StorageManager<C> {
                         return Err(Error::InvalidInput { field: "file resume", reason: "another resume owns the transition" });
                     }
                     if file.command.is_none() && !file.in_flight {
+                        file.context = crate::execution::Context::current();
+                        file.queued = Some(tracing::debug_span!("storage.file.queue"));
                         file.command = Some(Command::Resume { expected: token.generation, next });
                         // Fence Old Handles At Admission, Before The Durable Transition.
                         file.progress.lock().unwrap().generation = next;

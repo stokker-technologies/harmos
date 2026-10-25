@@ -35,6 +35,7 @@ harmos-domain = { workspace = true }
 thiserror = { workspace = true, default-features = true }
 
 # Logging
+tracing = { workspace = true, default-features = true }
 
 # Utilities
 

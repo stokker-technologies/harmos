@@ -39,6 +39,7 @@ impl StorageFile {
         self.progress.lock().unwrap().length
     }
 
+    #[tracing::instrument(name = "storage.staging.producer.write_all", level = "debug", skip_all)]
     pub async fn write_all(&mut self, mut bytes: &[u8]) -> Result<()> {
         let mut cancel = CancelProduction {
             manager: self.manager.clone(),
@@ -73,6 +74,8 @@ impl StorageFile {
                     if available != 0 && capacity {
                         let count = bytes.len().min(available).min(self.manager.inner.settings.response.batch_bytes.get());
                         file.ticket = file.ticket.checked_add(1).ok_or(size_error())?;
+                        file.context = crate::execution::Context::current();
+                        file.queued = Some(tracing::debug_span!("storage.file.queue"));
                         file.command = Some(Command::Write(Arc::from(&bytes[..count])));
                         let ticket = file.ticket;
                         state.collect();
@@ -93,6 +96,7 @@ impl StorageFile {
         }
     }
 
+    #[tracing::instrument(name = "storage.staging.producer.finish", level = "debug", skip_all)]
     pub async fn finish(&mut self) -> Result<FileReference> {
         self.check_generation()?;
         if let Some(reference) = &self.progress.lock().unwrap().reference {
@@ -133,6 +137,8 @@ impl StorageFile {
                         return Err(Error::InvalidInput { field: "file integrity", reason: "length or digest does not match" });
                     }
                     if capacity {
+                        file.context = crate::execution::Context::current();
+                        file.queued = Some(tracing::debug_span!("storage.file.queue"));
                         file.command = Some(Command::Finish { target: None, sha256: digest });
                         state.collect();
                         Ok(Some(()))
@@ -148,6 +154,7 @@ impl StorageFile {
         self.progress.lock().unwrap().reference.clone().ok_or_else(closed)
     }
 
+    #[tracing::instrument(name = "storage.staging.producer.abort", level = "debug", skip_all)]
     pub async fn abort(&mut self) -> Result<()> {
         self.check_generation()?;
         {
@@ -161,6 +168,8 @@ impl StorageFile {
                     session.reason = "producer explicitly abandoned";
                 }
                 if !file.in_flight {
+                    file.context = crate::execution::Context::current();
+                    file.queued = Some(tracing::debug_span!("storage.file.queue"));
                     file.command = Some(Command::Abort);
                 }
                 let mut progress = file.progress.lock().unwrap();
@@ -181,6 +190,7 @@ impl StorageFile {
         self.wait(Await::Aborted).await
     }
 
+    #[tracing::instrument(name = "storage.staging.producer.wait", level = "debug", skip_all)]
     pub(super) async fn wait(&self, goal: Await) -> Result<()> {
         let mut changed = self.manager.inner.changed.subscribe();
         loop {

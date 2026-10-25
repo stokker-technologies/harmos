@@ -125,6 +125,7 @@ schematic-domain = { path = "../../examples/schematic/domain" }
 # Error Handling
 
 # Logging
+tracing-perfetto-file = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Utilities
@@ -138,6 +139,7 @@ arrow-schema = { workspace = true }
 arrow-select = { workspace = true }
 base64 = { workspace = true }
 flatbuffers = { workspace = true }
+prost = { workspace = true, features = ["derive"] }
 protoc-bin-vendored = { workspace = true }
 
 # Configuration

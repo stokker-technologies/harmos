@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:270e35f61cf69bfda0cd95026bff266a29e9456304c0edd6d03e3e1ed05fc437
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:50b59e5a0e10d164fcbc216d5051503b9d49017b24874d21e3825ed2984fdf74
 name: Test / Windows
 "on":
   workflow_call:
@@ -242,7 +242,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_unit-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/unit-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/unit-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/unit-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
@@ -513,7 +515,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_integration-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/integration-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/integration-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/integration-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
@@ -793,7 +797,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_acceptance-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/acceptance-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/acceptance-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/acceptance-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
@@ -1073,7 +1079,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_system-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/system-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/system-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/system-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
@@ -1353,7 +1361,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_starter-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/starter-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/starter-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/starter-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true

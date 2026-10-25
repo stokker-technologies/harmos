@@ -15,10 +15,17 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // Third Party Imports
+use tracing::instrument::WithSubscriber;
+use tracing::{Instrument, Subscriber};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{Layer, Registry};
 
 // Local Imports
 use super::{Fixture, config, record, schema, write};
@@ -26,6 +33,7 @@ use harmos_storage::Identifier;
 use harmos_storage::StreamWrite;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
+use harmos_storage::state::StateBackend;
 
 /* === Constants === */
 
@@ -34,6 +42,29 @@ use harmos_storage::schema::graph::{Field, Kind};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Captured>>);
+
+#[derive(Clone, Debug, Default)]
+struct Captured {
+    spans: BTreeMap<u64, CapturedSpan>,
+    active: BTreeMap<u64, u64>,
+    links: Vec<(u64, u64)>,
+    created: u64,
+    closed: usize,
+    unresolved_links: usize,
+}
+
+#[derive(Clone, Debug)]
+struct CapturedSpan {
+    name: &'static str,
+    parent: Option<u64>,
+    closed: Option<usize>,
+    fields: BTreeMap<String, String>,
+}
+
+struct Fields<'a>(&'a mut BTreeMap<String, String>);
 
 /* === Enums === */
 
@@ -46,9 +77,272 @@ enum FlushGate {
 
 /* === Implementations === */
 
+impl tracing::field::Visit for Fields<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.insert(field.name().to_owned(), format!("{value:?}"));
+    }
+}
+
+impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
+    fn on_new_span(&self, attributes: &tracing::span::Attributes<'_>, id: &tracing::Id, context: Context<'_, S>) {
+        let parent = context.span(id).unwrap().parent().map(|parent| parent.id().into_u64());
+        let mut fields = BTreeMap::new();
+        attributes.record(&mut Fields(&mut fields));
+        let mut capture = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let parent = parent.and_then(|parent| capture.active.get(&parent).copied());
+        let span = CapturedSpan { name: attributes.metadata().name(), parent, closed: None, fields };
+        capture.created += 1;
+        let created = capture.created;
+        capture.active.insert(id.into_u64(), created);
+        capture.spans.insert(created, span);
+    }
+
+    fn on_record(&self, id: &tracing::Id, values: &tracing::span::Record<'_>, _: Context<'_, S>) {
+        let mut capture = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let created = capture.active.get(&id.into_u64()).copied();
+        if let Some(span) = created.and_then(|created| capture.spans.get_mut(&created)) {
+            values.record(&mut Fields(&mut span.fields));
+        }
+    }
+
+    fn on_follows_from(&self, id: &tracing::Id, follows: &tracing::Id, _: Context<'_, S>) {
+        let mut capture = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let target = capture.active.get(&id.into_u64()).copied();
+        let source = capture.active.get(&follows.into_u64()).copied();
+        if let (Some(target), Some(source)) = (target, source) {
+            capture.links.push((target, source));
+        } else {
+            capture.unresolved_links += 1;
+        }
+    }
+
+    fn on_close(&self, id: tracing::Id, _: Context<'_, S>) {
+        let mut capture = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        capture.closed += 1;
+        let closed = capture.closed;
+        let created = capture.active.remove(&id.into_u64());
+        if let Some(span) = created.and_then(|created| capture.spans.get_mut(&created)) {
+            span.closed = Some(closed);
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+#[tokio::test(start_paused = true)]
+async fn storage_trace_handoffs() {
+    let mut policy = config();
+    policy.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
+    let f = Fixture::new(policy).await;
+    f.data.control.block_flush.store(true, Ordering::SeqCst);
+    let capture = Capture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    let dispatch = tracing::Dispatch::new(subscriber);
+
+    for number in 1..=2 {
+        let request = tracing::dispatcher::with_default(&dispatch, || tracing::debug_span!("storage_test_request", number));
+        write(&f.storage, "private-item").instrument(request).with_subscriber(dispatch.clone()).await;
+    }
+    let second = f.storage.cursor_accepted();
+    {
+        let request = tracing::dispatcher::with_default(&dispatch, || tracing::debug_span!("cancelled_request"));
+        let mut cancelled = Box::pin(write(&f.storage, "private-cancelled").instrument(request).with_subscriber(dispatch.clone()));
+        tokio::select! {
+            biased;
+            _ = &mut cancelled => panic!("durability is blocked"),
+            _ = f.data.control.flush_entered.notified() => {}
+        }
+        tracing::dispatcher::with_default(&dispatch, || drop(cancelled));
+    }
+    {
+        let captured = capture.0.lock().unwrap().clone();
+        let cancelled = captured.spans.values().find(|span| span.name == "cancelled_request").unwrap();
+        assert!(cancelled.closed.is_some(), "cancelled request retained: {captured:#?}");
+        let backend = captured.spans.values().find(|span| span.name == "storage.backend").unwrap();
+        assert!(backend.closed.is_none(), "physical work remains active after caller cancellation");
+    }
+    assert_eq!(f.storage.cursor_accepted(), second);
+    f.data.control.block_flush.store(false, Ordering::SeqCst);
+    f.data.control.flush_release.notify_one();
+    f.storage.await_durable(&second).await.unwrap();
+
+    let selection =
+        harmos_storage::query::RecordSelection { schema: schema(), scope: None, item: None, source_start: None, source_end: None };
+    let request = tracing::dispatcher::with_default(&dispatch, || tracing::debug_span!("reader_request"));
+    let mut reader = f
+        .storage
+        .follow::<harmos_storage::StoredRecord>(None, selection.clone())
+        .instrument(request)
+        .with_subscriber(dispatch.clone())
+        .await
+        .unwrap();
+    let page = reader.next().await.unwrap();
+    assert_eq!(page.entries().len(), 2);
+    drop(page);
+    drop(reader);
+
+    let mut cancelled_reader =
+        f.storage.follow::<harmos_storage::StoredRecord>(None, selection).with_subscriber(dispatch.clone()).await.unwrap();
+    f.data.control.block_read.store(true, Ordering::SeqCst);
+    let mut cancelled_page = Box::pin(cancelled_reader.next());
+    tokio::select! {
+        biased;
+        _ = &mut cancelled_page => panic!("backend read is blocked"),
+        _ = f.data.control.read_entered.notified() => {}
+    }
+    drop(cancelled_page);
+    drop(cancelled_reader);
+    f.data.control.block_read.store(false, Ordering::SeqCst);
+    let history = f.storage.cursor_saved().history;
+    f.finish().await;
+
+    let directory = tempfile::tempdir().unwrap();
+    let backend = harmos_storage::state::file::FileBackend::new(directory.path().to_owned(), history, super::fixture::state_settings());
+    let position = backend.open().with_subscriber(dispatch.clone()).await.unwrap();
+    backend.read_snapshot(NonZeroUsize::new(4096).unwrap()).with_subscriber(dispatch.clone()).await.unwrap();
+    backend.flush(&position).with_subscriber(dispatch.clone()).await.unwrap();
+    backend.close().with_subscriber(dispatch.clone()).await.unwrap();
+
+    let captured = capture.0.lock().unwrap().clone();
+    let (&batch_id, batch) = captured.spans.iter().find(|(_, span)| span.name == "storage.batching.write").unwrap();
+    assert!(batch.parent.is_none());
+    assert!(captured.links.iter().all(|(target, _)| *target != batch_id));
+    let contributions: Vec<_> = captured.spans.iter().filter(|(_, span)| span.name == "storage.batch.contribution").collect();
+    assert_eq!(contributions.len(), 2);
+    for (&contribution_id, contribution) in contributions {
+        for field in ["store", "epoch", "domain", "first_index", "last_index", "through"] {
+            assert_eq!(contribution.fields[field], batch.fields[field]);
+        }
+        let sources: Vec<_> = captured.links.iter().filter(|(target, _)| *target == contribution_id).map(|(_, source)| *source).collect();
+        assert_eq!(sources.len(), 1);
+        let queued = &captured.spans[&sources[0]];
+        assert_eq!(queued.name, "storage.queue");
+        assert!(queued.parent.is_some());
+        assert!(queued.closed.unwrap() < contribution.closed.unwrap());
+        assert_eq!(contribution.fields["outcome"], "\"completed\"");
+    }
+    let page = captured.spans.values().find(|span| span.name == "storage.reader.page").unwrap();
+    let origin = &captured.spans[&page.parent.unwrap()];
+    assert_eq!(origin.name, "storage.follow.follow");
+    assert!(page.closed.is_some());
+    assert!(captured.spans.values().filter(|span| span.name == "storage.reader.page").all(|span| span.closed.is_some()));
+    assert!(
+        captured
+            .spans
+            .values()
+            .any(|span| { span.name == "storage.backend" && span.fields.get("outcome").is_some_and(|outcome| outcome == "\"cancelled\"") })
+    );
+    let backend = captured
+        .spans
+        .values()
+        .find(|span| span.name == "storage.backend" && span.fields.get("method").is_some_and(|method| method.contains("primary.write")))
+        .unwrap();
+    assert_eq!(backend.fields["outcome"], "\"completed\"");
+    let direct: Vec<_> = captured.spans.values().filter(|span| span.name == "storage.state.backend").collect();
+    assert_eq!(direct.len(), 4);
+    assert!(direct.iter().all(|span| span.closed.is_some() && span.fields["outcome"] == "\"completed\""));
+    assert!(captured.spans.values().any(|span| span.name == "storage.state.file.blocking" && span.closed.is_some()));
+    assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("item")));
+    assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
+}
+
+#[tokio::test(start_paused = true)]
+async fn filtered_storage_unchanged() {
+    let capture = Capture::default();
+    let subscriber = Registry::default().with(capture.clone()).with(tracing_subscriber::filter::LevelFilter::OFF);
+    let dispatch = tracing::Dispatch::new(subscriber);
+    async {
+        let f = Fixture::new(config()).await;
+        let accepted = write(&f.storage, "private-item").await;
+        assert_eq!(f.storage.flush().await.unwrap(), accepted);
+        assert_eq!(f.data.records.lock().unwrap().len(), 1);
+        f.finish().await;
+    }
+    .with_subscriber(dispatch)
+    .await;
+    assert!(capture.0.lock().unwrap().spans.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn split_collectors_coalesce() {
+    let f = Fixture::new(config()).await;
+    let first_capture = Capture::default();
+    let second_capture = Capture::default();
+    let first_dispatch = tracing::Dispatch::new(Registry::default().with(first_capture.clone()));
+    let second_dispatch = tracing::Dispatch::new(Registry::default().with(second_capture.clone()));
+    write(&f.storage, "first-private").with_subscriber(first_dispatch.clone()).await;
+    let accepted = write(&f.storage, "second-private").with_subscriber(second_dispatch.clone()).await;
+    f.data.control.failures.store(1, Ordering::SeqCst);
+    assert!(f.storage.flush().await.is_err());
+    assert_eq!(f.storage.flush().await.unwrap(), accepted);
+    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [2, 2]);
+
+    f.storage.write_recovery(&[b"private-recovery-first"]).with_subscriber(first_dispatch.clone()).await.unwrap();
+    f.storage.write_recovery(&[b"private-recovery-second"]).with_subscriber(second_dispatch.clone()).await.unwrap();
+    assert_eq!(f.storage.flush_recovery().await.unwrap().sequence, 2);
+    assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), [2]);
+
+    let mut files = Vec::new();
+    for (id, dispatch) in [("first-file", &first_dispatch), ("second-file", &second_dispatch)] {
+        let metadata = harmos_storage::FileMetadata {
+            id: Identifier::new(id).unwrap(),
+            scope: None,
+            media_type: "application/octet-stream".into(),
+            expected_length: None,
+            expected_sha256: None,
+        };
+        files.push(f.storage.produce_file(metadata).with_subscriber(dispatch.clone()).await.unwrap());
+    }
+    let save = tracing::dispatcher::with_default(&first_dispatch, || f.storage.capture_files(None)).unwrap();
+    f.data.control.block_checkpoint.store(true, Ordering::SeqCst);
+    let mut persisting = Box::pin(f.storage.persist_files(&save));
+    tokio::select! {
+        biased;
+        _ = &mut persisting => panic!("checkpoint is blocked"),
+        _ = f.data.control.checkpoint_entered.notified() => {}
+    }
+    for capture in [&first_capture, &second_capture] {
+        let captured = capture.0.lock().unwrap().clone();
+        let contribution = captured.spans.values().find(|span| span.name == "storage.file.checkpoint.contribution").unwrap();
+        assert!(contribution.closed.is_none());
+    }
+    f.data.control.block_checkpoint.store(false, Ordering::SeqCst);
+    f.data.control.checkpoint_release.notify_one();
+    persisting.await.unwrap();
+    assert_eq!(f.data.saved_productions.lock().unwrap().len(), 2);
+    drop(save);
+    drop(files);
+    f.finish().await;
+
+    for capture in [first_capture, second_capture] {
+        let captured = capture.0.lock().unwrap().clone();
+        assert_eq!(captured.unresolved_links, 0, "foreign span ID crossed a collector boundary");
+        let contributions: Vec<_> = captured.spans.values().filter(|span| span.name == "storage.batch.contribution").collect();
+        assert_eq!(contributions.len(), 3);
+        for contribution in &contributions {
+            let (first, last) = match contribution.fields["domain"].as_str() {
+                "\"data\"" => ("1", "2"),
+                "\"recovery\"" => ("3", "4"),
+                domain => panic!("unexpected batch domain: {domain}"),
+            };
+            assert_eq!(contribution.fields["first_index"], first);
+            assert_eq!(contribution.fields["last_index"], last);
+            assert_eq!(contribution.fields["through"], "2");
+            assert_eq!(contribution.fields["request_domain"], contribution.fields["domain"]);
+        }
+        assert_eq!(contributions.iter().filter(|span| span.fields["domain"] == "\"recovery\"").count(), 1);
+        assert!(contributions.iter().any(|span| span.fields["outcome"] == "\"failed\""));
+        assert!(contributions.iter().any(|span| span.fields["outcome"] == "\"completed\""));
+        assert!(captured.spans.values().any(|span| span.name == "storage.file.checkpoint.contribution"));
+        assert!(captured.spans.values().all(|span| span.closed.is_some()), "collector retained spans: {captured:#?}");
+        for (_, source) in &captured.links {
+            assert!(matches!(captured.spans[source].name, "storage.queue" | "storage.file.queue" | "storage.file.checkpoint.queue"));
+        }
+        assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private")));
+    }
+}
 
 #[tokio::test(start_paused = true)]
 async fn append_kinds_coalesce() {

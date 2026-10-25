@@ -45,6 +45,7 @@ impl<A: Application> ManagedState<A> {
         Self { tracked }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.read", level = "debug", skip_all)]
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
         if self.tracked.poisoned() {
             return Err(self.tracked.unavailable());
@@ -58,6 +59,7 @@ impl<A: Application> ManagedState<A> {
         Ok(At { value: read(&state.value), position: state.position })
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.at", level = "debug", skip_all)]
     pub async fn at(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {
         if self.tracked.poisoned() {
             return Err(self.tracked.unavailable());

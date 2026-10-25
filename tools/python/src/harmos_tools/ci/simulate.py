@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:ef2d01e56ac3cfb2d71e1df703098f0fadccc06797e2cac1728abffcfcd53657
+# Rendered by stkr project update from templates/python/ci/simulate.py; sha256:cac9e3dab9d44a41c7c8ba45eb52896638571fb8c46a459f46eedd58557c29e7
 # ***
 #
 # Harmos
@@ -25,11 +25,12 @@ import tempfile
 import threading
 import time
 import uuid
+from itertools import chain
 from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from . import containers, impact
+from . import containers, impact, runs, workspaces
 from . import environment as step_environment
 from . import summary as reporting
 
@@ -56,7 +57,7 @@ class SimulationError(RuntimeError):
 
 
 class ProcessTree:
-    def __init__(self):
+    def __init__(self, name: str | None = None):
         if sys.platform != "win32":
             raise SimulationError("native process ownership requires Windows")
 
@@ -87,12 +88,13 @@ class ProcessTree:
             ]
 
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
         kernel.CreateJobObjectW.restype = ctypes.c_void_p
         kernel.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
         kernel.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         kernel.CloseHandle.argtypes = [ctypes.c_void_p]
         self.kernel = kernel
-        self.handle = kernel.CreateJobObjectW(None, None)
+        self.handle = kernel.CreateJobObjectW(None, name)
         if not self.handle:
             raise SimulationError("cannot create native process tree")
         limits = Limits()
@@ -101,7 +103,7 @@ class ProcessTree:
             self.close()
             raise SimulationError("cannot configure owned process-tree cleanup")
 
-    def attach(self, process) -> None:
+    def attach(self, process, workspace_owner: workspaces.Owner | None = None) -> None:
         if sys.platform != "win32":
             raise SimulationError("native process ownership requires Windows")
 
@@ -109,6 +111,8 @@ class ProcessTree:
             process.kill()
             process.wait()
             raise SimulationError("cannot attach the owned command to its owned process tree")
+        if workspace_owner:
+            workspace_owner.attached(process.pid)
 
         class Thread(ctypes.Structure):
             _fields_ = [
@@ -155,8 +159,18 @@ class ProcessTree:
             return
 
         if self.handle:
-            self.kernel.CloseHandle(self.handle)
-            self.handle = None
+            self.kernel.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+            try:
+                if not self.kernel.TerminateJobObject(self.handle, 1):
+                    raise SimulationError("cannot terminate the owned command tree")
+                deadline = time.monotonic() + 5
+                while workspaces.active_processes(self.kernel, self.handle):
+                    if time.monotonic() >= deadline:
+                        raise SimulationError("owned command tree did not settle after termination")
+                    time.sleep(0.01)
+            finally:
+                self.kernel.CloseHandle(self.handle)
+                self.handle = None
 
 
 # === Public Functions === #
@@ -186,10 +200,16 @@ def main() -> int:
     started = time.monotonic()
     results = {}
     output = None
+    run_owner = None
     impact_empty = False
+    exit_code = 1
     try:
         root = next(path for path in (Path.cwd(), *Path.cwd().parents) if (path / "mise.toml").is_file())
         containers.reconcile(root / "target/ci/simulation", cache_root(root).name, recover_reports)
+        workspaces.reconcile(root / "target/ci/simulation", cache_root(root).name, recover_workspace)
+        token = uuid.uuid4().hex[:12]
+        run_owner = runs.owner(root / "target/ci/simulation", cache_root(root).name, token)
+        output = run_owner.__enter__()
         platforms = options.platform or PLAN["platforms"]
         executors = {platform: "native" if platform == "windows" else "docker" for platform in platforms}
         for selection in options.executor or []:
@@ -224,10 +244,9 @@ def main() -> int:
         if not jobs:
             if not impact_empty:
                 raise SimulationError("no jobs match the selected pipeline and platforms")
-            output = root / "target/ci/simulation" / uuid.uuid4().hex[:12]
-            output.mkdir(parents=True)
             emit("Scope", "Matched Impact Rules Select No Execution Jobs")
-            return 0
+            exit_code = 0
+            return exit_code
         needed = {job["execution_platform"] for job in jobs}
         preflight({platform: executor for platform, executor in executors.items() if platform in needed})
         docker_jobs = [job for job in jobs if job["executor"] == "docker"]
@@ -247,29 +266,29 @@ def main() -> int:
                 raise SimulationError(
                     f"Linux image {image} must provide bash, Python3, mise and git before authored bootstrap; no fallback was applied"
                 )
-        token = uuid.uuid4().hex[:12]
-        output = root / "target/ci/simulation" / token
-        output.mkdir(parents=True)
         cache = cache_root(root)
         identity = cache.name
         cache.mkdir(parents=True, exist_ok=True)
         profile = "release" if options.pipeline in ("release", "nightly") or release_review else "dev"
-        with tempfile.TemporaryDirectory(prefix="stkr-ci-simulation-") as temporary:
-            candidate = Path(temporary) / "candidate"
+        with workspaces.job(output, identity, token, "_candidate", lambda _: None) as owner:
+            candidate = owner.root / "workspace"
             stage(root, candidate)
 
             def execute(job):
                 return run_job(job, candidate, output, cache, identity, token, profile)
 
             results = schedule(jobs, execute)
-        return 0 if all(result["state"] == "passed" for result in results.values()) else 1
+        exit_code = 0 if all(result["state"] == "passed" for result in results.values()) else 1
+        return exit_code
     except (OSError, ValueError, StopIteration, SimulationError, subprocess.SubprocessError) as error:
         emit("Preflight", str(error))
         return 1
     except KeyboardInterrupt:
-        return 130
+        exit_code = 130
+        return exit_code
     finally:
         summary = summarize(results, time.monotonic() - started)
+        summary["exit_code"] = exit_code
         if impact_empty:
             summary["selection"] = "explicit-empty-impact"
         statistics = summary["cache"] if isinstance(summary["cache"], dict) else {}
@@ -291,7 +310,11 @@ def main() -> int:
                 phases={"Queue Wait": result["wait_seconds"], **result.get("phases", {})},
             )
         if output:
-            (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            try:
+                (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            finally:
+                if run_owner is not None:
+                    run_owner.__exit__(None, None, None)
 
 
 def schedule(jobs: list[dict], execute) -> dict:
@@ -431,7 +454,6 @@ def transport(archive: Path, destination: Path) -> None:
     modes = {}
     directories = []
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(archive, destination.with_name(destination.name + ".tar"))
     with tarfile.open(archive) as source:
         for member in source:
             path = destination / member.name
@@ -456,6 +478,9 @@ def transport(archive: Path, destination: Path) -> None:
     for path, mode in sorted(directories, key=lambda item: len(item[0].parts), reverse=True):
         path.chmod(mode)
     destination.with_name(destination.name + ".modes.json").write_text(json.dumps({"version": 1, "files": modes}), encoding="utf-8")
+
+    artifact_modes(destination.with_name(destination.name + ".modes.json"))
+    archive.unlink()
 
 
 def relative_path(name: str) -> bool:
@@ -537,11 +562,16 @@ def source_archive(workspace: Path, archive: Path, modes: dict) -> dict:
 
 
 def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str, token: str, profile: str) -> dict:
+    with runs.borrow(output, required=False):
+        return _run_job(job, candidate, output, cache, identity, token, profile)
+
+
+def _run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str, token: str, profile: str) -> dict:
     started = time.monotonic()
     key = job["key"]
     result: dict = {"state": "failed", "seconds": 0, "cache": None}
-    with tempfile.TemporaryDirectory(prefix="stkr-ci-job-") as temporary:
-        workspace = Path(temporary) / "workspace"
+    with workspaces.job(output, identity, token, key, lambda workspace: recover_workspace(output, key, workspace)) as owner:
+        workspace = owner.root / "workspace"
         shutil.copytree(candidate, workspace, symlinks=True)
         transferred_modes = {}
         transfer_started = time.monotonic()
@@ -645,16 +675,15 @@ def run_job(job: dict, candidate: Path, output: Path, cache: Path, identity: str
                     lines.extend(step_environment.commands(windows, sys.executable, str(Path(__file__).with_name("environment.py"))))
                 script.write_text("\n".join(lines) + "\n", encoding="utf-8")
                 shell = ["pwsh", "-NoProfile", "-NonInteractive", "-File", str(script)] if windows else ["bash", str(script)]
-                try:
-                    status = stream(shell, workspace, environment, label, log, job["minutes"] * 60 - (time.monotonic() - started), result)
-                    if status == 0:
-                        transfer_started = time.monotonic()
-                        archive = workspace / "target/ci/simulation-output.tar"
-                        export(workspace, outputs, archive)
-                        transport(archive, output / "artifacts" / key)
-                        transfer_seconds += time.monotonic() - transfer_started
-                finally:
-                    preserve_reports(workspace, output, key, log)
+                status = stream(
+                    shell, workspace, environment, label, log, job["minutes"] * 60 - (time.monotonic() - started), result, owner
+                )
+                if status == 0:
+                    transfer_started = time.monotonic()
+                    archive = workspace / "target/ci/simulation-output.tar"
+                    export(workspace, outputs, archive)
+                    transport(archive, output / "artifacts" / key)
+                    transfer_seconds += time.monotonic() - transfer_started
         result.setdefault("phases", {})["Transfer"] = transfer_seconds
         result.update(state="passed" if status == 0 else "failed", seconds=time.monotonic() - started)
     return result
@@ -678,10 +707,20 @@ def docker(
     image_identity = hashlib.sha256(job["image"].encode()).hexdigest()[:12]
     cache = f"stkr-ci-{identity}-linux-{image_identity}-cache"
     script = workspace.with_suffix(".sh")
-    lines = [
-        "set -eo pipefail",
-        ': > "$GITHUB_ENV"; : > "$GITHUB_PATH"',
-    ]
+    lines = ["set -eo pipefail"]
+    if job["image"].startswith("stkr-ci-ubuntu24:"):
+        lines.extend(
+            [
+                'sudo -n chown -R "$(id -u):$(id -g)" /workspace',
+                'sudo -n chown "$(id -u):$(id -g)" /cache',
+            ]
+        )
+    lines.extend(
+        [
+            "mkdir -p /workspace/target/ci",
+            ': > "$GITHUB_ENV"; : > "$GITHUB_PATH"',
+        ]
+    )
     for index, command in enumerate(commands):
         lines.extend([f"printf '%s\n' 'Command {index + 1}/{len(commands)}'", command])
         lines.extend(step_environment.commands(False, "python3", "/ci-environment.py"))
@@ -717,8 +756,8 @@ def docker(
         UV_CACHE_DIR="/cache/uv",
         pnpm_config_store_dir="/cache/pnpm",
         STKR_SCCACHE_DIR="/cache/sccache",
-        GITHUB_ENV="/ci-environment",
-        GITHUB_PATH="/ci-path",
+        GITHUB_ENV="/workspace/target/ci/step.env",
+        GITHUB_PATH="/workspace/target/ci/step.path",
     )
     evidence(output, job, commands, child)
     create = [
@@ -745,6 +784,7 @@ def docker(
         (output / f"{job['key']}.source-modes.json").write_text(json.dumps(records), encoding="utf-8")
         with archive.open("rb") as source:
             subprocess.run(["docker", "cp", "-", name + ":/workspace"], stdin=source, check=True, capture_output=True)
+        archive.unlink()
         subprocess.run(["docker", "cp", str(script), name + ":/ci-simulation.sh"], check=True, capture_output=True)
         subprocess.run(
             ["docker", "cp", str(Path(__file__).with_name("environment.py")), name + ":/ci-environment.py"], check=True, capture_output=True
@@ -759,43 +799,61 @@ def docker(
         return status
 
 
+def recover_workspace(output: Path, key: str, workspace: Path) -> None:
+    with (output / f"{key}.log").open("a", encoding="utf-8") as log:
+        if not preserve_reports(workspace, output, key, log):
+            raise SimulationError("workspace reports remain available for recovery")
+
+
 def recover_reports(output: Path, key: str, container: str) -> None:
     with (
         tempfile.TemporaryDirectory(prefix="stkr-ci-recovery-") as directory,
         (output / f"{key}.cleanup.log").open("a", encoding="utf-8") as log,
     ):
-        preserve_reports(Path(directory) / "workspace", output, key, log, container)
+        if not preserve_reports(Path(directory) / "workspace", output, key, log, container):
+            raise SimulationError("Docker reports remain available for recovery")
 
 
-def preserve_reports(workspace: Path, output: Path, key: str, log, container: str | None = None) -> None:
+def preserve_reports(workspace: Path, output: Path, key: str, log, container: str | None = None) -> bool:
     archive = workspace.with_suffix(".reports.tar")
-    try:
-        if container:
-            with archive.open("wb") as target:
-                subprocess.run(
-                    ["docker", "cp", container + ":/workspace/target/tests", "-"],
-                    stdout=target,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                    timeout=30,
-                )
-        else:
-            reports = workspace / "target/tests"
-            if not reports.exists():
-                return
-            with tarfile.open(archive, "w") as target:
-                for path in [reports, *reports.rglob("*")]:
-                    if path.is_symlink() or not path.resolve().is_relative_to(reports.resolve()):
-                        raise SimulationError("diagnostic escapes test reports")
-                    if path.is_file() or path.is_dir():
-                        target.add(path, arcname=path.relative_to(reports.parent).as_posix(), recursive=False)
-        transport(archive, output / "diagnostics" / key)
-    except (OSError, tarfile.TarError, subprocess.SubprocessError, SimulationError) as error:
+    for relative, destination in (("target/tests", ""), (".stkr/benchmarks", ".stkr"), (".stkr/traces", ".stkr")):
         try:
-            log.write(f"Diagnostic collection unavailable: {error}\n")
-            log.flush()
-        except OSError:
-            pass
+            if container:
+                with archive.open("wb") as target:
+                    subprocess.run(
+                        ["docker", "cp", container + ":/workspace/" + relative, "-"],
+                        stdout=target,
+                        stderr=subprocess.PIPE,
+                        check=True,
+                        timeout=30,
+                    )
+            else:
+                reports = workspace / relative
+                if not reports.exists():
+                    continue
+                with tarfile.open(archive, "w") as target:
+                    for path in chain((reports,), reports.rglob("*")):
+                        if path.is_symlink() or path.is_junction() or not path.resolve().is_relative_to(reports.resolve()):
+                            raise SimulationError("diagnostic escapes native reports")
+                        if path.is_file() or path.is_dir():
+                            target.add(path, arcname=path.relative_to(reports.parent).as_posix(), recursive=False)
+            transport(archive, output / "diagnostics" / key / destination)
+        except (OSError, tarfile.TarError, subprocess.SubprocessError, SimulationError) as error:
+            missing = f"Error response from daemon: Could not find the file /workspace/{relative} in container {container}"
+            if (
+                container
+                and isinstance(error, subprocess.CalledProcessError)
+                and error.returncode == 1
+                and error.stderr == (missing + "\n").encode()
+            ):
+                continue
+            try:
+                log.write(f"Diagnostic collection unavailable: {error}\n")
+                log.flush()
+            except OSError:
+                pass
+            return False
+    return True
 
 
 def evidence(output: Path, job: dict, commands: list[str], environment: dict) -> None:
@@ -817,11 +875,21 @@ def evidence(output: Path, job: dict, commands: list[str], environment: dict) ->
     (output / f"{job['key']}.execution.json").write_text(json.dumps(recorded, indent=2) + "\n", encoding="utf-8")
 
 
-def stream(command: list[str], cwd: Path, environment: dict | None, key: str, log, timeout: float, result: dict) -> int:
+def stream(
+    command: list[str],
+    cwd: Path,
+    environment: dict | None,
+    key: str,
+    log,
+    timeout: float,
+    result: dict,
+    workspace_owner: workspaces.Owner | None = None,
+) -> int:
     if timeout <= 0:
         raise SimulationError("job deadline exceeded")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    owner = ProcessTree() if os.name == "nt" and command[0] != "docker" else None
+    name = workspace_owner.starting() if workspace_owner else None
+    owner = ProcessTree(name) if os.name == "nt" and command[0] != "docker" else None
     if owner:
         flags |= 4
     try:
@@ -836,16 +904,29 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
             creationflags=flags,
             start_new_session=os.name != "nt",
         )
+    except BaseException as error:
+        if owner:
+            owner.close()
+        if workspace_owner and isinstance(error, FileNotFoundError):
+            workspace_owner.settled()
+        raise
+    try:
+        if owner:
+            owner.attach(process, workspace_owner)
+        elif workspace_owner:
+            workspace_owner.attached(process.pid)
     except BaseException:
         if owner:
             owner.close()
+        elif os.name == "nt":
+            process.kill()
+            process.wait()
+        else:
+            import signal
+
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
         raise
-    if owner:
-        try:
-            owner.attach(process)
-        except BaseException:
-            owner.close()
-            raise
 
     def drain():
         assert process.stdout is not None
@@ -877,7 +958,10 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
         else:
             import signal
 
-            os.killpg(process.pid, signal.SIGKILL)
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         process.wait()
         if isinstance(error, KeyboardInterrupt):
             raise
@@ -892,6 +976,13 @@ def stream(command: list[str], cwd: Path, environment: dict | None, key: str, lo
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+        if workspace_owner:
+            deadline = time.monotonic() + 5
+            while workspaces.command_live(workspace_owner.record["command"]):
+                if time.monotonic() >= deadline:
+                    raise SimulationError("owned command tree did not settle after termination")
+                time.sleep(0.01)
+            workspace_owner.settled()
         reader.join(timeout=5)
         if reader.is_alive():
             raise SimulationError("owned command retained its output stream after termination")
@@ -905,6 +996,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 git cur
 COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 COPY native-setup.sh /opt/stkr-ci/native-setup.sh
 RUN bash /opt/stkr-ci/native-setup.sh && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 1001 runner && useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash runner && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner && chmod 0440 /etc/sudoers.d/runner
+ENV HOME=/home/runner
+USER runner
 ENTRYPOINT []
 """
     fingerprint = hashlib.sha256((recipe + setup).encode()).hexdigest()

@@ -66,6 +66,7 @@ enum Completed {
 /* === Implementations === */
 
 impl Worker {
+    #[tracing::instrument(name = "storage.worker.cleanup", level = "debug", skip_all)]
     pub async fn cleanup(&mut self) -> Result<()> {
         // StorageManager owns physical backend teardown before this worker's
         // lease retires. An early stop cannot claim that teardown completed.
@@ -75,6 +76,7 @@ impl Worker {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.worker.run", level = "debug", skip_all)]
     pub async fn run(&mut self) -> Result<()> {
         let inner = &self.0.inner;
         let _running = Running(inner.clone());
@@ -189,7 +191,38 @@ impl Worker {
                 }
                 prefer_pruning = !matches!(action, Action::Prune(_));
                 prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_));
-                let result = perform(inner, &action).await;
+                let (context, queued) = {
+                    let mut state = inner.state.lock().unwrap();
+                    match &action {
+                        Action::Write(entry) => (Some(entry.context.clone()), None),
+                        Action::Snapshot(SnapshotAction::Open(id, _) | SnapshotAction::Release(id, _)) => {
+                            state.snapshots.get_mut(id).map(|held| (Some(held.context.clone()), held.queued.take())).unwrap_or((None, None))
+                        }
+                        Action::File(file) => state
+                            .files
+                            .get_mut(&file.id())
+                            .map(|held| (Some(held.context.clone()), held.queued.take()))
+                            .unwrap_or((None, None)),
+                        Action::Delete(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
+                        _ => (None, None),
+                    }
+                };
+                let future = async {
+                    let span = tracing::debug_span!("storage.work", outcome = "cancelled");
+                    if let Some(queued) = queued {
+                        span.follows_from(queued.id());
+                    }
+                    let physical = async {
+                        let result = perform(inner, &action).await;
+                        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                        result
+                    };
+                    tracing::Instrument::instrument(physical, span).await
+                };
+                let result = match &context {
+                    Some(context) => context.scope(future).await,
+                    None => future.await,
+                };
                 if matches!(action, Action::Prune(_)) {
                     inner.state.lock().unwrap().pruning_objects = false;
                 }
@@ -214,7 +247,14 @@ impl Worker {
                                 }
                             }
                             (Action::File(action), Completed::File(result)) => {
-                                state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT)
+                                let publish = || {
+                                    let _publication = tracing::debug_span!("storage.file.publish").entered();
+                                    state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT)
+                                };
+                                match &context {
+                                    Some(context) => context.sync(publish),
+                                    None => publish(),
+                                }
                             }
                             (Action::Snapshot(SnapshotAction::Release(..)), Completed::Released(id)) => state.snapshot_removed(id),
                             (Action::Write(_), Completed::Write(progress)) => {
@@ -401,24 +441,29 @@ impl Operation {
 
 /* === Private Functions === */
 
+#[tracing::instrument(name = "storage.worker.perform", level = "debug", skip_all)]
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
-        Action::Prune(through) => {
-            inner.bounded(inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES)).await.map(Completed::Pruned)
-        }
+        Action::Prune(through) => inner
+            .bounded("primary.prune_objects", inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES))
+            .await
+            .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
         Action::Snapshot(SnapshotAction::Open(id, at)) => {
-            let opened = inner.bounded(inner.primary.open_snapshot(at)).await;
+            let opened = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
-            inner.bounded(inner.primary.release_snapshot(snapshot)).await?;
+            inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
             Ok(Completed::Released(*id))
         }
         Action::Write(entry) => {
             if let Some(batch) = Batch::prepare(inner, entry) {
                 return batch.write(inner).await.map(Completed::Write);
+            }
+            if let Some(queued) = entry.queued.lock().unwrap().take() {
+                tracing::Span::current().follows_from(queued.id());
             }
             let mut progress = Progress::default();
             progress.include(entry);
@@ -446,7 +491,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                             });
                         }
                     }
-                    inner.bounded(inner.recovery.write_entries(entries)).await?;
+                    inner.bounded("recovery.write_entries", inner.recovery.write_entries(entries)).await?;
                     None
                 }
                 Operation::Snapshot(snapshot) => {
@@ -456,7 +501,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                             reason: "snapshot cannot precede required primary persistence",
                         });
                     }
-                    inner.bounded(inner.recovery.write_snapshot(snapshot)).await?;
+                    inner.bounded("recovery.write_snapshot", inner.recovery.write_snapshot(snapshot)).await?;
                     None
                 }
             };
@@ -467,7 +512,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
         }
         Action::Recovery(target) => {
             let through = RecoveryPosition { history: inner.recovery.history().clone(), sequence: target.sequence };
-            let saved = inner.bounded(inner.recovery.flush(&through)).await?;
+            let saved = inner.bounded("recovery.flush", inner.recovery.flush(&through)).await?;
             let written = inner.state.lock().unwrap().recovery_written.sequence;
             if !saved.covers(&through)? || saved.sequence > written {
                 return Err(Error::InvalidInput {

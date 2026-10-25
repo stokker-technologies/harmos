@@ -45,16 +45,19 @@ pub(super) struct Mutation<'a> {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
     pub async fn write_schema_once(
         &self, mutation: &MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
     ) -> Result<StorageCursor> {
         self.admit_schema(key, schema, Some(mutation)).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.write_records_once", level = "debug", skip_all)]
     pub async fn write_records_once(&self, mutation: &MutationId, records: &[RecordWrite<'_>]) -> Result<StorageCursor> {
         self.admit_record_values(mutation, records.iter().copied()).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.admit_record_values", level = "debug", skip_all)]
     pub(crate) async fn admit_record_values<'a>(
         &self, mutation: &MutationId, records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone,
     ) -> Result<StorageCursor> {
@@ -68,10 +71,12 @@ impl<C> StorageManager<C> {
         self.admit_records(records, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.write_stream_once", level = "debug", skip_all)]
     pub async fn write_stream_once(&self, mutation: &MutationId, rows: &[StreamWrite<'_>]) -> Result<StorageCursor> {
         self.admit_stream_values(mutation, rows.iter().copied()).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.admit_stream_values", level = "debug", skip_all)]
     pub(crate) async fn admit_stream_values<'a>(
         &self, mutation: &MutationId, rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone,
     ) -> Result<StorageCursor> {
