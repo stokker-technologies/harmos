@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:eae7ede77f6e7658d7a68c517eef81f090d9d3465524c9d5ff5e823f89e264bb
+# Rendered by stkr project update from templates/python/ci/artifacts.py; sha256:efcd2ea4d5867d79116a3a2ceb922f6fdeed5a03166066b5abfece2e01de63eb
 # ***
 #
 # Harmos
@@ -102,6 +102,7 @@ def extract(directory: Path, archive: Path) -> None:
         status = decompressor.wait()
         if status:
             raise subprocess.CalledProcessError(status, "zstd")
+    archive.unlink()
 
 
 def main() -> None:

@@ -44,6 +44,7 @@ static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 
 pub struct Follower<T: Entry> {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     id: u64,
     held: Held,
@@ -77,6 +78,7 @@ enum Failure {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.follow.follow", level = "debug", skip_all)]
     pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {
         if let Some(after) = after {
             self.inner.primary.history().check(&after.history)?;
@@ -97,8 +99,17 @@ impl<C> StorageManager<C> {
             state.followers.insert(id, Following { after: saved.sequence.max(after), failure: None });
             (saved, accepted)
         };
-        let mut follower =
-            Follower { inner: Arc::clone(&self.inner), id, held: Held::default(), selection, history: None, after, saved, accepted };
+        let mut follower = Follower {
+            context: crate::execution::Context::current(),
+            inner: Arc::clone(&self.inner),
+            id,
+            held: Held::default(),
+            selection,
+            history: None,
+            after,
+            saved,
+            accepted,
+        };
         if after < follower.saved.sequence {
             follower.history = Some(self.snapshot(&follower.saved).await?);
         }
@@ -107,6 +118,7 @@ impl<C> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.follow.page", level = "debug", skip_all)]
     pub async fn page<T: Entry>(&self, selection: &T::Selection, after: u64, limits: ReadLimits) -> Result<FollowPage<T>> {
         let held = Held::default();
         let rows = limits.rows.min(SCAN_ROWS);
@@ -130,17 +142,23 @@ impl<T: Entry> Follower<T> {
     }
 
     pub async fn next(&mut self) -> Result<FollowPage<T>> {
-        loop {
-            if let Some(page) = self.next_history().await? {
-                return Ok(page);
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            loop {
+                if let Some(page) = self.next_history().await? {
+                    return Ok(page);
+                }
+                if let Some(page) = self.next_live().await? {
+                    return Ok(page);
+                }
             }
-            if let Some(page) = self.next_live().await? {
-                return Ok(page);
-            }
-        }
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
     // Saved History Through The Registration Frontier, From The Pinned Image.
+    #[tracing::instrument(name = "storage.follow.next_history", level = "debug", skip_all)]
     async fn next_history(&mut self) -> Result<Option<FollowPage<T>>> {
         let Some(snapshot) = &self.history else {
             return Ok(None);
@@ -161,6 +179,7 @@ impl<T: Entry> Follower<T> {
     }
 
     // Accepted Entries From The Queue; Waits Without Allocating While None Match.
+    #[tracing::instrument(name = "storage.follow.next_live", level = "debug", skip_all)]
     async fn next_live(&mut self) -> Result<Option<FollowPage<T>>> {
         let id = self.id;
         let selection = &self.selection;

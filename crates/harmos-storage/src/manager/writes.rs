@@ -35,10 +35,12 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.manager.writes.write_schema", level = "debug", skip_all)]
     pub async fn write_schema(&self, key: &SchemaKey, schema: &crate::schema::graph::Schema) -> Result<StorageCursor> {
         self.admit_schema(key, schema, None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_schema", level = "debug", skip_all)]
     pub(crate) async fn admit_schema(
         &self, key: &SchemaKey, schema: &crate::schema::graph::Schema, mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
@@ -135,10 +137,12 @@ impl<C> StorageManager<C> {
         Ok(rows)
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.write_records", level = "debug", skip_all)]
     pub async fn write_records(&self, records: &[RecordWrite<'_>]) -> Result<StorageCursor> {
         self.admit_records(records.iter().copied(), None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_records", level = "debug", skip_all)]
     pub(crate) async fn admit_records<'a>(
         &self, records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone, mutation: Option<Mutation<'_>>,
     ) -> Result<StorageCursor> {
@@ -160,10 +164,12 @@ impl<C> StorageManager<C> {
         Ok(self.position(sequence))
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.write_stream", level = "debug", skip_all)]
     pub async fn write_stream(&self, rows: &[StreamWrite<'_>]) -> Result<StorageCursor> {
         self.admit_stream(rows.iter().copied(), None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_stream", level = "debug", skip_all)]
     pub(crate) async fn admit_stream<'a>(
         &self, rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone, mutation: Option<Mutation<'_>>,
     ) -> Result<StorageCursor> {

@@ -88,6 +88,7 @@ harmos-domain = { path = "../harmos-domain", default-features = false, features 
 # Error Handling
 
 # Logging
+tracing-subscriber = { workspace = true }
 
 # Utilities
 

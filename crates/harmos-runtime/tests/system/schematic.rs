@@ -47,6 +47,7 @@ const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 
 #[test]
 fn cli_backends_reopen() {
+    let _report = crate::report::system();
     let directory = tempfile::tempdir().unwrap();
     let cli = fixtures::artifact("schematic-cli");
     let mut children = Vec::new();
@@ -89,6 +90,7 @@ fn cli_backends_reopen() {
 
 #[test]
 fn cli_streams_settle() {
+    let _report = crate::report::system();
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("zeta")).unwrap();
     std::fs::create_dir(directory.path().join("alpha")).unwrap();

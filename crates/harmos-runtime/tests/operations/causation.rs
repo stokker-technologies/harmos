@@ -15,10 +15,12 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
+use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
+use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, registry::LookupSpan};
 
 // Local Imports
 use super::{
@@ -46,6 +48,20 @@ const POLICY: OperationPolicy = OperationPolicy {
 struct Note;
 struct Descend;
 struct Family;
+
+#[derive(Clone, Default)]
+struct TraceCapture(Arc<Mutex<Vec<TraceRecord>>>);
+
+struct TraceRecord {
+    id: u64,
+    parent: Option<u64>,
+    name: &'static str,
+    fields: BTreeMap<String, String>,
+    follows: Vec<u64>,
+    closed: bool,
+}
+
+struct TraceFields(BTreeMap<String, String>);
 
 /* === Enums === */
 
@@ -77,6 +93,52 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl tracing::field::Visit for TraceFields {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.insert(field.name().to_owned(), format!("{value:?}"));
+    }
+}
+
+impl<S> Layer<S> for TraceCapture
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_new_span(&self, attributes: &tracing::span::Attributes<'_>, id: &tracing::Id, context: TraceContext<'_, S>) {
+        let parent = attributes
+            .parent()
+            .cloned()
+            .or_else(|| attributes.is_contextual().then(|| context.lookup_current().map(|span| span.id())).flatten());
+        let mut fields = TraceFields(BTreeMap::new());
+        attributes.record(&mut fields);
+        self.0.lock().unwrap().push(TraceRecord {
+            id: id.into_u64(),
+            parent: parent.map(|id| id.into_u64()),
+            name: attributes.metadata().name(),
+            fields: fields.0,
+            follows: Vec::new(),
+            closed: false,
+        });
+    }
+
+    fn on_record(&self, id: &tracing::Id, values: &tracing::span::Record<'_>, _: TraceContext<'_, S>) {
+        let mut fields = TraceFields(BTreeMap::new());
+        values.record(&mut fields);
+        let mut records = self.0.lock().unwrap();
+        let record = records.iter_mut().find(|record| record.id == id.into_u64()).unwrap();
+        record.fields.extend(fields.0);
+    }
+
+    fn on_close(&self, id: tracing::Id, _: TraceContext<'_, S>) {
+        let mut records = self.0.lock().unwrap();
+        records.iter_mut().find(|record| record.id == id.into_u64()).unwrap().closed = true;
+    }
+
+    fn on_follows_from(&self, id: &tracing::Id, predecessor: &tracing::Id, _: TraceContext<'_, S>) {
+        let mut records = self.0.lock().unwrap();
+        records.iter_mut().find(|record| record.id == id.into_u64()).unwrap().follows.push(predecessor.into_u64());
+    }
+}
 
 impl Operation for Note {
     type Declaration = NoteContract;
@@ -163,6 +225,94 @@ async fn runtime() -> Runtime<Bank> {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn scoped_trace_handoffs() {
+    let runtime = runtime().await;
+    let capture = TraceCapture::default();
+    let subscriber = tracing_subscriber::registry().with(capture.clone());
+    async {
+        let span = tracing::debug_span!("request");
+        async {
+            let invocation = runtime.operations.submit(NoteContract { label: "trace-secret-payload".to_owned() }).unwrap();
+            invocation.await.unwrap();
+            let cancelled = runtime.operations.submit(NoteContract { label: "cancelled".to_owned() }).unwrap();
+            cancelled.cancel();
+            assert!(cancelled.await.is_err());
+        }
+        .instrument(span)
+        .await;
+    }
+    .with_subscriber(subscriber)
+    .await;
+    runtime.stop().await.unwrap();
+
+    let records = capture.0.lock().unwrap();
+    let root = records.iter().find(|record| record.name == "request").unwrap().id;
+    for name in ["operations.instance", "operations.queue", "operations.dispatch", "operations.attempt", "state.queue", "state.write"] {
+        let record = records.iter().find(|record| record.name == name).expect("the handoff is observable");
+        assert!(record.closed, "{name} closes after physical settlement");
+        let mut parent = record.parent;
+        while let Some(id) = parent {
+            if id == root {
+                break;
+            }
+            parent = records.iter().find(|record| record.id == id).expect("the parent belongs to the scoped collector").parent;
+        }
+        assert_eq!(parent, Some(root), "{name} preserves the originating request");
+    }
+    let instance = records.iter().find(|record| record.name == "operations.instance").unwrap();
+    assert_eq!(instance.fields.get("settled").map(String::as_str), Some("true"));
+    assert_eq!(instance.fields.get("outcome").map(String::as_str), Some("Succeeded"));
+    for (work, queue) in [("operations.dispatch", "operations.queue"), ("state.write", "state.queue")] {
+        let work = records.iter().find(|record| record.name == work).unwrap();
+        let queue = records.iter().find(|record| record.name == queue).unwrap();
+        assert!(work.follows.contains(&queue.id));
+    }
+    assert!(records.iter().any(|record| record.name == "operations.instance"
+        && record.closed
+        && record.fields.get("outcome").map(String::as_str) == Some("Cancelled")));
+    assert!(records.iter().all(|record| record.fields.values().all(|value| !value.contains("trace-secret-payload"))));
+}
+
+#[tokio::test]
+async fn filtered_trace_behaves() {
+    let runtime = runtime().await;
+    let capture = TraceCapture::default();
+    let subscriber = tracing_subscriber::registry().with(capture.clone()).with(tracing::level_filters::LevelFilter::OFF);
+    async {
+        runtime.operations.call(NoteContract { label: "filtered".to_owned() }).await.unwrap();
+    }
+    .with_subscriber(subscriber)
+    .await;
+    let records: Vec<_> = runtime.state.query::<Fact>(Position::ORIGIN).await.collect();
+    assert_eq!(records.len(), 1);
+    runtime.stop().await.unwrap();
+    assert!(capture.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn dropped_trace_handoff() {
+    let runtime = runtime().await;
+    let capture = TraceCapture::default();
+    let subscriber = tracing_subscriber::registry().with(capture.clone());
+    async {
+        let request = tracing::debug_span!("dropped.request");
+        request.in_scope(|| {
+            let invocation = runtime.operations.submit(NoteContract { label: "abandoned".to_owned() }).unwrap();
+            drop(invocation);
+        });
+    }
+    .with_subscriber(subscriber)
+    .await;
+
+    // The Dispatcher Drains The Queued Cancellation Outside The Caller's Scope.
+    runtime.stop().await.unwrap();
+    let records = capture.0.lock().unwrap();
+    let instance = records.iter().find(|record| record.name == "operations.instance").unwrap();
+    assert_eq!(instance.fields.get("outcome").map(String::as_str), Some("Cancelled"));
+    assert!(records.iter().all(|record| record.closed));
+}
 
 #[tokio::test]
 async fn children_inherit_cause() {

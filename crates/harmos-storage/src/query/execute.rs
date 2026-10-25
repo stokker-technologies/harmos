@@ -70,6 +70,7 @@ enum Stage {
 /* === Implementations === */
 
 impl Plan {
+    #[tracing::instrument(name = "storage.query.execute.new", level = "trace", skip_all)]
     pub(super) fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
         crate::storage::arrow::validate_schema(&input)?;
         if transforms.len() > MAX_TRANSFORMS {
@@ -121,6 +122,7 @@ impl Plan {
         matches!(self.stage, Stage::Stream) && self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
+    #[tracing::instrument(name = "storage.query.execute.page", level = "trace", skip_all)]
     pub(super) fn page(
         &mut self, input: &RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
     ) -> Result<Option<RecordBatch>> {
@@ -182,6 +184,7 @@ impl Plan {
             .ok_or_else(|| invalid("query finish estimate overflow"))
     }
 
+    #[tracing::instrument(name = "storage.query.execute.finish", level = "trace", skip_all)]
     pub(super) fn finish(&mut self, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         let output = match &mut self.stage {
             Stage::Stream => return Ok(None),
@@ -253,6 +256,7 @@ pub(super) fn working_bound(input: &RecordBatch, output: &Schema) -> Result<usiz
 /* === Private Functions === */
 
 // Run Transforms In Order, Retaining Each Output Under The Attempt Bank.
+#[tracing::instrument(name = "storage.query.execute.apply", level = "trace", skip_all)]
 fn apply(
     transforms: &[Transform], mut current: RecordBatch, bank: &MemoryBank, check: &mut impl FnMut() -> Result<()>,
 ) -> Result<RecordBatch> {

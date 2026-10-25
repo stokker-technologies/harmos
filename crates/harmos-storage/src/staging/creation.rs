@@ -35,83 +35,95 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.creation.create_file", level = "debug", skip_all)]
     pub async fn create_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         self.create(metadata, false).await
     }
 
+    #[tracing::instrument(name = "storage.staging.creation.create", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
-        let (reference_bytes, base_bytes) = file_bytes(&metadata, self.inner.primary.history())?;
-        if base_bytes >= self.inner.settings.request.max_pending_write_bytes.get() {
-            return Err(Error::InvalidInput { field: "file metadata", reason: "metadata exceeds memory budget" });
-        }
-        // The charged envelope includes worst-case position, length and digest
-        // metadata. Refuse before creating bytes that cannot later be published.
-        if reference_bytes > self.inner.settings.max_batch_bytes().get() {
-            return Err(Error::InvalidInput { field: "file metadata", reason: "reference envelope exceeds max_batch_bytes" });
-        }
-        let progress = Arc::new(Mutex::new(Progress { generation: u64::from(resumable), ..Progress::default() }));
-        let token =
-            resumable.then(|| FileSession { history: self.inner.primary.history().clone(), id: metadata.id.clone(), generation: 1 });
-        let mut metadata = Some(metadata);
-        let id = self
-            .inner
-            .admit_when(|state| {
-                admission(state)?;
-                let candidate = metadata.as_ref().expect("unadmitted file metadata");
-                if state.files.values().any(|file| file.metadata.id == candidate.id) || state.deleting(&candidate.id) {
-                    return Err(Error::AlreadyRegistered { domain: "storage file", name: candidate.id.to_string() });
-                }
-                state.collect();
-                // Leave at least one byte for batch progress even with tiny policies.
-                if state.files.len() < crate::storage::config::MAX_FILES.get()
-                    && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
-                    && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get() - base_bytes
-                {
-                    let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
-                    let metadata = metadata.take().expect("unadmitted file metadata");
-                    let staging = StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() };
-                    state.files.insert(
-                        id,
-                        FileState {
-                            metadata: Arc::new(metadata),
-                            staging,
-                            session: resumable.then(|| Session::new(self.inner.execution)),
-                            extra: None,
-                            mutation: None,
-                            progress: progress.clone(),
-                            hash: Sha256::new(),
-                            length: 0,
-                            ticket: 0,
-                            command: Some(Command::Create),
-                            abandoned: false,
-                            in_flight: false,
-                            retrying: false,
-                            base_bytes,
-                            reference_bytes,
-                        },
-                    );
+        let result = async {
+            let (reference_bytes, base_bytes) = file_bytes(&metadata, self.inner.primary.history())?;
+            if base_bytes >= self.inner.settings.request.max_pending_write_bytes.get() {
+                return Err(Error::InvalidInput { field: "file metadata", reason: "metadata exceeds memory budget" });
+            }
+            // The charged envelope includes worst-case position, length and digest
+            // metadata. Refuse before creating bytes that cannot later be published.
+            if reference_bytes > self.inner.settings.max_batch_bytes().get() {
+                return Err(Error::InvalidInput { field: "file metadata", reason: "reference envelope exceeds max_batch_bytes" });
+            }
+            let progress = Arc::new(Mutex::new(Progress { generation: u64::from(resumable), ..Progress::default() }));
+            let token =
+                resumable.then(|| FileSession { history: self.inner.primary.history().clone(), id: metadata.id.clone(), generation: 1 });
+            let mut metadata = Some(metadata);
+            let id = self
+                .inner
+                .admit_when(|state| {
+                    admission(state)?;
+                    let candidate = metadata.as_ref().expect("unadmitted file metadata");
+                    if state.files.values().any(|file| file.metadata.id == candidate.id) || state.deleting(&candidate.id) {
+                        return Err(Error::AlreadyRegistered { domain: "storage file", name: candidate.id.to_string() });
+                    }
                     state.collect();
-                    return Ok(Some(id));
-                }
-                self.inner.relieve_pressure(state, base_bytes + 1, 1);
-                Ok(None)
-            })
-            .await?;
-        let mut cancel =
-            CancelProduction { manager: self.erased(), id, armed: true, generation: token.as_ref().map(|token| token.generation) };
-        let file = StorageFile { manager: self.erased(), id, progress, session: token };
-        self.inner.notify();
-        file.wait(Await::Ready).await?;
-        cancel.armed = false;
-        Ok(file)
+                    // Leave at least one byte for batch progress even with tiny policies.
+                    if state.files.len() < crate::storage::config::MAX_FILES.get()
+                        && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
+                        && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get() - base_bytes
+                    {
+                        let id =
+                            NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
+                        let metadata = metadata.take().expect("unadmitted file metadata");
+                        let staging = StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() };
+                        state.files.insert(
+                            id,
+                            FileState {
+                                context: crate::execution::Context::current(),
+                                queued: Some(tracing::debug_span!("storage.file.queue")),
+                                metadata: Arc::new(metadata),
+                                staging,
+                                session: resumable.then(|| Session::new(self.inner.execution)),
+                                extra: None,
+                                mutation: None,
+                                progress: progress.clone(),
+                                hash: Sha256::new(),
+                                length: 0,
+                                ticket: 0,
+                                command: Some(Command::Create),
+                                abandoned: false,
+                                in_flight: false,
+                                retrying: false,
+                                base_bytes,
+                                reference_bytes,
+                            },
+                        );
+                        state.collect();
+                        return Ok(Some(id));
+                    }
+                    self.inner.relieve_pressure(state, base_bytes + 1, 1);
+                    Ok(None)
+                })
+                .await?;
+            let mut cancel =
+                CancelProduction { manager: self.erased(), id, armed: true, generation: token.as_ref().map(|token| token.generation) };
+            let file = StorageFile { manager: self.erased(), id, progress, session: token };
+            self.inner.notify();
+            file.wait(Await::Ready).await?;
+            cancel.armed = false;
+            Ok(file)
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
+    #[tracing::instrument(name = "storage.staging.creation.write_file", level = "debug", skip_all)]
     pub async fn write_file(&self, metadata: FileMetadata, bytes: &[u8]) -> Result<FileReference> {
         let mut file = self.create_file(metadata).await?;
         file.write_all(bytes).await?;
         file.finish().await
     }
 
+    #[tracing::instrument(name = "storage.staging.creation.settle_files", level = "debug", skip_all)]
     pub(crate) async fn settle_files(&self) -> Result<()> {
         let mut changed = self.inner.changed.subscribe();
         {

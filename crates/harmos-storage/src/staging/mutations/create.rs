@@ -35,6 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.mutations.create.create_file_once", level = "debug", skip_all)]
     pub async fn create_file_once(&self, mutation: &MutationId, metadata: &FileMetadata) -> Result<FileProducer> {
         let mut hash = Sha256::new();
         hash_part(&mut hash, b"storage.create_file:v1");
@@ -75,6 +76,8 @@ impl<C> StorageManager<C> {
             state.files.insert(
                 id,
                 FileState {
+                    context: crate::execution::Context::current(),
+                    queued: Some(tracing::debug_span!("storage.file.queue")),
                     metadata: Arc::new(metadata.clone()),
                     staging: StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() },
                     session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),

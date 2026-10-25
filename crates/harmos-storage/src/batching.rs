@@ -132,11 +132,27 @@ impl Batch {
         Some(Self { entries, _reservation: Reservation::charged(inner, Pool::Write, bytes) })
     }
 
+    #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.history().store, epoch = %inner.primary.history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.entries[self.entries.len() - 1].operation.sequence(), outcome = "cancelled"))]
     pub(super) async fn write(&self, inner: &Inner) -> Result<Progress> {
         let mut parts = Vec::new();
         let mut recovery = Vec::new();
         let mut progress = Progress::default();
+        let mut contributions = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
+            contributions.push(entry.context.sync(|| {
+                let span = tracing::trace_span!(
+                    "storage.batch.contribution", store = %inner.primary.history().store, epoch = %inner.primary.history().epoch,
+                    domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" },
+                    request_domain = if entry.operation.domain() == Domain::Data { "data" } else { "recovery" },
+                    first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index,
+                    through = self.entries[self.entries.len() - 1].operation.sequence(),
+                    request_index = entry.index, request_sequence = entry.operation.sequence(), outcome = "cancelled"
+                );
+                if let Some(queued) = entry.queued.lock().unwrap().take() {
+                    span.follows_from(queued.id());
+                }
+                crate::execution::Context::with_span(span)
+            }));
             match &entry.operation {
                 Operation::ObjectGroup { schemas, objects, .. } => {
                     for (schema, object) in schemas.iter().zip(objects) {
@@ -155,39 +171,53 @@ impl Batch {
         // Borrow admitted data across the single durable call instead of cloning
         // payloads into another aggregate. Reserved scratch covers span metadata;
         // the separate recovery protocol still receives one contiguous slice.
-        if !parts.is_empty() {
-            progress.saved = Some(write_data(inner, &parts).await?);
-        }
-        if !recovery.is_empty() {
-            let saved = inner.state.lock().unwrap().status.saved.clone();
-            for entry in &recovery {
-                if !saved.covers(&entry.required_data)? {
-                    return Err(Error::InvalidInput {
-                        field: "state evidence dependency",
-                        reason: "journal cannot precede required primary persistence",
-                    });
-                }
+        let result = async {
+            if !parts.is_empty() {
+                progress.saved = Some(write_data(inner, &parts).await?);
             }
-            inner.bounded(inner.recovery.write_entries(&recovery)).await?;
+            if !recovery.is_empty() {
+                let saved = inner.state.lock().unwrap().status.saved.clone();
+                for entry in &recovery {
+                    if !saved.covers(&entry.required_data)? {
+                        return Err(Error::InvalidInput {
+                            field: "state evidence dependency",
+                            reason: "journal cannot precede required primary persistence",
+                        });
+                    }
+                }
+                inner.bounded("recovery.write_entries", inner.recovery.write_entries(&recovery)).await?;
+            }
+            Ok(progress)
         }
-        Ok(progress)
+        .await;
+        let outcome = if result.is_ok() { "completed" } else { "failed" };
+        tracing::Span::current().record("outcome", outcome);
+        for contribution in &contributions {
+            contribution.sync(|| {
+                contribution.span.record("outcome", outcome);
+            });
+        }
+        result
     }
 }
 
 /* === Public Functions === */
 
+#[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Result<StorageCursor> {
     // Logical admissions are indivisible; never persist a prefix of one batch.
     let batch = StorageBatch::new(parts, inner.settings.max_batch_bytes())?;
     inner.primary.history().check(&batch.first().history)?;
     let through = batch.through();
+    tracing::Span::current().record("through", through.sequence);
     {
         // Preserve the attempted ceiling on cancellation or uncertain commit.
         // An acknowledgement may not claim data merely admitted to the queue.
         let mut state = inner.state.lock().unwrap();
         state.data_attempted = state.data_attempted.max(through.sequence);
     }
-    let saved = inner.bounded(inner.primary.write(batch)).await?;
+    let saved = inner.bounded("primary.write", inner.primary.write(batch)).await?;
+    tracing::Span::current().record("saved", saved.sequence);
     let attempted = inner.state.lock().unwrap().data_attempted;
     if !saved.covers(through)? || saved.sequence > attempted {
         return Err(Error::InvalidInput {

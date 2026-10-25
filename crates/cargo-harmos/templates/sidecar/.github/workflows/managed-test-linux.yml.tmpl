@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-linux.yml; sha256:a10319067ddad79f5a42ea0ce60074944346097b3055ac07d7dec68ad5365a70
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-linux.yml; sha256:728931d958a96a5a7fcbe31a271f5b471fe46880dde5987572a05fc98c47c457
 name: Test / Linux
 "on":
   workflow_call:
@@ -239,7 +239,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_unit-${{ env.PROFILE }}-linux
-        path: target/tests/${{ env.PROFILE }}/*/unit-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/unit-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/unit-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true

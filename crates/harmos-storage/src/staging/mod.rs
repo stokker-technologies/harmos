@@ -73,6 +73,8 @@ struct Progress {
 }
 
 pub(super) struct FileState {
+    pub(super) context: crate::execution::Context,
+    pub(super) queued: Option<tracing::Span>,
     metadata: Arc<FileMetadata>,
     staging: StagedFile,
     session: Option<Session>,
@@ -128,6 +130,12 @@ pub(super) enum FileCompleted {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for FileState {
+    fn drop(&mut self) {
+        self.context.sync(|| drop(self.queued.take()));
+    }
+}
 
 /* === Public Functions === */
 

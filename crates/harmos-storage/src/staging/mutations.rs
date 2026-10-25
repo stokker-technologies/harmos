@@ -56,6 +56,7 @@ pub(super) enum Kind {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.mutations.resume_file_once", level = "debug", skip_all)]
     pub async fn resume_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProducer> {
         self.inner.primary.history().check(&token.history)?;
         let next = token.generation.checked_add(1).ok_or_else(size_error)?;
@@ -81,6 +82,7 @@ impl<C> StorageManager<C> {
         .producer()
     }
 
+    #[tracing::instrument(name = "storage.staging.mutations.mutate_file", level = "debug", skip_all)]
     async fn mutate_file(
         &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<bool>,
     ) -> Result<MutationValue> {

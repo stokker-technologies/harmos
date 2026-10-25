@@ -132,6 +132,10 @@ run = [{ task = "format:rust --check" }, "cargo-machete --skip-target-dir"]
 
 # === Build === #
 
+[tasks."build:rust:focused"]
+description = "Compile An Explicit Local Rust Selection"
+run = "uv run --locked --project tools/python python -m harmos_tools.build.cargo focused"
+
 [tasks.build]
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'

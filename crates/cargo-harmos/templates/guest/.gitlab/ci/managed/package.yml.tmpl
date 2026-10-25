@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:14bdff4dc359dd85781842ed52d20c844f4f11bdb3d077fb0ac443672b788f8e
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/package.yml; sha256:df3b586e3c60041537aedbb96fc1fae1767c23df53fdd7e3cc962de0c9117dda
 Package / Rust (linux):
   stage: Package
   tags:
@@ -40,9 +40,11 @@ Package / Rust (linux):
     - target/ci/package-$PROFILE-rust-linux.tar.zst
   before_script:
   - >-
-    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
-    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
-    review pipeline %s\n' "$review_run"; exit 0; fi
+    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
+    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
+    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
+    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
+    pipeline %s\n' "$review_run"; exit 0; fi
   - |-
     set -eu
     # === Setup === #
@@ -144,9 +146,10 @@ Package / Rust (windows):
     - interruptible
   before_script:
   - >-
-    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
-    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
-    review pipeline $env:review_run"; exit 0 }
+    if ((($env:CI_COMMIT_BRANCH -eq 'dev' -and $env:CI_PIPELINE_SOURCE -in
+    @('push', 'web', 'api', 'trigger')) -or ($env:CI_PIPELINE_SOURCE -eq 'push' -and
+    $env:CI_COMMIT_TAG)) -and $env:validated -eq 'true') { Write-Host "Reusing green review
+    pipeline $env:review_run"; exit 0 }
   - |
     $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
     if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }

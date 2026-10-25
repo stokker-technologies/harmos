@@ -63,6 +63,7 @@ pub(super) struct NormalizedObjects {
 /* === Implementations === */
 
 impl NormalizedObjects {
+    #[tracing::instrument(name = "storage.query.object_schemas.resolve", level = "trace", skip_all)]
     pub(super) async fn resolve(
         inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, selection: &ObjectSelection, transforms: &mut Vec<Transform>,
     ) -> Result<Self> {

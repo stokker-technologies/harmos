@@ -147,7 +147,7 @@ impl State {
     pub(crate) fn file_failed(&mut self, action: &FileAction, source: Arc<Error>, retrying: bool) {
         if let Some(file) = self.files.get_mut(&action.id()) {
             if let Some(session) = &file.session {
-                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, retrying, error = %source, reason = "storage failure", "file production failed");
+                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, retrying, reason = "storage failure", "file production failed");
             }
             file.in_flight = false;
             file.retrying = retrying;
@@ -241,6 +241,8 @@ impl State {
                 self.data_accepted = target;
                 self.finishing = None;
                 self.queue.push_back(Arc::new(Pending {
+                    context: crate::execution::Context::current(),
+                    queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.queue"))),
                     journal: None,
                     index: target.index,
                     bytes: file.reference_bytes,

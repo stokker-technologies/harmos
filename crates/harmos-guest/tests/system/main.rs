@@ -10,6 +10,8 @@
 /* === Modules === */
 
 mod plugin;
+#[path = "../../../harmos-runtime/tests/support/report.rs"]
+mod report;
 
 #[path = "../fixtures/sandbox/src/contract.rs"]
 mod sandbox;
@@ -238,6 +240,7 @@ fn engine() -> &'static Engine {
 
 #[tokio::test]
 async fn publication_crosses_row() {
+    let _report = crate::report::system();
     let (stub, answered) = initialize(&support::sandbox(), Stub::default(), r#""publications""#).await;
 
     assert_eq!(answered, Ok(()));
@@ -246,6 +249,7 @@ async fn publication_crosses_row() {
 
 #[tokio::test]
 async fn registration_precedes_init() {
+    let _report = crate::report::system();
     let guest = support::sandbox();
     let declaration = Declaration::inspect(&guest, Facility::Guest).unwrap();
     let required = declaration
@@ -276,6 +280,7 @@ async fn registration_precedes_init() {
 
 #[tokio::test]
 async fn refusal_preserves_reason() {
+    let _report = crate::report::system();
     let refusal = Err(Refusal::new(-32601, "the provider is not selected"));
     let refusing = Stub { provider: VecDeque::from([refusal]), ..Stub::default() };
 
@@ -288,6 +293,7 @@ async fn refusal_preserves_reason() {
 
 #[tokio::test]
 async fn shutdown_current_context() {
+    let _report = crate::report::system();
     let initial = Ok(Echoed { said: "initialize".into() });
     let refusal = Err(Refusal::new(-32601, "the lease closed admission"));
     let closing = Stub { provider: VecDeque::from([initial, refusal]), ..Stub::default() };
@@ -299,6 +305,7 @@ async fn shutdown_current_context() {
 
 #[tokio::test]
 async fn submitted_children_controls() {
+    let _report = crate::report::system();
     let (stub, answered) = initialize(&support::sandbox(), Stub::default(), r#""submit""#).await;
     assert_eq!(answered, Ok(()));
     let submit = |say: &str, instance| Call::Submit { say: say.into(), instance };
@@ -323,6 +330,7 @@ async fn submitted_children_controls() {
 
 #[tokio::test]
 async fn unbound_operations_refused() {
+    let _report = crate::report::system();
     use harmos_guest::operations::FailureKind;
     let mut session = instantiate(&support::component(), Stub::default()).await;
     session.initialize("null").await.unwrap();

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:2ece6dc0ac4dd54bc5d4103c5676225e989dddfdeb76eaec166398b760cdaf84
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/check.yml; sha256:6f89049a4460a3edeb8ed463b2945a809915f76cf267c8c7b0af96a3dbe56aac
 Check / Repository:
   stage: Check
   tags:
@@ -20,9 +20,11 @@ Check / Repository:
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,sccache,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo,git-cliff
   before_script:
   - >-
-    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
-    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
-    review pipeline %s\n' "$review_run"; exit 0; fi
+    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
+    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
+    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
+    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
+    pipeline %s\n' "$review_run"; exit 0; fi
   - |-
     set -eu
     # === Setup === #
@@ -96,9 +98,11 @@ Check / Python:
       go,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,git-cliff
   before_script:
   - >-
-    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
-    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
-    review pipeline %s\n' "$review_run"; exit 0; fi
+    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
+    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
+    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
+    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
+    pipeline %s\n' "$review_run"; exit 0; fi
   - |-
     set -eu
     # === Setup === #
@@ -172,9 +176,11 @@ Check / Rust (linux):
       go,python,rust,uv,github:bnjbvr/cargo-machete,aqua:koalaman/shellcheck,go:github.com/rhysd/actionlint/cmd/actionlint,taplo
   before_script:
   - >-
-    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
-    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
-    review pipeline %s\n' "$review_run"; exit 0; fi
+    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
+    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
+    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
+    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
+    pipeline %s\n' "$review_run"; exit 0; fi
   - |-
     set -eu
     # === Setup === #
@@ -261,9 +267,10 @@ Check / Rust (windows):
     - interruptible
   before_script:
   - >-
-    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
-    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
-    review pipeline $env:review_run"; exit 0 }
+    if ((($env:CI_COMMIT_BRANCH -eq 'dev' -and $env:CI_PIPELINE_SOURCE -in
+    @('push', 'web', 'api', 'trigger')) -or ($env:CI_PIPELINE_SOURCE -eq 'push' -and
+    $env:CI_COMMIT_TAG)) -and $env:validated -eq 'true') { Write-Host "Reusing green review
+    pipeline $env:review_run"; exit 0 }
   - |
     $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
     if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }
@@ -469,7 +476,12 @@ Validated / Repository:
         if tag and profile != "release":
             raise ValueError("tag requires release-profile evidence")
         required = json.loads(os.environ.get("REVIEW_PACKAGES", "[]"))
-        if tag:
+        preparation = (
+            os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+            if github
+            else os.environ.get("CI_PIPELINE_SOURCE") in ("web", "api", "trigger")
+        )
+        if tag or preparation:
             required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
         if github:
             runs = pages(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}", "workflow_runs")
@@ -565,8 +577,8 @@ Validated / Repository:
     STKR_REVIEW
   rules:
   - if: >-
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev") ||
-      ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]/)
+      ($CI_PIPELINE_SOURCE =~ /^(push|web|api|trigger)$/ && $CI_COMMIT_BRANCH ==
+      "dev") || ($CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]/)
   before_script: []
   environment:
     name: release

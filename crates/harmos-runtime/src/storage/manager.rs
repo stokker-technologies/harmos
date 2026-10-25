@@ -66,6 +66,7 @@ impl<C> std::ops::Deref for StorageManager<C> {
 }
 
 impl<C: super::ObjectCatalog> StorageManager<C> {
+    #[tracing::instrument(target = "harmos::storage", name = "storage.new", level = "debug", skip_all)]
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         let execution = harmos_storage::execution::Execution::new(executor::now, |duration| Box::pin(executor::sleep(duration)));
         Ok(Self { engine: harmos_storage::StorageManager::with_execution(backends, settings, execution)? })
@@ -76,9 +77,11 @@ impl<C> StorageManager<C> {
     pub(crate) fn claim_owner(&self, owner: Arc<()>) -> Result<()> {
         self.engine.claim_owner(owner).map_err(Into::into)
     }
+    #[tracing::instrument(target = "harmos::storage", name = "storage.acquire", level = "debug", skip_all)]
     pub(crate) async fn acquire(&self) -> Result<()> {
         self.engine.acquire().await.map_err(Into::into)
     }
+    #[tracing::instrument(target = "harmos::storage", name = "storage.close", level = "debug", skip_all)]
     pub async fn close(&self) -> Result<()> {
         self.engine.close().await.map_err(Into::into)
     }
@@ -89,9 +92,11 @@ impl<C> StorageManager<C> {
     pub(crate) fn same_instance<D>(&self, other: &StorageManager<D>) -> bool {
         self.engine.same_instance(&other.engine)
     }
+    #[tracing::instrument(target = "harmos::storage", name = "storage.start", level = "debug", skip_all)]
     pub async fn start<A: Application>(&self, runtime: &crate::Runtime<A>) -> Result<()> {
         self.start_on::<A>(&runtime.operations).await
     }
+    #[tracing::instrument(target = "harmos::storage", name = "storage.start_on", level = "debug", skip_all)]
     pub(crate) async fn start_on<A: Application>(&self, operations: &OperationManager) -> Result<()> {
         self.engine
             .start_with(operations.resident_identity(), |worker| {

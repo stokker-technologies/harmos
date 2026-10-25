@@ -302,6 +302,7 @@ impl Receipts {
 }
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
     pub(super) async fn recover_receipts(&self) -> Result<()> {
         if !self.inner.primary.supports_mutation_receipts() {
             return Ok(());
@@ -309,7 +310,7 @@ impl<C> StorageManager<C> {
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
         let bytes = limits.bytes.get();
         let _reservation = super::capacity::Reservation::lifecycle(&self.inner, super::capacity::Pool::Read, bytes)?;
-        let receipts = self.inner.bounded(self.inner.primary.recover_mutations(limits)).await?;
+        let receipts = self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits)).await?;
         if receipts.len() > limits.rows.get() || receipts.memory_size() > bytes {
             return Err(Error::InvalidInput { field: "mutation recovery", reason: "backend exceeded recovery bounds" });
         }

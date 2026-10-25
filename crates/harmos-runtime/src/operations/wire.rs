@@ -96,10 +96,12 @@ impl EncodedInvocation {
         self.control.status()
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.join", level = "debug", skip_all)]
     pub async fn join(self) -> Result<Vec<u8>> {
         self.await
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     pub async fn settle(&self) -> Result<()> {
         self.control.settle().await.map_err(|source| Error::OperationSettlement { source })
     }
@@ -128,6 +130,7 @@ impl OperationManager {
         self.submit_encoded_at_as(operation, payload, source, parent, executor::now())
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
     fn submit_encoded_at_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
     ) -> Result<EncodedInvocation> {

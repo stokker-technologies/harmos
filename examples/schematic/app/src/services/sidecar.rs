@@ -47,7 +47,10 @@ pub const NAME: &str = "schematic-tools";
 
 pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<()> {
     let program = std::fs::canonicalize(path).map_err(failed)?;
-    let executable = Executable::at(&program).map_err(failed)?.directory(directory);
+    let mut executable = Executable::at(&program).map_err(failed)?.directory(directory);
+    if let Some(directory) = std::env::var_os("STKR_TEST_REPORT_DIR") {
+        executable = executable.variable("STKR_TEST_REPORT_DIR", directory);
+    }
     if executable.declaration().id != NAME {
         return Err(Error::NotReady { domain: "schematic plugin identity" });
     }

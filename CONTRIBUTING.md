@@ -51,6 +51,10 @@ Ordinary acceptance retains the other product stories without compiling starters
 Correctness tests have a minimum 120-second deadline, preserving larger bounds.
 Use benchmarks for performance measurements rather than tightening test deadlines.
 
+For a focused Rust compiler check or selected test, use `mise run build:rust:focused`
+with the Cargo operation and selection arguments. This task applies the standard
+compiler-output preflight; it does not replace the final validation graph.
+
 ## Pull Requests
 
 Target `dev` and explain the user-visible problem, resulting behavior and

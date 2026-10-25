@@ -149,6 +149,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.join", level = "debug", skip_all)]
     pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         self.await
     }
@@ -191,6 +192,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
 
     // Wait for the instance to settle without consuming the handle. A
     // resident reports its outcome and retries a retained cleanup.
+    #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     pub async fn settle(&self) -> Result<()> {
         if let Outcome::Resident { lease: Some(lease), .. } = &self.outcome {
             return lease.settlement().await;

@@ -180,6 +180,7 @@ impl PluginSdkRegistration {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.submit", level = "debug", skip_all)]
     fn submit(&self, index: usize, bytes: NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>) -> Result<EncodedInvocation> {
         let submitted = executor::now();
         let entry = &self.entries[index];
@@ -225,6 +226,7 @@ impl PluginSdkRegistration {
         Ok(invocation)
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     pub async fn settle(&self) -> Result<()> {
         self.operations.settle_owned_entries(&self.entries).await?;
         #[cfg(feature = "plugin-sidecar")]
@@ -244,6 +246,7 @@ impl PluginSdkRegistration {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.close", level = "debug", skip_all)]
     pub async fn close(&mut self) -> Result<()> {
         self.operations.fence(&self.entries, false);
         self.operations.settle_entries(&self.entries).await

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:f16a77a132e94a012c4e364c4f2d82e4b48bc4583705ab68d83d12bfb7c29eff
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:f7ff5ab6ebe43264c2a1777eb75fd76d32c102f5c9169ef10c32860141ed0118
 # === Settings === #
 
 [settings]
@@ -119,6 +119,10 @@ run = [
   "uv run --locked --project tools/python python -m project_tools.build.cargo -- --locked --workspace --profile {{usage.profile}} --no-default-features",
 ]
 
+[tasks."build:rust:focused"]
+description = "Compile An Explicit Local Rust Selection"
+run = "uv run --locked --project tools/python python -m project_tools.build.cargo focused"
+
 [tasks."build:rust:tests"]
 description = "Build Test Binaries And Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -198,6 +202,8 @@ run = "uv run --locked --project tools/python python -m project_tools.ci.simulat
 [tasks."release:publish:rust"]
 description = "Publish Rust Crates"
 run = "uv run --locked --project tools/python python -m project_tools.release.run crates"
+
+# === Clean === #
 
 # === Housekeeping === #
 

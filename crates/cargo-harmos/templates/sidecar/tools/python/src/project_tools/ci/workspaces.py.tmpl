@@ -1,0 +1,248 @@
+# Rendered by stkr project update from templates/python/ci/workspaces.py; sha256:8741c3aee3e0e6beeb9495ac767446a6d3a1a725c8bcfde70083b1098a3fea39
+# ***
+#
+# __PRODUCT_NAME__
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Own Disposable Simulation Workspaces Across Parent Termination."""
+
+# === Imports === #
+
+# Standard Library Imports
+import ctypes
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+import uuid
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
+from pathlib import Path
+
+# Third Party Imports
+# Local Imports
+from . import containers
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+MARKER = ".stkr-ci-owner.json"
+
+# === Types === #
+
+# === Classes === #
+
+
+class Owner:
+    def __init__(self, path: Path, record: dict):
+        self.path = path
+        self.record = record
+
+    @property
+    def root(self) -> Path:
+        return Path(self.record["root"])
+
+    def save(self) -> None:
+        staging = self.path.with_suffix(".tmp")
+        if linked(staging):
+            raise ValueError("workspace ownership staging must not be linked")
+        staging.write_text(json.dumps(self.record), encoding="utf-8")
+        staging.replace(self.path)
+
+    def starting(self) -> str:
+        self.record["command"] = {"platform": sys.platform, "job": "stkr-ci-" + uuid.uuid4().hex, "state": "launching"}
+        self.save()
+        return self.record["command"]["job"]
+
+    def attached(self, pid: int) -> None:
+        self.record["command"].update(pid=pid, state="running")
+        self.save()
+
+    def settled(self) -> None:
+        self.record.pop("command", None)
+        self.save()
+
+    def cleanup(self, preserve: Callable[[Path], None]) -> None:
+        if not self.root.exists():
+            self.record["phase"] = "clean"
+            self.save()
+            return
+        if linked(self.root) or linked(self.root / MARKER):
+            raise ValueError("workspace ownership must not be linked")
+        marker = json.loads((self.root / MARKER).read_text(encoding="utf-8"))
+        if marker != {key: self.record[key] for key in ("repository", "run", "job", "nonce", "root")}:
+            raise ValueError("workspace ownership marker does not match")
+        if self.record.get("command") and command_live(self.record["command"]):
+            raise containers.Busy("workspace command is live or its ownership is unknown")
+        preserve(self.root / "workspace")
+        for path in self.root.iterdir():
+            if path.name == MARKER:
+                continue
+            if path.is_symlink():
+                path.unlink()
+            elif path.is_junction():
+                path.rmdir()
+            elif path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        try:
+            (self.root / MARKER).unlink()
+            self.root.rmdir()
+        except OSError:
+            if self.root.is_dir() and not linked(self.root) and not (self.root / MARKER).exists():
+                (self.root / MARKER).write_text(json.dumps(marker), encoding="utf-8")
+            raise
+        self.record["phase"] = "clean"
+        self.save()
+
+
+# === Public Functions === #
+
+
+def linked(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
+
+
+def command_live(command: dict) -> bool:
+    if not isinstance(command, dict) or not isinstance(command.get("job"), str) or command.get("platform") != sys.platform:
+        return True
+    if command.get("state") != "running" or re.fullmatch(r"stkr-ci-[a-f0-9]{32}", command["job"]) is None:
+        return True
+    if os.name == "nt":
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenJobObjectW.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_wchar_p]
+        kernel.OpenJobObjectW.restype = ctypes.c_void_p
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel.OpenJobObjectW(4, False, command["job"])
+        if not handle:
+            return ctypes.get_last_error() != 2
+        try:
+            return active_processes(kernel, handle) != 0
+        finally:
+            kernel.CloseHandle(handle)
+    pid = command.get("pid")
+    if not isinstance(pid, int) or pid <= 0 or not Path("/proc").is_dir():
+        return True
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            if int(fields[2]) == pid and fields[0] not in ("Z", "X"):
+                return True
+        except FileNotFoundError:
+            continue
+    return False
+
+
+def active_processes(kernel, handle) -> int:
+    if os.name != "nt":
+        raise OSError("Windows command-tree accounting is unavailable on this platform")
+
+    class Accounting(ctypes.Structure):
+        _fields_ = [
+            ("user", ctypes.c_longlong),
+            ("kernel", ctypes.c_longlong),
+            ("period_user", ctypes.c_longlong),
+            ("period_kernel", ctypes.c_longlong),
+            ("faults", ctypes.c_ulong),
+            ("total", ctypes.c_ulong),
+            ("active", ctypes.c_ulong),
+            ("terminated", ctypes.c_ulong),
+        ]
+
+    kernel.QueryInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p]
+    information = Accounting()
+    if not kernel.QueryInformationJobObject(handle, 1, ctypes.byref(information), ctypes.sizeof(information), None):
+        raise OSError(ctypes.get_last_error(), "cannot inspect owned command tree")
+    return information.active
+
+
+@contextmanager
+def job(output: Path, repository: str, run: str, key: str, preserve: Callable[[Path], None]) -> Generator[Owner]:
+    path = output / f"{key}.workspace-owner.json"
+    lock = path.with_suffix(".lock")
+    if path.exists() or linked(path) or linked(lock):
+        raise ValueError("workspace ownership already exists or is linked")
+    lock.touch(exist_ok=True)
+    with containers.lease(lock):
+        root = Path(tempfile.mkdtemp(prefix="stkr-ci-job-"))
+        record = {
+            "version": 1,
+            "repository": repository,
+            "output": str(output.resolve()),
+            "run": run,
+            "job": key,
+            "nonce": uuid.uuid4().hex,
+            "root": str(root),
+            "phase": "active",
+        }
+        owner = Owner(path, record)
+        (root / MARKER).write_text(
+            json.dumps({name: record[name] for name in ("repository", "run", "job", "nonce", "root")}), encoding="utf-8"
+        )
+        owner.save()
+        try:
+            yield owner
+        finally:
+            cleanup(owner, preserve)
+
+
+def cleanup(owner: Owner, preserve: Callable[[Path], None]) -> None:
+    try:
+        owner.cleanup(preserve)
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"Simulation retained workspace ownership {owner.path}: {error}", file=sys.stderr, flush=True)
+
+
+def reconcile(root: Path, repository: str, preserve: Callable[[Path, str, Path], None]) -> None:
+    if not root.exists() or linked(root):
+        return
+    for path in sorted(root.glob("*/*.workspace-owner.json")):
+        if any(linked(part) for part in (path.parent, path)):
+            continue
+        lock = path.with_suffix(".lock")
+        if not lock.is_file() or linked(lock):
+            continue
+        try:
+            with containers.lease(lock):
+                record = json.loads(path.read_text(encoding="utf-8"))
+                if not valid(path, record, repository) or record["phase"] == "clean":
+                    continue
+                cleanup(Owner(path, record), lambda workspace, output=path.parent, key=record["job"]: preserve(output, key, workspace))
+        except (OSError, ValueError, RuntimeError) as error:
+            print(f"Simulation retained workspace ownership {path}: {error}", file=sys.stderr, flush=True)
+
+
+# === Private Functions === #
+
+
+def valid(path: Path, record: object, repository: str) -> bool:
+    if not isinstance(record, dict) or record.get("version") != 1 or record.get("repository") != repository:
+        return False
+    if not all(isinstance(record.get(key), str) for key in ("run", "job", "nonce", "root")):
+        return False
+    target = Path(record["root"])
+    return (
+        record.get("output") == str(path.parent.resolve())
+        and path.name == f"{record['job']}.workspace-owner.json"
+        and re.fullmatch(r"[a-zA-Z0-9_-]+", record["run"]) is not None
+        and re.fullmatch(r"[a-zA-Z0-9_-]+", record["job"]) is not None
+        and re.fullmatch(r"[a-f0-9]{32}", record["nonce"]) is not None
+        and target.is_absolute()
+        and target.parent == Path(tempfile.gettempdir()).resolve()
+        and target.name.startswith("stkr-ci-job-")
+        and record.get("phase") in ("active", "clean")
+    )
+
+
+# === Entry Point === #

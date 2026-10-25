@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/report.py; sha256:97ed42f1e9c0de92a2f103350f89af6ab9d48858745c3db1ca7c1be01ba6067a
+# Rendered by stkr project update from templates/python/test/report.py; sha256:31b4de8de7ce8b455ddb7e93e015bb7f5a4c1056d83cf42941e0808582033ea0
 # ***
 #
 # Harmos
@@ -7,19 +7,17 @@
 #
 # ***
 
-"""Read Native JUnit Reports And Render Benchmark Tables."""
+"""Read And Preserve Native JUnit Reports."""
 
 # === Imports === #
 
 # Standard Library Imports
-import csv
-import io
 import json
 import os
 import sys
 from collections.abc import Generator, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import astuple, dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -36,8 +34,7 @@ from . import policy
 
 TESTS = Path("target/tests")
 BENCHMARKS = Path(".stkr/benchmarks")
-BENCH_CSV = BENCHMARKS / "bench.csv"
-BENCH_MARKDOWN = BENCHMARKS / "bench.md"
+TRACES = Path(".stkr/traces")
 LOCK = TESTS / ".lock"
 
 # === Types === #
@@ -70,28 +67,17 @@ class Case:
         return self.name.rpartition("::")[2] if self.language == "rust" else self.name
 
 
-@dataclass(frozen=True)
-class Bench:
-    category: str
-    language: str
-    domain: str
-    name: str
-    samples: int
-    median_ns: float
-    mean_ns: float
-    p95_ns: float | None
-    stddev_ns: float | None
-    peak_bytes: int | None
-    baseline_ns: float | None
-
-    @property
-    def change_pct(self) -> float | None:
-        if not self.baseline_ns:
-            return None
-        return (self.median_ns - self.baseline_ns) / self.baseline_ns * 100
-
-
 # === Public Functions === #
+
+
+def native_directory(root: Path, relative: Path) -> Path:
+    path = root / relative
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise policy.TestError("native report directory escapes the repository")
+    if any(item.is_symlink() or item.is_junction() for item in (path, *path.parents) if item.is_relative_to(root)):
+        raise policy.TestError("native report directory must not contain links")
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
 
 
 def location(directory: Path, profile: str, key: str) -> Path:
@@ -140,12 +126,6 @@ def merge(texts: Sequence[str]) -> str:
     return ElementTree.tostring(merged, encoding="unicode")
 
 
-def read_csv(path: Path) -> list[dict[str, str]]:
-    if not path.is_file():
-        return []
-    return list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8"))))
-
-
 def load(path: Path) -> dict:
     if not path.is_file():
         return {}
@@ -189,70 +169,6 @@ def locked(directory: Path) -> Generator[None]:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def bench_csv(rows: Sequence[Bench]) -> str:
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow([field.name for field in fields(Bench)])
-    for row in rows:
-        writer.writerow(["" if value is None else value for value in astuple(row)])
-    return buffer.getvalue()
-
-
-def parse_bench(path: Path) -> list[Bench]:
-    rows = []
-    for record in read_csv(path):
-        rows.append(
-            Bench(
-                record["category"],
-                record["language"],
-                record["domain"],
-                record["name"],
-                int(record["samples"]),
-                float(record["median_ns"]),
-                float(record["mean_ns"]),
-                _float(record["p95_ns"]),
-                _float(record["stddev_ns"]),
-                _int(record["peak_bytes"]),
-                _float(record["baseline_ns"]),
-            )
-        )
-    return rows
-
-
-def bench_table(rows: Sequence[Bench], changed_only: bool = False) -> list[str]:
-    """Benchmarks against the `dev` baseline; the index lists only measured changes."""
-    lines = [
-        "| Layer | Language | Domain | Benchmark | Median | Baseline | Change | Peak |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for row in rows:
-        change = row.change_pct
-        if changed_only and change is None:
-            continue
-        peak = f"{row.peak_bytes / 1_048_576:.1f} MiB" if row.peak_bytes else ""
-        shown = f"{change:+.1f}%" if change is not None else ""
-        baseline = _time(row.baseline_ns) if row.baseline_ns else ""
-        lines.append(
-            f"| {row.category} | {row.language} | {row.domain} | {_cell(row.name)} | {_time(row.median_ns)} | {baseline} | {shown} | {peak} |"
-        )
-    return lines
-
-
-def bench_markdown(rows: Sequence[Bench]) -> str:
-    return (
-        "\n".join(
-            [
-                "# Benchmarks",
-                "",
-                "Compared with the `dev` baseline of the last dev-landed revision.",
-                "",
-                *bench_table(rows),
-            ]
-        )
-        + "\n"
-    )
-
-
 # === Private Functions === #
 
 
@@ -271,25 +187,6 @@ def _testcases(root: ElementTree.Element) -> Iterator[tuple[str, ElementTree.Ele
     for suite in root.iter("testsuite"):
         for node in suite.findall("testcase"):
             yield node.get("classname") or suite.get("name") or "", node
-
-
-def _float(text: str) -> float | None:
-    return float(text) if text else None
-
-
-def _int(text: str) -> int | None:
-    return int(text) if text else None
-
-
-def _time(nanoseconds: float) -> str:
-    for unit, scale in (("s", 1e9), ("ms", 1e6), ("µs", 1e3)):
-        if nanoseconds >= scale:
-            return f"{nanoseconds / scale:.2f} {unit}"
-    return f"{nanoseconds:.0f} ns"
-
-
-def _cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", " ")
 
 
 # === Entry Point === #

@@ -24,6 +24,7 @@ use std::task::{Context, Poll};
 // Third Party Imports
 use futures_core::Stream;
 use tokio::sync::{mpsc, oneshot, watch};
+use tracing::Instrument;
 // Local Imports
 use super::TrackedState;
 use super::entry::{At, Entry, Link, Position, PrincipalId};
@@ -32,6 +33,7 @@ use super::transaction::dispatch::Dispatch;
 use super::transaction::{DecodeError, Inverting};
 use crate::Application;
 use crate::error::Error;
+use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
@@ -87,6 +89,7 @@ pub(crate) struct SharedPage<A: Application> {
 }
 
 struct Parts<A: Application> {
+    trace: crate::supervision::executor::SpanContext,
     tracked: Arc<TrackedState<A>>,
     frontier: Position,
     doorbell: watch::Receiver<Position>,
@@ -102,8 +105,18 @@ struct Watching<A: Application, X> {
 /* === Enums === */
 
 pub(crate) enum ReadRequest<A: Application> {
-    Entries { after: Position, through: Position, reply: oneshot::Sender<Result<Vec<Entry<Recorded<A>>>, Error>> },
-    State { origin: Origin<A::State>, at: Position, reply: oneshot::Sender<Result<At<A::State>, Error>> },
+    Entries {
+        trace: crate::supervision::executor::SpanContext,
+        after: Position,
+        through: Position,
+        reply: oneshot::Sender<Result<Vec<Entry<Recorded<A>>>, Error>>,
+    },
+    State {
+        trace: crate::supervision::executor::SpanContext,
+        origin: Origin<A::State>,
+        at: Position,
+        reply: oneshot::Sender<Result<At<A::State>, Error>>,
+    },
 }
 
 /* === Traits === */
@@ -150,13 +163,23 @@ impl<A: Application> Reads<A> {
         (Self { sender }, receiver)
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.entries", level = "debug", skip_all)]
     pub(crate) async fn entries(&self, after: Position, through: Position) -> Result<Vec<Entry<Recorded<A>>>, Error> {
         let (reply, answer) = oneshot::channel();
-        self.sender.send(ReadRequest::Entries { after, through, reply }).await.map_err(|_| Error::BeyondTail)?;
+        self.sender
+            .send(ReadRequest::Entries {
+                after,
+                through,
+                reply,
+                trace: crate::supervision::executor::SpanContext::new(tracing::Span::current(), tracing::Span::none()),
+            })
+            .await
+            .map_err(|_| Error::BeyondTail)?;
 
         answer.await.map_err(|_| Error::Unavailable)?
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.state", level = "debug", skip_all)]
     pub(crate) async fn state(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {
         if origin.position > at {
             return Err(Error::OriginAhead);
@@ -166,7 +189,15 @@ impl<A: Application> Reads<A> {
         }
 
         let (reply, answer) = oneshot::channel();
-        self.sender.send(ReadRequest::State { origin, at, reply }).await.map_err(|_| Error::BeyondTail)?;
+        self.sender
+            .send(ReadRequest::State {
+                origin,
+                at,
+                reply,
+                trace: crate::supervision::executor::SpanContext::new(tracing::Span::current(), tracing::Span::none()),
+            })
+            .await
+            .map_err(|_| Error::BeyondTail)?;
 
         answer.await.map_err(|_| Error::Unavailable)?
     }
@@ -342,6 +373,7 @@ impl<A: Application> Tail<A> {
         Ok((found, frontier))
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.shared_page", level = "debug", skip_all)]
     pub(crate) fn shared_page(&self, after: Position, through: Position, max_rows: NonZeroUsize) -> Result<SharedPage<A>, Error> {
         if after < self.floor {
             return Err(Error::BeyondTail);
@@ -383,7 +415,14 @@ where
         let mut step = match watching.step.take() {
             Some(step) => step,
             None => match watching.parts.take() {
-                Some(parts) => Box::pin(next(parts)),
+                Some(parts) => {
+                    let dispatcher = parts.trace.dispatcher.clone();
+                    let span = tracing::dispatcher::with_default(
+                        &dispatcher,
+                        || tracing::trace_span!(target: "harmos::state", parent: &parts.trace.span, "state.watch_batch", after = parts.frontier.0),
+                    );
+                    Box::pin(next(parts).instrument(span).in_context(dispatcher))
+                }
                 None => {
                     watching.done = true;
                     return Poll::Ready(None);
@@ -418,6 +457,7 @@ where
 
 /* === Public Functions === */
 
+#[tracing::instrument(target = "harmos::state", name = "state.replay", level = "debug", skip_all)]
 pub(crate) fn replay<A, W>(
     catalog: Option<&Dispatch<A, W>>, recorded: Vec<Envelope<W>>, state: &mut At<A::State>, undos: &mut Undos<A>, inverses: Inverting<A>,
     tail: usize,
@@ -467,7 +507,17 @@ where
 {
     let doorbell = tracked.applied.subscribe();
 
-    Watching { parts: Some(Parts { tracked, frontier: after, doorbell }), step: None, pending: VecDeque::new(), done: false }
+    Watching {
+        parts: Some(Parts {
+            tracked,
+            frontier: after,
+            doorbell,
+            trace: crate::supervision::executor::SpanContext::new(tracing::Span::current(), tracing::Span::none()),
+        }),
+        step: None,
+        pending: VecDeque::new(),
+        done: false,
+    }
 }
 
 /* === Private Functions === */

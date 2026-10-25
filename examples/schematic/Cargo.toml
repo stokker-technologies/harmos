@@ -30,6 +30,8 @@ thiserror = { version = "2", default-features = false }
 
 # Logging
 tracing = { version = "0.1", default-features = false }
+tracing-perfetto-file = { version = "0.1.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
 # Utilities
 sha2 = { version = "0.11.0", default-features = false }

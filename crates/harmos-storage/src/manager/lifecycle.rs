@@ -36,52 +36,67 @@ use super::*;
 
 impl<C> StorageManager<C> {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
+    #[tracing::instrument(name = "storage.manager.lifecycle.start_with", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn start_with(&self, owner: Arc<()>, spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>) -> Result<()> {
-        self.claim_owner(owner)?;
-        let mut lifecycle = self.inner.lifecycle.write().await;
-        {
-            let state = self.inner.state.lock().unwrap();
+        let result = async {
+            self.claim_owner(owner)?;
+            let mut lifecycle =
+                tracing::Instrument::instrument(self.inner.lifecycle.write(), tracing::trace_span!("storage.lock.wait")).await;
+            {
+                let state = self.inner.state.lock().unwrap();
+                if state.status.closing {
+                    return Err(Error::Closing { domain: "storage" });
+                }
+                if state.ready && lifecycle.startup_complete {
+                    return Ok(());
+                }
+                if state.ready {
+                    return Err(Error::AlreadyRegistered { domain: "storage", name: WORKER_NAME.into() });
+                }
+            }
+            self.acquire_locked(&mut lifecycle).await?;
+            let mut state = self.inner.state.lock().unwrap();
             if state.status.closing {
                 return Err(Error::Closing { domain: "storage" });
             }
-            if state.ready && lifecycle.startup_complete {
-                return Ok(());
-            }
-            if state.ready {
-                return Err(Error::AlreadyRegistered { domain: "storage", name: WORKER_NAME.into() });
-            }
+            let worker = spawn(Worker(self.erased()))?;
+            state.ready = true;
+            state.status.running = true;
+            drop(state);
+            lifecycle.owner = Some(worker);
+            lifecycle.startup_complete = true;
+            self.inner.notify();
+            Ok(())
         }
-        self.acquire_locked(&mut lifecycle).await?;
-        let mut state = self.inner.state.lock().unwrap();
-        if state.status.closing {
-            return Err(Error::Closing { domain: "storage" });
-        }
-        let worker = spawn(Worker(self.erased()))?;
-        state.ready = true;
-        state.status.running = true;
-        drop(state);
-        lifecycle.owner = Some(worker);
-        lifecycle.startup_complete = true;
-        self.inner.notify();
-        Ok(())
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn settings(&self) -> &StorageSettings {
         &self.inner.settings
     }
 
+    #[tracing::instrument(name = "storage.manager.lifecycle.acquire", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn acquire(&self) -> Result<()> {
-        let mut lifecycle = self.inner.lifecycle.write().await;
-        self.acquire_locked(&mut lifecycle).await
+        let result = async {
+            let mut lifecycle =
+                tracing::Instrument::instrument(self.inner.lifecycle.write(), tracing::trace_span!("storage.lock.wait")).await;
+            self.acquire_locked(&mut lifecycle).await
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
+    #[tracing::instrument(name = "storage.manager.lifecycle.acquire_locked", level = "debug", skip_all)]
     pub(super) async fn acquire_locked(&self, lifecycle: &mut Lifecycle) -> Result<()> {
         if self.inner.state.lock().unwrap().status.closing {
             return Err(Error::Closing { domain: "storage" });
         }
         if !lifecycle.primary_open {
             lifecycle.primary_touched = true;
-            let saved = self.inner.bounded(self.inner.primary.open()).await?;
+            let saved = self.inner.bounded("primary.open", self.inner.primary.open()).await?;
             self.inner.primary.history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.accepted = saved.clone();
@@ -100,7 +115,7 @@ impl<C> StorageManager<C> {
         }
         if !lifecycle.recovery_open {
             lifecycle.recovery_touched = true;
-            let saved = self.inner.bounded(self.inner.recovery.open()).await?;
+            let saved = self.inner.bounded("recovery.open", self.inner.recovery.open()).await?;
             self.inner.recovery.history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.recovery_accepted = saved.clone();
@@ -119,6 +134,7 @@ impl<C> StorageManager<C> {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
 
+    #[tracing::instrument(name = "storage.manager.lifecycle.claim_owner", level = "trace", skip_all)]
     pub fn claim_owner(&self, owner: Arc<()>) -> Result<()> {
         let mut state = self.inner.state.lock().unwrap();
         if state.status.closing {
@@ -142,6 +158,7 @@ impl<C> StorageManager<C> {
         self.inner.state.lock().unwrap().status.saved.clone()
     }
 
+    #[tracing::instrument(name = "storage.manager.lifecycle.status", level = "trace", skip_all)]
     pub fn status(&self) -> StorageMetrics {
         self.inner.state.lock().unwrap().status.clone()
     }
