@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:1fe20277578f74e71328293d30965b5685c6dd4c09c6cba170084a78ade43917
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-release.yml; sha256:6f4aa7a6cb619dc1f99483830cb928aca6c01418e3a023c443f3a7383361b9eb
 name: Release
 "on":
   workflow_call:
@@ -289,7 +289,7 @@ jobs:
         mise exec -- uv run --locked --project tools/python python -m
         harmos_tools.ci.build
       env:
-        RELEASE_PROFILE: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+        RELEASE_PROFILE: ${{ env.PROFILE }}
         _STKR_CI_BUILD_SCRIPT: mise run release:publish:dry
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: >-

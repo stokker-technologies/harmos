@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/runners.py; sha256:e25cc48df0defb119b323517071907a6369451a2f634550609056035990f97d3
+# Rendered by stkr project update from templates/python/test/runners.py; sha256:ecc8c7fc45ae91a1801f527b7701476c46b13ce5f8951689be3bb961e0baeac2
 # ***
 #
 # Harmos
@@ -17,7 +17,6 @@ import os
 import subprocess
 
 # Third Party Imports
-
 # Local Imports
 from ..release import policy
 from ..release.run import release_tag
