@@ -8,7 +8,7 @@ exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 # === Workspace Package === #
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
