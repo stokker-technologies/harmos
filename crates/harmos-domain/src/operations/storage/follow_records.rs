@@ -37,7 +37,7 @@ product!(FollowBoundaries {
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowRecords {
+pub struct FollowRecordsRequest {
     pub after: Option<StorageCursor>,
     pub selection: RecordSelection,
 }
@@ -60,26 +60,32 @@ pub enum Followed {
 
 /* === Implementations === */
 
-product!(FollowRecords {
+product!(FollowRecordsRequest {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<RecordSelection> => 2,
 });
 
-crate::declare!(FollowRecords {
-    id: "storage.follow_records",
-    version: 1,
-    policy: super::STREAM_POLICY,
-    response: StorageCursor,
-    output: Followed,
-    visibility: crate::operations::Visibility::Shared,
-    grpc: ("harmos.storage.v1", "Storage", "FollowRecords"),
-    grant: |request: &FollowRecords| Some(crate::plugin::Grant::of(
-        "storage.follow_records",
-        request.selection.schema.id.as_str().to_owned(),
-    )),
-});
+pub struct FollowRecords;
 
-impl MemorySize for FollowRecords {
+impl crate::operations::OperationDeclaration for FollowRecords {
+    type Request = FollowRecordsRequest;
+    type Response = StorageCursor;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<Followed>;
+    const ID: &'static str = "storage_follow_records";
+    const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
+    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "FollowRecords"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        { Some(crate::plugin::Grant::of("storage.follow_records", request.selection.schema.id.as_str().to_owned())) }
+    }
+}
+
+impl crate::operations::RequestFor for FollowRecordsRequest {
+    type Operation = FollowRecords;
+}
+
+impl MemorySize for FollowRecordsRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))

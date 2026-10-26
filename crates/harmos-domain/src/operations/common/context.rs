@@ -91,7 +91,7 @@ impl CallContext {
         if self.portable.contains_key(T::KEY) {
             return Err(ContextError::Duplicate { name: T::KEY.to_owned() });
         }
-        let payload = value.encode_to_vec();
+        let payload = value.encode();
         let bytes = self.portable.iter().map(|(key, value)| key.len() + value.len()).sum::<usize>() + T::KEY.len() + payload.len();
         if self.portable.len() >= PORTABLE_VALUES || bytes > PORTABLE_BYTES {
             return Err(ContextError::Budget);
@@ -109,7 +109,7 @@ impl CallContext {
         if self.values.contains_key(&kind) && self.portable_types.get(T::KEY) != Some(&kind) {
             return Err(ContextError::Duplicate { name: type_name::<T>().to_owned() });
         }
-        let replacement = CallValue { key: T::KEY.to_owned(), payload: value.encode_to_vec() };
+        let replacement = CallValue { key: T::KEY.to_owned(), payload: value.encode() };
         let mut child = self.with_values(vec![replacement])?;
         child.values.insert(kind, Arc::new(value));
         child.portable_types.insert(T::KEY, kind);

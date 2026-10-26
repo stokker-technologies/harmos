@@ -27,7 +27,7 @@ mod native;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::{MemorySize, Storable, message};
+use harmos_domain::{MemorySize, Message, message};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -302,11 +302,11 @@ fn sizes_count_capacity() {
         Nested { row, optional: Some(Original { value: 9, payload: Vec::with_capacity(32) }), rows, r#type: name, ..Default::default() };
     let expected = std::mem::size_of::<Nested>() + row_heap + 32 + rows_heap + 80;
     assert_eq!(value.memory_size(), expected);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode_to_vec(&value).len());
+    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
 
     value.optional = None;
     assert_eq!(value.memory_size(), expected - 32);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode_to_vec(&value).len());
+    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
     assert!(value.memory_size() > value.encoded_size());
 }
 
@@ -349,7 +349,7 @@ fn enum_shapes_sizes() {
     text.push_str("resident");
     let value = Choice::Text(text);
     assert_eq!(value.memory_size(), std::mem::size_of::<Choice>() + 77);
-    assert_eq!(value.encoded_size(), harmos_domain::Message::encode_to_vec(&value).len());
+    assert_eq!(value.encoded_size(), harmos_domain::Message::encode(&value).len());
 }
 
 #[test]

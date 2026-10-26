@@ -25,7 +25,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::MemorySize;
-use crate::operations::{Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy, RetryPolicy};
+use crate::operations::{Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RetryPolicy};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
@@ -36,27 +36,52 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
     attempt_timeout: std::time::Duration::from_secs(30),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
 
-crate::declare!(Initialize { id: "harmos.initialize", version: 1, policy: POLICY, response: () });
+pub struct Initialize;
 
-crate::declare!(Shutdown { id: "harmos.shutdown", version: 1, policy: POLICY, response: () });
+impl crate::operations::OperationDeclaration for Initialize {
+    type Request = InitializeRequest;
+    type Response = ();
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "harmos_initialize";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+}
+
+impl crate::operations::RequestFor for InitializeRequest {
+    type Operation = Initialize;
+}
+
+pub struct Shutdown;
+
+impl crate::operations::OperationDeclaration for Shutdown {
+    type Request = ShutdownRequest;
+    type Response = ();
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "harmos_shutdown";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+}
+
+impl crate::operations::RequestFor for ShutdownRequest {
+    type Operation = Shutdown;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, PartialEq, Debug, Default)]
-pub struct Initialize {
+pub struct InitializeRequest {
     pub config_json: Vec<u8>,
     pub generation_context: Vec<u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct Shutdown {}
+pub struct ShutdownRequest {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "EncodedDescriptor", try_from = "EncodedDescriptor")]
@@ -69,7 +94,7 @@ pub struct Descriptor {
 #[serde(deny_unknown_fields)]
 struct EncodedDescriptor {
     action: Action,
-    version: u32,
+    fingerprint: crate::Fingerprint,
     policy: OperationPolicy,
 }
 
@@ -90,11 +115,8 @@ pub enum Error {
     #[error("SDK lifecycle operations require explicit retry, never automatic replay")]
     AutomaticRetry,
 
-    #[error("SDK lifecycle operations are request-scoped and never restart")]
-    Resident,
-
-    #[error("unsupported SDK lifecycle semantic version {0}")]
-    Version(u32),
+    #[error("unsupported SDK lifecycle fingerprint {0}")]
+    Fingerprint(crate::Fingerprint),
 
     #[error("invalid SDK lifecycle contract: {0}")]
     Contract(#[from] ContractError),
@@ -113,8 +135,8 @@ pub trait SdkOperation: OperationDeclaration + sealed::Leaf {
 
 /* === Implementations === */
 
-crate::message::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8> });
-crate::message::postcard_product!(Shutdown {});
+crate::message::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8> });
+crate::message::postcard_product!(ShutdownRequest {});
 impl SdkOperation for Initialize {
     const ACTION: Action = Action::Initialize;
 }
@@ -123,8 +145,8 @@ impl SdkOperation for Shutdown {
     const ACTION: Action = Action::Shutdown;
 }
 
-impl Described for Initialize {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Initialize));
+impl Described for InitializeRequest {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(InitializeRequest));
     const FIELDS: &'static [Field] = &[
         Field { name: Cow::Borrowed("config_json"), tag: 1, kind: Kind::Bytes, cardinality: Cardinality::Required },
         Field { name: Cow::Borrowed("generation_context"), tag: 2, kind: Kind::Bytes, cardinality: Cardinality::Required },
@@ -134,21 +156,21 @@ impl Described for Initialize {
     >(Self::NAME, Self::FIELDS);
 }
 
-impl Described for Shutdown {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Shutdown));
+impl Described for ShutdownRequest {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ShutdownRequest));
     const FIELDS: &'static [Field] = &[];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
 
-impl MemorySize for Initialize {
+impl MemorySize for InitializeRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.config_json.capacity()).saturating_add(self.generation_context.capacity())
     }
 }
 
-impl MemorySize for Shutdown {
+impl MemorySize for ShutdownRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
@@ -159,9 +181,6 @@ impl Descriptor {
         policy.validate()?;
         if policy.retries != RetryPolicy::Never {
             return Err(Error::AutomaticRetry);
-        }
-        if policy.restart != RestartPolicy::Never {
-            return Err(Error::Resident);
         }
         let contract = Contract::lifecycle(action, policy)?;
         Ok(Self { action, contract })
@@ -192,7 +211,7 @@ impl From<Descriptor> for Contract {
 
 impl From<Descriptor> for EncodedDescriptor {
     fn from(descriptor: Descriptor) -> Self {
-        Self { action: descriptor.action, version: descriptor.contract.version(), policy: descriptor.contract.operation().policy }
+        Self { action: descriptor.action, fingerprint: descriptor.contract.fingerprint(), policy: descriptor.contract.operation().policy }
     }
 }
 
@@ -200,10 +219,11 @@ impl TryFrom<EncodedDescriptor> for Descriptor {
     type Error = Error;
 
     fn try_from(encoded: EncodedDescriptor) -> Result<Self, Error> {
-        if encoded.version != 1 {
-            return Err(Error::Version(encoded.version));
+        let descriptor = Self::new(encoded.action, encoded.policy)?;
+        if descriptor.contract.fingerprint() != encoded.fingerprint {
+            return Err(Error::Fingerprint(encoded.fingerprint));
         }
-        Self::new(encoded.action, encoded.policy)
+        Ok(descriptor)
     }
 }
 

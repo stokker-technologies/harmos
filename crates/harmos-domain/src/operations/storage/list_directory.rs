@@ -26,24 +26,31 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
-crate::declare!(ListDirectory {
-    id: "storage.list_directory",
-    version: 1,
-    policy: IO_POLICY,
-    response: DirectoryCompletion,
-    output: DirectoryEntry,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Idempotent,
-    grpc: ("harmos.storage.v1", "Storage", "ListDirectory"),
-});
+product!(ListDirectoryRequest { selection: Nested<DirectorySelection> => 1 });
+pub struct ListDirectory;
+
+impl crate::operations::OperationDeclaration for ListDirectory {
+    type Request = ListDirectoryRequest;
+    type Response = DirectoryCompletion;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<DirectoryEntry>;
+    const ID: &'static str = "storage_list_directory";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "ListDirectory"));
+}
+
+impl crate::operations::RequestFor for ListDirectoryRequest {
+    type Operation = ListDirectory;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ListDirectory {
+pub struct ListDirectoryRequest {
     pub selection: DirectorySelection,
 }
 
@@ -53,7 +60,7 @@ pub struct ListDirectory {
 
 /* === Implementations === */
 
-impl MemorySize for ListDirectory {
+impl MemorySize for ListDirectoryRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }

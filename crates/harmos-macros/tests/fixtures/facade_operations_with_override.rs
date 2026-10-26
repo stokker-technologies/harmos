@@ -7,15 +7,18 @@
  * ***
  */
 
-
 /* === Modules === */
 
 mod relative {
     #[facade::message(harmos_path = ::facade::__harmos)]
-    pub struct WireReply { pub value: String }
+    pub struct WireReply {
+        pub value: String,
+    }
     pub type Reply = WireReply;
 }
-mod rows { pub use facade::Reading; }
+mod rows {
+    pub use facade::Reading;
+}
 
 /* === Re-Exports === */
 
@@ -24,7 +27,7 @@ mod rows { pub use facade::Reading; }
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
-use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 // Local Imports
 
 /* === Constants === */
@@ -38,26 +41,30 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, Restar
 pub struct State;
 
 #[facade::message(harmos_path = ::facade::__harmos)]
+pub struct EchoRequest {
+    pub value: String,
+}
+
 #[facade::operation(
     harmos_path = ::facade::__harmos,
-    response = relative::Reply,
-    id = "alias.echo",
+    request = EchoRequest, response = relative::Reply, infer_request,
+    id = "echo",
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     },
-    version = 1,
 )]
-pub struct Echo { pub value: String }
+pub struct Echo;
 
 pub struct Guest;
 
 /* === Enums === */
 
 #[facade::catalog(harmos_path = ::facade::__harmos)]
-pub enum Operations { Echo(Echo) }
+pub enum Operations {
+    Echo(Echo),
+}
 
 /* === Traits === */
 

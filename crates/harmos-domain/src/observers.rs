@@ -24,33 +24,40 @@ use std::borrow::Cow;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{Contract, ContractError, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, UNBOUNDED, Visibility};
+use crate::operations::{Contract, ContractError, OperationPolicy, ReplaySafety, RetryPolicy, UNBOUNDED, Visibility};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
 
 // The observe control runs until the host cancels it.
-pub const POLICY: OperationPolicy =
-    OperationPolicy { timeout: UNBOUNDED, attempt_timeout: UNBOUNDED, retries: RetryPolicy::Never, restart: RestartPolicy::Never };
+pub const POLICY: OperationPolicy = OperationPolicy { timeout: UNBOUNDED, attempt_timeout: UNBOUNDED, retries: RetryPolicy::Never };
 
 /* === Macros === */
 
-crate::declare!(Control {
-    id: "harmos.observe",
-    version: 1,
-    policy: POLICY,
-    response: (),
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct Control;
+
+impl crate::operations::OperationDeclaration for Control {
+    type Request = ControlRequest;
+    type Response = ();
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "harmos_observe";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for ControlRequest {
+    type Operation = Control;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Control {
+pub struct ControlRequest {
     pub observer: String,
     pub generation: u64,
 }
@@ -61,16 +68,16 @@ pub struct Control {
 
 /* === Implementations === */
 
-crate::message::postcard_product!(Control { observer: String, generation: u64 });
+crate::message::postcard_product!(ControlRequest { observer: String, generation: u64 });
 
-impl crate::MemorySize for Control {
+impl crate::MemorySize for ControlRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.observer.capacity())
     }
 }
 
-impl Described for Control {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Control));
+impl Described for ControlRequest {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ControlRequest));
     const FIELDS: &'static [Field] = &[
         Field { name: Cow::Borrowed("observer"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required },
         Field { name: Cow::Borrowed("generation"), tag: 2, kind: Kind::U64, cardinality: Cardinality::Required },

@@ -10,9 +10,10 @@
 /* === Modules === */
 
 mod authored;
-mod catalog;
+mod dependencies;
 pub mod instance;
 pub mod lifecycle;
+pub mod registration;
 pub(crate) mod response;
 mod serving;
 
@@ -23,13 +24,14 @@ mod surface;
 /* === Re-Exports === */
 
 pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
-pub use catalog::{AuthoredContracts, AuthoredDeclarations};
+pub use dependencies::{Dependencies, DependencyError, OperationContext};
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
+pub use registration::{NativeInstance, OperationFactory, RegistrationBatch, ServiceFactory, ServiceInstance};
 pub use response::Response;
 pub use serving::{
-    CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall, WireChildControl,
-    WireCodecError, WireCommand, WireTable, decode_prepared_grant, encode_prepared_grant,
+    CHILD_METHOD, ServingError, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
+    WireCommand, WireTable, decode_prepared_grant, encode_prepared_grant,
 };
 
 #[cfg(feature = "streaming")]

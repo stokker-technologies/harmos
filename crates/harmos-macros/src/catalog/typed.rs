@@ -105,6 +105,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         variant.attrs.retain(|attribute| !attribute.path().is_ident("nested"));
     }
 
+    let gates = crate::operation::configuration(&declared.attrs)?;
     let count = members.len();
     let name = &declared.ident;
     let mut visitor_name = "__HarmosVisitor".to_owned();
@@ -172,6 +173,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         });
         let (implementation, _, predicates) = generics.split_for_impl();
         quote! {
+            #(#gates)*
             impl #implementation #sdk::catalog::InertCatalog<#visitor, #entry>
                 for #name #type_generics #predicates
             {
@@ -182,20 +184,96 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         }
     });
 
+    let mut lifetime_name = "__harmos_projection".to_owned();
+    while declared.generics.lifetimes().any(|parameter| parameter.lifetime.ident == lifetime_name) {
+        lifetime_name.push('_');
+    }
+    let lifetime = syn::Lifetime::new(&format!("'{lifetime_name}"), proc_macro2::Span::mixed_site());
+    let methods = quote! {
+        #(#gates)*
+        const _: () = {
+            pub struct Definitions<'a>(::core::marker::PhantomData<&'a ()>);
+            impl #sdk::catalog::Visitor for Definitions<'_> {
+                type Entry = #sdk::catalog::OperationEntry;
+            }
+            impl<O: #sdk::OperationDeclaration> #sdk::catalog::Member<O> for Definitions<'_> {
+                const ENTRY: Self::Entry = #sdk::catalog::OperationEntry::of::<O>();
+            }
+            impl #impl_generics #name #type_generics #where_clause {
+                pub fn catalog<#lifetime>() -> ::std::vec::Vec<#sdk::OperationDefinition>
+                where Self: #sdk::catalog::Catalog<Definitions<#lifetime>>,
+                {
+                    #sdk::operations::Declarations::from_projection(
+                        &<Self as #sdk::catalog::Catalog<Definitions<#lifetime>>>::ENTRIES,
+                    ).expect("invalid operation catalog")
+                }
+            }
+        };
+
+        #(#gates)*
+        #[allow(unexpected_cfgs)]
+        const _: () = {
+            #[cfg(feature = "runtime")]
+            mod execution {
+            use super::*;
+            pub struct Registration<'a>(::core::marker::PhantomData<&'a ()>);
+            impl #sdk::catalog::Visitor for Registration<'_> {
+                type Entry = fn(#sdk::RegistrationBatch) -> #sdk::RegistrationBatch;
+            }
+            impl<O> #sdk::catalog::Member<O> for Registration<'_>
+            where
+                O: #sdk::OperationDeclaration + #sdk::Operation<
+                    Request = <O as #sdk::OperationDeclaration>::Request,
+                    Response = <O as #sdk::OperationDeclaration>::Response,
+                >,
+            {
+                const ENTRY: Self::Entry = #sdk::RegistrationBatch::operation::<O>;
+            }
+            impl #impl_generics #name #type_generics #where_clause {
+                pub fn registration<#lifetime>(dependencies: #sdk::Dependencies) -> #sdk::RegistrationBatch
+                where Self: #sdk::catalog::Catalog<Registration<#lifetime>>,
+                {
+                    let mut batch = ::core::option::Option::Some(#sdk::RegistrationBatch::new(dependencies));
+                    let result: ::core::result::Result<(), ::core::convert::Infallible> =
+                        #sdk::catalog::Projection::try_for_each(
+                            &<Self as #sdk::catalog::Catalog<Registration<#lifetime>>>::ENTRIES,
+                            |register| {
+                                let entries = batch.take().expect("registration projection retains its batch");
+                                batch = ::core::option::Option::Some(register(entries));
+                                ::core::result::Result::Ok(())
+                            },
+                        );
+                    match result { ::core::result::Result::Ok(()) => {}, ::core::result::Result::Err(error) => match error {} }
+                    batch.expect("registration projection retains its batch")
+                }
+            }
+            }
+        };
+    };
+
+    let contains = direct.map(|member| {
+        quote! {
+            #(#gates)*
+            impl #impl_generics #sdk::catalog::Contains<#member> for #name #type_generics #where_clause {}
+        }
+    });
+
     Ok(quote! {
 
-        // Catalog variants name types; projecting them never constructs a value.
+        // Catalog Projection Never Constructs A Member
         #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]
         #declared
 
+        #(#gates)*
         impl #visitor_impl #sdk::catalog::Catalog<#visitor> for #name #type_generics #visitor_where {
             type Entries = #entries_type;
             const ENTRIES: Self::Entries = #entries;
         }
 
-        #(impl #impl_generics #sdk::catalog::Contains<#direct> for #name #type_generics #where_clause {})*
+        #(#contains)*
 
         #(#inspection)*
+        #methods
     })
 }
 

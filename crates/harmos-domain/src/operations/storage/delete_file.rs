@@ -28,19 +28,27 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(DeleteFile {
+product!(DeleteFileRequest {
     mutation: Nested<MutationId> => 1,
     file: Nested<StagedFile> => 2,
 });
 
-crate::declare!(DeleteFile {
-    id: "storage.delete_file",
-    version: 1,
-    policy: POLICY,
-    response: StagedFile,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct DeleteFile;
+
+impl crate::operations::OperationDeclaration for DeleteFile {
+    type Request = DeleteFileRequest;
+    type Response = StagedFile;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_delete_file";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for DeleteFileRequest {
+    type Operation = DeleteFile;
+}
 
 /* === Type Aliases === */
 
@@ -48,7 +56,7 @@ crate::declare!(DeleteFile {
 
 // Delete A Staged File, Exactly Once Per Mutation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeleteFile {
+pub struct DeleteFileRequest {
     pub mutation: MutationId,
     pub file: StagedFile,
 }
@@ -59,7 +67,7 @@ pub struct DeleteFile {
 
 /* === Implementations === */
 
-impl MemorySize for DeleteFile {
+impl MemorySize for DeleteFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))

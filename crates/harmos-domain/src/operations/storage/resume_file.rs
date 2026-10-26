@@ -28,19 +28,27 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(ResumeFile {
+product!(ResumeFileRequest {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
 });
 
-crate::declare!(ResumeFile {
-    id: "storage.resume_file",
-    version: 1,
-    policy: POLICY,
-    response: FileProducer,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct ResumeFile;
+
+impl crate::operations::OperationDeclaration for ResumeFile {
+    type Request = ResumeFileRequest;
+    type Response = FileProducer;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_resume_file";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for ResumeFileRequest {
+    type Operation = ResumeFile;
+}
 
 /* === Type Aliases === */
 
@@ -48,7 +56,7 @@ crate::declare!(ResumeFile {
 
 // Resume A Producing File Session After Reconnection.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResumeFile {
+pub struct ResumeFileRequest {
     pub mutation: MutationId,
     pub session: FileSession,
 }
@@ -59,7 +67,7 @@ pub struct ResumeFile {
 
 /* === Implementations === */
 
-impl MemorySize for ResumeFile {
+impl MemorySize for ResumeFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))

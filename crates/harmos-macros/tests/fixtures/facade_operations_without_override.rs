@@ -7,15 +7,18 @@
  * ***
  */
 
-
 /* === Modules === */
 
 mod relative {
     #[facade::message]
-    pub struct WireReply { pub value: String }
+    pub struct WireReply {
+        pub value: String,
+    }
     pub type Reply = WireReply;
 }
-mod rows { pub use facade::Reading; }
+mod rows {
+    pub use facade::Reading;
+}
 
 /* === Re-Exports === */
 
@@ -24,7 +27,7 @@ mod rows { pub use facade::Reading; }
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
-use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 // Local Imports
 
 /* === Constants === */
@@ -38,32 +41,35 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, Restar
 pub struct State;
 
 #[facade::message]
+pub struct EchoRequest {
+    pub value: String,
+}
+
 #[facade::operation(
-    response = relative::Reply,
-    id = "alias.echo",
+    request = EchoRequest, response = relative::Reply, infer_request,
+    id = "echo",
     policy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 },
-    version = 1,
 )]
-pub struct Echo { pub value: String }
+pub struct Echo;
 
 pub struct Guest;
 
 /* === Enums === */
 
 #[facade::catalog]
-pub enum Operations { Echo(Echo) }
+pub enum Operations {
+    Echo(Echo),
+}
 
 /* === Traits === */
 
 trait ProductPlugin {}
 
 /* === Implementations === */
-
 
 impl facade::__harmos::operations::lifecycle::Policy for State {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;

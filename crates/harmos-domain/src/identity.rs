@@ -11,6 +11,8 @@
 
 /* === Re-Exports === */
 
+pub use crate::message::{Digest, Fingerprint};
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,6 +30,16 @@ use serde::{Deserialize, Serialize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct QualifiedId(String);
+
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("identity `{value}` must contain exactly two lowercase portable segments")]
+pub struct IdentityError {
+    pub value: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -49,6 +61,45 @@ pub trait Identified {
 }
 
 /* === Implementations === */
+
+impl QualifiedId {
+    pub fn parse(value: &str) -> Result<Self, IdentityError> {
+        let Some((owner, local)) = value.split_once('.') else {
+            return Err(IdentityError { value: value.to_owned() });
+        };
+        Self::qualify(owner, local)
+    }
+
+    pub fn qualify(owner: &str, local: &str) -> Result<Self, IdentityError> {
+        if !segment(owner) || !segment(local) {
+            return Err(IdentityError { value: format!("{owner}.{local}") });
+        }
+        Ok(Self(format!("{owner}.{local}")))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for QualifiedId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl TryFrom<String> for QualifiedId {
+    type Error = IdentityError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
+    }
+}
+
+impl From<QualifiedId> for String {
+    fn from(value: QualifiedId) -> Self {
+        value.0
+    }
+}
 
 impl DefinitionId {
     pub fn new(id: impl Into<String>) -> Self {
@@ -74,6 +125,21 @@ impl fmt::Display for DefinitionId {
 }
 
 /* === Public Functions === */
+
+pub const fn segment(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || !bytes[0].is_ascii_lowercase() {
+        return false;
+    }
+    let mut index = 1;
+    while index < bytes.len() {
+        if !(bytes[index].is_ascii_lowercase() || bytes[index].is_ascii_digit() || bytes[index] == b'_') {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
 
 pub const fn artifact_subset(id: &str) -> bool {
     let bytes = id.as_bytes();
@@ -139,3 +205,17 @@ pub fn stream_subset(name: &str) -> bool {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::QualifiedId;
+
+    #[test]
+    fn qualified_segments() {
+        assert_eq!(QualifiedId::qualify("host", "read_2").unwrap().as_str(), "host.read_2");
+        for value in ["read", "host.read.extra", ".read", "host.", "Host.read", "host.read-file", "host.2read", "host.read\0"] {
+            assert!(QualifiedId::parse(value).is_err(), "{value:?}");
+        }
+        assert!(QualifiedId::qualify("owner.other", "read").is_err());
+    }
+}

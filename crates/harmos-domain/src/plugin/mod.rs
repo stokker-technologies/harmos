@@ -92,7 +92,7 @@ pub fn schema_markers<P: Declared>(
     crate::catalog::try_for_each(P::LISTENERS, |listener| push_schema_root(&mut roots, listener.source.row(), carrier_bytes, settings))?;
     push_schema_root(
         &mut roots,
-        <crate::operations::lifecycle::Initialize as crate::schema::Described>::DEFINITION,
+        <crate::operations::lifecycle::InitializeRequest as crate::schema::Described>::DEFINITION,
         carrier_bytes,
         settings,
     )?;

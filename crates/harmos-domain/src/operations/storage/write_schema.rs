@@ -28,19 +28,27 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(WriteSchema {
+product!(WriteSchemaRequest {
     mutation: Nested<MutationId> => 1,
     schema: Nested<SchemaInput> => 2,
 });
 
-crate::declare!(WriteSchema {
-    id: "storage.write_schema",
-    version: 1,
-    policy: POLICY,
-    response: StorageCursor,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct WriteSchema;
+
+impl crate::operations::OperationDeclaration for WriteSchema {
+    type Request = WriteSchemaRequest;
+    type Response = StorageCursor;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_write_schema";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for WriteSchemaRequest {
+    type Operation = WriteSchema;
+}
 
 /* === Type Aliases === */
 
@@ -48,7 +56,7 @@ crate::declare!(WriteSchema {
 
 // Register One Payload Schema, Exactly Once Per Mutation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteSchema {
+pub struct WriteSchemaRequest {
     pub mutation: MutationId,
     pub schema: SchemaInput,
 }
@@ -59,7 +67,7 @@ pub struct WriteSchema {
 
 /* === Implementations === */
 
-impl MemorySize for WriteSchema {
+impl MemorySize for WriteSchemaRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))

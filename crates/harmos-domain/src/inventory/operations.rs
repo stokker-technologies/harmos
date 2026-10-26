@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 // Third Party Imports
 
 // Local Imports
-use crate::operations::Definition;
+use crate::operations::OperationDefinition;
 
 /* === Constants === */
 
@@ -48,7 +48,7 @@ pub enum Error {
 
 /* === Public Functions === */
 
-pub fn validate(operations: &[Definition]) -> Result<(), Error> {
+pub fn validate(operations: &[OperationDefinition]) -> Result<(), Error> {
     let mut ids = BTreeSet::new();
     for operation in operations {
         operation.validate().map_err(|source| Error::Invalid { source })?;
@@ -59,7 +59,7 @@ pub fn validate(operations: &[Definition]) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn validate_match(expected: &[Definition], actual: &[Definition]) -> Result<(), Error> {
+pub fn validate_match(expected: &[OperationDefinition], actual: &[OperationDefinition]) -> Result<(), Error> {
     validate(expected)?;
     validate(actual)?;
     let expected: BTreeMap<_, _> = expected.iter().map(|entry| (&entry.id, entry)).collect();

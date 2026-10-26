@@ -41,8 +41,9 @@ use crate::fixtures;
 
 /* === Private Functions === */
 
-fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str) -> Output {
-    fixtures::command(rustc)
+fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str, features: &[&str]) -> Output {
+    let mut command = fixtures::command(rustc);
+    command
         .arg("--edition=2024")
         .arg("--crate-type=bin")
         .arg("--emit=metadata")
@@ -52,9 +53,11 @@ fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, fa
         .arg("-L")
         .arg(format!("dependency={}", dependencies.display()))
         .arg("--out-dir")
-        .arg(output)
-        .output()
-        .unwrap_or_else(|error| panic!("rustc runs {fixture}: {error}"))
+        .arg(output);
+    for feature in features {
+        command.arg("--cfg").arg(format!("feature=\"{feature}\""));
+    }
+    command.output().unwrap_or_else(|error| panic!("rustc runs {fixture}: {error}"))
 }
 
 /* === Tests === */
@@ -76,6 +79,8 @@ fn crate_builds_against() {
         .arg("--edition=2024")
         .arg("--crate-type=rlib")
         .arg("--crate-name=facade")
+        .arg("--cfg")
+        .arg("feature=\"runtime\"")
         .arg(fixtures.join("facade/lib.rs"))
         .arg("--extern")
         .arg(format!("harmos={}", harmos.display()))
@@ -97,7 +102,7 @@ fn crate_builds_against() {
         "facade_catalog_with_override.rs",
         "facade_lanes_with_override.rs",
     ] {
-        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture);
+        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
         assert!(
             compiled.status.success(),
             "{fixture} failed to build against the facade alone:\n{}",
@@ -105,13 +110,21 @@ fn crate_builds_against() {
         );
     }
 
+    let runtime = author(&rustc, &fixtures, &dependencies, &output, &facade, "facade_catalog_with_override.rs", &["runtime"]);
+    assert!(runtime.status.success(), "runtime registration failed:\n{}", String::from_utf8_lossy(&runtime.stderr));
+    let mismatched =
+        author(&rustc, &fixtures, &dependencies, &output, &facade, "facade_catalog_with_override.rs", &["runtime", "mismatched_payload"]);
+    let stderr = String::from_utf8_lossy(&mismatched.stderr);
+    assert!(!mismatched.status.success(), "mismatched response payload unexpectedly compiled");
+    assert!(stderr.contains("type mismatch resolving"), "unexpected payload diagnostic:\n{stderr}");
+
     for fixture in [
         "facade_message_without_override.rs",
         "facade_operations_without_override.rs",
         "facade_catalog_without_override.rs",
         "facade_lanes_without_override.rs",
     ] {
-        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture);
+        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
         let stderr = String::from_utf8_lossy(&compiled.stderr);
         assert!(
             !compiled.status.success(),

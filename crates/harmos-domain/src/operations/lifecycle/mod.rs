@@ -19,7 +19,8 @@ mod plugin;
 
 /* === Re-Exports === */
 
-pub use payloads::{Cancel, InstanceState, Status, Watch};
+pub use instance::{Cancel, Status, Watch};
+pub use payloads::{CancelRequest, InstanceState, StatusRequest, WatchRequest};
 pub use plugin::*;
 
 /* === Imports === */

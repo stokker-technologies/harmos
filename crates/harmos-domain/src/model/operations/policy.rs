@@ -27,17 +27,12 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-// The request half (`timeout`, `attempt_timeout`, `retries`) bounds one
-// request-scoped invocation. The resident half (`restart`) governs observers
-// and services, which run until stopped: for them `timeout` is the stop
-// deadline and request deadlines never apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationPolicy {
     pub timeout: Duration,
     pub attempt_timeout: Duration,
     pub retries: RetryPolicy,
-    pub restart: RestartPolicy,
 }
 
 /* === Enums === */
@@ -47,15 +42,6 @@ pub struct OperationPolicy {
 pub enum RetryPolicy {
     Never,
     OnTransient { max_retries: usize, backoff: Backoff },
-}
-
-// Environmental faults of a resident spend restart credit; a healthy run of
-// `sustained_health` refills it. `Never` deactivates on the first fault.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum RestartPolicy {
-    Never,
-    OnTransient { credit: usize, sustained_health: Duration, backoff: Backoff },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,27 +102,7 @@ impl OperationPolicy {
             return Err(PolicyError::Deadline { timeout: self.timeout, attempt_timeout: self.attempt_timeout });
         }
 
-        self.retries.validate()?;
-        self.restart.validate()
-    }
-}
-
-impl RestartPolicy {
-    pub fn validate(self) -> Result<(), PolicyError> {
-        match self {
-            Self::Never => Ok(()),
-            Self::OnTransient { credit, sustained_health, .. } if credit == 0 || sustained_health.is_zero() => {
-                Err(PolicyError::EmptyRestarts)
-            }
-            Self::OnTransient { backoff, .. } => backoff.validate(),
-        }
-    }
-
-    pub const fn credit(self) -> usize {
-        match self {
-            Self::Never => 0,
-            Self::OnTransient { credit, .. } => credit,
-        }
+        self.retries.validate()
     }
 }
 

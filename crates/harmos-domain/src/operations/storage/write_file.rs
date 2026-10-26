@@ -28,21 +28,30 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(WriteFile {
+product!(WriteFileRequest {
     metadata: Nested<FileMetadata> => 1,
 });
 
-crate::declare!(WriteFile {
-    id: "storage.write_file",
-    version: 1,
-    policy: IO_POLICY,
-    response: FileReference,
-    input: FileBatch,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Unknown,
-    grpc: ("harmos.storage.v1", "Storage", "WriteFile"),
-    grant: |request: &WriteFile| Some(crate::plugin::Grant::of("storage.write_file", request.metadata.id.as_str().to_owned(),)),
-});
+pub struct WriteFile;
+
+impl crate::operations::OperationDeclaration for WriteFile {
+    type Request = WriteFileRequest;
+    type Response = FileReference;
+    type Input = crate::operations::Stream<FileBatch>;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_write_file";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Unknown;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "WriteFile"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        Some(crate::plugin::Grant::of("storage.write_file", request.metadata.id.as_str().to_owned()))
+    }
+}
+
+impl crate::operations::RequestFor for WriteFileRequest {
+    type Operation = WriteFile;
+}
 
 /* === Type Aliases === */
 
@@ -50,7 +59,7 @@ crate::declare!(WriteFile {
 
 // Write One Finished File From Streamed Batches.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteFile {
+pub struct WriteFileRequest {
     pub metadata: FileMetadata,
 }
 
@@ -60,7 +69,7 @@ pub struct WriteFile {
 
 /* === Implementations === */
 
-impl MemorySize for WriteFile {
+impl MemorySize for WriteFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))
     }

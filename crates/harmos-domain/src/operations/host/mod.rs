@@ -22,30 +22,36 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{Contract, OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
+use crate::operations::{Contract, OperationPolicy, RetryPolicy, Visibility};
 use crate::plugin::Grant;
 
 /* === Constants === */
 
-pub const POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(30),
-    attempt_timeout: Duration::from_secs(30),
-    retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
-};
+pub const POLICY: OperationPolicy =
+    OperationPolicy { timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30), retries: RetryPolicy::Never };
 
 /* === Macros === */
 
-crate::declare!(Catalog {
-    id: "host.catalog",
-    version: 1,
-    policy: POLICY,
-    response: CatalogPage,
-    description: "Page live operation contracts or the schemas, streams and objects storage holds durably",
-    visibility: Visibility::Shared,
-    grpc: ("harmos.host.v1", "Host", "Catalog"),
-    grant: Catalog::required_grant,
-});
+pub struct Catalog;
+
+impl crate::operations::OperationDeclaration for Catalog {
+    type Request = CatalogRequest;
+    type Response = CatalogPage;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "host_catalog";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const DESCRIPTION: &'static str = "Page live operation contracts or the schemas, streams and objects storage holds durably";
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.host.v1", "Host", "Catalog"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        (CatalogRequest::required_grant)(request)
+    }
+}
+
+impl crate::operations::RequestFor for CatalogRequest {
+    type Operation = Catalog;
+}
 
 /* === Type Aliases === */
 

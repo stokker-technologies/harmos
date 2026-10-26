@@ -7,7 +7,7 @@
  * ***
  */
 
-// A Declarative Storage Query: A Source At A Full Cursor, Ordered Transforms
+// A Declarative Storage QueryRequest: A Source At A Full Cursor, Ordered Transforms
 // And A Final Row Slice. Results Cross The Wire As Arrow IPC.
 
 /* === Modules === */
@@ -33,31 +33,40 @@ use crate::{MemorySize, Result};
 
 /* === Macros === */
 
-product!(Query {
+product!(QueryRequest {
     at: Nested<StorageCursor> => 1,
     source: Nested<Source> => 2,
     transforms: Repeated<Transform> => 3,
     slice: Nested<RowSlice> => 4,
 });
 
-crate::declare!(Query {
-    id: "storage.query",
-    version: 1,
-    policy: IO_POLICY,
-    response: QueryCompletion,
-    output: QueryOutput,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Idempotent,
-    grpc: ("harmos.storage.v1", "Storage", "Query"),
-    grant: |request: &Query| Some(crate::plugin::Grant::of("storage.query", request.source.grant_scope(),)),
-});
+pub struct Query;
+
+impl crate::operations::OperationDeclaration for Query {
+    type Request = QueryRequest;
+    type Response = QueryCompletion;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<QueryOutput>;
+    const ID: &'static str = "storage_query";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "Query"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        Some(crate::plugin::Grant::of("storage.query", request.source.grant_scope()))
+    }
+}
+
+impl crate::operations::RequestFor for QueryRequest {
+    type Operation = Query;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug)]
-pub struct Query {
+pub struct QueryRequest {
     pub at: StorageCursor,
     pub source: Source,
     pub transforms: Vec<Transform>,
@@ -70,7 +79,7 @@ pub struct Query {
 
 /* === Implementations === */
 
-impl Query {
+impl QueryRequest {
     pub fn validate(&self) -> Result<()> {
         self.source.validate()?;
         if self.transforms.len() > 64 {
@@ -80,7 +89,7 @@ impl Query {
     }
 }
 
-impl MemorySize for Query {
+impl MemorySize for QueryRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))

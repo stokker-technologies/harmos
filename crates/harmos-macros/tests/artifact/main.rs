@@ -29,7 +29,7 @@ const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V6:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
 
-const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.validate"];
+const SHARED: [&str; 3] = ["schematic_analyze", "schematic_route", "schematic_validate"];
 
 /* === Macros === */
 
@@ -96,14 +96,13 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
     assert_eq!(lifecycle.len(), 2);
     for (contract, action) in lifecycle.iter().zip(["initialize", "shutdown"]) {
         assert_eq!(contract["action"], action);
-        assert_eq!(contract["version"], 1);
+        assert_eq!(contract["identity"], "harmos.operation.v1");
         assert_eq!(
             contract["policy"],
             json!({
                 "timeout": {"secs": 10, "nanos": 0},
                 "attempt_timeout": {"secs": 10, "nanos": 0},
-                "retries": "never",
-                "restart": "never"
+                "retries": "never"
             })
         );
     }
@@ -122,11 +121,11 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: 
 fn artifacts_embed_metadata() {
     let native = SHARED
         .into_iter()
-        .chain(["schematic.analyze_exchange", "schematic.analyze_upload", "schematic.list_directories"])
+        .chain(["schematic_analyze_exchange", "schematic_analyze_upload", "schematic_list_directories"])
         .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
     // Only The Native Sidecar Publishes Analysis Progress, Through The Host
-    let publishing = BTreeSet::from(["host.publish"]);
+    let publishing = BTreeSet::from(["host_publish"]);
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();
 

@@ -7,18 +7,22 @@
  * ***
  */
 
-
 /* === Modules === */
 
 pub mod __harmos {
+    pub use harmos::{
+        __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RequestFor,
+        RowMetadata, StreamField, StreamSpec,
+    };
+    #[cfg(feature = "runtime")]
+    pub use harmos::{Dependencies, Operation, OperationContext, RegistrationBatch, Response};
     pub use harmos::{catalog, guest, listeners, operations, plugin, schema, sidecar, streams};
-    pub use harmos::{MemorySize, Message, MessageError, Metadata, RowMetadata, StreamField, StreamSpec, __private};
 }
 
 /* === Re-Exports === */
 
+pub use harmos::{catalog, lanes, listener, message, observer, operation, plugin, stream};
 pub use serde::*;
-pub use harmos::{stream, message, plugin, observer, listener, catalog, lanes, operation};
 
 /* === Imports === */
 
@@ -39,7 +43,9 @@ pub use harmos::{stream, message, plugin, observer, listener, catalog, lanes, op
 #[harmos::stream(id = "reading", window = 8)]
 #[harmos::message]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct Reading { pub value: u32 }
+pub struct Reading {
+    pub value: u32,
+}
 
 /* === Enums === */
 

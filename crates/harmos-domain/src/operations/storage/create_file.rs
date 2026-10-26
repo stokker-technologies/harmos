@@ -28,19 +28,27 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(CreateFile {
+product!(CreateFileRequest {
     mutation: Nested<MutationId> => 1,
     metadata: Nested<FileMetadata> => 2,
 });
 
-crate::declare!(CreateFile {
-    id: "storage.create_file",
-    version: 1,
-    policy: POLICY,
-    response: FileProducer,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct CreateFile;
+
+impl crate::operations::OperationDeclaration for CreateFile {
+    type Request = CreateFileRequest;
+    type Response = FileProducer;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_create_file";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for CreateFileRequest {
+    type Operation = CreateFile;
+}
 
 /* === Type Aliases === */
 
@@ -48,7 +56,7 @@ crate::declare!(CreateFile {
 
 // Open A Producing File Session For New Metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CreateFile {
+pub struct CreateFileRequest {
     pub mutation: MutationId,
     pub metadata: FileMetadata,
 }
@@ -59,7 +67,7 @@ pub struct CreateFile {
 
 /* === Implementations === */
 
-impl MemorySize for CreateFile {
+impl MemorySize for CreateFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))

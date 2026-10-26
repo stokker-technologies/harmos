@@ -28,26 +28,33 @@ use crate::operations::Visibility;
 
 /* === Macros === */
 
-product!(FollowStream {
+product!(FollowStreamRequest {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<StreamSelection> => 2,
 });
 
-crate::declare!(FollowStream {
-    id: "storage.follow_stream",
-    version: 1,
-    policy: STREAM_POLICY,
-    response: StorageCursor,
-    output: StoredRow,
-    visibility: Visibility::Host,
-});
+pub struct FollowStream;
+
+impl crate::operations::OperationDeclaration for FollowStream {
+    type Request = FollowStreamRequest;
+    type Response = StorageCursor;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<StoredRow>;
+    const ID: &'static str = "storage_follow_stream";
+    const POLICY: crate::operations::OperationPolicy = STREAM_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+}
+
+impl crate::operations::RequestFor for FollowStreamRequest {
+    type Operation = FollowStream;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowStream {
+pub struct FollowStreamRequest {
     pub after: Option<StorageCursor>,
     pub selection: StreamSelection,
 }
@@ -58,7 +65,7 @@ pub struct FollowStream {
 
 /* === Implementations === */
 
-impl MemorySize for FollowStream {
+impl MemorySize for FollowStreamRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))

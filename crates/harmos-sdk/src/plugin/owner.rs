@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, Operation, ServingError, WireTable, lifecycle};
+use crate::operations::{Contract, Dependencies, Operation, OperationContext, OperationDeclaration, ServingError, WireTable, lifecycle};
 
 /* === Constants === */
 
@@ -30,14 +30,14 @@ use crate::operations::{Contract, Operation, ServingError, WireTable, lifecycle}
 
 /* === Type Aliases === */
 
-pub type Table<P> = Arc<Mutex<WireTable<<P as Plugin>::Context>>>;
+pub type Table = Arc<Mutex<WireTable>>;
 type Transition<P> = Pin<Box<dyn Future<Output = (P, Result<(), Error<P>>, bool)> + Send>>;
 
 /* === Structs === */
 
 pub struct Owner<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
-    table: Weak<Mutex<WireTable<P::Context>>>,
+    table: Weak<Mutex<WireTable>>,
     contracts: Arc<[Contract]>,
     observers: Arc<[crate::inventory::observers::Declaration]>,
     retirement: Mutex<Retirement<P>>,
@@ -74,7 +74,7 @@ struct Slot<P: Plugin> {
 
 struct State<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
-    table: Weak<Mutex<WireTable<P::Context>>>,
+    table: Weak<Mutex<WireTable>>,
     plugin: Option<P>,
     work: Option<Transition<P>>,
     result: Option<Result<(), Error<P>>>,
@@ -103,16 +103,18 @@ enum Phase {
 /* === Implementations === */
 
 impl<P: Plugin> Owner<P> {
-    pub fn new(contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table<P>), Error<P>> {
-        Self::new_with_observers(contracts, capacity, Vec::new())
+    pub fn new(owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table), Error<P>> {
+        Self::new_with_observers(owner, contracts, capacity, Vec::new())
     }
 
     pub fn new_with_observers(
-        contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
-    ) -> Result<(Arc<Self>, Table<P>), Error<P>> {
+        assigned_owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
+    ) -> Result<(Arc<Self>, Table), Error<P>> {
         let definitions: Vec<_> = contracts.iter().map(|contract| contract.operation().clone()).collect();
         crate::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
-        let table = Arc::new(Mutex::new(WireTable::new(capacity)));
+        let mut serving = WireTable::new(assigned_owner).map_err(|error| Error::Serving(Arc::new(error)))?;
+        serving.capacity(capacity);
+        let table = Arc::new(Mutex::new(serving));
         let owner = Arc::new(Self {
             slot: Arc::new(Mutex::new(Slot { plugin: None, phase: Phase::Empty, attachment: None, generation_context: None })),
             table: Arc::downgrade(&table),
@@ -122,7 +124,9 @@ impl<P: Plugin> Owner<P> {
         });
         {
             let mut bindings = table.lock().map_err(|_| Error::Poisoned)?;
-            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>, _>(&mut bindings, Arc::clone(&owner))
+            let mut dependencies = Dependencies::new();
+            dependencies.insert(Arc::clone(&owner)).map_err(|error| Error::Dependency(Arc::new(error)))?;
+            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>>(&mut bindings, dependencies)
                 .map_err(|error| Error::Serving(Arc::new(error)))?;
         }
         Ok((owner, table))
@@ -194,7 +198,7 @@ impl<P: Plugin> Drop for RetirementLoan<P> {
 }
 
 impl<P: Plugin> Owner<P> {
-    fn prepare_initialize(&self, request: &lifecycle::Initialize) -> Result<State<P>, Error<P>> {
+    fn prepare_initialize(&self, request: &<lifecycle::Initialize as OperationDeclaration>::Request) -> Result<State<P>, Error<P>> {
         let generation_context = if request.generation_context.is_empty() {
             None
         } else {
@@ -295,24 +299,26 @@ impl<P: Plugin> Owner<P> {
 }
 
 impl<P: Plugin> Operation for Initializing<P> {
-    type Declaration = lifecycle::Initialize;
-    type Resources = Owner<P>;
+    type Request = <lifecycle::Initialize as OperationDeclaration>::Request;
+    type Response = ();
     type Error = Error<P>;
     type Endpoints = ();
-    type Context<'a> = &'a P::Context;
 
-    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
+    async fn initialize(context: OperationContext) -> Result<Self, Error<P>> {
+        let owner = context.dependency::<Owner<P>>().map_err(|error| Error::Dependency(Arc::new(error)))?;
         Ok(Self { owner, state: None })
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut lifecycle::Initialize, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: OperationContext, request: &mut <lifecycle::Initialize as OperationDeclaration>::Request,
+        _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if self.state.is_none() {
                 self.state = Some(self.owner.prepare_initialize(request)?);
             }
-            self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, context).await
+            let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+            self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, &carrier).await
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -327,18 +333,19 @@ impl<P: Plugin> Operation for Initializing<P> {
 }
 
 impl<P: Plugin> Operation for ShuttingDown<P> {
-    type Declaration = lifecycle::Shutdown;
-    type Resources = Owner<P>;
+    type Request = <lifecycle::Shutdown as OperationDeclaration>::Request;
+    type Response = ();
     type Error = Error<P>;
     type Endpoints = ();
-    type Context<'a> = &'a P::Context;
 
-    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
+    async fn initialize(context: OperationContext) -> Result<Self, Error<P>> {
+        let owner = context.dependency::<Owner<P>>().map_err(|error| Error::Dependency(Arc::new(error)))?;
         Ok(Self { owner, state: None })
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, _request: &mut lifecycle::Shutdown, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: OperationContext, _request: &mut <lifecycle::Shutdown as OperationDeclaration>::Request,
+        _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if self.state.is_none() {
@@ -346,7 +353,8 @@ impl<P: Plugin> Operation for ShuttingDown<P> {
             }
             let state = self.state.as_mut().ok_or(Error::Phase)?;
             if state.work.is_none() && state.result.is_none() {
-                state.context = Some(state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token)));
+                let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                state.context = Some(state.generation_context.map_or_else(|| (*carrier).clone(), |token| carrier.with_generation(token)));
                 state.start_shutdown()?;
             }
             state.finish().await?;

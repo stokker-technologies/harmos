@@ -24,15 +24,15 @@ use crate::operations::common::payload::payload;
 
 /* === Macros === */
 
-payload! { Status,
+payload! { StatusRequest,
     instance: u64 => (1, Kind::U64, Required),
 }
 
-payload! { Cancel,
+payload! { CancelRequest,
     instance: u64 => (1, Kind::U64, Required),
 }
 
-payload! { Watch,
+payload! { WatchRequest,
     instance: u64 => (1, Kind::U64, Required),
 }
 

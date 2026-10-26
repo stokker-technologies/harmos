@@ -26,24 +26,31 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(WatchDirectory { selection: Nested<DirectorySelection> => 1, include_existing: Flag => 2 });
-crate::declare!(WatchDirectory {
-    id: "storage.watch_directory",
-    version: 1,
-    policy: IO_POLICY,
-    response: DirectoryCompletion,
-    output: DirectoryEvent,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Idempotent,
-    grpc: ("harmos.storage.v1", "Storage", "WatchDirectory"),
-});
+product!(WatchDirectoryRequest { selection: Nested<DirectorySelection> => 1, include_existing: Flag => 2 });
+pub struct WatchDirectory;
+
+impl crate::operations::OperationDeclaration for WatchDirectory {
+    type Request = WatchDirectoryRequest;
+    type Response = DirectoryCompletion;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<DirectoryEvent>;
+    const ID: &'static str = "storage_watch_directory";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "WatchDirectory"));
+}
+
+impl crate::operations::RequestFor for WatchDirectoryRequest {
+    type Operation = WatchDirectory;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WatchDirectory {
+pub struct WatchDirectoryRequest {
     pub selection: DirectorySelection,
     pub include_existing: bool,
 }
@@ -54,7 +61,7 @@ pub struct WatchDirectory {
 
 /* === Implementations === */
 
-impl MemorySize for WatchDirectory {
+impl MemorySize for WatchDirectoryRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }

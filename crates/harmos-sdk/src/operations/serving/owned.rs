@@ -14,14 +14,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::{Answer, Finalization, Finished, Handler, Prepare, Prepared, ServingError, WireTable, guarded};
 use crate::Message;
-use crate::operations::{EndpointSet, Operation, OperationDeclaration, WireDeclaration};
+use crate::QualifiedId;
+use crate::operations::{Dependencies, EndpointSet, Operation, OperationContext, OperationDeclaration};
 
 /* === Constants === */
 
@@ -49,9 +49,9 @@ struct State<T: Operation> {
 }
 
 struct Physical<T: Operation> {
-    resources: Arc<T::Resources>,
+    dependencies: Dependencies,
     operation: Option<T>,
-    request: T::Declaration,
+    request: T::Request,
     endpoints: T::Endpoints,
     stopped: bool,
 }
@@ -75,161 +75,71 @@ enum Initialization {
 
 /* === Implementations === */
 
-impl<C: Send + Sync + 'static> WireTable<C> {
-    pub fn bind_operation<T>(&mut self, resources: Arc<T::Resources>) -> Result<(), ServingError>
+impl WireTable {
+    pub(crate) fn install<D, T>(&mut self, dependencies: Dependencies, contract: crate::operations::Contract) -> Result<(), ServingError>
     where
-        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = ()>,
+        D: OperationDeclaration,
+        T: Operation<Request = D::Request, Response = D::Response>,
     {
-        if self.closed || self.ordinary_closed {
-            return Err(ServingError::Closing);
-        }
-        let contract = WireDeclaration::of::<T::Declaration>().contract()?;
-        if contract.input().is_some() || contract.output().is_some() {
-            return Err(ServingError::Streaming { operation: T::Declaration::ID.to_owned() });
-        }
         #[cfg(feature = "grpc")]
-        let protobuf = T::Declaration::GRPC.is_some().then(super::protobuf::Codec::of::<T::Declaration>);
-        self.bind_owned_contract::<T>(
-            resources,
-            contract,
-            false,
-            false,
-            || {
-                Ok(Endpoints {
-                    endpoints: (),
-                    #[cfg(feature = "streaming")]
-                    streams: None,
-                })
-            },
-            #[cfg(feature = "grpc")]
-            protobuf,
-        )
-    }
-
-    // Bind a resident control: it runs until the host cancels it and is not
-    // charged against the ordinary invocation capacity.
-    pub fn bind_resident_operation<T>(&mut self, resources: Arc<T::Resources>) -> Result<(), ServingError>
-    where
-        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = ()>,
-    {
-        let policy = T::Declaration::POLICY;
-        if policy.timeout != crate::operations::UNBOUNDED || policy.attempt_timeout != crate::operations::UNBOUNDED {
-            return Err(ServingError::Catalog);
-        }
-        self.bind_operation::<T>(resources)?;
-        if let Some(handler) = self.handlers.get_mut(T::Declaration::ID) {
-            handler.resident = true;
-        }
-        Ok(())
-    }
-
-    // Bind the built-in observe control a sidecar serves for its observers.
-    pub fn bind_observe_control<T>(&mut self, resources: Arc<T::Resources>) -> Result<(), ServingError>
-    where
-        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = (), Declaration = crate::observers::Control>,
-    {
-        if self.closed || self.ordinary_closed {
-            return Err(ServingError::Closing);
-        }
-        self.bind_owned_contract::<T>(
-            resources,
-            crate::observers::contract()?,
-            false,
-            true,
-            || {
-                Ok(Endpoints {
-                    endpoints: (),
-                    #[cfg(feature = "streaming")]
-                    streams: None,
-                })
-            },
-            #[cfg(feature = "grpc")]
-            None,
-        )?;
-        if let Some(handler) = self.handlers.get_mut(crate::observers::Control::ID) {
-            handler.resident = true;
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "streaming")]
-    pub fn bind_streaming_operation<T>(&mut self, resources: Arc<T::Resources>, limits: super::WireStreamLimits) -> Result<(), ServingError>
-    where
-        T: for<'a> Operation<Context<'a> = &'a C>,
-        T::Endpoints: super::WireEndpoints,
-    {
-        use super::WireEndpoints;
-        if self.closed || self.ordinary_closed {
-            return Err(ServingError::Closing);
-        }
-        if T::Endpoints::item_types() == (None, None) {
-            return Err(ServingError::StreamUnsupported);
-        }
-        limits.validate()?;
-        let contract = WireDeclaration::of::<T::Declaration>().contract()?;
-        #[cfg(feature = "grpc")]
-        let protobuf = T::Declaration::GRPC.is_some().then(super::protobuf::Codec::of::<T::Declaration>);
-        self.bind_owned_contract::<T>(
-            resources,
-            contract,
-            false,
-            false,
-            move || {
-                let (endpoints, streams) = T::Endpoints::bind(limits)?;
-                Ok(Endpoints { endpoints, streams: Some(streams) })
-            },
-            #[cfg(feature = "grpc")]
-            protobuf,
-        )
-    }
-
-    #[cfg(feature = "streaming")]
-    pub(super) fn bind_catalog_operation<T>(&mut self, resources: Arc<T::Resources>) -> Result<(), ServingError>
-    where
-        T: for<'a> Operation<Context<'a> = &'a C>,
-        T::Endpoints: super::WireEndpoints,
-    {
-        use super::WireEndpoints;
+        let protobuf = D::GRPC.is_some().then(super::protobuf::Codec::of::<D>);
+        #[cfg(feature = "streaming")]
         let limits = self.stream_limits;
+        #[cfg(feature = "streaming")]
         if T::Endpoints::item_types() != (None, None) && limits.is_none() {
             return Err(ServingError::StreamLimits);
         }
-        let contract = WireDeclaration::of::<T::Declaration>().contract()?;
-        #[cfg(feature = "grpc")]
-        let protobuf = T::Declaration::GRPC.is_some().then(super::protobuf::Codec::of::<T::Declaration>);
-        self.bind_owned_contract::<T>(
-            resources,
+        #[cfg(not(feature = "streaming"))]
+        if T::Endpoints::item_types() != (None, None) {
+            return Err(ServingError::StreamUnsupported);
+        }
+        let observe = std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>();
+        self.bind_owned_contract::<D, T>(
+            dependencies,
             contract,
             false,
-            false,
+            observe,
             move || {
                 if let Some(endpoints) = T::Endpoints::empty() {
-                    return Ok(Endpoints { endpoints, streams: None });
+                    return Ok(Endpoints {
+                        endpoints,
+                        #[cfg(feature = "streaming")]
+                        streams: None,
+                    });
                 }
-                let (endpoints, streams) = T::Endpoints::bind(limits.ok_or(ServingError::StreamLimits)?)?;
-                Ok(Endpoints { endpoints, streams: Some(streams) })
+                #[cfg(feature = "streaming")]
+                {
+                    let (endpoints, streams) = T::Endpoints::bind_wire(limits.ok_or(ServingError::StreamLimits)?)?;
+                    Ok(Endpoints { endpoints, streams: Some(streams) })
+                }
+                #[cfg(not(feature = "streaming"))]
+                Err(ServingError::StreamUnsupported)
             },
             #[cfg(feature = "grpc")]
             protobuf,
-        )
+        )?;
+        if observe {
+            let id = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
+            self.handlers.get_mut(id.as_str()).expect("installed observe control").resident = true;
+        }
+        Ok(())
     }
 
-    pub(crate) fn bind_owned_lifecycle<T>(
-        &mut self, resources: Arc<T::Resources>, descriptor: crate::operations::lifecycle::Descriptor,
+    pub(crate) fn install_lifecycle<D, T>(
+        &mut self, dependencies: Dependencies, descriptor: crate::operations::lifecycle::Descriptor,
     ) -> Result<(), ServingError>
     where
-        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = ()>,
-        T::Declaration: crate::operations::lifecycle::SdkOperation,
+        D: crate::operations::lifecycle::SdkOperation,
+        T: Operation<Request = D::Request, Response = D::Response, Endpoints = ()>,
     {
-        use crate::operations::lifecycle::SdkOperation;
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
         }
-        if descriptor.action() != T::Declaration::ACTION {
+        if descriptor.action() != D::ACTION {
             return Err(ServingError::Catalog);
         }
-        self.bind_owned_contract::<T>(
-            resources,
+        self.bind_owned_contract::<D, T>(
+            dependencies,
             descriptor.into(),
             true,
             true,
@@ -245,17 +155,19 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         )
     }
 
-    fn bind_owned_contract<T>(
-        &mut self, resources: Arc<T::Resources>, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
+    fn bind_owned_contract<D, T>(
+        &mut self, dependencies: Dependencies, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
         endpoints: impl Fn() -> Result<Endpoints<T::Endpoints>, ServingError> + Send + Sync + 'static,
         #[cfg(feature = "grpc")] protobuf: Option<super::protobuf::Codec>,
     ) -> Result<(), ServingError>
     where
-        T: for<'a> Operation<Context<'a> = &'a C>,
+        D: OperationDeclaration,
+        T: Operation<Request = D::Request, Response = D::Response>,
     {
-        let id = T::Declaration::ID;
+        let qualified = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
+        let id = qualified.as_str();
         let (input, output) = T::Endpoints::item_types();
-        if (input, output) != crate::operations::item_types::<T::Declaration>()
+        if (input, output) != crate::operations::item_types::<D>()
             || input.is_some() != contract.input().is_some()
             || output.is_some() != contract.output().is_some()
         {
@@ -273,7 +185,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if marked && protobuf.is_none() {
             return Err(ServingError::Codec(crate::MessageError::borrowed("gRPC operation has no provider protobuf projection")));
         }
-        let prepare: Prepare<C> = Box::new(move |payload, grpc| {
+        let prepare: Prepare = Box::new(move |payload, grpc| {
             if grpc && !marked {
                 return Err(ServingError::Codec(crate::MessageError::borrowed("operation has no gRPC contract")));
             }
@@ -289,15 +201,15 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             };
             #[cfg(feature = "grpc")]
             let request = if let Some(codec) = selected {
-                let mut request = None::<T::Declaration>;
+                let mut request = None::<T::Request>;
                 (codec.decode)(&payload, &mut request).map_err(ServingError::Codec)?;
                 request.ok_or(ServingError::Catalog)?
             } else {
-                T::Declaration::decode(&payload).map_err(ServingError::Codec)?
+                T::Request::decode(&payload).map_err(ServingError::Codec)?
             };
             #[cfg(not(feature = "grpc"))]
-            let request = T::Declaration::decode(&payload).map_err(ServingError::Codec)?;
-            let grant = <T::Declaration as OperationDeclaration>::grant(&request);
+            let request = T::Request::decode(&payload).map_err(ServingError::Codec)?;
+            let grant = <D as OperationDeclaration>::grant(&request);
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             let endpoints = Endpoints {
@@ -311,7 +223,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                 #[cfg(feature = "streaming")]
                 streams: endpoints.streams,
                 physical: Some(Physical {
-                    resources: resources.clone(),
+                    dependencies: dependencies.clone(),
                     operation: None,
                     request,
                     endpoints: endpoints.endpoints,
@@ -326,18 +238,21 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             };
             Ok(Box::new(state))
         });
-        let handler =
-            Handler { lifecycle, builtin, resident: false, definition: contract.operation().clone(), contract: Some(contract), prepare };
+        let handler = Handler {
+            lifecycle,
+            builtin,
+            resident: false,
+            closing: false,
+            definition: contract.operation().clone(),
+            contract: Some(contract),
+            prepare,
+        };
         self.handlers.insert(id.to_owned(), handler);
         Ok(())
     }
 }
 
-impl<T, C> Prepared<C> for State<T>
-where
-    C: Send + Sync + 'static,
-    T: for<'a> Operation<Context<'a> = &'a C>,
-{
+impl<T: Operation> Prepared for State<T> {
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<super::WireStreams> {
         self.streams.clone()
@@ -347,7 +262,7 @@ where
         self.grant.clone()
     }
 
-    fn initialize<'a>(&'a mut self, context: &'a C) -> Finished<'a> {
+    fn initialize<'a>(&'a mut self, context: &'a OperationContext) -> Finished<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);
@@ -358,15 +273,16 @@ where
                 Initialization::Pending => self.initialization = Initialization::Started,
             }
             let physical = self.physical.as_mut().expect("original operation before cleanup");
-            let resources = Arc::clone(&physical.resources);
-            let operation = guarded(async { T::initialize(resources, context).await.map_err(operation_error::<T>) }).await?;
+            let context = context.for_registration(physical.dependencies.clone());
+            physical.dependencies = context.dependencies().clone();
+            let operation = guarded(async { T::initialize(context).await.map_err(operation_error::<T>) }).await?;
             physical.operation = Some(operation);
             self.initialization = Initialization::Ready;
             Ok(())
         })
     }
 
-    fn attempt<'a>(&'a mut self, context: &'a C) -> Answer<'a> {
+    fn attempt<'a>(&'a mut self, context: &'a OperationContext) -> Answer<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);
@@ -377,13 +293,19 @@ where
             let physical = self.physical.as_mut().expect("original initialized operation");
             guarded(async {
                 let operation = physical.operation.as_mut().expect("initialized operation");
-                let response =
-                    operation.run(context, &mut physical.request, &mut physical.endpoints).await.map_err(operation_error::<T>)?;
+                let response = operation
+                    .run(
+                        OperationContext::new(physical.dependencies.clone(), context.call.clone()),
+                        &mut physical.request,
+                        &mut physical.endpoints,
+                    )
+                    .await
+                    .map_err(operation_error::<T>)?;
                 #[cfg(feature = "grpc")]
                 if let Some(codec) = self.protobuf {
                     return (codec.encode)(&*response).map_err(ServingError::Codec);
                 }
-                Ok(response.encode_to_vec())
+                Ok(response.encode())
             })
             .await
         })

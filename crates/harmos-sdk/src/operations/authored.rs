@@ -15,12 +15,12 @@
 
 // Standard Library Imports
 use std::future::Future;
-use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-use super::{FailureKind, OperationDeclaration};
+use super::{FailureKind, OperationContext};
+use crate::Portable;
 
 /* === Constants === */
 
@@ -34,20 +34,39 @@ use super::{FailureKind, OperationDeclaration};
 
 /* === Traits === */
 
-pub trait EndpointSet: Send + 'static {
+pub trait EndpointSet: Send + Sized + 'static {
+    fn empty() -> Option<Self> {
+        None
+    }
+
+    #[cfg(feature = "streaming")]
+    fn bind_wire(_limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        Err(super::ServingError::StreamUnsupported)
+    }
+
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>);
     fn transferred(&self) -> bool {
         Self::item_types() != (None, None)
     }
 }
 
-pub trait InputEndpoint: Send + 'static {
+pub trait InputEndpoint: Send + Sized + 'static {
+    #[cfg(feature = "streaming")]
+    fn bind_wire(_limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        Err(super::ServingError::StreamUnsupported)
+    }
+
     type Item: Send + 'static;
     fn transferred(&self) -> bool {
         true
     }
 }
-pub trait OutputEndpoint: Send + 'static {
+pub trait OutputEndpoint: Send + Sized + 'static {
+    #[cfg(feature = "streaming")]
+    fn bind_wire(_limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        Err(super::ServingError::StreamUnsupported)
+    }
+
     type Item: Send + 'static;
     fn transferred(&self) -> bool {
         true
@@ -55,21 +74,16 @@ pub trait OutputEndpoint: Send + 'static {
 }
 
 pub trait Operation: Send + Sized + 'static {
-    type Declaration: OperationDeclaration;
-    type Resources: Send + Sync + 'static;
+    type Request: Portable;
+    type Response: Portable;
     type Error: std::error::Error + Send + Sync + 'static;
-    type Context<'a>: Send;
     type Endpoints: EndpointSet;
 
-    // Construct the operation for one invocation from its resources and the
-    // first attempt's context; stop and cleanup run only after success.
-    fn initialize<'ctx>(
-        resources: Arc<Self::Resources>, context: Self::Context<'ctx>,
-    ) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn initialize(context: OperationContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
-    fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Self::Declaration, endpoints: &mut Self::Endpoints,
-    ) -> impl Future<Output = Result<super::Response<<Self::Declaration as OperationDeclaration>::Response>, Self::Error>> + Send;
+    fn run(
+        &mut self, context: OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
+    ) -> impl Future<Output = Result<super::Response<Self::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -91,12 +105,22 @@ pub trait Operation: Send + Sized + 'static {
 /* === Implementations === */
 
 impl EndpointSet for () {
+    fn empty() -> Option<Self> {
+        Some(())
+    }
     fn item_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
         (None, None)
     }
 }
 
 impl<I: InputEndpoint, O: OutputEndpoint> EndpointSet for (I, O) {
+    #[cfg(feature = "streaming")]
+    fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        let (input, incoming) = I::bind_wire(limits)?;
+        let (output, outgoing) = O::bind_wire(limits)?;
+        Ok(((input, output), incoming.combine(outgoing)))
+    }
+
     fn transferred(&self) -> bool {
         self.0.transferred() || self.1.transferred()
     }

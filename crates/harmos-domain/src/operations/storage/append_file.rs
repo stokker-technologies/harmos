@@ -28,21 +28,29 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(AppendFile {
+product!(AppendFileRequest {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
     offset: Unsigned => 3,
     bytes: Bytes => 4,
 });
 
-crate::declare!(AppendFile {
-    id: "storage.append_file",
-    version: 1,
-    policy: POLICY,
-    response: FileProducer,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct AppendFile;
+
+impl crate::operations::OperationDeclaration for AppendFile {
+    type Request = AppendFileRequest;
+    type Response = FileProducer;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_append_file";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for AppendFileRequest {
+    type Operation = AppendFile;
+}
 
 /* === Type Aliases === */
 
@@ -50,7 +58,7 @@ crate::declare!(AppendFile {
 
 // Append Bytes At An Offset Of A Producing File Session.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AppendFile {
+pub struct AppendFileRequest {
     pub mutation: MutationId,
     pub session: FileSession,
     pub offset: u64,
@@ -63,7 +71,7 @@ pub struct AppendFile {
 
 /* === Implementations === */
 
-impl MemorySize for AppendFile {
+impl MemorySize for AppendFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))

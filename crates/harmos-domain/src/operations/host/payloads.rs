@@ -26,7 +26,7 @@ use crate::{Identifier, MemorySize};
 
 /* === Macros === */
 
-product!(Catalog {
+product!(CatalogRequest {
     kind: Code<CatalogKind> => 1,
     schema: Optional<Id> => 2,
     after: Optional<Text> => 3,
@@ -43,7 +43,7 @@ coded!(CatalogKind { Operations, Schemas, Streams, Objects });
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Catalog {
+pub struct CatalogRequest {
     pub kind: CatalogKind,
     pub schema: Option<Identifier>,
     pub after: Option<String>,
@@ -73,7 +73,7 @@ pub enum CatalogKind {
 
 /* === Implementations === */
 
-impl Catalog {
+impl CatalogRequest {
     // Stored Data Follows The Storage Read Grant Grammar; Operation Discovery
     // Keeps Its Per-Contract Conditional Access.
     pub fn required_grant(&self) -> Option<Grant> {
@@ -87,7 +87,7 @@ impl Catalog {
     }
 }
 
-impl MemorySize for Catalog {
+impl MemorySize for CatalogRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.schema.as_ref().map_or(0, |schema| schema.as_str().len()))

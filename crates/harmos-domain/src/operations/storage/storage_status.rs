@@ -28,16 +28,24 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(StorageStatus {});
+product!(StorageStatusRequest {});
 
-crate::declare!(StorageStatus {
-    id: "storage.status",
-    version: 1,
-    policy: POLICY,
-    response: StorageInfo,
-    visibility: Visibility::Host,
-    replay: ReplaySafety::Idempotent,
-});
+pub struct StorageStatus;
+
+impl crate::operations::OperationDeclaration for StorageStatus {
+    type Request = StorageStatusRequest;
+    type Response = StorageInfo;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_status";
+    const POLICY: crate::operations::OperationPolicy = POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl crate::operations::RequestFor for StorageStatusRequest {
+    type Operation = StorageStatus;
+}
 
 /* === Type Aliases === */
 
@@ -45,7 +53,7 @@ crate::declare!(StorageStatus {
 
 // Read The Storage Frontiers, Mutation Window And File Batch Size.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct StorageStatus {}
+pub struct StorageStatusRequest {}
 
 /* === Enums === */
 
@@ -53,7 +61,7 @@ pub struct StorageStatus {}
 
 /* === Implementations === */
 
-impl MemorySize for StorageStatus {
+impl MemorySize for StorageStatusRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }

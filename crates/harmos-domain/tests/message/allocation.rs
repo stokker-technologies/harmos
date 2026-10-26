@@ -245,8 +245,8 @@ fn peak_fits_preflight() {
     let (encoded, measured) = measure(|| harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap());
     assert_eq!(measured.allocations, 2, "{measured:?}");
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
-    assert_eq!(measured.peak, harmos_domain::Message::encoded_len(&row) + encoded.capacity());
-    assert_eq!(encoded, harmos_domain::Message::encode_to_vec(&Delivery::<Selections>::new(context, row).unwrap()));
+    assert_eq!(measured.peak, harmos_domain::Message::encoded_size(&row) + encoded.capacity());
+    assert_eq!(encoded, harmos_domain::Message::encode(&Delivery::<Selections>::new(context, row).unwrap()));
 }
 
 #[test]

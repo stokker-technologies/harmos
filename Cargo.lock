@@ -1075,6 +1075,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror",
  "time",
@@ -1165,6 +1166,7 @@ dependencies = [
  "prost-reflect",
  "protoc-bin-vendored",
  "schematic-domain",
+ "schematic-operations",
  "semver",
  "serde",
  "serde_json",
@@ -1213,6 +1215,7 @@ dependencies = [
  "harmos-sdk",
  "libc",
  "postcard",
+ "schematic-operations",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2276,6 +2279,14 @@ dependencies = [
  "harmos-domain",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "schematic-operations"
+version = "0.1.6"
+dependencies = [
+ "harmos",
+ "schematic-domain",
 ]
 
 [[package]]

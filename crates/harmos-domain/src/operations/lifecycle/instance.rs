@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use super::{Cancel, InstanceState, Status, Watch};
+use super::{CancelRequest, InstanceState, StatusRequest, WatchRequest};
 use crate::operations::instance::{self, Id, Outcome, Phase};
 use crate::operations::{OperationPolicy, Visibility};
 
@@ -33,36 +33,59 @@ const WATCH_POLICY: OperationPolicy = OperationPolicy {
 
 /* === Macros === */
 
-crate::declare!(Status {
-    id: "host.operations.status",
-    version: 1,
-    policy: crate::operations::host::POLICY,
-    response: InstanceState,
-    description: "Report the status of an operation instance the caller submitted",
-    visibility: Visibility::Shared,
-    grpc: ("harmos.host.v1", "Operations", "Status"),
-});
+pub struct Status;
 
-crate::declare!(Cancel {
-    id: "host.operations.cancel",
-    version: 1,
-    policy: crate::operations::host::POLICY,
-    response: InstanceState,
-    description: "Request cancellation of an operation instance the caller submitted",
-    visibility: Visibility::Shared,
-    grpc: ("harmos.host.v1", "Operations", "Cancel"),
-});
+impl crate::operations::OperationDeclaration for Status {
+    type Request = StatusRequest;
+    type Response = InstanceState;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "host_operations_status";
+    const POLICY: crate::operations::OperationPolicy = crate::operations::host::POLICY;
+    const DESCRIPTION: &'static str = "Report the status of an operation instance the caller submitted";
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.host.v1", "Operations", "Status"));
+}
 
-crate::declare!(Watch {
-    id: "host.operations.watch",
-    version: 1,
-    policy: WATCH_POLICY,
-    response: InstanceState,
-    output: InstanceState,
-    description: "Stream the status changes of an operation instance the caller submitted until it settles",
-    visibility: Visibility::Shared,
-    grpc: ("harmos.host.v1", "Operations", "Watch"),
-});
+impl crate::operations::RequestFor for StatusRequest {
+    type Operation = Status;
+}
+
+pub struct Cancel;
+
+impl crate::operations::OperationDeclaration for Cancel {
+    type Request = CancelRequest;
+    type Response = InstanceState;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "host_operations_cancel";
+    const POLICY: crate::operations::OperationPolicy = crate::operations::host::POLICY;
+    const DESCRIPTION: &'static str = "Request cancellation of an operation instance the caller submitted";
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.host.v1", "Operations", "Cancel"));
+}
+
+impl crate::operations::RequestFor for CancelRequest {
+    type Operation = Cancel;
+}
+
+pub struct Watch;
+
+impl crate::operations::OperationDeclaration for Watch {
+    type Request = WatchRequest;
+    type Response = InstanceState;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<InstanceState>;
+    const ID: &'static str = "host_operations_watch";
+    const POLICY: crate::operations::OperationPolicy = WATCH_POLICY;
+    const DESCRIPTION: &'static str = "Stream the status changes of an operation instance the caller submitted until it settles";
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.host.v1", "Operations", "Watch"));
+}
+
+impl crate::operations::RequestFor for WatchRequest {
+    type Operation = Watch;
+}
 
 /* === Type Aliases === */
 
@@ -74,19 +97,19 @@ crate::declare!(Watch {
 
 /* === Implementations === */
 
-impl Status {
+impl StatusRequest {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }
 }
 
-impl Watch {
+impl WatchRequest {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }
 }
 
-impl Cancel {
+impl CancelRequest {
     pub fn of(instance: Id) -> Self {
         Self { instance: instance.value() }
     }

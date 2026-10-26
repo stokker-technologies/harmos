@@ -112,7 +112,7 @@ mod tests {
         let retained = input.graph_owner();
         let duplicate = input.clone();
         assert!(Arc::ptr_eq(&retained, &duplicate.graph_owner()));
-        let encoded = input.encode_to_vec();
+        let encoded = input.encode();
         let decoded = SchemaInput::decode(&encoded).unwrap();
         assert_eq!(decoded, input);
         assert!(input.memory_size() >= input.graph().memory_size());

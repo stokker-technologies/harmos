@@ -28,28 +28,37 @@ use crate::operations::Visibility;
 
 /* === Macros === */
 
-product!(FollowFile {
+product!(FollowFileRequest {
     source: Nested<FileSource> => 1,
     start: Nested<FollowStart> => 2,
 });
 
-crate::declare!(FollowFile {
-    id: "storage.follow_file",
-    version: 1,
-    policy: IO_POLICY,
-    response: FileCompletion,
-    output: FileEvent,
-    visibility: Visibility::Shared,
-    grpc: ("harmos.storage.v1", "Storage", "FollowFile"),
-    grant: |request: &FollowFile| request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.follow_file", scope)),
-});
+pub struct FollowFile;
+
+impl crate::operations::OperationDeclaration for FollowFile {
+    type Request = FollowFileRequest;
+    type Response = FileCompletion;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<FileEvent>;
+    const ID: &'static str = "storage_follow_file";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "FollowFile"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.follow_file", scope))
+    }
+}
+
+impl crate::operations::RequestFor for FollowFileRequest {
+    type Operation = FollowFile;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowFile {
+pub struct FollowFileRequest {
     pub source: FileSource,
     pub start: FollowStart,
 }
@@ -60,7 +69,7 @@ pub struct FollowFile {
 
 /* === Implementations === */
 
-impl MemorySize for FollowFile {
+impl MemorySize for FollowFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))

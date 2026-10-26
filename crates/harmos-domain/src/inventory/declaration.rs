@@ -21,7 +21,7 @@ use serde::Deserialize;
 // Local Imports
 use super::contributions::{self, Section};
 use super::{contracts, listeners, observers, publications};
-use crate::operations::{Contract, Definition};
+use crate::operations::{Contract, OperationDefinition};
 use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
 
 /* === Constants === */
@@ -55,7 +55,7 @@ pub struct Declaration {
     pub version: Version,
     pub description: String,
     pub config: String,
-    pub operations: Vec<Definition>,
+    pub operations: Vec<OperationDefinition>,
     pub contracts: contracts::Manifest,
     pub listeners: Vec<crate::listeners::Definition>,
     pub streams: Vec<StreamDeclaration>,

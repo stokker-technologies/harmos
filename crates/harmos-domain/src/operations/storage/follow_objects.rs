@@ -28,26 +28,33 @@ use crate::operations::Visibility;
 
 /* === Macros === */
 
-product!(FollowObjects {
+product!(FollowObjectsRequest {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<ObjectSelection> => 2,
 });
 
-crate::declare!(FollowObjects {
-    id: "storage.follow_objects",
-    version: 1,
-    policy: STREAM_POLICY,
-    response: StorageCursor,
-    output: ObjectEntry,
-    visibility: Visibility::Host,
-});
+pub struct FollowObjects;
+
+impl crate::operations::OperationDeclaration for FollowObjects {
+    type Request = FollowObjectsRequest;
+    type Response = StorageCursor;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<ObjectEntry>;
+    const ID: &'static str = "storage_follow_objects";
+    const POLICY: crate::operations::OperationPolicy = STREAM_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Host;
+}
+
+impl crate::operations::RequestFor for FollowObjectsRequest {
+    type Operation = FollowObjects;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowObjects {
+pub struct FollowObjectsRequest {
     pub after: Option<StorageCursor>,
     pub selection: ObjectSelection,
 }
@@ -58,7 +65,7 @@ pub struct FollowObjects {
 
 /* === Implementations === */
 
-impl MemorySize for FollowObjects {
+impl MemorySize for FollowObjectsRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))

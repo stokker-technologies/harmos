@@ -7,7 +7,7 @@
  * ***
  */
 
-// HashFile Declaration.
+// HashFileRequest Declaration.
 
 /* === Modules === */
 
@@ -30,28 +30,38 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(HashFile {
+product!(HashFileRequest {
     source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
 });
 
-crate::declare!(HashFile {
-    id: "storage.hash_file",
-    version: 1,
-    policy: IO_POLICY,
-    response: FileHash,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Idempotent,
-    grpc: ("harmos.storage.v1", "Storage", "HashFile"),
-    grant: |request: &HashFile| request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.hash_file", scope)),
-});
+pub struct HashFile;
+
+impl crate::operations::OperationDeclaration for HashFile {
+    type Request = HashFileRequest;
+    type Response = FileHash;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_hash_file";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "HashFile"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.hash_file", scope))
+    }
+}
+
+impl crate::operations::RequestFor for HashFileRequest {
+    type Operation = HashFile;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HashFile {
+pub struct HashFileRequest {
     pub source: FileSource,
     pub range: ByteRange,
 }
@@ -62,7 +72,7 @@ pub struct HashFile {
 
 /* === Implementations === */
 
-impl MemorySize for HashFile {
+impl MemorySize for HashFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))

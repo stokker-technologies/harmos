@@ -81,7 +81,7 @@ impl<T: Message> Prepared<T> {
 
 #[tracing::instrument(target = "harmos::grpc", name = "grpc.protobuf.encode", level = "trace", skip_all)]
 pub fn encode<T: Message + Described>(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
-    transcode::encode(&T::DEFINITION, &value.encode_to_vec(), bytes)
+    transcode::encode(&T::DEFINITION, &value.encode(), bytes)
 }
 
 #[tracing::instrument(target = "harmos::grpc", name = "grpc.protobuf.decode", level = "trace", skip_all)]
@@ -121,7 +121,7 @@ mod tests {
         let prepared = prepare::<Row>(DecodeInput::new(&encoded)).unwrap();
         let memory = prepared.memory();
         let canonical = prepared.postcard.capacity();
-        assert_eq!(prepared.postcard, value.encode_to_vec());
+        assert_eq!(prepared.postcard, value.encode());
         let decoded = prepared.decode().unwrap();
         assert_eq!(decoded.bytes, value.bytes);
         assert_eq!(decoded.label, value.label);

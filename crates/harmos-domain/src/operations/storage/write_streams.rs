@@ -29,21 +29,27 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(WriteStreams {
+product!(WriteStreamsRequest {
     scope: Optional<Id> => 1,
 });
 
-crate::declare!(WriteStreams {
-    id: "storage.write_streams",
-    version: 1,
-    policy: IO_POLICY,
-    response: WriteCompletion,
-    input: DataBatch,
-    output: WriteReceipt,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Unknown,
-    grpc: ("harmos.storage.v1", "Storage", "WriteStreams"),
-});
+pub struct WriteStreams;
+
+impl crate::operations::OperationDeclaration for WriteStreams {
+    type Request = WriteStreamsRequest;
+    type Response = WriteCompletion;
+    type Input = crate::operations::Stream<DataBatch>;
+    type Output = crate::operations::Stream<WriteReceipt>;
+    const ID: &'static str = "storage_write_streams";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Unknown;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "WriteStreams"));
+}
+
+impl crate::operations::RequestFor for WriteStreamsRequest {
+    type Operation = WriteStreams;
+}
 
 /* === Type Aliases === */
 
@@ -51,7 +57,7 @@ crate::declare!(WriteStreams {
 
 // Admit Streamed Arrow Batches Of Stream Rows Into One Optional Scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteStreams {
+pub struct WriteStreamsRequest {
     pub scope: Option<Identifier>,
 }
 
@@ -61,7 +67,7 @@ pub struct WriteStreams {
 
 /* === Implementations === */
 
-impl MemorySize for WriteStreams {
+impl MemorySize for WriteStreamsRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.scope.memory_size().saturating_sub(std::mem::size_of_val(&self.scope)))
     }

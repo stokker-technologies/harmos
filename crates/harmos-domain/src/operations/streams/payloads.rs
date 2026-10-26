@@ -26,7 +26,7 @@ use crate::operations::common::payload::payload;
 
 // One Ordered Batch On One Stream: The Head Row Carries `sequence`; Each
 // Following Row Takes The Next Sequence. A Single Row Has No Following Rows.
-payload! { Publish,
+payload! { PublishRequest,
     stream: String => (1, Kind::String, Required),
     schema: u32 => (2, Kind::U32, Required),
     sequence: Option<u64> => (3, Kind::U64, Optional),

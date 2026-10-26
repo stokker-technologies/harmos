@@ -10,7 +10,10 @@
 /* === Modules === */
 
 pub(crate) mod allocation;
+mod identity;
 pub mod postcard;
+
+pub use identity::{Digest, Fingerprint};
 
 /* === Re-Exports === */
 
@@ -89,15 +92,14 @@ pub struct MessageError(Cow<'static, str>);
 /* === Traits === */
 
 pub trait Message: Sized + Send + Sync {
-    fn encode_to_vec(&self) -> Vec<u8>;
+    const CODEC: &'static str;
+    fn encode(&self) -> Vec<u8>;
     fn encode_into(&self, bytes: &mut Vec<u8>) {
-        bytes.extend_from_slice(&self.encode_to_vec());
+        bytes.extend_from_slice(&self.encode());
     }
-    fn encoded_len(&self) -> usize;
+    fn encoded_size(&self) -> usize;
     fn decode(bytes: &[u8]) -> Result<Self, MessageError>;
-    fn decoding_memory(_bytes: &[u8]) -> Result<usize, MessageError> {
-        Err(MessageError::borrowed("decoding memory bound is unsupported"))
-    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError>;
 }
 
 pub trait MemorySize: Sized {
@@ -110,20 +112,39 @@ pub trait MemorySize: Sized {
 
 // A Value That Crosses A Process Boundary: Every Operation Request, Response
 // And Stream Item. Transport Codecs Derive From The Postcard Value And Its Shape.
-pub trait Portable: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {}
-
-pub trait Storable: Message + MemorySize {
-    fn encoded_size(&self) -> usize {
-        self.encoded_len()
-    }
+pub trait Portable: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {
+    fn fingerprint() -> Fingerprint;
+    fn digest(&self) -> Digest;
 }
+
+pub trait Storable: Message + MemorySize {}
 
 /* === Implementations === */
 
-impl<T> Portable for T where T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static {}
+impl<T> Portable for T
+where
+    T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static,
+{
+    fn fingerprint() -> Fingerprint {
+        let schema = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &crate::config::SchemaSettings::default())
+            .expect("valid portable schema");
+        let value = schema.root().expect("portable schema root");
+        crate::schema::identity::fingerprint(value, T::CODEC).expect("valid portable schema identity")
+    }
+
+    fn digest(&self) -> Digest {
+        use sha2::{Digest as _, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"harmos.content.v1\0");
+        hash.update(Self::fingerprint().0);
+        hash.update(self.encode());
+        Digest(hash.finalize().into())
+    }
+}
 
 impl<T: PostcardValue> Message for T {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.postcard.v1";
+    fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.size());
         self.write(&mut bytes);
         bytes
@@ -131,7 +152,7 @@ impl<T: PostcardValue> Message for T {
     fn encode_into(&self, bytes: &mut Vec<u8>) {
         self.write(bytes);
     }
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.size()
     }
     fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {

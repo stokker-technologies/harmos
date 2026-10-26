@@ -93,10 +93,10 @@ impl Described for StorageCursor {
 /* === Public Functions === */
 
 pub fn encode_bounded<T: Message>(value: &T, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
-    if value.encoded_len() > max_bytes.get() {
+    if value.encoded_size() > max_bytes.get() {
         return Err(bound_error());
     }
-    Ok(value.encode_to_vec())
+    Ok(value.encode())
 }
 
 pub fn decode_bounded<T: Message + MemorySize>(bytes: &[u8], max_bytes: NonZeroUsize) -> Result<T> {

@@ -24,7 +24,7 @@ use crate::PREFIX;
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
 use crate::operations::{
-    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration, lifecycle,
+    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility, WireDeclaration, lifecycle,
 };
 use crate::plugin::{Grant, Requirement};
 use crate::schema::declaration::Named;
@@ -87,8 +87,12 @@ struct Decoded {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NamedContract {
-    pub operation: crate::operations::Definition,
-    pub version: u32,
+    pub operation: NamedOperation,
+    pub identity: String,
+    pub payload_codec: String,
+    pub response_codec: String,
+    pub input_codec: Option<String>,
+    pub output_codec: Option<String>,
     pub codec: crate::operations::Codec,
     pub request: String,
     pub response: String,
@@ -119,7 +123,25 @@ pub struct NamedManifest {
     pub owner: String,
     pub provides: Vec<NamedContract>,
     pub requires: Vec<NamedRequired>,
-    pub lifecycle: [lifecycle::Descriptor; 2],
+    pub lifecycle: [NamedLifecycle; 2],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedOperation {
+    pub id: crate::Identifier,
+    pub description: String,
+    pub policy: OperationPolicy,
+    pub visibility: Visibility,
+    pub replay: ReplaySafety,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedLifecycle {
+    pub action: lifecycle::Action,
+    pub identity: String,
+    pub policy: OperationPolicy,
 }
 
 pub(crate) struct Encoder<const N: usize> {
@@ -186,7 +208,24 @@ impl NamedContract {
         }
         let schema = Schema::from_named_roots(&roots, declarations, settings)?;
         let schema = super::retain_schema(schema, settings)?;
-        Ok(Contract::new(self.operation, self.version, self.codec, schema)?.with_grpc(self.grpc)?)
+        if self.identity != "harmos.operation.v1" {
+            return Err(Error::Identity);
+        }
+        for codec in [Some(self.payload_codec), Some(self.response_codec), self.input_codec, self.output_codec].into_iter().flatten() {
+            if codec != "harmos.postcard.v1" {
+                return Err(crate::operations::ContractError::Codec { codec }.into());
+            }
+        }
+        let fingerprint = crate::schema::identity::contract(self.operation.id.as_str(), &schema, self.codec.id())?;
+        let operation = crate::OperationDefinition {
+            id: self.operation.id,
+            description: self.operation.description,
+            policy: self.operation.policy,
+            visibility: self.operation.visibility,
+            replay: self.operation.replay,
+            fingerprint,
+        };
+        Ok(Contract::new(operation, fingerprint, self.codec, schema)?.with_grpc(self.grpc)?)
     }
 }
 
@@ -201,7 +240,15 @@ impl NamedManifest {
             .into_iter()
             .map(|entry| Ok(Required { contract: entry.contract.resolve(declarations, settings)?, grants: entry.grants }))
             .collect::<Result<_, Error>>()?;
-        let manifest = Manifest { facility: self.facility, owner: self.owner, provides, requires, lifecycle: self.lifecycle };
+        let resolve = |entry: NamedLifecycle| -> Result<lifecycle::Descriptor, Error> {
+            if entry.identity != "harmos.operation.v1" {
+                return Err(Error::Identity);
+            }
+            Ok(lifecycle::Descriptor::new(entry.action, entry.policy)?)
+        };
+        let [initialize, shutdown] = self.lifecycle;
+        let lifecycle = [resolve(initialize)?, resolve(shutdown)?];
+        let manifest = Manifest { facility: self.facility, owner: self.owner, provides, requires, lifecycle };
         validate(&manifest)?;
         Ok(manifest)
     }
@@ -358,8 +405,18 @@ pub(crate) const fn valid_identity(facility: &str, owner: &str) -> bool {
 pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDeclaration) {
     out.raw(b"{\"operation\":");
     declaration(out, &entry.operation);
-    out.raw(b",\"version\":");
-    out.number(entry.version as u64);
+    out.raw(b",\"identity\":\"harmos.operation.v1\",\"payload_codec\":");
+    out.quoted(entry.codec);
+    out.raw(b",\"response_codec\":");
+    out.quoted(entry.response_codec);
+    if let Some(codec) = entry.input_codec {
+        out.raw(b",\"input_codec\":");
+        out.quoted(codec);
+    }
+    if let Some(codec) = entry.output_codec {
+        out.raw(b",\"output_codec\":");
+        out.quoted(codec);
+    }
     out.raw(b",\"codec\":\"postcard\",\"request\":");
     out.quoted(entry.request.name);
     out.raw(b",\"response\":");
@@ -409,19 +466,6 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
             out.raw(b"}}");
         }
     }
-    out.raw(b",\"restart\":");
-    match value.restart {
-        RestartPolicy::Never => out.quoted("never"),
-        RestartPolicy::OnTransient { credit, sustained_health, backoff: value } => {
-            out.raw(b"{\"on_transient\":{\"credit\":");
-            out.number(credit as u64);
-            out.raw(b",\"sustained_health\":");
-            duration(out, sustained_health);
-            out.raw(b",\"backoff\":");
-            backoff(out, value);
-            out.raw(b"}}");
-        }
-    }
     out.raw(b"}");
 }
 
@@ -461,9 +505,9 @@ const fn encoded<const N: usize>(
     tree(&mut out, provides, &mut true);
     out.raw(b"],\"requires\":[");
     required(&mut out, requires, &mut true);
-    out.raw(b"],\"lifecycle\":[{\"action\":\"initialize\",\"version\":1,\"policy\":");
+    out.raw(b"],\"lifecycle\":[{\"action\":\"initialize\",\"identity\":\"harmos.operation.v1\",\"policy\":");
     policy(&mut out, lifecycle[0]);
-    out.raw(b"},{\"action\":\"shutdown\",\"version\":1,\"policy\":");
+    out.raw(b"},{\"action\":\"shutdown\",\"identity\":\"harmos.operation.v1\",\"policy\":");
     policy(&mut out, lifecycle[1]);
     out.raw(b"}]}\0");
     out

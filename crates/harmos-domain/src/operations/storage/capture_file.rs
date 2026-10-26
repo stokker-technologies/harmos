@@ -7,7 +7,7 @@
  * ***
  */
 
-// CaptureFile Declaration.
+// CaptureFileRequest Declaration.
 
 /* === Modules === */
 
@@ -30,30 +30,40 @@ use crate::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(CaptureFile {
+product!(CaptureFileRequest {
     source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
     metadata: Nested<FileMetadata> => 3,
     consistency: Code<CaptureConsistency> => 4,
 });
 
-crate::declare!(CaptureFile {
-    id: "storage.capture_file",
-    version: 1,
-    policy: IO_POLICY,
-    response: FileReference,
-    visibility: Visibility::Shared,
-    replay: ReplaySafety::Unknown,
-    grpc: ("harmos.storage.v1", "Storage", "CaptureFile"),
-    grant: |request: &CaptureFile| request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.capture_file", scope)),
-});
+pub struct CaptureFile;
+
+impl crate::operations::OperationDeclaration for CaptureFile {
+    type Request = CaptureFileRequest;
+    type Response = FileReference;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "storage_capture_file";
+    const POLICY: crate::operations::OperationPolicy = IO_POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Unknown;
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "CaptureFile"));
+    fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
+        request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.capture_file", scope))
+    }
+}
+
+impl crate::operations::RequestFor for CaptureFileRequest {
+    type Operation = CaptureFile;
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CaptureFile {
+pub struct CaptureFileRequest {
     pub source: FileSource,
     pub range: ByteRange,
     pub metadata: FileMetadata,
@@ -66,7 +76,7 @@ pub struct CaptureFile {
 
 /* === Implementations === */
 
-impl MemorySize for CaptureFile {
+impl MemorySize for CaptureFileRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))

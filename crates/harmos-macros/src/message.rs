@@ -21,7 +21,7 @@ mod postcard;
 use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{Error, Fields, GenericArgument, Meta, PathArguments, Token, Type, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 // Local Imports
 use crate::path::{self, HarmosPath};
@@ -86,7 +86,8 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
                 format!("message fields `{previous}` and `{name}` collide at protobuf tag {number}; rename a field explicitly"),
             ));
         }
-        let (_, kind, cardinality) = encoding(&field.ty, &harmos)?;
+        let (_, kind, cardinality) = encoding(&field.ty, &harmos)
+            .map_err(|error| Error::new(field.span(), format!("field `{name}` of type `{}`: {error}", field.ty.to_token_stream())))?;
         fields.push(quote! {
             #harmos::schema::graph::Field {
                 name: ::std::borrow::Cow::Borrowed(#name), tag: #number,
@@ -96,6 +97,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     }
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
     let declaration = composition::declare(&mut item, &harmos, skip_debug)?;
+    let gates = crate::operation::configuration(&item.attrs)?;
     let name = &item.ident;
     let schema = described(name, quote!(&[#(#fields),*]), quote!(), &harmos);
     let owned_fields = item.fields.iter().map(|field| {
@@ -112,22 +114,25 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     });
     Ok(quote! {
         #declaration
-        #postcard
+        #(#gates)*
+        const _: () = {
+            #postcard
 
-        impl #harmos::MemorySize for #name {
-            fn memory_size(&self) -> usize {
-                let bytes = ::std::mem::size_of::<Self>();
+            impl #harmos::MemorySize for #name {
+                fn memory_size(&self) -> usize {
+                    let bytes = ::std::mem::size_of::<Self>();
 
-                #(#owned_fields)*
-                bytes
+                    #(#owned_fields)*
+                    bytes
+                }
             }
-        }
 
-        impl #harmos::RowMetadata for #name {
-            const ROW_METADATA_JSON: &'static str = #row_metadata;
-        }
+            impl #harmos::RowMetadata for #name {
+                const ROW_METADATA_JSON: &'static str = #row_metadata;
+            }
 
-        #schema
+            #schema
+        };
     })
 }
 

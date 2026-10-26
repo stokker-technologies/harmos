@@ -292,15 +292,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                 let grants = entry.scopes.iter().map(|scope| {
                     quote!(#harmos::__private::PluginGrant {
                         operation: ::std::borrow::Cow::Borrowed(
-                            <<#member as #harmos::operations::Declares>::Declaration
-                                as #harmos::operations::OperationDeclaration>::ID,
+                            <#member as #harmos::OperationDeclaration>::ID,
                         ),
                         scope: ::core::option::Option::Some(::std::borrow::Cow::Borrowed(#scope)),
                     })
                 });
                 quote! {
                     #harmos::catalog::Node::Leaf(#requirement::of::<
-                        <#member as #harmos::operations::Declares>::Declaration
+                        #member
                     >(&[#(#grants),*]))
                 }
             });

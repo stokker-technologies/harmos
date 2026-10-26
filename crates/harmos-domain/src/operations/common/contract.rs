@@ -19,7 +19,7 @@ use std::sync::OnceLock;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{Definition, Entry, OperationDeclaration};
+use super::{Direction, Entry, OperationDeclaration, OperationDefinition};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
 use crate::config::SchemaSettings;
 use crate::schema::declaration::Definition as SchemaDefinition;
@@ -40,8 +40,8 @@ static SHUTDOWN_CONTRACT: OnceLock<Contract> = OnceLock::new();
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "DecodedContract")]
 pub struct Contract {
-    operation: Definition,
-    version: u32,
+    operation: OperationDefinition,
+    fingerprint: crate::Fingerprint,
     codec: Codec,
     schema: Schema,
 
@@ -52,10 +52,10 @@ pub struct Contract {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DecodedContract {
-    #[serde(with = "super::DecodedDefinition")]
-    operation: Definition,
+    #[serde(with = "super::DecodedOperationDefinition")]
+    operation: OperationDefinition,
 
-    version: u32,
+    fingerprint: crate::Fingerprint,
     codec: Codec,
     schema: Schema,
 
@@ -65,7 +65,10 @@ struct DecodedContract {
 
 pub struct WireDeclaration {
     pub operation: Entry,
-    pub version: u32,
+    pub codec: &'static str,
+    pub response_codec: &'static str,
+    pub input_codec: Option<&'static str>,
+    pub output_codec: Option<&'static str>,
     pub request: SchemaDefinition,
     pub response: SchemaDefinition,
     pub input: Option<SchemaDefinition>,
@@ -93,8 +96,11 @@ pub enum ContractError {
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::Error),
 
-    #[error("wire operation `{id}` has a zero semantic version")]
-    Version { id: String },
+    #[error("wire operation `{id}` has an invalid contract fingerprint")]
+    Fingerprint { id: String },
+
+    #[error("wire operation uses unsupported codec `{codec}`")]
+    Codec { codec: String },
 
     #[error("invalid {direction} schema for wire operation `{id}`: {source}")]
     Schema {
@@ -110,12 +116,23 @@ pub enum ContractError {
 
 /* === Implementations === */
 
+impl Codec {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Postcard => "harmos.postcard.v1",
+        }
+    }
+}
+
 impl WireDeclaration {
     pub const fn of<O: OperationDeclaration>() -> Self {
         Self {
             operation: Entry::of::<O>(),
-            version: O::VERSION,
-            request: O::DEFINITION,
+            codec: <O::Request as crate::Message>::CODEC,
+            response_codec: <O::Response as crate::Message>::CODEC,
+            input_codec: if O::Input::STREAMED { Some(<<O::Input as super::Direction>::Item as crate::Message>::CODEC) } else { None },
+            output_codec: if O::Output::STREAMED { Some(<<O::Output as super::Direction>::Item as crate::Message>::CODEC) } else { None },
+            request: <O::Request as Described>::DEFINITION,
             response: <O::Response as Described>::DEFINITION,
             input: direction::<O::Input>(),
             output: direction::<O::Output>(),
@@ -125,8 +142,10 @@ impl WireDeclaration {
 
     pub fn contract(&self) -> Result<Contract, ContractError> {
         let operation = self.operation.definition()?;
-        if self.version == 0 {
-            return Err(ContractError::Version { id: operation.id.to_string() });
+        for codec in [Some(self.codec), Some(self.response_codec), self.input_codec, self.output_codec].into_iter().flatten() {
+            if codec != "harmos.postcard.v1" {
+                return Err(ContractError::Codec { codec: codec.to_owned() });
+            }
         }
         let mut roots = vec![("request", self.request), ("response", self.response)];
         if let Some(input) = self.input {
@@ -140,20 +159,21 @@ impl WireDeclaration {
             direction: "contract",
             source: source.into(),
         })?;
-        Contract::new(operation, self.version, Codec::Postcard, schema)?.with_grpc(self.grpc.clone())
+        Contract::new(operation.clone(), operation.fingerprint, Codec::Postcard, schema)?.with_grpc(self.grpc.clone())
     }
 }
 
 impl Contract {
-    pub fn new(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
+    pub fn new(
+        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema,
+    ) -> Result<Self, ContractError> {
         operation.validate()?;
-        Self::canonical(operation, version, codec, schema)
+        Self::canonical(operation, fingerprint, codec, schema)
     }
 
-    fn canonical(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
-        if version == 0 {
-            return Err(ContractError::Version { id: operation.id.to_string() });
-        }
+    fn canonical(
+        operation: OperationDefinition, fingerprint: crate::Fingerprint, codec: Codec, schema: Schema,
+    ) -> Result<Self, ContractError> {
         let invalid = |source: schema::graph::Error| ContractError::Schema {
             id: operation.id.to_string(),
             direction: "contract",
@@ -178,7 +198,12 @@ impl Contract {
                 reason: "expected request, response, and optional input/output roots",
             }));
         }
-        Ok(Self { operation, version, codec, schema, grpc: None })
+        let contract = Self { operation, fingerprint, codec, schema, grpc: None };
+        let computed = contract.computed_fingerprint()?;
+        if fingerprint != computed || contract.operation.fingerprint != computed {
+            return Err(ContractError::Fingerprint { id: contract.operation.id.to_string() });
+        }
+        Ok(contract)
     }
 
     pub fn grpc(&self) -> Option<&super::Grpc> {
@@ -219,27 +244,28 @@ impl Contract {
     // Which Ordinary Declarations Cannot Claim.
     pub(crate) fn reserved<O: OperationDeclaration>(policy: super::OperationPolicy) -> Result<Self, ContractError> {
         policy.validate().map_err(crate::Error::from)?;
-        let operation = Definition {
+        let operation = OperationDefinition {
             id: crate::Identifier::new(O::ID).map_err(crate::Error::from)?,
             description: O::DESCRIPTION.to_owned(),
             policy,
             visibility: O::VISIBILITY,
             replay: O::REPLAY,
+            fingerprint: (Entry::of::<O>().fingerprint)()?,
         };
         let schema = Schema::from_declarations(
-            &[("request", O::DEFINITION), ("response", <O::Response as Described>::DEFINITION)],
+            &[("request", <O::Request as Described>::DEFINITION), ("response", <O::Response as Described>::DEFINITION)],
             &SchemaSettings::default(),
         )
         .map_err(|source| ContractError::Schema { id: operation.id.to_string(), direction: "contract", source: source.into() })?;
-        Self::canonical(operation, O::VERSION, Codec::Postcard, schema)
+        Self::canonical(operation.clone(), operation.fingerprint, Codec::Postcard, schema)
     }
 
-    pub fn operation(&self) -> &Definition {
+    pub fn operation(&self) -> &OperationDefinition {
         &self.operation
     }
 
-    pub fn version(&self) -> u32 {
-        self.version
+    pub fn fingerprint(&self) -> crate::Fingerprint {
+        self.fingerprint
     }
 
     pub fn codec(&self) -> Codec {
@@ -268,7 +294,7 @@ impl Contract {
 
     pub fn compatible(&self, requirement: &Self) -> bool {
         self.operation.id == requirement.operation.id
-            && self.version == requirement.version
+            && self.fingerprint == requirement.fingerprint
             && self.codec == requirement.codec
             && ["request", "response", "input", "output"].into_iter().all(|name| {
                 match (self.direction(name), requirement.direction(name)) {
@@ -280,6 +306,23 @@ impl Contract {
                     _ => false,
                 }
             })
+    }
+
+    fn computed_fingerprint(&self) -> Result<crate::Fingerprint, ContractError> {
+        let payload = |view| {
+            schema::identity::fingerprint(view, self.codec.id()).map_err(|source| ContractError::Schema {
+                id: self.operation.id.to_string(),
+                direction: "identity",
+                source: source.into(),
+            })
+        };
+        Ok(schema::identity::operation(
+            self.operation.id.as_str(),
+            payload(self.request())?,
+            payload(self.response())?,
+            self.input().map(payload).transpose()?,
+            self.output().map(payload).transpose()?,
+        ))
     }
 
     fn direction(&self, name: &str) -> Option<View<'_>> {
@@ -296,7 +339,7 @@ impl TryFrom<DecodedContract> for Contract {
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
         if !crate::reserved(decoded.operation.id.as_str()) {
-            return Self::new(decoded.operation, decoded.version, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc);
+            return Self::new(decoded.operation, decoded.fingerprint, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc);
         }
 
         // Read Only Exact SDK Metadata; Ordinary Declaration Admission Still Rejects These Names.
@@ -309,7 +352,7 @@ impl TryFrom<DecodedContract> for Contract {
             _ => return Err(refused()),
         };
         let identity_matches =
-            decoded.operation == expected.operation && decoded.version == expected.version && decoded.codec == expected.codec;
+            decoded.operation == expected.operation && decoded.fingerprint == expected.fingerprint && decoded.codec == expected.codec;
         let schema_matches = decoded.schema == expected.schema && decoded.grpc == expected.grpc;
         if !identity_matches || !schema_matches {
             return Err(refused());
@@ -380,7 +423,7 @@ fn append(
 mod tests {
     use super::*;
     use crate::operations::lifecycle::{self, Action, Descriptor};
-    use crate::operations::{Backoff, Jitter, RestartPolicy, RetryPolicy};
+    use crate::operations::{Backoff, Jitter, RetryPolicy};
     use serde_json::json;
 
     fn sdk_contracts() -> [Contract; 3] {
@@ -417,8 +460,7 @@ mod tests {
                 ("/operation/visibility", json!("shared")),
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
                 ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
-                ("/operation/policy/restart", json!(RestartPolicy::OnTransient { credit: 1, sustained_health: delay, backoff })),
-                ("/version", json!(2)),
+                ("/fingerprint", json!("00".repeat(32))),
                 ("/schema", json!({"root": 0, "definitions": [[]]})),
             ] {
                 let mut forged = encoded.clone();
@@ -444,10 +486,9 @@ mod tests {
             let encoded = serde_json::to_value(descriptor).unwrap();
             assert_eq!(serde_json::from_value::<Descriptor>(encoded.clone()).unwrap(), *descriptor);
             for (pointer, replacement) in [
-                ("/version", json!(2)),
+                ("/fingerprint", json!("00".repeat(32))),
                 ("/policy/attempt_timeout/secs", json!(0)),
                 ("/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
-                ("/policy/restart", json!(RestartPolicy::OnTransient { credit: 1, sustained_health: delay, backoff })),
             ] {
                 let mut forged = encoded.clone();
                 *forged.pointer_mut(pointer).unwrap() = replacement;
@@ -472,7 +513,7 @@ mod tests {
         for contract in sdk_contracts() {
             assert!(contract.operation().validate().is_err());
             let definition = serde_json::to_value(contract.operation()).unwrap();
-            assert!(serde_json::from_value::<Definition>(definition).is_err());
+            assert!(serde_json::from_value::<OperationDefinition>(definition).is_err());
 
             let mut manifest = Manifest {
                 facility: "sidecar".into(),

@@ -130,6 +130,10 @@ impl WireStreamLimits {
 }
 
 impl WireStreams {
+    pub(crate) fn combine(self, outgoing: Self) -> Self {
+        Self::new(self.input, outgoing.output)
+    }
+
     fn new(input: Option<Arc<dyn Input>>, output: Option<Arc<dyn Encoder>>) -> Self {
         let (state, _) = watch::channel(State { epoch: 0, phase: Phase::Waiting });
         Self {
@@ -410,10 +414,10 @@ fn encode<T: Message + 'static>(
         }
         return Ok(bytes);
     }
-    if item.encoded_len() > super::codec::LIMIT {
+    if item.encoded_size() > super::codec::LIMIT {
         return Err(ServingError::Stream(streaming::Error::Capacity));
     }
-    Ok(item.encode_to_vec())
+    Ok(item.encode())
 }
 
 /* === Tests === */

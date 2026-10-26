@@ -7,12 +7,15 @@
  * ***
  */
 
-
-
+// Portable Resident Service Policy Models
 
 /* === Modules === */
 
+pub mod policy;
+
 /* === Re-Exports === */
+
+pub use policy::{RestartPolicy, ServicePolicy};
 
 /* === Imports === */
 
@@ -22,7 +25,6 @@
 
 // Local Imports
 
-
 /* === Constants === */
 
 /* === Macros === */
@@ -30,11 +32,6 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-
-#[harmos::message]
-#[harmos::operation(request = (), response = (), policy = (), version = 1)]
-struct Read { resource: String }
-
 
 /* === Enums === */
 
@@ -45,7 +42,5 @@ struct Read { resource: String }
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn main() {}
 
 /* === Tests === */

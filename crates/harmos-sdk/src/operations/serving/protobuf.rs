@@ -70,7 +70,7 @@ impl Codec {
     // Item Codec Of Each Direction It Streams.
     pub(crate) fn of<O: OperationDeclaration>() -> Self {
         Self {
-            decode: decode::<O>,
+            decode: decode::<O::Request>,
             encode: encode::<O::Response>,
             #[cfg(feature = "streaming")]
             input: direction::<O::Input>(),

@@ -17,10 +17,11 @@ mod grpc;
 pub mod instance;
 mod key;
 pub(crate) mod payload;
-mod policy;
 
 /* === Re-Exports === */
 
+pub use crate::model::operations::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
+pub use crate::model::services::policy::{RestartPolicy, ServicePolicy};
 pub use crate::observers;
 pub use catalog::{Declarations, Entry};
 pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
@@ -28,7 +29,6 @@ pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
-pub use policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy};
 
 /* === Imports === */
 
@@ -46,72 +46,31 @@ pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 3
 
 /* === Macros === */
 
-// Declare An Operation On Its Request Type. Fields Keep This Order; Optional
-// Ones May Be Omitted. Absent Streams Are `NoStream`.
-#[macro_export]
-macro_rules! declare {
-    ($ty:ty {
-        id: $id:expr,
-        version: $version:expr,
-        policy: $policy:expr,
-        response: $response:ty
-        $(, input: $input:ty)?
-        $(, output: $output:ty)?
-        $(, description: $description:expr)?
-        $(, visibility: $visibility:expr)?
-        $(, replay: $replay:expr)?
-        $(, grpc: ($package:expr, $service:expr, $method:expr))?
-        $(, grant: $grant:expr)?
-        $(, key: $key:expr)?
-        $(,)?
-    }) => {
-        impl $crate::operations::OperationDeclaration for $ty {
-            type Response = $response;
-            type Input = $crate::declare!(@direction $($input)?);
-            type Output = $crate::declare!(@direction $($output)?);
-            const ID: &'static str = $id;
-            const VERSION: u32 = $version;
-            const POLICY: $crate::operations::OperationPolicy = $policy;
-            $(const DESCRIPTION: &'static str = $description;)?
-            $(const VISIBILITY: $crate::operations::Visibility = $visibility;)?
-            $(const REPLAY: $crate::operations::ReplaySafety = $replay;)?
-            $(const GRPC: ::core::option::Option<$crate::operations::Grpc> =
-                ::core::option::Option::Some($crate::operations::Grpc::new($package, $service, $method));)?
-            $(fn grant(&self) -> ::core::option::Option<$crate::plugin::Grant> {
-                ($grant)(self)
-            })?
-            $(fn key(&self) -> ::core::option::Option<$crate::operations::CacheKey> {
-                ($key)(self)
-            })?
-        }
-    };
-    (@direction) => { $crate::operations::NoStream };
-    (@direction $item:ty) => { $crate::operations::Stream<$item> };
-}
-
 /* === Type Aliases === */
 
 /* === Structs === */
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Definition {
+pub struct OperationDefinition {
     pub id: Identifier,
     pub description: String,
     pub policy: OperationPolicy,
     pub visibility: Visibility,
     pub replay: ReplaySafety,
+    pub fingerprint: crate::Fingerprint,
 }
 
 // The decoder constructs the canonical type directly, then checks admission.
 // No second public metadata contract or JSON-value staging exists.
 #[derive(Deserialize)]
-#[serde(remote = "Definition", deny_unknown_fields)]
-struct DecodedDefinition {
+#[serde(remote = "OperationDefinition", deny_unknown_fields)]
+struct DecodedOperationDefinition {
     id: Identifier,
     description: String,
     policy: OperationPolicy,
     visibility: Visibility,
     replay: ReplaySafety,
+    fingerprint: crate::Fingerprint,
 }
 
 /* === Enums === */
@@ -126,29 +85,34 @@ pub enum Visibility {
 
 /* === Traits === */
 
-// The Operation Is Its Request Type. `declare!` (Through `#[operation]`) Is The
-// Only Writer Of This Impl; Every Bound A Projection Needs Is Named Here, So One
-// Generic Walk Serves The Catalog, gRPC, Descriptor Export And Bindings.
-pub trait OperationDeclaration: crate::Portable {
+pub trait OperationDeclaration: 'static {
+    type Request: crate::Portable;
     type Response: crate::Portable;
     type Input: Direction;
     type Output: Direction;
 
     const ID: &'static str;
-    const VERSION: u32;
     const POLICY: OperationPolicy;
     const DESCRIPTION: &'static str = "";
     const VISIBILITY: Visibility = Visibility::Private;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const GRPC: Option<Grpc> = None;
 
-    fn grant(&self) -> Option<crate::plugin::Grant> {
+    fn definition() -> OperationDefinition {
+        OperationDefinition::of::<Self>().expect("valid operation declaration")
+    }
+
+    fn grant(_request: &Self::Request) -> Option<crate::plugin::Grant> {
         None
     }
 
-    fn key(&self) -> Option<CacheKey> {
+    fn key(_request: &Self::Request) -> Option<CacheKey> {
         None
     }
+}
+
+pub trait RequestFor: crate::Portable {
+    type Operation: OperationDeclaration<Request = Self>;
 }
 
 pub trait Declares {
@@ -161,24 +125,27 @@ impl<O: OperationDeclaration> Declares for O {
     type Declaration = O;
 }
 
-impl<'de> Deserialize<'de> for Definition {
+impl<'de> Deserialize<'de> for OperationDefinition {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> Result<Self, D::Error> {
-        let definition = DecodedDefinition::deserialize(decoder)?;
+        let definition = DecodedOperationDefinition::deserialize(decoder)?;
         definition.validate().map_err(serde::de::Error::custom)?;
         Ok(definition)
     }
 }
 
-impl Definition {
+impl OperationDefinition {
     pub fn validate(&self) -> crate::Result<()> {
         if crate::reserved(self.id.as_str()) {
             return Err(crate::Error::ReservedOperation { id: self.id.as_str().to_owned() });
+        }
+        if !crate::identity::segment(self.id.as_str()) {
+            return Err(crate::Error::InvalidOperation { id: self.id.to_string() });
         }
         self.policy.validate()?;
         Ok(())
     }
 
-    pub fn of<O: OperationDeclaration>() -> crate::Result<Self> {
+    pub fn of<O: OperationDeclaration + ?Sized>() -> crate::Result<Self> {
         Entry::of::<O>().definition()
     }
 }

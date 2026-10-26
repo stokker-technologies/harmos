@@ -33,6 +33,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("operation `{id}` is not a local portable identity")]
+    InvalidOperation { id: String },
+
     #[error(transparent)]
     OperationPolicy(#[from] crate::operations::PolicyError),
 

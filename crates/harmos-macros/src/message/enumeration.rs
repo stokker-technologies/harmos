@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 // Third Party Imports
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{Error, Fields, ItemEnum, spanned::Spanned};
 // Local Imports
 use super::{encoding, tag};
@@ -47,6 +47,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -
         return Err(Error::new(item.span(), "a message enum requires non-generic variants"));
     }
     let postcard = super::postcard::declare(&syn::Item::Enum(item.clone()), &harmos);
+    let gates = crate::operation::configuration(&item.attrs)?;
     let name = &item.ident;
     let mut tags = BTreeMap::new();
     let mut payloads = Vec::new();
@@ -78,7 +79,12 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -
         for (position, field) in variant.fields.iter_mut().enumerate() {
             let ident = field.ident.clone().unwrap_or_else(|| format_ident!("field_{position}"));
             // Validate The Same Portable Field Shapes As Struct Messages
-            let (required_message, kind, cardinality) = encoding(&field.ty, &harmos)?;
+            let (required_message, kind, cardinality) = encoding(&field.ty, &harmos).map_err(|error| {
+                Error::new(
+                    field.span(),
+                    format!("field `{ident}` of variant `{variant_name}` of type `{}`: {error}", field.ty.to_token_stream()),
+                )
+            })?;
             if index == 0 && required_message {
                 defaultable = false;
             }
@@ -162,8 +168,9 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -
     let schema = super::described(name, quote!(&[#(#schemas),*]), quote!(#extra), &harmos);
     Ok(quote! {
         #item
-        #postcard
+        #(#gates)*
         const _: () = {
+            #postcard
             #(#payloads)*
             #default_impl
             impl #harmos::MemorySize for #name {

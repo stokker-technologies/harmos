@@ -13,7 +13,7 @@ mod payloads;
 
 /* === Re-Exports === */
 
-pub use payloads::{FollowingRow, Publish};
+pub use payloads::{FollowingRow, PublishRequest};
 
 /* === Imports === */
 
@@ -29,13 +29,21 @@ use crate::operations::Visibility;
 /* === Macros === */
 
 // A Sidecar Publishing One Ordered Batch Of Stream Rows To Its Host.
-crate::declare!(Publish {
-    id: "host.publish",
-    version: 1,
-    policy: crate::operations::host::POLICY,
-    response: (),
-    visibility: Visibility::Shared,
-});
+pub struct Publish;
+
+impl crate::operations::OperationDeclaration for Publish {
+    type Request = PublishRequest;
+    type Response = ();
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = "host_publish";
+    const POLICY: crate::operations::OperationPolicy = crate::operations::host::POLICY;
+    const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
+}
+
+impl crate::operations::RequestFor for PublishRequest {
+    type Operation = Publish;
+}
 
 /* === Type Aliases === */
 
