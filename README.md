@@ -119,6 +119,12 @@ On Windows, run the corresponding executable under
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions compatible and review release notes before updating.
 
+For agent-assisted consumer development, use the self-contained
+[architecture](.agents/skills/harmos-architecture/SKILL.md),
+[authoring](.agents/skills/harmos-authoring/SKILL.md) and
+[testing](.agents/skills/harmos-testing/SKILL.md) skills. They cover reusable
+products and self-contained plugins, including the shipped consumer examples.
+
 ## Contributing
 
 Focused fixes, API feedback and useful examples are welcome. Read

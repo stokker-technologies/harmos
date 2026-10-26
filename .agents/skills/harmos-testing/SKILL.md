@@ -1,63 +1,45 @@
 ---
 name: harmos-testing
-description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
+description: Test products using Harmos at domain, runtime, resource and carrier boundaries, including Harmos's shipped consumer examples.
 ---
 
-# Harmos Testing
+# Harmos Consumer Testing
 
-Apply `stkr-test` for layers and lanes. These are Harmos-specific exceptions.
-Run the full lanes locally on the combined tree before opening or updating a
-review; CI confirms.
+Test the behavior the product owns through the boundary its consumers use.
+This guidance applies to external products and Harmos's shipped example consumers.
+Use the consuming project's test commands and validation policy; no Harmos
+repository fixture pipeline or company tooling is required.
 
-## Story Owners
+## Select The Owner
 
-Storage engine stories exercise `harmos-storage` without a host runtime.
-Its real `WorkerOwner` owns the canonical worker and settlement.
-Runtime storage stories cover host composition, managed journal projection and
-operation dispatch.
+All product crates, including interfaces, live under `crates/`. For a reusable
+product, test portable contracts and configuration validation in `product-domain`
+and execution, configured resources and lifecycle in `product-runtime`. Keep
+domain tests independent of runtime initialization. The entry library exposes
+the domain by default and can expose runtime through an optional `runtime`
+feature; check the feature combinations the product promises.
 
-File journal faults belong at the public `FileBackend` integration boundary;
-controlled file access retains the backend's parsing, rollback and leasing.
+A self-contained operation keeps its declaration and handler together in a
+vertical operation module, including plugin-private operations. Test it there;
+do not introduce a separate domain crate solely for tests. Reusable contracts
+keep their domain owner when a CLI, plugin or other interface consumes them.
 
-Two integration targets use specialized paths: `harmos-domain` uses
-`tests/message/main.rs`; `harmos-guest` uses `tests/kit/main.rs`.
+Resource libraries such as automation or gRPC clients retain their own protocol
+and failure tests. Runtime composition tests prove how the product uses those
+resources; they need not turn the resource library into a product interface.
 
-## Cross-Artifact Compositions
+## Choose The Smallest Useful Boundary
 
-The runtime system target composes the host baseline and the Schematic guest
-and sidecar artifacts. Schematic is the shipped example and shared system
-fixture in its own workspace.
+Test pure validation and transformations directly. Exercise dispatch when
+registration, caller context, streaming, cancellation or resource ownership is
+part of the behavior. Add a real carrier or process only when its boundary can
+change the outcome. Assert observable results, durable state and completed
+cleanup rather than private scheduling details or elapsed-time guesses.
 
-The sandbox guest covers guest policy and cleanup absent from Schematic.
-Instantiating a component in Wasmtime belongs to system tests; inert component
-metadata and WIT inspection belong to integration.
+Read [Runtime And Carriers](references/runtime-and-carriers.md) for composed
+plugins, native/guest compatibility, lifecycle settlement and persistence tests.
 
-The Schematic sidecar scene proves environment clearing, pre-readiness failure,
-cleanup, withdrawal and fresh-generation recovery. Pre-readiness failure is not
-evidence of a crash after readiness.
-
-## Fixture Inputs
-
-Tests-owned fixtures contain hash-verified inert copies of the Product plugin
-artifacts for integration inspection. Sandbox inspection reuses Tests-owned
-sandbox bytes. Integration does not execute those components.
-
-The Tests stamp selects artifacts, libraries and offline inputs and records
-their hashes. Runtime fixture support owns their resolution. Collected Cargo
-metadata retains producer identity and byte hashes.
-
-Acceptance selects the Cargo subcommand and both plugin Product artifacts;
-system selects the Schematic CLI and both plugins.
-
-## Authoring Acceptance
-
-Compiler execution is the behavior under test for generated projects, public
-macro diagnostics and development rebuild/cancellation, so these stories belong
-to acceptance. Integration fixture setup consumes already-built artifacts.
-
-Generated-project stories use starter manifests and locks, a build-owned Cargo
-vendor directory and a hash-checked Python wheelhouse. Their isolated offline
-inputs cover root tooling and both starter locks.
-
-Python binding interoperability is Rust-driven acceptance using the root
-`.venv`; generated Python packages remain consumer-owned.
+Use deterministic synchronization to place failures before or after readiness.
+Keep test-owned resources isolated and await their shutdown. Run focused checks
+for changed behavior, then the consuming project's required validation; do not
+copy Harmos's internal CI lanes, fixture names or packaging policy into a product.

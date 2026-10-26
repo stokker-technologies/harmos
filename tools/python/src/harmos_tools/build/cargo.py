@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/build/cargo.py; sha256:8888fee722b2df7a9adb0d53ed2b6123c07e5c7e4a76153ef7363ed4a430630a
+# Rendered by stkr project update from templates/python/build/cargo.py; sha256:399b2f56a427bfa49b843f8c3efbd47e3500dc7ec49d23448008a573de25a161
 # ***
 #
 # Harmos
@@ -107,8 +107,8 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
 
 
 def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
-    if operation not in ("build", "test", "clippy", "run"):
-        raise ValueError("focused compilation requires build, test, clippy or run")
+    if operation not in ("build", "check", "test", "clippy", "run"):
+        raise ValueError("focused compilation requires build, check, test, clippy or run")
     profile = None
     compiler_arguments = list(arguments[: arguments.index("--")]) if "--" in arguments else list(arguments)
     if any(argument == "--target-dir" or argument.startswith("--target-dir=") for argument in compiler_arguments):
@@ -182,7 +182,7 @@ def artifacts(directory: Path, messages: Path) -> Iterator[dict[str, Any]]:
 def main() -> None:
     if sys.argv[1:2] == ["focused"]:
         parser = argparse.ArgumentParser(description="Compile An Explicit Local Rust Selection")
-        parser.add_argument("operation", choices=("build", "test", "clippy"))
+        parser.add_argument("operation", choices=("build", "check", "test", "clippy"))
         parser.add_argument("arguments", nargs=argparse.REMAINDER)
         options = parser.parse_args(sys.argv[2:])
         raise SystemExit(focused(Path.cwd(), options.operation, options.arguments))

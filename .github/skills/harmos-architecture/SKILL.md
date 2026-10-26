@@ -1,115 +1,82 @@
 ---
 name: harmos-architecture
-description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
+description: Structure consumer applications using Harmos, including reusable domains and runtimes, self-contained plugins, resource libraries and interface crates.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:88b0a8493f92cc429e442485078ce42538d2e46c7e3a6eff31818916ae914f52 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:abd4dd1597ec6a16b21721fdbf2fedc7bbc7823eebc30e1e6a01e321676ee937 -->
 
 # Harmos Architecture
 
-Apply `stkr-rust-architecture` for the tier model. Harmos assigns the following
-crate owners; dependencies below describe production edges, not test dependencies.
+Use this skill for products consuming Harmos, including Harmos's shipped
+application, sidecar and guest examples. It describes consumer ownership,
+not the internal organization or CI of the Harmos repository. No company
+skills or tooling are prerequisites.
 
-## Application And Contract Layout
+## Product Boundaries
 
-| Crate | Ownership | Harmos Dependencies |
+| Owner | Responsibility | Production Dependencies |
 | --- | --- | --- |
-| `harmos` | Consumer entry library and host facade. | `harmos-domain`, `harmos-runtime`. |
-| `harmos-domain` | Host-free messages, contracts, schemas and portable catalogs. | Optional `harmos-macros` for declarations. |
-| `harmos-runtime` | Resource-bound execution and host composition. | `harmos-domain`, `harmos-sdk`, `harmos-storage`, `harmos-macros`; optional `harmos-guest`, `harmos-sidecar`, `harmos-packaging`. |
-| `harmos-sdk` | Shared execution and plugin lifecycle contracts. | `harmos-domain`. |
-| `harmos-storage` | Storage engine, Arrow queries, persistence and signal kernels. | `harmos-domain`. |
-| `harmos-guest` | Wasm component SDK. | `harmos-domain`, `harmos-sdk`. |
-| `harmos-sidecar` | Native process carrier and SDK. | `harmos-domain`, `harmos-sdk`. |
-| `harmos-packaging` | Artifact receipts, bundles and schema/binding generation. | `harmos-domain`. |
-| `harmos-macros` | Declaration and authoring macros. | No Harmos crate dependency. |
-| `cargo-harmos` | Cargo subcommand for product packaging and authoring. | `harmos-packaging`. |
+| `<p>` | Public entry library and curated `prelude.rs`. | Domain by default; optional runtime. |
+| `<p>-domain` | Portable models, operation declarations, settings and pure behavior. | Host-free declaration libraries such as `harmos-domain`. |
+| `<p>-runtime` | Operation implementations, state coordination, live resources and execution lifecycle. | Domain, applicable Harmos execution facilities and resource libraries. |
+| `<p>-cli`, `<p>-gui`, `<p>-plugin`, `<p>-sidecar`, `<p>-guest` | Product interfaces and carrier entry points. | Product entry library plus interface or carrier dependencies. |
+| Resource libraries | One external system, such as desktop automation or an external gRPC client. | Their own protocols; no dependency back on the product runtime. |
 
-The library crates publish to crates.io; `cargo-harmos` ships through release executables. The SDK, storage, carrier,
-packaging and macro boundaries keep their consumers independent of the larger
-host runtime.
+Place these crates under the product's `crates/` directory. Create only the
+owners the product needs. Runtime is the execution composition layer below
+the entry library; domain remains independently accessible beside it.
+An existing application crate that owns execution fills the runtime role.
 
-Declare a product's operation contracts, including requests and replies, records,
-streams, prompts and settings models once in `<p>-domain`. Depend on
-`harmos-domain` for host-free Harmos declarations. Implement handlers in
-`<p>-runtime`; nothing re-declares or forwards an operation. Every shipped
-interface imports the product entry library `<p>` and provides the same
-operations through its own host.
+Interfaces access product functionality through `<p>`. A contract-only
+interface uses its default domain exports; a host enables its `runtime`
+feature. Domain and runtime can depend directly on their lower-level owners;
+this facade rule applies to interfaces, not every internal dependency.
 
-## Hosted Applications
+## Operation Placement
 
-An app is a role, not a tier: an application is `<p>-runtime` hosted as a
-sidecar. Its hosting binary is a `[[bin]]` of the runtime unless the company
-crate split rule applies.
+In a reusable product, declare each operation once in `<p>-domain` and
+implement it in `<p>-runtime`. Catalogs reference those owners. Interfaces
+expose existing implementations without introducing forwarding operations
+merely to publish the same behavior.
 
-A resource library beside the runtime is legitimate when it wraps one external
-system, such as a proprietary process's protobuf API or desktop automation.
-Otherwise keep that responsibility as a module of the runtime.
+In a self-contained crate, colocate each operation's declaration and handler
+in a vertical module under `operations/`. Do not require parallel local
+`domain/operations/` and `operations/` trees. A composed plugin may use
+this layout for plugin-private operations while exposing reusable product
+operations from its runtime. Extract contracts when independent reuse or
+dependency requirements justify it.
 
-## Catalogs And Domain Ownership
+## Resources And Configuration
 
-Catalogs assemble declarations owned by the product domain. Operation metadata
-belongs to the request declaration; catalog entries reference that declaration.
-Runtime handlers implement those contracts against the runtime's resources.
+Portable product settings and their validation belong in the domain.
+A root `config.rs` composes subsystem settings; each subsystem owns its
+settings and validation. Runtime constructs configured clients, devices and
+workers and retains their lifecycle owners. Interface settings decode or
+adapt host-specific input without duplicating product policy.
 
-A plugin is a native process the host launches and supervises over piped stdio.
-Every Dokime plugin is one. A sidecar uses the same carrier for a product's own
-runtime. A guest is a Wasm component run in-process by the host. Dokime admits
-native sidecars only.
+Keep resource implementations beside `operations/`, not beneath it merely
+because handlers use them. A cohesive external-system library remains a valid
+crate; small resources can be runtime modules. External gRPC clients are distinct
+from exposing product operations through Harmos gRPC.
 
-Harmos registers sidecars and guests under the same runtime plugin owner.
-Registration describes contributions; activation owns their execution.
-There is no attachment path for a runtime on another machine.
+Crates owning fallible behavior use `error.rs` with `thiserror`, preserving
+source errors and classifying failures at the owning boundary. Pure re-export
+facades, thin binaries, procedural macros and foreign adapters need no artificial
+error wrapper. No universal `boot.rs` or empty module hierarchy is required.
 
-Cross-provider routing lets a plugin's requirements name operations another
-registered provider offers. The host resolves by contract and shared visibility
-and rejects ambiguity. A provider's operation identity alone is insufficient:
-the declared version, schema, policy, visibility and replay contract must match.
-Explicit provider selection must still satisfy the same contract and visibility.
+## Hosting And Reuse
 
-## Features And Imports
+A composed native plugin hosts the product runtime in its sidecar process.
+The plugin retains that owner, shares its resources and binds compatible
+handlers. Do not add another process without an isolation requirement.
+A separately hosted provider instead advertises the contracts it implements;
+other interfaces require those original contracts.
 
-Use `harmos` for host composition, `harmos-domain` for portable declarations,
-`harmos-sidecar` for native carrier consumers and `harmos-guest` for guests.
-Both carrier crates share `harmos-sdk`; neither depends on the host runtime.
+A Wasm guest is a different execution boundary. Reuse only dependencies,
+handlers and contexts supported by that target; a native runtime is not
+automatically guest-compatible. Registration declares contributions; activation
+owns execution. Harmos's local provider registration is not remote-runtime
+attachment.
 
-The runtime's `plugin-sidecar` and `plugin-guest` features imply `plugin`.
-Its `grpc` feature owns transport composition; domain declarations stay
-host-free. SDK and carrier protobuf codecs are optional `grpc` facilities.
-`harmos-packaging` owns schema and binding generation independently of runtime
-execution.
-
-## Aggregate Vocabulary
-
-`harmos-domain` owns `Aggregate`, re-exported through `harmos`:
-`Count`, `Sum`, `Mean`, `Median`, `Min`, `Max`, `Rms`, `Std` and
-`Percentile(u8)`. Consumers reuse that vocabulary.
-
-`harmos-storage` owns signal mathematics. `Series` represents a finished
-series; `Summary` represents mergeable streaming statistics. Median and
-percentiles require the finished series. The storage `fft` feature owns FFT
-kernels; the host facade exposes them through `signal-fft`.
-
-## Simulation Surface
-
-Simulation belongs to `harmos-runtime` and is exposed through `harmos`.
-It does not introduce another product tier or another owner for contracts.
-
-## Storage Ownership And Queries
-
-`harmos-storage` owns read/write admission, accounting, persistence, retention
-and the query engine. The runtime storage wrapper supplies the host clock and
-resident-worker ownership around the same engine.
-
-Consumers own storage budgets, admission limits, concurrency and response batch
-sizes. Harmos owns protocol constants and correctness constraints. Product
-settings belong to the product domain; the runtime owns the configured live
-storage resources.
-
-Storage owns the declarative `Query`, `StorageCursor`, source and transform
-vocabulary. Arrow schemas and record batches are analytical results; clones and
-slices retain the original storage allocation's charge. The query engine and
-signal kernels remain shared owners across interfaces.
-
-The runtime state manager owns transactions, live state and replay. Its storage
-backend owns journal and snapshot persistence through the storage engine.
-Evidence cursors and state journal positions describe distinct histories.
+Read [Workspace](references/workspace.md) for the full layout and facade
+examples. Use the accompanying authoring skill for operation and carrier
+mechanics; this skill owns the product structure.

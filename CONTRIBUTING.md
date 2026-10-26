@@ -55,6 +55,38 @@ For a focused Rust compiler check or selected test, use `mise run build:rust:foc
 with the Cargo operation and selection arguments. This task applies the standard
 compiler-output preflight; it does not replace the final validation graph.
 
+Storage-engine stories exercise `harmos-storage` without a host runtime; its
+real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
+stories cover host composition, managed journal projection and operation dispatch.
+Inject file journal faults at the public `FileBackend` boundary, retaining its
+parsing, rollback and leasing. The specialized integration entrypoints are
+`harmos-domain/tests/message/main.rs` and `harmos-guest/tests/kit/main.rs`, both
+under `crates/`.
+
+Runtime system tests compose the host baseline with the Schematic guest and
+sidecar artifacts from the example workspace. The sandbox guest covers guest
+policy and cleanup absent from Schematic. Wasmtime component instantiation
+belongs to system tests; inert component metadata and WIT inspection belong to
+integration. Sidecar stories distinguish environment clearing, pre-readiness
+failure, cleanup, withdrawal and fresh-generation recovery; pre-readiness
+failure does not prove a crash after readiness.
+
+Tests-owned fixtures contain hash-verified inert Product plugin artifacts;
+sandbox inspection reuses Tests-owned sandbox bytes. Integration never executes
+these components. The Tests stamp selects artifacts, libraries and offline inputs
+with hashes; runtime fixture support resolves them, and collected Cargo metadata
+retains producer identity and byte hashes. Acceptance selects the Cargo
+subcommand and both plugin Product artifacts; system selects the Schematic CLI
+and both plugins.
+
+Compiler execution for generated projects, macro diagnostics and development
+rebuild/cancellation belongs to acceptance; integration consumes already-built
+artifacts. Generated-project stories use starter manifests and locks, the
+build-owned Cargo vendor directory and a hash-checked Python wheelhouse covering
+root tooling and both starter locks. Python binding interoperability is
+Rust-driven acceptance using the root `.venv`; generated Python packages remain
+consumer-owned.
+
 ## Pull Requests
 
 Target `dev` and explain the user-visible problem, resulting behavior and
