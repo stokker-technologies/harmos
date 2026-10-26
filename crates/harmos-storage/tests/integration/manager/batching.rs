@@ -201,11 +201,7 @@ async fn storage_trace_handoffs() {
     let directory = tempfile::tempdir().unwrap();
     let backend = harmos_storage::state::file::FileBackend::new(directory.path().to_owned(), history, super::fixture::state_settings());
     let position = backend.open().with_subscriber(dispatch.clone()).await.unwrap();
-    backend
-        .read_snapshot(NonZeroUsize::new(4096).unwrap(), super::backend::read_memory().await)
-        .with_subscriber(dispatch.clone())
-        .await
-        .unwrap();
+    backend.read_snapshot(NonZeroUsize::new(4096).unwrap(), super::memory::read().await).with_subscriber(dispatch.clone()).await.unwrap();
     backend.flush(&position).with_subscriber(dispatch.clone()).await.unwrap();
     backend.close().with_subscriber(dispatch.clone()).await.unwrap();
 

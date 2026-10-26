@@ -17,6 +17,8 @@ mod coordinator;
 pub(crate) mod fixture;
 #[path = "../storage/manager.rs"]
 mod manager;
+#[path = "../../../harmos-storage/tests/support/memory.rs"]
+mod memory;
 #[path = "../storage/operations.rs"]
 mod operations;
 #[path = "../storage/runtime.rs"]

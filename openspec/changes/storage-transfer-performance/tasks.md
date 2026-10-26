@@ -66,6 +66,8 @@
 
 ## 4. Integration And Measurement
 
+- [x] 4.8 Repair required CI test-fixture ownership and Python formatting failures; run targeted proof and rerun affected required jobs without weakening checks.
+
 - [x] 4.7 Instrument newly introduced storage, retained-read/projection, JSON, filesystem and carrier paths using existing tracing conventions; preserve request context across spawned/blocking work and cancellation, exclude payloads, and verify representative trace lifetimes and disabled-tracing behavior.
 
 - [x] 4.6 Integrate current dev observability instrumentation with owned storage and carrier APIs, resolve source/tooling overlaps, and complete targeted merge proof before publication.

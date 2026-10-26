@@ -796,16 +796,4 @@ fn upsert_release(releases: &mut Vec<Release>, release: Release) {
     }
 }
 
-pub async fn read_memory() -> harmos_storage::arrow::RetainedMemory {
-    let manager = harmos_storage::StorageManager::<()>::new(
-        harmos_storage::StorageBackends {
-            primary: std::sync::Arc::new(Data::<()>::new(history())),
-            state: std::sync::Arc::new(Recovery::new(history())),
-        },
-        storage_settings(),
-    )
-    .unwrap();
-    manager.read_memory(NonZeroUsize::new(32 * 1024).unwrap()).await.unwrap()
-}
-
 /* === Tests === */

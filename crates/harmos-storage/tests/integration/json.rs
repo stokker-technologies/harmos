@@ -91,7 +91,7 @@ async fn typed_replay() {
 
     let reopened = backend(directory.path());
     assert_eq!(reopened.open().await.unwrap(), first.position);
-    let memory = crate::manager::backend::read_memory().await;
+    let memory = crate::manager::memory::read().await;
     let snapshot = reopened.open_snapshot(&first.position, memory.clone()).await.unwrap();
     let selection = RecordSelection { schema: first.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
     let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
@@ -144,7 +144,7 @@ async fn decode_requires_admission() {
     let mut row = record(storage.history(), 1);
     row.payload = vec![7; 768];
     storage.write_records(StorageBatch::new(vec![row.clone()])).await.unwrap();
-    let generous = crate::manager::backend::read_memory().await;
+    let generous = crate::manager::memory::read().await;
     let snapshot = storage.open_snapshot(&row.position, generous.clone()).await.unwrap();
     let selection = RecordSelection { schema: row.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
     let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };

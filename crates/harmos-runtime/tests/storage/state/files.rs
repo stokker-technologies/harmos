@@ -58,7 +58,7 @@ fn retired_header(history: &StoreHistory) -> Vec<u8> {
 
 #[tokio::test]
 async fn checkpoint_survives_reopen() {
-    let memory = super::super::backend::read_memory().await;
+    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -135,7 +135,7 @@ async fn corruption_refused_preserved() {
 
 #[tokio::test]
 async fn state_root_exclusive() {
-    let memory = super::super::backend::read_memory().await;
+    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -175,7 +175,7 @@ async fn state_root_exclusive() {
 
 #[tokio::test]
 async fn limits_bound_records() {
-    let memory = super::super::backend::read_memory().await;
+    let memory = super::super::memory::read().await;
     let history = crate::storage::history();
     let at = |sequence| RecoveryPosition { history: history.clone(), sequence };
     let entry = |sequence, bytes: usize| RecoveryEntry {

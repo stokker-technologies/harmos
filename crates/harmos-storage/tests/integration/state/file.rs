@@ -53,7 +53,7 @@ use harmos_storage::{Identifier, ReadLimits, RecoveryPosition, StorageCursor, St
 
 #[tokio::test]
 async fn rollback_requires_reopen() {
-    let memory = crate::manager::backend::read_memory().await;
+    let memory = crate::manager::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = StoreHistory { store: Identifier::new("state.test").unwrap(), epoch: Identifier::new("epoch.one").unwrap() };
     let settings =
@@ -104,7 +104,7 @@ async fn rollback_requires_reopen() {
 
 #[tokio::test]
 async fn snapshot_requires_singleton() {
-    let memory = crate::manager::backend::read_memory().await;
+    let memory = crate::manager::memory::read().await;
     use harmos_storage::{StorageBatch, state::RecoverySnapshot};
     let root = tempfile::tempdir().unwrap();
     let history = StoreHistory { store: Identifier::new("snapshot.test").unwrap(), epoch: Identifier::new("one").unwrap() };

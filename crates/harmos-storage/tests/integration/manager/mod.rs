@@ -21,6 +21,8 @@ mod exhaustion;
 mod files;
 pub(crate) mod fixture;
 mod mapping;
+#[path = "../../support/memory.rs"]
+pub(crate) mod memory;
 mod mutations;
 mod nominal;
 mod objects;

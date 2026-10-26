@@ -57,7 +57,9 @@ def build(extra: list[str]) -> Path:
             ("schematic-sidecar", "sidecar", []),
             ("schematic-guest", "guest", ["--target", "wasm32-unknown-unknown"]),
         ):
-            capture = fixtures.capture(package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, "--features", "benchmark", *target], scratch)
+            capture = fixtures.capture(
+                package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, "--features", "benchmark", *target], scratch
+            )
             built, receipt = fixtures.collect(tool, fixtures.SCHEMATIC, package, backend, "bench", capture, scratch)
             artifact, _ = fixtures.stage_build(built, receipt, package, files, directory)
             artifacts[package] = artifact
