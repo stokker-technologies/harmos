@@ -61,6 +61,42 @@ impl GrpcBinding {
         self.entry.grpc
     }
 
+    pub(crate) fn contract(&self) -> &crate::operations::Contract {
+        self.entry.contract.as_ref().expect("gRPC binding owns a contract")
+    }
+
+    pub(crate) fn native_factory(&self) -> Result<harmos_sdk::operations::OperationFactory> {
+        self.entry
+            .binding
+            .downcast_ref::<harmos_sdk::operations::OperationFactory>()
+            .cloned()
+            .ok_or(crate::Error::InvalidInput { field: "gRPC native binding", reason: "native factory required" })
+    }
+
+    pub(crate) fn submit_native(
+        &self, payload: StreamItem<Vec<u8>>, limits: harmos_sdk::operations::WireStreamLimits,
+    ) -> Result<(super::EncodedInvocation, Option<harmos_sdk::operations::WireStreams>)> {
+        let source = Source::Host.external()?;
+        let origin = source.check()?;
+        self.entry.available_to(&origin)?;
+        self.entry.authorize(&origin)?;
+        let factory = self.native_factory()?;
+        let name = self.entry.id().to_owned();
+        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory.prepare_grpc(&payload, limits)))
+            .map_err(|_| crate::Error::OperationPanicked { operation: name.clone() })?
+            .map_err(|source| crate::Error::OperationFailed { operation: name, source: Arc::new(source) })?;
+        let streams = prepared.streams.clone();
+        let invocation = super::wire::dispatch_prepared(
+            &self.operations,
+            Submission { submitted: crate::supervision::executor::now(), entry: self.entry.clone(), cause: None, preparation: None },
+            source,
+            None,
+            prepared,
+            super::binding::Request::charged(payload)?,
+        )?;
+        Ok((invocation, streams))
+    }
+
     pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
         &self, request: StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {

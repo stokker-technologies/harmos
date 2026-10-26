@@ -185,11 +185,7 @@ impl<A: Application> Host for Owner<A> {
             self.operations.register_service::<A, _, _, _>(
                 ServiceDefinition {
                     id: service.clone(),
-                    policy: crate::ServicePolicy {
-                        stop_timeout: resources.settings.shutdown_timeout,
-                        restart: RestartPolicy::Never,
-                        ..crate::services::POLICY
-                    },
+                    policy: crate::ServicePolicy { stop_timeout: resources.settings.shutdown_timeout, restart: RestartPolicy::Never },
                 },
                 |resources: Arc<Resources>| Listener { resources, task: None },
             )?;
@@ -289,8 +285,8 @@ impl<A: Application> Resident<A> for Listener {
         if *self.resources.stopping.borrow() {
             return Ok(());
         }
-        let listener = TcpListener::bind(self.resources.settings.address).await.map_err(|source| failure(source))?;
-        let address = listener.local_addr().map_err(|source| failure(source))?;
+        let listener = TcpListener::bind(self.resources.settings.address).await.map_err(failure)?;
+        let address = listener.local_addr().map_err(failure)?;
         let slots = Arc::new(Semaphore::new(self.resources.settings.connections.get()));
         let stopping = self.resources.stopping.subscribe();
         // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
@@ -324,7 +320,7 @@ impl<A: Application> Resident<A> for Listener {
             .concurrency_limit_per_connection(self.resources.settings.calls_per_connection.get())
             .max_concurrent_streams(Some(self.resources.settings.calls_per_connection.get() as u32));
         if let Some(tls) = &self.resources.settings.tls {
-            server = server.tls_config(tls.clone()).map_err(|source| failure(source))?;
+            server = server.tls_config(tls.clone()).map_err(failure)?;
         }
         let shutdown = async move {
             while !*stopping.borrow_and_update() {
@@ -355,7 +351,7 @@ impl<A: Application> Resident<A> for Listener {
         let completed = context.until_stopping(self.task.as_mut().expect("listener owns serving task")).await;
         if let Some(result) = completed {
             self.task.take();
-            result.map_err(|source| failure(source))??;
+            result.map_err(failure)??;
         }
         Ok(())
     }

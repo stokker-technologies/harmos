@@ -122,6 +122,10 @@ impl Manager {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
                 scope.cloned(),
             )?;
+            #[cfg(feature = "grpc")]
+            if contract.as_ref().is_some_and(|contract| contract.grpc().is_some()) {
+                Arc::get_mut(&mut entry).expect("unpublished entry has one owner").grpc = Some(crate::grpc::native::serve);
+            }
             Arc::get_mut(&mut entry).expect("unpublished entry has one owner").contract = contract;
             entries.push(entry);
         }
@@ -148,6 +152,9 @@ impl Manager {
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
+        if !harmos_domain::identity::segment(owner.as_str()) {
+            return Err(Error::InvalidInput { field: "operation owner", reason: "owner must be a lowercase portable segment" });
+        }
         let _bounded =
             self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered { domain: "operation lane", name: lane.to_owned() })?;
         let generation = OperationGeneration::fresh()?;

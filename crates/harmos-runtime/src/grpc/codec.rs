@@ -119,6 +119,11 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
         tonic::server::Grpc::new(self).max_decoding_message_size(decode).max_encoding_message_size(encode)
     }
 
+    pub(super) fn with_additional_memory(mut self, memory: super::decoding::AdditionalMemory) -> Self {
+        self.decoder.additional = Some(memory);
+        self
+    }
+
     pub fn new(decode: DecodeSettings, encode: EncodeSettings) -> Result<Self, Status> {
         encode.validate()?;
         Ok(Self { decoder: Decoder::new(decode)?, encode, response: PhantomData })

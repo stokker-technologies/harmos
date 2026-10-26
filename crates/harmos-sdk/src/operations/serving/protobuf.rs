@@ -39,7 +39,7 @@ type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
 /* === Structs === */
 
 #[derive(Clone, Copy)]
-pub(super) struct Codec {
+pub(crate) struct Codec {
     pub(super) decode: Decode,
     pub(super) encode: Encode,
 

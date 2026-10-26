@@ -67,7 +67,7 @@ struct State {
     phase: Phase,
 }
 
-pub(super) struct Attempt {
+pub(crate) struct Attempt {
     streams: WireStreams,
     epoch: u64,
     ended: bool,
@@ -148,7 +148,7 @@ impl WireStreams {
     }
 
     #[cfg(feature = "grpc")]
-    pub(super) fn protobuf(mut self, codec: super::protobuf::Codec) -> Result<Self, ServingError> {
+    pub(crate) fn protobuf(mut self, codec: super::protobuf::Codec) -> Result<Self, ServingError> {
         if self.input.as_ref().map(|input| input.item_type()) != codec.input.map(|codec| codec.item_type)
             || self.output.as_ref().map(|output| output.item_type()) != codec.output.map(|codec| codec.item_type)
         {
@@ -203,6 +203,20 @@ impl WireStreams {
         self.output.as_ref().ok_or(ServingError::StreamPhase)?.receive(self, epoch).await
     }
 
+    pub async fn receive_current(&self) -> Result<Option<Vec<u8>>, ServingError> {
+        let mut changes = self.state.subscribe();
+        loop {
+            let state = *changes.borrow_and_update();
+            let epoch = state.epoch.max(1);
+            match self.receive(epoch).await {
+                Err(ServingError::StreamPhase) => {
+                    changes.changed().await.map_err(|_| ServingError::Closing)?;
+                }
+                result => return result,
+            }
+        }
+    }
+
     fn check_input(&self, epoch: u64) -> Result<(), ServingError> {
         let state = *self.state.borrow();
         if (state.epoch == epoch && state.phase == Phase::Running) || (state.epoch == 0 && epoch == 1 && state.phase == Phase::Waiting) {
@@ -211,7 +225,7 @@ impl WireStreams {
         Err(ServingError::StreamPhase)
     }
 
-    pub(super) fn start(&self, expected: u64) -> Result<Attempt, ServingError> {
+    pub(crate) fn start(&self, expected: u64) -> Result<Attempt, ServingError> {
         let mut epoch = None;
         self.state.send_if_modified(|state| {
             if matches!(state.phase, Phase::Running | Phase::Closed) || (state.epoch != 0 && self.transferred()) {
@@ -231,7 +245,7 @@ impl WireStreams {
         Ok(Attempt { streams: self.clone(), epoch: epoch.ok_or(ServingError::StreamPhase)?, ended: false })
     }
 
-    pub(super) fn close(&self) {
+    pub(crate) fn close(&self) {
         self.state.send_modify(|state| state.phase = Phase::Closed);
     }
 
@@ -257,7 +271,7 @@ impl WireStreams {
 }
 
 impl Attempt {
-    pub(super) fn end(mut self) {
+    pub(crate) fn end(mut self) {
         self.streams.state.send_if_modified(|state| {
             if state.epoch != self.epoch || state.phase != Phase::Running {
                 return false;

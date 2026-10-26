@@ -155,7 +155,10 @@ impl Manager {
             reason: "routing requires an owner-qualified operation identity",
         })?;
         let (owner, local) = qualified.as_str().split_once('.').expect("validated qualified identity");
-        let entry = self.capture_provider(local, Some(owner))?;
+        let entry = self.capture_provider(local, Some(owner)).map_err(|error| match error {
+            Error::NotRegistered { .. } => Error::NotRegistered { domain: "operation", name: operation.to_owned() },
+            error => error,
+        })?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         let dispatch = entry
@@ -364,13 +367,21 @@ pub(super) fn dispatch_native(
     let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(&input.payload)))
         .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
         .map_err(|source| Error::OperationFailed { operation: name, source: Arc::new(source) })?;
-    let harmos_sdk::operations::registration::PreparedNative { instance, grant, key } = prepared;
     drop(input.payload);
+    dispatch_prepared(operations, submission, source, parent, prepared, super::binding::Request::from(Vec::new()))
+}
+
+pub(super) fn dispatch_prepared(
+    operations: &Manager, submission: Submission, source: Source, parent: Option<Parent<'_>>,
+    prepared: harmos_sdk::operations::registration::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
+) -> Result<EncodedInvocation> {
+    let submitted = submission.submitted;
+    let timeout = submission.entry.declared().policy.timeout;
+    let harmos_sdk::operations::registration::PreparedNative { instance, grant, key, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
         instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
     });
-    let mut request = super::binding::Request::from(Vec::new());
     request.binding = Some(Arc::new(binding));
     request.grant = grant;
     request.key = key;

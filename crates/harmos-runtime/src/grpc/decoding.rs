@@ -34,10 +34,13 @@ use harmos_sdk::grpc::DecodeInput;
 
 /* === Type Aliases === */
 
+pub(super) type AdditionalMemory = Arc<dyn Fn(&[u8]) -> Result<usize, Status> + Send + Sync>;
+
 /* === Structs === */
 
 pub struct Decoder<W, T> {
     settings: DecodeSettings,
+    pub(super) additional: Option<AdditionalMemory>,
     budget: Arc<Semaphore>,
     failure: Option<Status>,
     message: PhantomData<fn() -> (W, T)>,
@@ -67,12 +70,24 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
     }
 
     pub(super) fn fork(&self) -> Self {
-        Self { settings: self.settings, budget: self.budget.clone(), failure: None, message: PhantomData }
+        Self {
+            additional: self.additional.clone(),
+            settings: self.settings,
+            budget: self.budget.clone(),
+            failure: None,
+            message: PhantomData,
+        }
     }
 
     pub fn new(settings: DecodeSettings) -> Result<Self, Status> {
         settings.validate()?;
-        Ok(Self { settings, budget: Arc::new(Semaphore::new(settings.retained_bytes.get())), failure: None, message: PhantomData })
+        Ok(Self {
+            additional: None,
+            settings,
+            budget: Arc::new(Semaphore::new(settings.retained_bytes.get())),
+            failure: None,
+            message: PhantomData,
+        })
     }
 
     pub fn request<B>(self, body: B) -> tonic::Streaming<StreamItem<T>>
@@ -100,10 +115,15 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
         if encoded.len() > self.settings.message_bytes.get() {
             return Err(Status::resource_exhausted("gRPC message exceeds wire ceiling"));
         }
+        let additional = self.additional.as_ref().map_or(Ok(0), |memory| memory(encoded))?;
         let (value, claim) = W::decode_admitted(DecodeInput::new(encoded), |bytes| {
             let span = tracing::trace_span!(target: "harmos::grpc", "grpc.decode.admit", decoded_bytes = bytes);
             let _entered = span.enter();
-            let bytes = bytes.max(std::mem::size_of::<T>()).max(1);
+            let bytes = bytes
+                .max(std::mem::size_of::<T>())
+                .max(1)
+                .checked_add(additional)
+                .ok_or_else(|| Status::resource_exhausted("gRPC decoded memory overflow"))?;
             if bytes > self.settings.retained_bytes.get() {
                 return Err(Status::resource_exhausted("gRPC decoded message exceeds byte ceiling"));
             }

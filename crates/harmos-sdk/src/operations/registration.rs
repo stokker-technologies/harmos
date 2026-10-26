@@ -50,6 +50,8 @@ pub struct RegistrationBatch {
 }
 
 pub struct PreparedNative {
+    #[cfg(feature = "streaming")]
+    pub streams: Option<super::WireStreams>,
     pub instance: Box<dyn NativeInstance>,
     pub grant: Option<crate::plugin::Grant>,
     pub key: Option<super::CacheKey>,
@@ -65,6 +67,10 @@ pub struct OperationFactory {
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
     encoded: PrepareEncoded,
+    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    grpc: fn(Dependencies, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
+    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    grpc_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
     decoding_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
 }
 
@@ -88,6 +94,12 @@ struct NativeOperation<O: Operation> {
     endpoints: O::Endpoints,
     stopped: bool,
     encoded: bool,
+    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    protobuf: bool,
+    #[cfg(feature = "streaming")]
+    streams: Option<super::WireStreams>,
+    #[cfg(feature = "streaming")]
+    epoch: u64,
 }
 
 /* === Enums === */
@@ -158,6 +170,12 @@ impl RegistrationBatch {
                     endpoints: *endpoints,
                     stopped: false,
                     encoded: false,
+                    #[cfg(all(feature = "grpc", feature = "streaming"))]
+                    protobuf: false,
+                    #[cfg(feature = "streaming")]
+                    streams: None,
+                    #[cfg(feature = "streaming")]
+                    epoch: 0,
                 }))
             },
             encoded: |dependencies, payload| {
@@ -167,8 +185,57 @@ impl RegistrationBatch {
                 let request = O::Request::decode(payload).map_err(ServingError::Codec)?;
                 let grant = D::grant(&request);
                 let key = D::key(&request);
-                let instance = NativeOperation::<O> { dependencies, operation: None, request, endpoints, stopped: false, encoded: true };
-                Ok(PreparedNative { instance: Box::new(instance), grant, key })
+                let instance = NativeOperation::<O> {
+                    dependencies,
+                    operation: None,
+                    request,
+                    endpoints,
+                    stopped: false,
+                    encoded: true,
+                    #[cfg(all(feature = "grpc", feature = "streaming"))]
+                    protobuf: false,
+                    #[cfg(feature = "streaming")]
+                    streams: None,
+                    #[cfg(feature = "streaming")]
+                    epoch: 0,
+                };
+                Ok(PreparedNative {
+                    instance: Box::new(instance),
+                    grant,
+                    key,
+                    #[cfg(feature = "streaming")]
+                    streams: None,
+                })
+            },
+            #[cfg(all(feature = "grpc", feature = "streaming"))]
+            grpc: |dependencies, payload, limits| {
+                use super::EndpointSet;
+                let request = crate::grpc::decode::<O::Request>(crate::grpc::DecodeInput::new(payload)).map_err(ServingError::Codec)?;
+                let (endpoints, streams) = match O::Endpoints::empty() {
+                    Some(endpoints) => (endpoints, None),
+                    None => {
+                        let (endpoints, streams) = O::Endpoints::bind_wire(limits)?;
+                        (endpoints, Some(streams.protobuf(super::serving::protobuf::Codec::of::<D>())?))
+                    }
+                };
+                let grant = D::grant(&request);
+                let key = D::key(&request);
+                let instance = NativeOperation::<O> {
+                    dependencies,
+                    operation: None,
+                    request,
+                    endpoints,
+                    stopped: false,
+                    encoded: true,
+                    protobuf: true,
+                    streams: streams.clone(),
+                    epoch: 0,
+                };
+                Ok(PreparedNative { instance: Box::new(instance), grant, key, streams })
+            },
+            #[cfg(all(feature = "grpc", feature = "streaming"))]
+            grpc_memory: |payload| {
+                crate::grpc::prepare::<O::Request>(crate::grpc::DecodeInput::new(payload)).map(|prepared| prepared.memory())
             },
             decoding_memory: <D::Request as crate::Message>::decoding_memory,
         });
@@ -209,6 +276,15 @@ impl OperationFactory {
         (self.encoded)(self.dependencies.clone(), payload)
     }
 
+    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    pub fn prepare_grpc(&self, payload: &[u8], limits: super::WireStreamLimits) -> Result<PreparedNative, ServingError> {
+        (self.grpc)(self.dependencies.clone(), payload, limits)
+    }
+    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    pub fn grpc_decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
+        (self.grpc_memory)(payload)
+    }
+
     pub fn prepare_native(
         &self, request: Box<dyn Any + Send>, endpoints: Box<dyn Any + Send>,
     ) -> Result<Box<dyn NativeInstance>, ServingError> {
@@ -245,7 +321,24 @@ impl<O: Operation> NativeInstance for NativeOperation<O> {
         Box::pin(async move {
             let operation = self.operation.as_mut().ok_or(ServingError::Uninitialized)?;
             let context = context.for_registration(self.dependencies.clone());
+            #[cfg(feature = "streaming")]
+            let attempt = if let Some(streams) = &self.streams {
+                self.epoch = self.epoch.checked_add(1).ok_or(ServingError::StreamPhase)?;
+                Some(streams.start(self.epoch)?)
+            } else {
+                None
+            };
             let response = operation.run(context, &mut self.request, &mut self.endpoints).await.map_err(operation_error::<O>)?;
+            #[cfg(feature = "streaming")]
+            if let Some(attempt) = attempt {
+                attempt.end();
+            }
+            #[cfg(all(feature = "grpc", feature = "streaming"))]
+            if self.protobuf {
+                let mut bytes = Vec::new();
+                crate::grpc::encode(&*response, &mut bytes).map_err(ServingError::Codec)?;
+                return Ok(super::Response::new(bytes).into_erased());
+            }
             if self.encoded {
                 use crate::Message;
                 return Ok(super::Response::new(response.encode()).into_erased());

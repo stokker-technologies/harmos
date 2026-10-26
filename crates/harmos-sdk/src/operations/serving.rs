@@ -12,7 +12,7 @@
 mod codec;
 mod owned;
 #[cfg(feature = "grpc")]
-mod protobuf;
+pub(crate) mod protobuf;
 #[cfg(feature = "streaming")]
 mod streams;
 
