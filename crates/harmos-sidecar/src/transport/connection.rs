@@ -306,7 +306,8 @@ async fn send_data(mut writer: IoWriter, mut outgoing: mpsc::Receiver<Outgoing>,
     while let Some(Outgoing { packet, reservation }) = outgoing.recv().await {
         reservation.issued()?;
         write_with(&mut writer, &packet, &mut bytes).await?;
-        writer.flush().await?;
+        let span = tracing::trace_span!(target: "harmos::carrier", "sidecar.frame.flush");
+        tracing::Instrument::instrument(writer.flush(), span).await?;
         let next = (*written.borrow()).checked_add(1).ok_or_else(|| super::invalid("written data counter overflow"))?;
         written.send_replace(next);
     }

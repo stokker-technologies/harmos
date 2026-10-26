@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:d7a16371a1e5896a1c7dad831da03855ef53999cf21ade1152e777fcc33f38ac
+# Rendered by stkr project update from templates/ci/.gitlab/ci/managed/test.yml; sha256:a70140382144558fed837b55eff16adc5645129d088d649d6e7c727791f7e069
 Test / Rust / Unit (linux):
   stage: Test
   tags:
@@ -27,6 +27,7 @@ Test / Rust / Unit (linux):
     expire_in: 7 days
     paths:
     - target/tests/$PROFILE/linux-*/unit-rust/
+    - .stkr/traces/$PROFILE/linux-*/unit-rust/
     reports:
       junit: target/tests/$PROFILE/linux-*/unit-rust/junit.xml
   variables:
@@ -35,9 +36,11 @@ Test / Rust / Unit (linux):
     MISE_TASK_SKIP: build:rust:tests
   before_script:
   - >-
-    if [ "$CI_PIPELINE_SOURCE" = push ] && { [ "$CI_COMMIT_BRANCH" = dev ] || [ -n
-    "$CI_COMMIT_TAG" ]; } && [ "$validated" = true ]; then printf 'Reusing green
-    review pipeline %s\n' "$review_run"; exit 0; fi
+    if { { [ "$CI_COMMIT_BRANCH" = dev ] && { [ "$CI_PIPELINE_SOURCE" = push ] || [
+    "$CI_PIPELINE_SOURCE" = web ] || [ "$CI_PIPELINE_SOURCE" = api ] || [
+    "$CI_PIPELINE_SOURCE" = trigger ]; }; } || { [ "$CI_PIPELINE_SOURCE" = push ] && [ -n
+    "$CI_COMMIT_TAG" ]; }; } && [ "$validated" = true ]; then printf 'Reusing green review
+    pipeline %s\n' "$review_run"; exit 0; fi
   - |-
     set -eu
     # === Setup === #
@@ -118,6 +121,7 @@ Test / Rust / Unit (windows):
     expire_in: 7 days
     paths:
     - target/tests/$PROFILE/windows-*/unit-rust/
+    - .stkr/traces/$PROFILE/windows-*/unit-rust/
     reports:
       junit: target/tests/$PROFILE/windows-*/unit-rust/junit.xml
   hooks:
@@ -138,9 +142,10 @@ Test / Rust / Unit (windows):
     - interruptible
   before_script:
   - >-
-    if ($env:CI_PIPELINE_SOURCE -eq 'push' -and ($env:CI_COMMIT_BRANCH -eq 'dev'
-    -or $env:CI_COMMIT_TAG) -and $env:validated -eq 'true') { Write-Host "Reusing green
-    review pipeline $env:review_run"; exit 0 }
+    if ((($env:CI_COMMIT_BRANCH -eq 'dev' -and $env:CI_PIPELINE_SOURCE -in
+    @('push', 'web', 'api', 'trigger')) -or ($env:CI_PIPELINE_SOURCE -eq 'push' -and
+    $env:CI_COMMIT_TAG)) -and $env:validated -eq 'true') { Write-Host "Reusing green review
+    pipeline $env:review_run"; exit 0 }
   - |
     $count = if ($env:GIT_CONFIG_COUNT) { $env:GIT_CONFIG_COUNT } else { '0' }
     if ($count -notmatch '^\d+$' -or [int]$count -gt 1000) { throw 'Invalid inherited Git configuration count' }

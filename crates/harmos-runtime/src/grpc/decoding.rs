@@ -95,11 +95,14 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
         result
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.decode", level = "trace", skip_all, fields(wire_bytes = encoded.len()))]
     fn decode_message(&self, encoded: &[u8]) -> Result<StreamItem<T>, Status> {
         if encoded.len() > self.settings.message_bytes.get() {
             return Err(Status::resource_exhausted("gRPC message exceeds wire ceiling"));
         }
         let (value, claim) = W::decode_admitted(DecodeInput::new(encoded), |bytes| {
+            let span = tracing::trace_span!(target: "harmos::grpc", "grpc.decode.admit", decoded_bytes = bytes);
+            let _entered = span.enter();
             let bytes = bytes.max(std::mem::size_of::<T>()).max(1);
             if bytes > self.settings.retained_bytes.get() {
                 return Err(Status::resource_exhausted("gRPC decoded message exceeds byte ceiling"));

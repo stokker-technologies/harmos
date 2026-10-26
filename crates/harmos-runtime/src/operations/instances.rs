@@ -26,11 +26,13 @@ use futures_core::Stream;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 use tokio::task::JoinError;
+use tracing::Instrument;
 
 // Local Imports
 use super::execution::{self, Execution, Prepared};
 use super::lane::{Admission, Lanes};
 use super::{OperationInstanceId, OperationStatus, Settings};
+use crate::supervision::executor::InContext;
 use crate::supervision::{Task, executor, instance::Instance};
 use crate::{Error, Result};
 
@@ -216,6 +218,10 @@ impl Instances {
             retired();
         });
         let instance = Arc::new(instance);
+        let trace = instance.trace();
+        trace.record("instance_id", id.value());
+        let queued = tracing::debug_span!(target: "harmos::operations", parent: &trace, "operations.queue", lane);
+        let queued_driver = queued;
         let (deposit, prepared) = oneshot::channel();
         let reservation = Reservation { outcome, deposit, control: instance.clone(), admission: admission.clone(), cause: None };
         let execution = Execution { admission, submitted, cancelled, instance: instance.clone(), queue: queue_permit };
@@ -224,15 +230,22 @@ impl Instances {
         let control = instance.clone();
         sending.send(Submission {
             instance,
-            driver: Box::pin(async move {
-                match prepared.await {
-                    Ok((prepared, cause)) => {
-                        let answer = execution::execute(owner, prepared, execution, cause).await;
-                        let _ = reply.send(answer);
+            driver: Box::pin(
+                async move {
+                    let dispatch = tracing::debug_span!(target: "harmos::operations", "operations.dispatch");
+                    dispatch.follows_from(queued_driver.id());
+                    drop(queued_driver);
+                    match prepared.await {
+                        Ok((prepared, cause)) => {
+                            let answer = execution::execute(owner, prepared, execution, cause).instrument(dispatch).await;
+                            let _ = reply.send(answer);
+                        }
+                        Err(_) => control.finished(),
                     }
-                    Err(_) => control.finished(),
                 }
-            }),
+                .instrument(trace)
+                .in_current_context(),
+            ),
         });
         Ok(reservation)
     }

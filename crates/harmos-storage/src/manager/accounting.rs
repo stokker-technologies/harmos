@@ -50,6 +50,7 @@ impl<C> StorageManager<C> {
             .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
     }
 
+    #[tracing::instrument(name = "storage.manager.accounting.reserve_scratch", level = "debug", skip_all)]
     pub(super) async fn reserve_scratch(&self, bytes: usize) -> Result<Reservation> {
         Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None).await.map_err(Refusal::into_error)
     }

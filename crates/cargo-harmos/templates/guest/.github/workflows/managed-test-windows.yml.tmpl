@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:2ffe83a7e353706006ccf495906d3fc50209f9c6110982593a30b61fdbdfa657
+# Rendered by stkr project update from templates/ci/.github/workflows/managed-test-windows.yml; sha256:6825c3053c7b3e99b20a1db86c4682f47a385c1a70b31fd54ed355568b06e991
 name: Test / Windows
 "on":
   workflow_call:
@@ -239,7 +239,9 @@ jobs:
       if: always()
       with:
         name: junit-test_rust_unit-${{ env.PROFILE }}-windows
-        path: target/tests/${{ env.PROFILE }}/*/unit-rust/
+        path: |-
+          target/tests/${{ env.PROFILE }}/*/unit-rust/
+          .stkr/traces/${{ env.PROFILE }}/*/unit-rust/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true

@@ -66,6 +66,10 @@
 
 ## 4. Integration And Measurement
 
+- [x] 4.7 Instrument newly introduced storage, retained-read/projection, JSON, filesystem and carrier paths using existing tracing conventions; preserve request context across spawned/blocking work and cancellation, exclude payloads, and verify representative trace lifetimes and disabled-tracing behavior.
+
+- [x] 4.6 Integrate current dev observability instrumentation with owned storage and carrier APIs, resolve source/tooling overlaps, and complete targeted merge proof before publication.
+
 - [x] 4.1 Review all writer handoffs and combined migration inventory; complete targeted checks and close every implementation item before declaring source complete.
 - [x] 4.2 Run one final combined measurement after source closure: rerun identical comparison workloads and new filesystem workloads, execute the untimed real sidecar/guest Hash bridge correctness checks, compare latency/throughput/memory with native baseline results and repair regressions; label new workloads without baselines and report achieved and missed targets truthfully.
 - [x] 4.3 Present complete candidate and request remote delivery authorization unless subsequently granted.

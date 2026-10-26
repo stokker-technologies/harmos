@@ -102,11 +102,13 @@ impl RemoteStreamError {
     }
 }
 impl StreamEndpoints for () {
+    #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]
     async fn pump<P: StreamPeer>(&mut self, _: &P, _: u64, _: u64, _: watch::Receiver<bool>, _: &AtomicBool) -> Result<(), P::Error> {
         Ok(())
     }
 }
 impl<T: Message + 'static> StreamEndpoints for StreamInput<T> {
+    #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]
     async fn pump<P: StreamPeer>(
         &mut self, peer: &P, invocation: u64, epoch: u64, mut ended: watch::Receiver<bool>, _: &AtomicBool,
     ) -> Result<(), P::Error> {
@@ -130,6 +132,7 @@ impl<T: Message + 'static> StreamEndpoints for StreamInput<T> {
     }
 }
 impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
+    #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]
     async fn pump<P: StreamPeer>(
         &mut self, peer: &P, invocation: u64, epoch: u64, _: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> Result<(), P::Error> {
@@ -166,6 +169,7 @@ where
     I: Message + 'static,
     O: Message + MemorySize + 'static,
 {
+    #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]
     async fn pump<P: StreamPeer>(
         &mut self, peer: &P, invocation: u64, epoch: u64, ended: watch::Receiver<bool>, transferred: &AtomicBool,
     ) -> Result<(), P::Error> {
@@ -181,6 +185,7 @@ where
 
 /* === Private Functions === */
 
+#[tracing::instrument(target = "harmos::carrier", name = "carrier.stream_attempt", level = "debug", skip_all, fields(invocation, epoch))]
 pub(super) async fn attempt<P: StreamPeer, E: StreamEndpoints>(
     peer: &P, endpoints: &mut E, invocation: u64, epoch: u64, transferred: &AtomicBool,
     running: impl Future<Output = Result<WireAnswer, P::Error>> + Send,

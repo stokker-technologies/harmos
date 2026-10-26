@@ -36,6 +36,7 @@ use harmos_domain::state::Position;
 /* === Structs === */
 
 pub struct RecoveryReader<'a, C> {
+    context: crate::execution::Context,
     storage: &'a StorageManager<C>,
     _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
@@ -51,8 +52,9 @@ pub struct RecoveryReader<'a, C> {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.state.reader.recovery_reader", level = "debug", skip_all)]
     pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_, C>> {
-        let lifecycle = self.inner.lifecycle.read().await;
+        let lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let invalid = |reason| Error::InvalidInput { field: "state recovery", reason };
         let snapshot_bound = snapshot_bytes
             .map(|bytes| {
@@ -81,7 +83,15 @@ impl<C> StorageManager<C> {
             }
             current.status.recovery_saved.clone()
         };
-        Ok(RecoveryReader { storage: self, _lifecycle: lifecycle, through, limits, page_bytes, snapshot_bound })
+        Ok(RecoveryReader {
+            context: crate::execution::Context::current(),
+            storage: self,
+            _lifecycle: lifecycle,
+            through,
+            limits,
+            page_bytes,
+            snapshot_bound,
+        })
     }
 }
 
@@ -91,34 +101,51 @@ impl<C> RecoveryReader<'_, C> {
     }
 
     pub async fn snapshot(&self) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
-        let Some(bound) = self.snapshot_bound else {
-            return Ok(None);
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            let Some(bound) = self.snapshot_bound else {
+                return Ok(None);
+            };
+            let reservation = self.reserve(bound.get().saturating_mul(2))?.retain();
+            let snapshot = self
+                .storage
+                .inner
+                .bounded("recovery.read_snapshot", self.storage.inner.recovery.read_snapshot(bound, reservation.clone()))
+                .await?;
+            if let Some(snapshot) = &snapshot
+                && (!self.through.covers(&snapshot.through)? || encoded_size(snapshot)? > bound.get())
+            {
+                return Err(Error::InvalidInput { field: "state snapshot", reason: "invalid managed snapshot boundary or size" });
+            }
+            if let Some(snapshot) = &snapshot {
+                self.storage.check_state_dependency(&snapshot.required_data)?;
+            }
+            Ok(snapshot.map(|snapshot| crate::ReadBatch::retained(snapshot, reservation)))
         };
-        let reservation = self.reserve(bound.get().saturating_mul(2))?.retain();
-        let snapshot = self.storage.inner.bounded(self.storage.inner.recovery.read_snapshot(bound, reservation.clone())).await?;
-        if let Some(snapshot) = &snapshot
-            && (!self.through.covers(&snapshot.through)? || encoded_size(snapshot)? > bound.get())
-        {
-            return Err(Error::InvalidInput { field: "state snapshot", reason: "invalid managed snapshot boundary or size" });
-        }
-        if let Some(snapshot) = &snapshot {
-            self.storage.check_state_dependency(&snapshot.required_data)?;
-        }
-        Ok(snapshot.map(|snapshot| crate::ReadBatch::retained(snapshot, reservation)))
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
     pub async fn page(&self, after: &RecoveryPosition) -> Result<crate::ReadBatch<RecoveryPage>> {
-        let reservation = self.reserve(self.page_bytes)?.retain();
-        let page = self
-            .storage
-            .inner
-            .bounded(self.storage.inner.recovery.read_entries(after, &self.through, self.limits, reservation.clone()))
-            .await?;
-        page.check(after, &self.through, self.limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
-        for entry in &page.entries {
-            self.storage.check_state_dependency(&entry.required_data)?;
-        }
-        Ok(crate::ReadBatch::retained(page, reservation))
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            let reservation = self.reserve(self.page_bytes)?.retain();
+            let page = self
+                .storage
+                .inner
+                .bounded(
+                    "recovery.read_entries",
+                    self.storage.inner.recovery.read_entries(after, &self.through, self.limits, reservation.clone()),
+                )
+                .await?;
+            page.check(after, &self.through, self.limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
+            for entry in &page.entries {
+                self.storage.check_state_dependency(&entry.required_data)?;
+            }
+            Ok(crate::ReadBatch::retained(page, reservation))
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
     fn reserve(&self, bytes: usize) -> Result<Reservation> {

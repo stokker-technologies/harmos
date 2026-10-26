@@ -111,6 +111,7 @@ fn decode<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), Messa
 }
 
 #[cfg(feature = "streaming")]
+#[tracing::instrument(target = "harmos::grpc", name = "grpc.postcard.decode", level = "trace", skip_all, fields(bytes = payload.len()))]
 fn decode_postcard<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
     let target =
         target.downcast_mut::<Option<T>>().ok_or_else(|| MessageError::borrowed("protobuf stream item type differs from operation"))?;

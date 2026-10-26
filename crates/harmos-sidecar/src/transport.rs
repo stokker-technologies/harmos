@@ -150,6 +150,7 @@ impl Packet {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "sidecar.frame.decode", level = "trace", skip_all, fields(wire_bytes = bytes.len(), channel = ?channel))]
     pub fn decode(channel: Role, bytes: Vec<u8>) -> io::Result<Self> {
         if bytes.is_empty() || bytes.len() > channel.limit() {
             return Err(invalid("packet exceeds channel limit or is empty"));
@@ -204,6 +205,7 @@ impl Packet {
 
 /* === Public Functions === */
 
+#[tracing::instrument(target = "harmos::carrier", name = "sidecar.frame.read", level = "trace", skip_all, fields(channel = ?channel))]
 pub async fn read<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<Packet>> {
     let Some(length) = read_length(reader, channel).await? else {
         return Ok(None);
@@ -213,6 +215,7 @@ pub async fn read<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Re
     Packet::decode(channel, body).map(Some)
 }
 
+#[tracing::instrument(target = "harmos::carrier", name = "sidecar.frame.read", level = "trace", skip_all, fields(channel = "Data"))]
 pub async fn read_data<R: AsyncRead + Unpin>(reader: &mut R, credit: &Arc<ReceiveCredit>) -> io::Result<Option<(Packet, Consumption)>> {
     let Some(length) = read_length(reader, Role::Data).await? else {
         return Ok(None);
@@ -240,18 +243,22 @@ fn payload_range(bytes: &[u8], payload: &[u8]) -> io::Result<Range<usize>> {
     Ok(start..end)
 }
 
+#[tracing::instrument(target = "harmos::carrier", name = "sidecar.frame.write", level = "trace", skip_all, fields(wire_bytes = tracing::field::Empty, coalesced = tracing::field::Empty))]
 async fn write_with<W: AsyncWrite + Unpin>(writer: &mut W, packet: &Packet, header: &mut Vec<u8>) -> io::Result<()> {
     let payload = match packet {
         Packet::Frame(Frame::Call { params, .. } | Frame::Push { params, .. }) => params.as_slice(),
         Packet::Frame(Frame::Answer { result, .. }) => result.as_slice(),
         _ => {
             packet.encode_into(header)?;
+            tracing::Span::current().record("wire_bytes", header.len());
             return writer.write_all(header).await;
         }
     };
     let size = packet.encoded_len()?;
     let prefix_size = size - payload.len();
     let coalesce = !writer.is_write_vectored() && size <= COALESCE_BYTES;
+    tracing::Span::current().record("wire_bytes", size);
+    tracing::Span::current().record("coalesced", coalesce);
     let capacity = if coalesce { size } else { prefix_size };
     if capacity > header.capacity() {
         header.try_reserve_exact(capacity - header.len()).map_err(io::Error::other)?;

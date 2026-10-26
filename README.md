@@ -84,6 +84,9 @@ Use the `harmos` facade to compose a runtime and define your application's
 state, transactions and operations. Optional Cargo features select plugin,
 transport and simulation capabilities.
 
+Structured operation and storage tracing supports performance investigation;
+applications control collection. See [Performance](docs/product-guide.md#performance).
+
 #### Examples
 
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers

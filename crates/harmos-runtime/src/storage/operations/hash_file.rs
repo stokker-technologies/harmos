@@ -56,6 +56,7 @@ impl<C: 'static> Operation for Handler<C> {
         Ok(Self { storage })
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.operation.hash_file", level = "trace", skip_all)]
     async fn run<'a>(&mut self, _: Self::Context<'a>, request: &mut HashFile, _: &mut ()) -> Result<crate::operations::Response<FileHash>> {
         Ok(self.storage.hash_file(request.clone()).await?.into())
     }

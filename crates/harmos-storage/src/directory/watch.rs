@@ -42,6 +42,7 @@ use harmos_domain::model::storage::DirectorySelection;
 /* === Structs === */
 
 pub struct DirectoryWatcher {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
     selection: Arc<Selection>,
@@ -88,28 +89,33 @@ impl DirectoryWatcher {
         let callback_overflow = Arc::clone(&overflow);
         let callback_changed = Arc::clone(&changed);
 
+        let span = tracing::debug_span!("storage.directory.subscription", outcome = "cancelled");
+        let context = crate::execution::Context::with_span(span);
+        let callback_context = context.clone();
         let handler = move |result: notify::Result<Event>| {
-            let Ok(event) = result else {
-                signal(&callback_overflow, &callback_changed);
-                return;
-            };
-            if matches!(event.kind, EventKind::Access(_)) {
-                return;
-            }
-            if event.paths.is_empty() || event.paths.len() > settings.event_capacity.get() {
-                signal(&callback_overflow, &callback_changed);
-                return;
-            }
-            let paths = event.paths.iter().fold(0_usize, |bytes, path| bytes.saturating_add(path.capacity()));
-            let bytes = paths
-                .saturating_mul(3)
-                .saturating_add(event.paths.capacity().saturating_mul(std::mem::size_of::<std::path::PathBuf>() * 3))
-                .saturating_add(ENTRY_OVERHEAD);
-            let Ok(memory) = Reservation::try_new(&callback_inner, Pool::Read, &callback_held, bytes) else {
-                signal(&callback_overflow, &callback_changed);
-                return;
-            };
-            deliver(&outgoing, Queued { event, _memory: memory }, &callback_overflow, &callback_changed);
+            callback_context.sync(|| {
+                let Ok(event) = result else {
+                    signal(&callback_overflow, &callback_changed);
+                    return;
+                };
+                if matches!(event.kind, EventKind::Access(_)) {
+                    return;
+                }
+                if event.paths.is_empty() || event.paths.len() > settings.event_capacity.get() {
+                    signal(&callback_overflow, &callback_changed);
+                    return;
+                }
+                let paths = event.paths.iter().fold(0_usize, |bytes, path| bytes.saturating_add(path.capacity()));
+                let bytes = paths
+                    .saturating_mul(3)
+                    .saturating_add(event.paths.capacity().saturating_mul(std::mem::size_of::<std::path::PathBuf>() * 3))
+                    .saturating_add(ENTRY_OVERHEAD);
+                let Ok(memory) = Reservation::try_new(&callback_inner, Pool::Read, &callback_held, bytes) else {
+                    signal(&callback_overflow, &callback_changed);
+                    return;
+                };
+                deliver(&outgoing, Queued { event, _memory: memory }, &callback_overflow, &callback_changed);
+            })
         };
         let configuration = notify::Config::default().with_poll_interval(settings.poll_interval).with_follow_symlinks(false);
         let mut watcher = RecommendedWatcher::new(handler, configuration).map_err(watch_error)?;
@@ -121,6 +127,7 @@ impl DirectoryWatcher {
             None
         };
         Ok(Self {
+            context,
             inner,
             held,
             selection: selected,
@@ -138,65 +145,72 @@ impl DirectoryWatcher {
     }
 
     pub async fn next(&mut self) -> Result<Option<ReadBatch<DirectoryEvent>>> {
-        let mut lifecycle = self.inner.changed.subscribe();
-        loop {
-            let closing = {
-                let state = self.inner.state.lock().unwrap();
-                state.status.closing || state.status.closed
-            };
-            if closing || self.watcher.is_none() {
-                self.stop();
-                return Ok(None);
-            }
-            if let Some(reader) = &mut self.initial {
-                let next = tokio::select! {
-                    next = reader.next_value() => Some(next),
-                    _ = lifecycle.changed() => None,
-                };
-                let Some(next) = next else { continue };
-                if let Some((entry, memory)) = next? {
-                    return retained_item(&self.inner, DirectoryEvent::Existing(entry), memory).map(Some);
-                }
-                self.initial = None;
-            }
-            if !self.initial_complete {
-                self.initial_complete = true;
-                return Ok(Some(self.initial_marker.clone()));
-            }
-            if let Some(item) = self.ready.pop_front() {
-                return Ok(Some(item));
-            }
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.directory.watch.page", outcome = "cancelled"));
+        context
+            .result(span, async {
+                let mut lifecycle = self.inner.changed.subscribe();
+                loop {
+                    let closing = {
+                        let state = self.inner.state.lock().unwrap();
+                        state.status.closing || state.status.closed
+                    };
+                    if closing || self.watcher.is_none() {
+                        self.stop();
+                        return Ok(None);
+                    }
+                    if let Some(reader) = &mut self.initial {
+                        let next = tokio::select! {
+                            next = reader.next_value() => Some(next),
+                            _ = lifecycle.changed() => None,
+                        };
+                        let Some(next) = next else { continue };
+                        if let Some((entry, memory)) = next? {
+                            return retained_item(&self.inner, DirectoryEvent::Existing(entry), memory).map(Some);
+                        }
+                        self.initial = None;
+                    }
+                    if !self.initial_complete {
+                        self.initial_complete = true;
+                        return Ok(Some(self.initial_marker.clone()));
+                    }
+                    if let Some(item) = self.ready.pop_front() {
+                        return Ok(Some(item));
+                    }
 
-            let changed = Arc::clone(&self.changed);
-            let notified = changed.notified();
-            if self.overflow.swap(false, Ordering::AcqRel) {
-                return Ok(Some(self.rescan()));
-            }
-            let queued = tokio::select! {
-                value = self.incoming.recv() => value,
-                _ = notified => continue,
-                _ = lifecycle.changed() => continue,
-            };
-            let Some(queued) = queued else { return Ok(None) };
-            if queued.event.paths.len() > self.inner.settings.filesystem.event_capacity.get() {
-                return Ok(Some(self.rescan()));
-            }
-            let events = events(&self.selection.value, queued.event)?;
-            if events.iter().any(|event| matches!(event, DirectoryEvent::RescanRequired)) {
-                return Ok(Some(self.rescan()));
-            }
-            for event in events {
-                // One Native Event Can Carry Several Paths; Preserve Every Projection.
-                let item = item(&self.inner, &self.held, event)?;
-                self.ready.push_back(item);
-            }
-            if let Some(item) = self.ready.pop_front() {
-                return Ok(Some(item));
-            }
-        }
+                    let changed = Arc::clone(&self.changed);
+                    let notified = changed.notified();
+                    if self.overflow.swap(false, Ordering::AcqRel) {
+                        return Ok(Some(self.rescan()));
+                    }
+                    let queued = tokio::select! {
+                        value = self.incoming.recv() => value,
+                        _ = notified => continue,
+                        _ = lifecycle.changed() => continue,
+                    };
+                    let Some(queued) = queued else { return Ok(None) };
+                    if queued.event.paths.len() > self.inner.settings.filesystem.event_capacity.get() {
+                        return Ok(Some(self.rescan()));
+                    }
+                    let events = events(&self.selection.value, queued.event)?;
+                    if events.iter().any(|event| matches!(event, DirectoryEvent::RescanRequired)) {
+                        return Ok(Some(self.rescan()));
+                    }
+                    for event in events {
+                        // One Native Event Can Carry Several Paths; Preserve Every Projection.
+                        let item = item(&self.inner, &self.held, event)?;
+                        self.ready.push_back(item);
+                    }
+                    if let Some(item) = self.ready.pop_front() {
+                        return Ok(Some(item));
+                    }
+                }
+            })
+            .await
     }
 
     fn stop(&mut self) {
+        self.context.sync(|| self.context.span.record("outcome", "completed"));
         self.watcher.take();
         self.incoming.close();
         while self.incoming.try_recv().is_ok() {}
@@ -213,6 +227,12 @@ impl DirectoryWatcher {
             }
         }
         self.rescan.clone()
+    }
+}
+
+impl Drop for DirectoryWatcher {
+    fn drop(&mut self) {
+        self.context.sync(|| drop(self.watcher.take()));
     }
 }
 

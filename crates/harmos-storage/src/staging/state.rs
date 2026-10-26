@@ -68,6 +68,7 @@ impl FileState {
 
 impl Drop for FileState {
     fn drop(&mut self) {
+        self.context.sync(|| drop(self.queued.take()));
         if let Some(Command::Write(bytes)) = &self.command {
             bytes.retire();
         }
@@ -160,7 +161,7 @@ impl State {
     pub(crate) fn file_failed(&mut self, action: &FileAction, source: Arc<Error>, retrying: bool) {
         if let Some(file) = self.files.get_mut(&action.id()) {
             if let Some(session) = &file.session {
-                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, retrying, error = %source, reason = "storage failure", "file production failed");
+                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, retrying, reason = "storage failure", "file production failed");
             }
             file.in_flight = false;
             file.retrying = retrying;
@@ -315,6 +316,8 @@ mod tests {
         bytes.extend_from_slice(b"body");
         let charge = crate::batch::WriteCharge::new(inner, bytes.capacity());
         FileState {
+            context: crate::execution::Context::current(),
+            queued: Some(tracing::debug_span!("storage.file.queue")),
             staging: StagedFile { history: history(), id: metadata.id.clone() },
             metadata: Arc::new(metadata),
             session: None,

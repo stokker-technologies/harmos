@@ -41,6 +41,8 @@ pub(super) struct Deletion {
 }
 
 pub(super) struct DeleteWork {
+    pub(super) context: crate::execution::Context,
+    pub(super) queued: std::sync::Mutex<Option<tracing::Span>>,
     target: Target,
     pub(super) file: StagedFile,
     receipt: crate::StorageBatch<MutationReceipt>,
@@ -52,110 +54,125 @@ pub(super) struct DeleteWork {
 
 /* === Implementations === */
 
+impl Drop for DeleteWork {
+    fn drop(&mut self) {
+        self.context.sync(|| drop(self.queued.get_mut().unwrap().take()));
+    }
+}
+
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.deletion.delete_file_once", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
-        self.inner.primary.history().check(&file.history)?;
-        if !self.inner.primary.supports_mutation_receipts() || !self.inner.primary.supports_file_deletion() {
-            return Err(invalid("backend must support durable deletion"));
-        }
-        let fingerprint = fingerprint(file);
-        let mut retry = true;
-        let mut completion = None;
-        let mut changed = self.inner.changed.subscribe();
-        loop {
-            let mut notify = false;
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                if state.status.closing {
-                    return Err(Error::Closing { domain: "file deletion" });
-                }
-                if !state.ready || !state.status.running {
-                    return Err(Error::NotReady { domain: "file deletion" });
-                }
-                match state.receipts.lookup(mutation, &fingerprint, completion.as_ref())? {
-                    ReceiptState::Complete(value) => return value.deleted(),
-                    ReceiptState::Pending => {
-                        if completion.is_none() {
+        let result = async {
+            self.inner.primary.history().check(&file.history)?;
+            if !self.inner.primary.supports_mutation_receipts() || !self.inner.primary.supports_file_deletion() {
+                return Err(invalid("backend must support durable deletion"));
+            }
+            let fingerprint = fingerprint(file);
+            let mut retry = true;
+            let mut completion = None;
+            let mut changed = self.inner.changed.subscribe();
+            loop {
+                let mut notify = false;
+                {
+                    let mut state = self.inner.state.lock().unwrap();
+                    if state.status.closing {
+                        return Err(Error::Closing { domain: "file deletion" });
+                    }
+                    if !state.ready || !state.status.running {
+                        return Err(Error::NotReady { domain: "file deletion" });
+                    }
+                    match state.receipts.lookup(mutation, &fingerprint, completion.as_ref())? {
+                        ReceiptState::Complete(value) => return value.deleted(),
+                        ReceiptState::Pending => {
+                            if completion.is_none() {
+                                let owner = state.receipts.completion(mutation);
+                                completion = Some(owner);
+                            }
+                            let deletion = state.deletions.get(mutation).ok_or_else(|| invalid("pending identity owns different work"))?;
+                            if let Some(source) = deletion.failure.clone() {
+                                if !retry {
+                                    return Err(Error::Persistence { source });
+                                }
+                                if let Some(other) = &state.status.failure
+                                    && !Arc::ptr_eq(other, &source)
+                                {
+                                    return Err(Error::Persistence { source: other.clone() });
+                                }
+                                state.deletions.get_mut(mutation).unwrap().failure = None;
+                                state.status.failure = None;
+                                state.retry = state.retry.wrapping_add(1);
+                                notify = true;
+                            } else if let Some(source) = &state.status.failure {
+                                return Err(Error::Persistence { source: source.clone() });
+                            }
+                            retry = false;
+                        }
+                        ReceiptState::Missing => {
+                            if let Some(source) = &state.status.failure {
+                                return Err(Error::Persistence { source: source.clone() });
+                            }
+                            if state.files.values().any(|active| active.identifies(file)) {
+                                tracing::error!(file = %file.id, reason = "active producer", "file deletion rejected");
+                                return Err(invalid("active production must finish or abandon before deletion"));
+                            }
+                            if state.deleting(&file.id) {
+                                return Err(invalid("another deletion owns this file"));
+                            }
+                            if state.deletions.len() >= MAX_MUTATIONS.get() {
+                                return Err(exhausted());
+                            }
+                            let bytes = crate::btree_map_memory::<MutationId, Deletion>(1)
+                                .saturating_add(std::mem::size_of::<DeleteWork>())
+                                .saturating_add(std::mem::size_of::<MutationReceipt>())
+                                .saturating_add(std::mem::size_of::<MutationValue>())
+                                .saturating_add(mutation.memory_size().saturating_mul(2))
+                                .saturating_add(file.memory_size().saturating_mul(2))
+                                .saturating_add(2 * std::mem::size_of::<usize>());
+                            state.collect();
+                            let capacity = self.inner.settings.budget.read_memory_bytes.get();
+                            if bytes > capacity || state.status.read_bytes > capacity - bytes {
+                                return Err(exhausted());
+                            }
+                            let outcome = MutationValue::Deleted(file.clone());
+                            state.receipts.insert(mutation, fingerprint, outcome.memory_size())?;
                             let owner = state.receipts.completion(mutation);
                             completion = Some(owner);
-                        }
-                        let deletion = state.deletions.get(mutation).ok_or_else(|| invalid("pending identity owns different work"))?;
-                        if let Some(source) = deletion.failure.clone() {
-                            if !retry {
-                                return Err(Error::Persistence { source });
-                            }
-                            if let Some(other) = &state.status.failure
-                                && !Arc::ptr_eq(other, &source)
-                            {
-                                return Err(Error::Persistence { source: other.clone() });
-                            }
-                            state.deletions.get_mut(mutation).unwrap().failure = None;
-                            state.status.failure = None;
-                            state.retry = state.retry.wrapping_add(1);
+                            let receipt = state.receipts.prepared(mutation, outcome);
+                            let target = state.data_accepted;
+                            state.deletions.insert(
+                                mutation.clone(),
+                                Deletion {
+                                    work: Arc::new(DeleteWork {
+                                        context: crate::execution::Context::current(),
+                                        queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.deletion.queue"))),
+                                        target,
+                                        file: file.clone(),
+                                        receipt: crate::StorageBatch::new(vec![receipt])
+                                            .retained(crate::batch::WriteCharge::read(&self.inner, bytes)),
+                                    }),
+                                    bytes,
+                                    failure: None,
+                                },
+                            );
+                            retry = false;
                             notify = true;
-                        } else if let Some(source) = &state.status.failure {
-                            return Err(Error::Persistence { source: source.clone() });
                         }
-                        retry = false;
                     }
-                    ReceiptState::Missing => {
-                        if let Some(source) = &state.status.failure {
-                            return Err(Error::Persistence { source: source.clone() });
-                        }
-                        if state.files.values().any(|active| active.identifies(file)) {
-                            tracing::error!(file = %file.id, reason = "active producer", "file deletion rejected");
-                            return Err(invalid("active production must finish or abandon before deletion"));
-                        }
-                        if state.deleting(&file.id) {
-                            return Err(invalid("another deletion owns this file"));
-                        }
-                        if state.deletions.len() >= MAX_MUTATIONS.get() {
-                            return Err(exhausted());
-                        }
-                        let bytes = crate::btree_map_memory::<MutationId, Deletion>(1)
-                            .saturating_add(std::mem::size_of::<DeleteWork>())
-                            .saturating_add(std::mem::size_of::<MutationReceipt>())
-                            .saturating_add(std::mem::size_of::<MutationValue>())
-                            .saturating_add(mutation.memory_size().saturating_mul(2))
-                            .saturating_add(file.memory_size().saturating_mul(2))
-                            .saturating_add(2 * std::mem::size_of::<usize>());
-                        state.collect();
-                        let capacity = self.inner.settings.budget.read_memory_bytes.get();
-                        if bytes > capacity || state.status.read_bytes > capacity - bytes {
-                            return Err(exhausted());
-                        }
-                        let outcome = MutationValue::Deleted(file.clone());
-                        state.receipts.insert(mutation, fingerprint, outcome.memory_size())?;
-                        let owner = state.receipts.completion(mutation);
-                        completion = Some(owner);
-                        let receipt = state.receipts.prepared(mutation, outcome);
-                        let target = state.data_accepted;
-                        state.deletions.insert(
-                            mutation.clone(),
-                            Deletion {
-                                work: Arc::new(DeleteWork {
-                                    target,
-                                    file: file.clone(),
-                                    receipt: crate::StorageBatch::new(vec![receipt])
-                                        .retained(crate::batch::WriteCharge::read(&self.inner, bytes)),
-                                }),
-                                bytes,
-                                failure: None,
-                            },
-                        );
-                        retry = false;
-                        notify = true;
-                    }
+                    state.collect();
                 }
-                state.collect();
+                if notify {
+                    self.inner.notify();
+                }
+                changed.changed().await.map_err(|_| Error::Closing { domain: "file deletion" })?;
             }
-            if notify {
-                self.inner.notify();
-            }
-            changed.changed().await.map_err(|_| Error::Closing { domain: "file deletion" })?;
         }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
+    #[tracing::instrument(name = "storage.deletion.settle_deletions", level = "debug", skip_all)]
     pub(super) async fn settle_deletions(&self) -> Result<()> {
         let mut changed = self.inner.changed.subscribe();
         {
@@ -215,7 +232,7 @@ impl State {
 
     pub(super) fn deletion_failed(&mut self, mutation: &MutationId, source: Arc<Error>) {
         if let Some(deletion) = self.deletions.get_mut(mutation) {
-            tracing::error!(file = %deletion.work.file.id, window = %mutation.window, mutation = %mutation.key, error = %source, reason = "file deletion failed", "file deletion retained for retry");
+            tracing::error!(file = %deletion.work.file.id, window = %mutation.window, mutation = %mutation.key, reason = "file deletion failed", "file deletion retained for retry");
             deletion.failure = Some(source);
         }
     }
@@ -238,9 +255,10 @@ impl DeleteWork {
         &self.receipt.as_slice()[0]
     }
 
+    #[tracing::instrument(name = "storage.deletion.perform", level = "debug", skip_all)]
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
-        inner.bounded(inner.primary.delete_file(&self.file)).await?;
-        inner.bounded(inner.primary.save_mutations(self.receipt.clone())).await?;
+        inner.bounded("primary.delete_file", inner.primary.delete_file(&self.file)).await?;
+        inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipt.clone())).await?;
         tracing::info!(file = %self.file.id, mutation = %self.receipt.as_slice()[0].mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }

@@ -46,6 +46,7 @@ async fn values(stream: &harmos_runtime::streams::PluginStream) -> Vec<String> {
 
 #[tokio::test]
 async fn publications_survive_unload() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("publications").await).unwrap();
@@ -68,6 +69,7 @@ async fn publications_survive_unload() {
 
 #[tokio::test]
 async fn replacement_preserves_owner() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
@@ -87,6 +89,7 @@ async fn replacement_preserves_owner() {
 
 #[tokio::test]
 async fn initialization_aborts_staging() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("failed-publications").await).unwrap();
@@ -106,6 +109,7 @@ async fn initialization_aborts_staging() {
 
 #[tokio::test]
 async fn bounded_window_gaps() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
@@ -129,6 +133,7 @@ async fn bounded_window_gaps() {
 
 #[tokio::test]
 async fn saved_context_generation() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();

@@ -156,6 +156,7 @@ impl Operation {
         self.binding.decode(bytes)
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.dynamic.encode", level = "trace", skip_all, fields(json_bytes = json.len(), item))]
     fn payload(&self, json: &[u8], item: bool) -> Result<Payload, Status> {
         self.binding.check(json.len())?;
         let (descriptor, validator) = if item {
@@ -206,6 +207,7 @@ impl Binding {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.dynamic.decode", level = "trace", skip_all, fields(wire_bytes = bytes.len()))]
     fn decode(&self, bytes: &[u8]) -> Result<Event, Status> {
         self.check(bytes.len())?;
         if let Some(output_validator) = &self.output_validator {

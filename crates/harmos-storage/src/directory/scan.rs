@@ -42,6 +42,7 @@ type Pending = JoinHandle<Result<Option<Scanned>>>;
 /* === Structs === */
 
 pub struct DirectoryReader {
+    context: crate::execution::Context,
     pub(super) inner: Arc<Inner>,
     state: Arc<Mutex<Scan>>,
     pending: Option<Pending>,
@@ -90,15 +91,20 @@ impl DirectoryReader {
             complete: false,
             cancelled: Arc::clone(&cancelled),
         };
-        let scan = tokio::task::spawn_blocking(move || {
-            let mut scan = scan;
-            let selection = Arc::clone(&scan.selection);
-            scan.enter(&selection.value.root)?;
-            Ok::<_, Error>(scan)
-        })
+        let scan = {
+            let context = crate::execution::Context::current();
+            tokio::task::spawn_blocking(move || {
+                context.blocking(|| {
+                    let mut scan = scan;
+                    let selection = Arc::clone(&scan.selection);
+                    scan.enter(&selection.value.root)?;
+                    Ok::<_, Error>(scan)
+                })
+            })
+        }
         .await
         .map_err(join_error)??;
-        Ok(Self { inner, state: Arc::new(Mutex::new(scan)), pending: None, cancelled })
+        Ok(Self { context: crate::execution::Context::current(), inner, state: Arc::new(Mutex::new(scan)), pending: None, cancelled })
     }
 
     pub async fn next(&mut self) -> Result<Option<ReadBatch<DirectoryEntry>>> {
@@ -117,13 +123,20 @@ impl DirectoryReader {
     }
 
     pub(super) async fn next_value(&mut self) -> Result<Option<Scanned>> {
-        if self.pending.is_none() {
-            let state = Arc::clone(&self.state);
-            self.pending = Some(tokio::task::spawn_blocking(move || state.lock().unwrap().next()));
-        }
-        let result = self.pending.as_mut().unwrap().await;
-        self.pending = None;
-        result.map_err(join_error)?
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::debug_span!("storage.directory.page", outcome = "cancelled"));
+        context
+            .result(span, async {
+                if self.pending.is_none() {
+                    let state = Arc::clone(&self.state);
+                    let context = self.context.clone();
+                    self.pending = Some(tokio::task::spawn_blocking(move || context.blocking(|| state.lock().unwrap().next())));
+                }
+                let result = self.pending.as_mut().unwrap().await;
+                self.pending = None;
+                result.map_err(join_error)?
+            })
+            .await
     }
 }
 

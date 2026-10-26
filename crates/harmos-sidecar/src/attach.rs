@@ -360,6 +360,7 @@ impl Attach for Executable {
         #[cfg(any(unix, windows))]
         let control = control::prepare(&mut command)?;
         let mut child = command.spawn()?;
+        tracing::debug!(target: "harmos::carrier", provider = %self.declaration.id, remote_pid = child.id().expect("a spawned child has its process id"), "sidecar attached");
         drop(command);
         #[cfg(windows)]
         let control = control.io(child.id().expect("a spawned child has its process id"));

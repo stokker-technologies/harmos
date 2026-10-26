@@ -16,7 +16,7 @@
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
-use super::manager::{Domain, Inner, Operation, State, Target};
+use super::manager::{Domain, Inner, Operation, Pending, State, Target};
 use super::{StorageBatch, StorageCursor};
 use crate::capacity::{Pool, Reservation};
 use crate::selection::Entry;
@@ -33,6 +33,7 @@ use std::sync::Arc;
 
 pub(super) struct Batch {
     pub(super) operation: Operation,
+    entries: Vec<Arc<Pending>>,
     pub(super) target: Target,
     _scratch: Reservation,
 }
@@ -51,6 +52,35 @@ enum Kind {
 /* === Implementations === */
 
 impl Batch {
+    #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.history().store, epoch = %inner.primary.history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.target.sequence, outcome = "cancelled"))]
+    pub(super) async fn trace<T>(&self, inner: &Inner, future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+        let mut contributions = Vec::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            contributions.push(entry.context.sync(|| {
+                let span = tracing::trace_span!("storage.batch.contribution",
+                    store = %inner.primary.history().store, epoch = %inner.primary.history().epoch,
+                    domain = if entry.operation.domain() == Domain::Data { "data" } else { "recovery" },
+                    request_domain = if entry.operation.domain() == Domain::Data { "data" } else { "recovery" },
+                    first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index,
+                    through = self.target.sequence, request_index = entry.index,
+                    request_sequence = entry.operation.sequence(), outcome = "cancelled");
+                if let Some(queued) = entry.queued.lock().unwrap().take() {
+                    span.follows_from(queued.id());
+                }
+                crate::execution::Context::with_span(span)
+            }));
+        }
+        let result = future.await;
+        let outcome = if result.is_ok() { "completed" } else { "failed" };
+        tracing::Span::current().record("outcome", outcome);
+        for contribution in &contributions {
+            contribution.sync(|| {
+                contribution.span.record("outcome", outcome);
+            });
+        }
+        result
+    }
+
     pub(super) fn prepare(inner: &Arc<Inner>, state: &mut State, first: u64) -> Option<Self> {
         let entry = state.queue.iter().find(|entry| entry.index == first)?;
         let selected_kind = kind(&entry.operation)?;
@@ -88,7 +118,9 @@ impl Batch {
             };
             let next_rows = rows.checked_add(count)?;
             let next_encoded = encoded.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
-            let next_scratch = scratch.checked_add(count.checked_mul(inline)?)?.checked_add(128)?;
+            let next_scratch = scratch
+                .checked_add(count.checked_mul(inline)?)?
+                .checked_add(128 + std::mem::size_of::<Arc<Pending>>() + std::mem::size_of::<crate::execution::Context>())?;
             if next_rows > 4096 || next_encoded > inner.settings.max_batch_bytes().get() || next_scratch > available {
                 break;
             }
@@ -126,12 +158,14 @@ impl Batch {
             state.collect();
             return None;
         };
-        Some(Self { operation, target, _scratch: Reservation::charged(inner, Pool::Write, scratch) })
+        let entries = state.queue.iter().filter(|entry| indices.binary_search(&entry.index).is_ok()).cloned().collect();
+        Some(Self { operation, entries, target, _scratch: Reservation::charged(inner, Pool::Write, scratch) })
     }
 }
 
 /* === Public Functions === */
 
+#[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Inner, operation: &Operation) -> Result<StorageCursor> {
     match operation {
         Operation::Schema(values) => persist(inner, values, |batch| inner.primary.write_schemas(batch)).await,
@@ -175,6 +209,7 @@ async fn persist<'a, T: Entry>(
 ) -> Result<StorageCursor> {
     let first = values.as_slice().first().ok_or_else(|| invalid("typed batch is empty"))?.position();
     let through = values.as_slice().last().expect("nonempty batch").position();
+    tracing::Span::current().record("through", through.sequence);
     inner.primary.history().check(&first.history)?;
     let mut previous = first.sequence;
     for value in &values.as_slice()[1..] {
@@ -197,7 +232,8 @@ async fn persist<'a, T: Entry>(
         state.data_attempted = state.data_attempted.max(through.sequence);
         start
     };
-    let saved = inner.bounded(write(values.slice(start..values.len()))).await?;
+    let saved = inner.bounded("primary.write", write(values.slice(start..values.len()))).await?;
+    tracing::Span::current().record("saved", saved.sequence);
     let mut state = inner.state.lock().unwrap();
     if !saved.covers(through)? || saved.sequence > state.data_attempted {
         return Err(invalid("receipt does not cover the typed write within its attempted frontier"));

@@ -19,6 +19,8 @@ mod fixture;
 mod guest;
 #[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod guest_contract;
+#[path = "../support/report.rs"]
+mod report;
 mod runtime;
 mod schematic;
 #[cfg(feature = "plugin-sidecar")]

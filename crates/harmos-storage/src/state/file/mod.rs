@@ -76,14 +76,20 @@ impl FileBackend {
         Self { root, history, settings, opener, journal }
     }
 
+    #[tracing::instrument(name = "storage.state.file.mod.call", level = "debug", skip_all)]
     async fn call<T: Send + 'static>(&self, action: impl FnOnce(&mut StateLog) -> Result<T> + Send + 'static) -> Result<T> {
         // Acquire Before Dispatch So Cancellation Cannot Enqueue An Older Write.
-        let mut owner = self.journal.clone().lock_owned().await;
-        tokio::task::spawn_blocking(move || {
-            let journal = owner.as_mut().ok_or_else(|| format::invalid("state backend is closed"))?;
-            journal.check()?;
-            action(journal)
-        })
+        let mut owner = tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
+        {
+            let context = crate::execution::Context::current();
+            tokio::task::spawn_blocking(move || {
+                context.blocking(|| {
+                    let journal = owner.as_mut().ok_or_else(|| format::invalid("state backend is closed"))?;
+                    journal.check()?;
+                    action(journal)
+                })
+            })
+        }
         .await
         .map_err(task)?
     }
@@ -92,7 +98,7 @@ impl FileBackend {
         action: impl FnOnce(&mut StateLog, &crate::arrow::RetainedMemory) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         memory.try_grow_to(base.saturating_add(8192))?;
-        let mut owner = self.journal.clone().lock_owned().await;
+        let mut owner = tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
         let (result, _memory) = read_task(memory, move |memory| {
             let journal = owner.as_mut().ok_or_else(|| format::invalid("state backend is closed"))?;
             journal.check()?;
@@ -111,37 +117,83 @@ impl StateBackend for FileBackend {
 
     fn open(&self) -> StorageFuture<'_, RecoveryPosition> {
         Box::pin(async move {
-            let mut owner = self.journal.clone().lock_owned().await;
-            let root = self.root.clone();
-            let history = self.history.clone();
-            let settings = self.settings;
-            let opener = Arc::clone(&self.opener);
-            tokio::task::spawn_blocking(move || {
-                if owner.is_none() {
-                    *owner = Some(StateLog::open(&root, history, settings, opener)?);
-                }
-                let journal = owner.as_ref().expect("opened journal");
-                journal.check()?;
-                Ok(journal.position())
-            })
-            .await
-            .map_err(task)?
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "open", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        let mut owner =
+                            tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait"))
+                                .await;
+                        let root = self.root.clone();
+                        let history = self.history.clone();
+                        let settings = self.settings;
+                        let opener = Arc::clone(&self.opener);
+                        {
+                            let context = crate::execution::Context::current();
+                            tokio::task::spawn_blocking(move || {
+                                context.blocking(|| {
+                                    if owner.is_none() {
+                                        *owner = Some(StateLog::open(&root, history, settings, opener)?);
+                                    }
+                                    let journal = owner.as_ref().expect("opened journal");
+                                    journal.check()?;
+                                    Ok(journal.position())
+                                })
+                            })
+                        }
+                        .await
+                        .map_err(task)?
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 
     fn read_snapshot(&self, maximum: NonZeroUsize, memory: crate::arrow::RetainedMemory) -> StorageFuture<'_, Option<RecoverySnapshot>> {
-        Box::pin(self.read(memory, crate::manager::ENTRY_OVERHEAD, move |journal, memory| {
-            journal.snapshot_retained(maximum.get(), memory, crate::manager::ENTRY_OVERHEAD)
-        }))
+        Box::pin(async move {
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "read_snapshot", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    self.read(memory, crate::manager::ENTRY_OVERHEAD, move |journal, memory| {
+                        journal.snapshot_retained(maximum.get(), memory, crate::manager::ENTRY_OVERHEAD)
+                    }),
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
+        })
     }
 
     fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
-            if snapshot.len() != 1 {
-                return Err(format::invalid("snapshot write requires exactly one snapshot"));
-            }
-            self.history.check(&snapshot.as_slice()[0].through.history)?;
-            self.call(move |journal| journal.checkpoint(&snapshot.as_slice()[0])).await
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "write_snapshot", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        if snapshot.len() != 1 {
+                            return Err(format::invalid("snapshot write requires exactly one snapshot"));
+                        }
+                        self.history.check(&snapshot.as_slice()[0].through.history)?;
+                        self.call(move |journal| journal.checkpoint(&snapshot.as_slice()[0])).await
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 
@@ -149,48 +201,107 @@ impl StateBackend for FileBackend {
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits, memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
-            self.history.check(&after.history)?;
-            self.history.check(&through.history)?;
-            let base = crate::manager::ENTRY_OVERHEAD
-                .saturating_add(crate::MemorySize::memory_size(&after.history))
-                .saturating_add(crate::MemorySize::memory_size(&through.history));
-            memory.try_grow_to(base)?;
-            let after = after.clone();
-            let through = through.clone();
-            self.read(memory, base, move |journal, memory| journal.page(&after, &through, limits, memory, base)).await
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "read_entries", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        self.history.check(&after.history)?;
+                        self.history.check(&through.history)?;
+                        let base = crate::manager::ENTRY_OVERHEAD
+                            .saturating_add(crate::MemorySize::memory_size(&after.history))
+                            .saturating_add(crate::MemorySize::memory_size(&through.history));
+                        memory.try_grow_to(base)?;
+                        let after = after.clone();
+                        let through = through.clone();
+                        self.read(memory, base, move |journal, memory| journal.page(&after, &through, limits, memory, base)).await
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 
     fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
-            for entry in entries.as_slice() {
-                self.history.check(&entry.position.history)?;
-            }
-            self.call(move |journal| journal.append(entries.as_slice())).await
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "write_entries", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        for entry in entries.as_slice() {
+                            self.history.check(&entry.position.history)?;
+                        }
+                        self.call(move |journal| journal.append(entries.as_slice())).await
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
         Box::pin(async move {
-            self.history.check(&through.history)?;
-            let through = through.clone();
-            self.call(move |journal| journal.flush(&through)).await
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "flush", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        self.history.check(&through.history)?;
+                        let through = through.clone();
+                        self.call(move |journal| journal.flush(&through)).await
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 
     fn close(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
-            let mut owner = self.journal.clone().lock_owned().await;
-            tokio::task::spawn_blocking(move || {
-                let Some(mut journal) = owner.take() else {
-                    return Ok(());
-                };
-                journal.check()?;
-                journal.flush(&journal.position())?;
-                Ok(())
-            })
-            .await
-            .map_err(task)?
+            let context = crate::execution::Context::current();
+            let future = async move {
+                let span = tracing::debug_span!("storage.state.backend", method = "close", outcome = "cancelled");
+                let result = tracing::Instrument::instrument(
+                    async move {
+                        let mut owner =
+                            tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait"))
+                                .await;
+                        {
+                            let context = crate::execution::Context::current();
+                            tokio::task::spawn_blocking(move || {
+                                context.blocking(|| {
+                                    let Some(mut journal) = owner.take() else {
+                                        return Ok(());
+                                    };
+                                    journal.check()?;
+                                    journal.flush(&journal.position())?;
+                                    Ok(())
+                                })
+                            })
+                        }
+                        .await
+                        .map_err(task)?
+                    },
+                    span.clone(),
+                )
+                .await;
+                span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                result
+            };
+            context.scope(future).await
         })
     }
 }
@@ -202,8 +313,9 @@ impl StateBackend for FileBackend {
 fn read_task<T: Send + 'static>(
     memory: crate::arrow::RetainedMemory, action: impl FnOnce(&crate::arrow::RetainedMemory) -> Result<T> + Send + 'static,
 ) -> tokio::task::JoinHandle<(Result<T>, crate::arrow::RetainedMemory)> {
+    let context = crate::execution::Context::current();
     tokio::task::spawn_blocking(move || {
-        let result = action(&memory);
+        let result = context.blocking(|| action(&memory));
         (result, memory)
     })
 }

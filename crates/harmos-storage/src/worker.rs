@@ -37,7 +37,8 @@ use crate::{BackendFailure, Error, Result};
 
 /* === Type Aliases === */
 
-type Attempt = Pin<Box<dyn Future<Output = (Action, usize, Option<u64>, u64, Result<Completed>)> + Send>>;
+type Attempt =
+    Pin<Box<dyn Future<Output = (Action, usize, Option<u64>, u64, Option<crate::execution::Context>, Result<Completed>)> + Send>>;
 
 /* === Structs === */
 
@@ -78,6 +79,7 @@ enum Completed {
 /* === Implementations === */
 
 impl Worker {
+    #[tracing::instrument(name = "storage.worker.cleanup", level = "debug", skip_all)]
     pub async fn cleanup(&mut self) -> Result<()> {
         // StorageManager owns physical backend teardown before this worker's
         // lease retires. An early stop cannot claim that teardown completed.
@@ -87,6 +89,7 @@ impl Worker {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.worker.run", level = "debug", skip_all)]
     pub async fn run(&mut self) -> Result<()> {
         let inner = &self.0.inner;
         let _running = Running(Arc::clone(inner));
@@ -262,15 +265,46 @@ impl Worker {
                 } else {
                     ordered_running = true;
                 }
+                let (context, queued) = {
+                    let mut state = inner.state.lock().unwrap();
+                    match &action {
+                        Action::Write(entry, _) => (Some(entry.context.clone()), None),
+                        Action::Snapshot(SnapshotAction::Open(id, _, _) | SnapshotAction::Release(id, _, _)) => {
+                            state.snapshots.get_mut(id).map(|held| (Some(held.context.clone()), held.queued.take())).unwrap_or((None, None))
+                        }
+                        Action::File(file) => state
+                            .files
+                            .get_mut(&file.id())
+                            .map(|held| (Some(held.context.clone()), held.queued.take()))
+                            .unwrap_or((None, None)),
+                        Action::Delete(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
+                        _ => (None, None),
+                    }
+                };
                 let owner = Arc::clone(inner);
                 active.push(Box::pin(async move {
                     let mut action = action;
-                    let result = perform(&owner, &action).await;
+                    let future = async {
+                        let span = tracing::debug_span!("storage.work", outcome = "cancelled");
+                        if let Some(queued) = queued {
+                            span.follows_from(queued.id());
+                        }
+                        let physical = async {
+                            let result = perform(&owner, &action).await;
+                            tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+                            result
+                        };
+                        tracing::Instrument::instrument(physical, span).await
+                    };
+                    let result = match &context {
+                        Some(context) => context.scope(future).await,
+                        None => future.await,
+                    };
                     // Reservation Destructors Must Run Outside The State Mutex.
                     if let Action::Write(_, batch) = &mut action {
                         batch.take();
                     }
-                    (action, attempts, failure_id, generation, result)
+                    (action, attempts, failure_id, generation, context, result)
                 }));
                 continue;
             }
@@ -289,7 +323,7 @@ impl Worker {
                 Poll::Pending
             })
             .await;
-            let Some((action, attempts, failure_id, generation, result)) = outcome else {
+            let Some((action, attempts, failure_id, generation, context, result)) = outcome else {
                 continue;
             };
             if action.independent() {
@@ -331,7 +365,14 @@ impl Worker {
                             }
                         }
                         (Action::File(action), Completed::File(result)) => {
-                            state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT, inner)
+                            let publish = || {
+                                let _publication = tracing::debug_span!("storage.file.publish").entered();
+                                state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT, inner)
+                            };
+                            match &context {
+                                Some(context) => context.sync(publish),
+                                None => publish(),
+                            }
                         }
                         (Action::Snapshot(SnapshotAction::Release(_, _, memory)), Completed::Released(id)) => {
                             state.snapshot_removed(id);
@@ -531,17 +572,21 @@ impl Operation {
 
 /* === Private Functions === */
 
+#[tracing::instrument(name = "storage.worker.perform", level = "debug", skip_all)]
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
         Action::Prune(through) => inner
-            .bounded(inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, inner.object_retention))
+            .bounded(
+                "primary.prune_objects",
+                inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, inner.object_retention),
+            )
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
         Action::Snapshot(SnapshotAction::Open(id, at, memory)) => {
             let opened = async {
-                let snapshot = inner.bounded(inner.primary.open_snapshot(at, memory.clone())).await?;
+                let snapshot = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at, memory.clone())).await?;
                 let bytes = snapshot
                     .token
                     .capacity()
@@ -556,53 +601,63 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot, _)) => {
             if let Some(snapshot) = snapshot {
-                inner.bounded(inner.primary.release_snapshot(snapshot)).await?;
+                inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
             }
             Ok(Completed::Released(*id))
         }
         Action::Write(entry, batch) => {
-            let operation = batch.as_ref().map_or(&entry.operation, |batch| &batch.operation);
-            let target = batch.as_ref().map_or(Target { index: entry.index, sequence: operation.sequence() }, |batch| batch.target);
-            match operation {
-                Operation::Recovery(entries) => {
-                    let saved = inner.state.lock().unwrap().status.saved.clone();
-                    for entry in entries.as_slice() {
-                        if !saved.covers(&entry.required_data)? {
+            let future = async {
+                let operation = batch.as_ref().map_or(&entry.operation, |batch| &batch.operation);
+                let target = batch.as_ref().map_or(Target { index: entry.index, sequence: operation.sequence() }, |batch| batch.target);
+                match operation {
+                    Operation::Recovery(entries) => {
+                        let saved = inner.state.lock().unwrap().status.saved.clone();
+                        for entry in entries.as_slice() {
+                            if !saved.covers(&entry.required_data)? {
+                                return Err(Error::InvalidInput {
+                                    field: "state evidence dependency",
+                                    reason: "journal cannot precede required primary persistence",
+                                });
+                            }
+                        }
+                        inner.bounded("recovery.write_entries", inner.recovery.write_entries(entries.clone())).await?;
+                        Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
+                    }
+                    Operation::Snapshot(snapshot) => {
+                        if snapshot.len() != 1 {
                             return Err(Error::InvalidInput {
-                                field: "state evidence dependency",
-                                reason: "journal cannot precede required primary persistence",
+                                field: "state snapshot",
+                                reason: "snapshot write requires exactly one snapshot",
                             });
                         }
+                        if !inner.state.lock().unwrap().status.saved.covers(&snapshot.as_slice()[0].required_data)? {
+                            return Err(Error::InvalidInput {
+                                field: "state snapshot dependency",
+                                reason: "snapshot cannot precede required primary persistence",
+                            });
+                        }
+                        inner.bounded("recovery.write_snapshot", inner.recovery.write_snapshot(snapshot.clone())).await?;
+                        Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
                     }
-                    inner.bounded(inner.recovery.write_entries(entries.clone())).await?;
-                    Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
-                }
-                Operation::Snapshot(snapshot) => {
-                    if snapshot.len() != 1 {
-                        return Err(Error::InvalidInput {
-                            field: "state snapshot",
-                            reason: "snapshot write requires exactly one snapshot",
-                        });
+                    _ => {
+                        let saved = write_data(inner, operation).await?;
+                        Ok(Completed::Write { data: Some(target), saved: Some(saved), recovery: None })
                     }
-                    if !inner.state.lock().unwrap().status.saved.covers(&snapshot.as_slice()[0].required_data)? {
-                        return Err(Error::InvalidInput {
-                            field: "state snapshot dependency",
-                            reason: "snapshot cannot precede required primary persistence",
-                        });
-                    }
-                    inner.bounded(inner.recovery.write_snapshot(snapshot.clone())).await?;
-                    Ok(Completed::Write { data: None, saved: None, recovery: Some(target) })
                 }
-                _ => {
-                    let saved = write_data(inner, operation).await?;
-                    Ok(Completed::Write { data: Some(target), saved: Some(saved), recovery: None })
+            };
+            if let Some(batch) = batch {
+                batch.trace(inner, future).await
+            } else {
+                if let Some(queued) = entry.queued.lock().unwrap().take() {
+                    tracing::Span::current().follows_from(queued.id());
                 }
+                future.await
             }
         }
 
         Action::Recovery(target) => {
             let through = RecoveryPosition { history: inner.recovery.history().clone(), sequence: target.sequence };
-            let saved = inner.bounded(inner.recovery.flush(&through)).await?;
+            let saved = inner.bounded("recovery.flush", inner.recovery.flush(&through)).await?;
             let written = inner.state.lock().unwrap().recovery_written.sequence;
             if !saved.covers(&through)? || saved.sequence > written {
                 return Err(Error::InvalidInput {

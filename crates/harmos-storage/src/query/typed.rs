@@ -72,6 +72,7 @@ pub struct RecordReader<T> {
 // Scan State Shared By Both Readers. The Active Slot And Snapshot Release Once
 // The Source Is Exhausted; Dropping An In-Progress `next` Poisons The Reader.
 struct Pages<E: Entry> {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
     selection: E::Selection,
@@ -91,6 +92,7 @@ struct Pages<E: Entry> {
 /* === Implementations === */
 
 impl<C: ObjectCatalog> StorageManager<C> {
+    #[tracing::instrument(name = "storage.query.typed.read_objects", level = "trace", skip_all)]
     pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
     where
         C: Contains<T>,
@@ -100,12 +102,14 @@ impl<C: ObjectCatalog> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.query.typed.read_records", level = "trace", skip_all)]
     pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         crate::ReadSession::standalone(self).read_records(read).await
     }
 }
 
 impl<C: ObjectCatalog> crate::ReadSession<C> {
+    #[tracing::instrument(name = "storage.read_session.read_objects", level = "trace", skip_all)]
     pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
     where
         C: Contains<T>,
@@ -119,6 +123,7 @@ impl<C: ObjectCatalog> crate::ReadSession<C> {
 }
 
 impl<C> crate::ReadSession<C> {
+    #[tracing::instrument(name = "storage.read_session.read_records", level = "trace", skip_all)]
     pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
         read.selection.schema.require_postcard()?;
@@ -129,6 +134,7 @@ impl<C> crate::ReadSession<C> {
 }
 
 impl<T: StoredObject> ObjectReader<T> {
+    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
     pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<ObjectRevision<T>>>>> {
         let schema = &self.schema;
         self.pages
@@ -145,7 +151,8 @@ impl<T: StoredObject> ObjectReader<T> {
             .await
     }
 
-    pub async fn collect(mut self) -> Result<ReadBatch<Vec<ReadBatch<Vec<ObjectRevision<T>>>>>> {
+    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
+    pub async fn collect(mut self) -> Result<crate::ReadPages<ObjectRevision<T>>> {
         let mut collection =
             Reservation::wait(&self.pages.inner, Pool::Read, &self.pages.held, ENTRY_OVERHEAD, None).await.map_err(Refusal::into_error)?;
         let mut pages = Vec::new();
@@ -164,6 +171,7 @@ impl<T: StoredObject> ObjectReader<T> {
 }
 
 impl<T: Message + MemorySize> RecordReader<T> {
+    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
     pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRecord<T>>>>> {
         self.pages
             .next(
@@ -184,7 +192,8 @@ impl<T: Message + MemorySize> RecordReader<T> {
             .await
     }
 
-    pub async fn collect(mut self) -> Result<ReadBatch<Vec<ReadBatch<Vec<StoredRecord<T>>>>>> {
+    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
+    pub async fn collect(mut self) -> Result<crate::ReadPages<StoredRecord<T>>> {
         let mut collection =
             Reservation::wait(&self.pages.inner, Pool::Read, &self.pages.held, ENTRY_OVERHEAD, None).await.map_err(Refusal::into_error)?;
         let mut pages = Vec::new();
@@ -206,6 +215,7 @@ impl<E: Entry> Pages<E>
 where
     E::Selection: MemorySize,
 {
+    #[tracing::instrument(name = "storage.query.typed.open", level = "trace", skip_all)]
     async fn open<C>(manager: &StorageManager<C>, held: &Held, queued: bool, at: StorageCursor, selection: E::Selection) -> Result<Self> {
         let inner = &manager.inner;
         let active = if queued {
@@ -221,6 +231,7 @@ where
         let description = Reservation::wait(inner, Pool::Read, &held, description, None).await.map_err(Refusal::into_error)?;
         let snapshot = manager.snapshot(&at, &held).await?;
         Ok(Self {
+            context: crate::execution::Context::current(),
             inner: Arc::clone(inner),
             held,
             selection,
@@ -236,22 +247,29 @@ where
 }
 
 impl<E: Entry> Pages<E> {
+    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
     async fn next<V: MemorySize>(
         &mut self, memory: impl Fn(&E) -> Result<usize>, build: impl Fn(E) -> Result<V>,
     ) -> Result<Option<ReadBatch<Vec<V>>>> {
-        if self.failed || self.inflight {
-            self.fail();
-            return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
-        }
-        self.inflight = true;
-        let result = self.advance(&memory, &build).await;
-        self.inflight = false;
-        if result.is_err() {
-            self.fail();
-        }
-        result
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            if self.failed || self.inflight {
+                self.fail();
+                return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
+            }
+            self.inflight = true;
+            let result = self.advance(&memory, &build).await;
+            self.inflight = false;
+            if result.is_err() {
+                self.fail();
+            }
+            result
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
+    #[tracing::instrument(name = "storage.query.typed.advance", level = "trace", skip_all)]
     async fn advance<V: MemorySize>(
         &mut self, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
     ) -> Result<Option<ReadBatch<Vec<V>>>> {
@@ -286,6 +304,7 @@ impl<E: Entry> Pages<E> {
     }
 
     // Scan And Decode One Page; State Advances Only After Every Claim Succeeded.
+    #[tracing::instrument(name = "storage.query.typed.attempt", level = "trace", skip_all)]
     async fn attempt<V: MemorySize>(
         &mut self, bank: &MemoryBank, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
     ) -> Result<Option<ReadBatch<Vec<V>>>> {

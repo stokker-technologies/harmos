@@ -371,10 +371,12 @@ where
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
     async fn initialize<'ctx>(native: Arc<Native>, _: Self::Context<'ctx>) -> std::result::Result<Self, NativeError> {
         Ok(Self { native, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run<'ctx>(
         &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
@@ -481,6 +483,7 @@ impl Native {
         Ok(())
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.initialize_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation))]
     async fn initialize_encoded<'ctx>(&self, state: &mut NativeState, context: &Context<'ctx>) -> std::result::Result<(), NativeError> {
         let dependent = context.scope.original_control().upgrade().ok_or(NativeError::Unavailable)?;
         self.endpoint.retain_provider(&dependent, context.retirement).map_err(NativeError::Provider)?;
@@ -488,6 +491,7 @@ impl Native {
             let invocation = context.id().value();
             // Record Ownership Before Sending: A Lost Ack May Still Own Remote State
             state.invocation = Some(invocation);
+            tracing::Span::current().record("invocation", invocation);
             let payload = state.payload.take().expect("one inert request is owned");
             let command = if state.grpc {
                 WireCommand::PrepareGrpc { invocation, operation: state.operation.to_string(), payload }
@@ -514,10 +518,12 @@ impl Native {
         }
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.phase_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation, phase = match &phase { Phase::Initialize => "initialize", Phase::Attempt => "attempt", Phase::Stream(_) => "stream_attempt" }))]
     async fn phase_encoded<'ctx>(
         &self, state: &NativeState, context: &Context<'ctx>, phase: Phase,
     ) -> std::result::Result<WireAnswer, NativeError> {
         let invocation = state.invocation.expect("prepared identity is retained");
+        tracing::Span::current().record("invocation", invocation);
         let mut token = [0; 32];
         getrandom::fill(&mut token)?;
         let (requests, mut incoming) = mpsc::channel::<ChildRequest>(CHILD_REQUESTS);
@@ -554,10 +560,12 @@ impl Native {
         Ok(payload)
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.finalize_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation))]
     async fn finalize_encoded(&self, state: &mut NativeState) -> std::result::Result<(), NativeError> {
         let Some(invocation) = state.invocation else {
             return Ok(());
         };
+        tracing::Span::current().record("invocation", invocation);
         if !self.endpoint.accepts() {
             self.endpoint.settle().await?;
             return Ok(());
@@ -622,10 +630,12 @@ impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
     async fn initialize<'ctx>(binding: Arc<Binding>, _: Self::Context<'ctx>) -> std::result::Result<Self, NativeError> {
         Ok(Self { binding, state: None, epoch: 0, transferred: AtomicBool::new(false), endpoints: PhantomData })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run<'ctx>(
         &mut self, context: Self::Context<'ctx>, request: &mut Encoded<E>, endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {

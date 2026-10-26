@@ -1,0 +1,242 @@
+# Rendered by stkr project update from templates/python/ci/runs.py; sha256:32cc0c41e4b0dfc5a5d29bc9e73ad09b285d80c2e2d873e872ccb625ce1de321
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Retain The Latest Owned Simulation And Its Active Consumers."""
+
+# === Imports === #
+
+# Standard Library Imports
+import json
+import os
+import re
+import shutil
+import sys
+import uuid
+from collections.abc import Generator
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
+
+# Third Party Imports
+# Local Imports
+from . import containers
+
+# Type Checking Imports
+
+# === Public Exports === #
+
+# === Constants === #
+
+MARKER = ".stkr-ci-run.json"
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+
+@contextmanager
+def owner(root: Path, repository: str, token: str) -> Generator[Path]:
+    registry = _registry(root)
+    output = root / token
+    if re.fullmatch(r"[a-zA-Z0-9_-]+", token) is None or output.exists():
+        raise ValueError("simulation run identity already exists or is invalid")
+    try:
+        with ExitStack() as producer:
+            with containers.lease(registry / "registry.lock"):
+                output.mkdir()
+                record = {
+                    "version": 1,
+                    "repository": repository,
+                    "run": token,
+                    "nonce": uuid.uuid4().hex,
+                }
+                _write(output / MARKER, record)
+                _write(registry / (token + ".json"), record)
+                producer.enter_context(_lease(registry / (token + ".lock"), shared=True))
+                _write(registry / "latest.json", record)
+                reconcile(root, repository, locked=True)
+            yield output
+    finally:
+        reconcile(root, repository)
+
+
+@contextmanager
+def borrow(output: Path, *, required: bool = True) -> Generator[None]:
+    marker = output / MARKER
+    if not marker.exists() and not required:
+        yield
+        return
+    registry = _registry(output.parent)
+    repository = None
+    try:
+        with _lease(registry / (output.name + ".lock"), shared=True):
+            repository = _record(output, registry)["repository"]
+            yield
+    finally:
+        if repository is not None:
+            reconcile(output.parent, repository)
+
+
+def reconcile(root: Path, repository: str, *, locked: bool = False) -> None:
+    registry = _registry(root)
+    if not locked:
+        try:
+            with containers.lease(registry / "registry.lock"):
+                reconcile(root, repository, locked=True)
+        except containers.Busy:
+            return
+        return
+    try:
+        latest = json.loads((registry / "latest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(latest, dict) or latest.get("repository") != repository:
+        return
+    registered = {path.stem for path in registry.glob("*.json") if path.name != "latest.json"}
+    for output in sorted(root.iterdir()):
+        if output.name != ".runs" and output.name not in registered:
+            print(f"Simulation retained unknown run output: {output}", file=sys.stderr)
+    for path in sorted(registry.glob("*.json")):
+        if path.name == "latest.json" or path.stem == latest.get("run"):
+            continue
+        output = root / path.stem
+        try:
+            with _lease(path.with_suffix(".lock"), shared=False):
+                record = _record(output, registry)
+                if record["repository"] != repository or record == latest:
+                    continue
+                if not _settled(output):
+                    print(f"Simulation retained unsettled run ownership: {output}", file=sys.stderr)
+                    continue
+                _tree(output)
+                shutil.rmtree(output)
+                path.unlink()
+        except (OSError, ValueError, containers.Busy) as error:
+            print(f"Simulation retained run {output}: {error}", file=sys.stderr)
+
+
+# === Private Functions === #
+
+
+def _registry(root: Path) -> Path:
+    for path in (root, *root.parents):
+        if path.is_symlink() or path.is_junction():
+            raise ValueError("simulation run storage must not contain links")
+    root.mkdir(parents=True, exist_ok=True)
+    registry = root / ".runs"
+    if registry.is_symlink() or registry.is_junction():
+        raise ValueError("simulation registry must not be linked")
+    registry.mkdir(exist_ok=True)
+    lock = registry / "registry.lock"
+    if lock.is_symlink() or lock.is_junction():
+        raise ValueError("simulation registry lease must not be linked")
+    lock.touch(exist_ok=True)
+    return registry
+
+
+def _write(path: Path, value: dict) -> None:
+    staging = path.with_suffix(".tmp")
+    if any(item.is_symlink() or item.is_junction() for item in (path, staging)):
+        raise ValueError("simulation ownership must not be linked")
+    staging.write_text(json.dumps(value), encoding="utf-8")
+    staging.replace(path)
+
+
+def _record(output: Path, registry: Path) -> dict:
+    for path in (output, output / MARKER, registry / (output.name + ".json")):
+        if path.is_symlink() or path.is_junction():
+            raise ValueError("simulation ownership must not be linked")
+    record = json.loads((output / MARKER).read_text(encoding="utf-8"))
+    if (
+        not isinstance(record, dict)
+        or record.get("version") != 1
+        or record.get("run") != output.name
+        or not isinstance(record.get("nonce"), str)
+        or re.fullmatch(r"[0-9a-f]{32}", record["nonce"]) is None
+        or record != json.loads((registry / (output.name + ".json")).read_text(encoding="utf-8"))
+    ):
+        raise ValueError("simulation run ownership does not match")
+    return record
+
+
+def _settled(output: Path) -> bool:
+    for pattern in ("*.docker-owner.json", "*.workspace-owner.json"):
+        for path in output.glob(pattern):
+            if path.is_symlink() or path.is_junction():
+                return False
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(record, dict) or record.get("phase") != "clean":
+                return False
+    return True
+
+
+def _tree(root: Path) -> None:
+    device = root.stat().st_dev
+    for directory, children, files in os.walk(root, followlinks=False):
+        for name in [*children, *files]:
+            path = Path(directory) / name
+            if path.is_symlink() or path.is_junction() or path.lstat().st_dev != device:
+                raise ValueError("simulation run contains a link or filesystem boundary")
+
+
+@contextmanager
+def _lease(path: Path, *, shared: bool) -> Generator[None]:
+    if path.is_symlink() or path.is_junction():
+        raise ValueError("simulation lease must not be linked")
+    with path.open("a+b") as handle:
+        if os.name == "nt":
+            import ctypes
+            import msvcrt
+            from ctypes import wintypes
+
+            class Overlapped(ctypes.Structure):
+                _fields_ = [
+                    ("internal", ctypes.c_size_t),
+                    ("high", ctypes.c_size_t),
+                    ("offset", wintypes.DWORD),
+                    ("offset_high", wintypes.DWORD),
+                    ("event", wintypes.HANDLE),
+                ]
+
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.LockFileEx.argtypes = [
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.POINTER(Overlapped),
+            ]
+            kernel.UnlockFileEx.argtypes = [
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.POINTER(Overlapped),
+            ]
+            overlap = Overlapped()
+            native = msvcrt.get_osfhandle(handle.fileno())
+            if not kernel.LockFileEx(native, 1 if shared else 3, 0, 1, 0, ctypes.byref(overlap)):
+                raise containers.Busy("simulation run has an active owner or consumer")
+            try:
+                yield
+            finally:
+                kernel.UnlockFileEx(native, 0, 1, 0, ctypes.byref(overlap))
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(handle, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
+            except OSError as error:
+                raise containers.Busy("simulation run has an active owner or consumer") from error
+            yield
+
+
+# === Entry Point === #

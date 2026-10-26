@@ -73,6 +73,8 @@ struct Progress {
 }
 
 pub(super) struct FileState {
+    pub(super) context: crate::execution::Context,
+    pub(super) queued: Option<tracing::Span>,
     metadata: Arc<FileMetadata>,
     staging: StagedFile,
     session: Option<Session>,

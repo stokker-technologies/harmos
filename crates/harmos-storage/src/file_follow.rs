@@ -39,6 +39,7 @@ use harmos_domain::operations::storage::{FollowFile, ReadFile};
 /* === Structs === */
 
 pub struct FileFollower {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     source: Source,
     held: Held,
@@ -72,78 +73,100 @@ enum Step {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
     pub async fn follow_file(&self, request: FollowFile) -> Result<FileFollower> {
-        let held = Held::default();
-        let source = match request.source {
-            FileSource::Local(path) => FileSource::Local(std::path::absolute(path).map_err(crate::local::io_error)?),
-            stored => stored,
-        };
-        let path_bytes = match &source {
-            FileSource::Local(path) => path.capacity(),
-            FileSource::Stored(_) => 0,
-        };
-        let charge = path_bytes.saturating_add(std::mem::size_of::<FileFollower>() + ENTRY_OVERHEAD);
-        let description = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?;
-        let source = match source {
-            FileSource::Stored(file) => {
-                let offset = start(request.start, file.length);
-                let reader = self
-                    .read_file_with_held(
-                        ReadFile { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
-                        held.clone(),
-                    )
-                    .await?;
-                Source::Stored(reader)
-            }
-            FileSource::Local(path) => {
-                let mut reader = LocalReader::open(&self.inner, path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?;
-                reader.start(start(request.start, reader.length()))?;
-                Source::Local(Local { path, reader: Some(reader), missing: false })
-            }
-        };
-        Ok(FileFollower { inner: Arc::clone(&self.inner), source, held, delivered: 0, finished: false, _description: description })
+        let context = crate::execution::Context::current();
+        let span = context.sync(|| tracing::debug_span!("storage.file.follow_file", outcome = "cancelled"));
+        context
+            .result(span, async {
+                let held = Held::default();
+                let source = match request.source {
+                    FileSource::Local(path) => FileSource::Local(std::path::absolute(path).map_err(crate::local::io_error)?),
+                    stored => stored,
+                };
+                let path_bytes = match &source {
+                    FileSource::Local(path) => path.capacity(),
+                    FileSource::Stored(_) => 0,
+                };
+                let charge = path_bytes.saturating_add(std::mem::size_of::<FileFollower>() + ENTRY_OVERHEAD);
+                let description = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?;
+                let source = match source {
+                    FileSource::Stored(file) => {
+                        let offset = start(request.start, file.length);
+                        let reader = self
+                            .read_file_with_held(
+                                ReadFile { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
+                                held.clone(),
+                            )
+                            .await?;
+                        Source::Stored(reader)
+                    }
+                    FileSource::Local(path) => {
+                        let mut reader =
+                            LocalReader::open(&self.inner, path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?;
+                        reader.start(start(request.start, reader.length()))?;
+                        Source::Local(Local { path, reader: Some(reader), missing: false })
+                    }
+                };
+                Ok(FileFollower {
+                    context: crate::execution::Context::current(),
+                    inner: Arc::clone(&self.inner),
+                    source,
+                    held,
+                    delivered: 0,
+                    finished: false,
+                    _description: description,
+                })
+            })
+            .await
     }
 }
 
 impl FileFollower {
     pub async fn next(&mut self) -> Result<Option<FileReadEvent>> {
-        loop {
-            if self.finished {
-                return Ok(None);
-            }
-            if self.inner.state.lock().unwrap().status.closing {
-                return Err(Error::Closing { domain: "file follower" });
-            }
-            let step = match &mut self.source {
-                Source::Stored(reader) => match reader.next_raw(true).await? {
-                    Some((batch, memory)) => Step::Data(batch, memory),
-                    None => Step::Done,
-                },
-                Source::Local(local) => local.next(&self.inner, &self.held).await?,
-            };
-            match step {
-                Step::Data(batch, memory) => {
-                    self.delivered += batch.bytes.len() as u64;
-                    return Ok(Some(FileReadEvent::retained(FileEvent::Data(batch), memory)));
-                }
-                Step::Signal(event) => {
-                    let charge = event.memory_size().saturating_add(ENTRY_OVERHEAD);
-                    let memory = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
-                    return Ok(Some(FileReadEvent::new(event, memory)));
-                }
-                Step::Done => {
-                    self.finished = true;
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page", outcome = "cancelled"));
+        let future = async {
+            loop {
+                if self.finished {
                     return Ok(None);
                 }
-                Step::Wait => {
-                    let mut changed = self.inner.changed.subscribe();
-                    tokio::select! {
-                        _ = tokio::time::sleep(self.inner.settings.filesystem.poll_interval) => {},
-                        _ = changed.changed() => {},
+                if self.inner.state.lock().unwrap().status.closing {
+                    return Err(Error::Closing { domain: "file follower" });
+                }
+                let step = match &mut self.source {
+                    Source::Stored(reader) => match reader.next_raw(true).await? {
+                        Some((batch, memory)) => Step::Data(batch, memory),
+                        None => Step::Done,
+                    },
+                    Source::Local(local) => local.next(&self.inner, &self.held).await?,
+                };
+                match step {
+                    Step::Data(batch, memory) => {
+                        self.delivered += batch.bytes.len() as u64;
+                        return Ok(Some(FileReadEvent::retained(FileEvent::Data(batch), memory)));
+                    }
+                    Step::Signal(event) => {
+                        let charge = event.memory_size().saturating_add(ENTRY_OVERHEAD);
+                        let memory =
+                            Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None).await.map_err(Refusal::into_error)?;
+                        return Ok(Some(FileReadEvent::new(event, memory)));
+                    }
+                    Step::Done => {
+                        self.finished = true;
+                        return Ok(None);
+                    }
+                    Step::Wait => {
+                        let mut changed = self.inner.changed.subscribe();
+                        tokio::select! {
+                            _ = tokio::time::sleep(self.inner.settings.filesystem.poll_interval) => {},
+                            _ = changed.changed() => {},
+                        }
                     }
                 }
             }
-        }
+        };
+        context.result(span, future).await
     }
 
     pub fn completion(&self) -> Result<FileCompletion> {

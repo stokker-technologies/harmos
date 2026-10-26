@@ -49,6 +49,7 @@ pub(super) struct Files {
 /* === Implementations === */
 
 impl Files {
+    #[tracing::instrument(name = "storage.state.file.open", level = "debug", skip_all)]
     pub(super) fn open(root: &Path, opener: JournalOpener) -> Result<Self> {
         fs::create_dir_all(root).map_err(io)?;
         let lease = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join("state.lock")).map_err(io)?;
@@ -56,10 +57,12 @@ impl Files {
         Ok(Self { root: root.to_owned(), _lease: lease, opener })
     }
 
+    #[tracing::instrument(name = "storage.state.file.journal", level = "debug", skip_all)]
     pub(super) fn journal(&self) -> Result<File> {
         (self.opener)(&self.root.join("state.jsonl")).map_err(io)
     }
 
+    #[tracing::instrument(name = "storage.state.file.snapshot", level = "debug", skip_all)]
     pub(super) fn snapshot<T: DeserializeOwned>(&self, maximum: usize) -> Result<Option<T>> {
         let file = match File::open(self.root.join("state.json")) {
             Ok(file) => file,
@@ -77,6 +80,7 @@ impl Files {
         Ok(Some(value))
     }
 
+    #[tracing::instrument(name = "storage.state.file.snapshot_retained", level = "debug", skip_all)]
     pub(super) fn snapshot_retained(
         &self, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize,
     ) -> Result<Option<crate::state::RecoverySnapshot>> {
@@ -97,20 +101,24 @@ impl Files {
         Ok(Some(value))
     }
 
+    #[tracing::instrument(name = "storage.state.file.write_snapshot", level = "debug", skip_all)]
     pub(super) fn write_snapshot<T: Serialize>(&self, value: &T, maximum: usize) -> Result<()> {
         self.replace("state.json", |writer| format::write(writer, value, maximum))
     }
 
+    #[tracing::instrument(name = "storage.state.file.replace_journal", level = "debug", skip_all)]
     pub(super) fn replace_journal(&self, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {
         self.replace("state.jsonl", write)
     }
 
     // Directory Flush Is A POSIX Idiom: Windows Refuses A Directory Opened As A File
     // (`ERROR_ACCESS_DENIED`), And NTFS Makes Rename Metadata Durable Without One.
+    #[tracing::instrument(name = "storage.state.file.sync_directory", level = "debug", skip_all)]
     pub(super) fn sync_directory(&self) -> Result<()> {
         if cfg!(unix) { File::open(&self.root).map_err(io)?.sync_all().map_err(io) } else { Ok(()) }
     }
 
+    #[tracing::instrument(name = "storage.state.file.replace", level = "debug", skip_all)]
     fn replace(&self, name: &str, write: impl FnOnce(&mut BufWriter<File>) -> Result<()>) -> Result<()> {
         // The Exclusive Lease Owns These Temporary Names, Including Crash Remnants.
         let temporary = self.root.join(format!("{name}.pending"));

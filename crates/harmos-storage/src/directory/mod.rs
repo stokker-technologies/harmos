@@ -54,11 +54,15 @@ struct Selection {
 
 impl<C> StorageManager<C> {
     pub async fn list_directory(&self, selection: DirectorySelection) -> Result<DirectoryReader> {
-        DirectoryReader::new(Arc::clone(&self.inner), selection).await
+        let context = crate::execution::Context::current();
+        let span = context.sync(|| tracing::debug_span!("storage.directory.list_directory", outcome = "cancelled"));
+        context.result(span, async { DirectoryReader::new(Arc::clone(&self.inner), selection).await }).await
     }
 
     pub async fn watch_directory(&self, selection: DirectorySelection, include_existing: bool) -> Result<DirectoryWatcher> {
-        DirectoryWatcher::new(Arc::clone(&self.inner), selection, include_existing).await
+        let context = crate::execution::Context::current();
+        let span = context.sync(|| tracing::debug_span!("storage.directory.watch_directory", outcome = "cancelled"));
+        context.result(span, async { DirectoryWatcher::new(Arc::clone(&self.inner), selection, include_existing).await }).await
     }
 }
 
@@ -84,7 +88,9 @@ fn retained_item<T: MemorySize + Message>(inner: &Arc<Inner>, value: T, mut memo
 
 async fn selection(inner: &Arc<Inner>, mut value: DirectorySelection, held: &Held) -> Result<Arc<Selection>> {
     let path = value.root.clone();
-    value.root = tokio::task::spawn_blocking(move || crate::local::validate_local_path(&path)).await.map_err(join_error)??;
+    let context = crate::execution::Context::current();
+    value.root =
+        tokio::task::spawn_blocking(move || context.blocking(|| crate::local::validate_local_path(&path))).await.map_err(join_error)??;
     let bytes = value.memory_size().saturating_add(ENTRY_OVERHEAD);
     let memory = Reservation::try_new(inner, Pool::Read, held, bytes).map(Reservation::retain).map_err(Refusal::into_error)?;
     Ok(Arc::new(Selection { value, _memory: memory }))

@@ -296,6 +296,7 @@ impl<A: Application> Consumers<A> {
         self.durable.as_ref().map(|_| stored)
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.load", level = "debug", skip_all)]
     pub(crate) async fn load(&mut self) -> Result<Recovery<A>, Incompatible> {
         let recovery = match &mut self.recovery {
             Some(source) => source.load().await,
@@ -306,6 +307,7 @@ impl<A: Application> Consumers<A> {
         Ok(recovery)
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.read", level = "debug", skip_all)]
     pub(crate) async fn read(&mut self, after: Position, through: Position) -> Result<Recovery<A>, Error> {
         match &mut self.recovery {
             Some(source) => source.read(after, through).await,
@@ -321,6 +323,7 @@ impl<A: Application> Consumers<A> {
         self.frontier = frontier;
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.drain", level = "debug", skip_all)]
     pub(crate) async fn drain(&mut self, feed: &Feed<A>, applied: Position) -> Position {
         let mut settled = applied;
 
@@ -347,6 +350,7 @@ impl<A: Application> Consumers<A> {
         settled
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.settle", level = "debug", skip_all)]
     pub(crate) async fn settle(&mut self, applied: Position) -> Position {
         let mut settled = applied;
 
@@ -379,6 +383,7 @@ impl<A: Application> Consumers<A> {
             .chain(self.series.iter_mut().map(|series| series.as_mut() as &mut dyn Recording<A>))
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.row_reader", level = "debug", skip_all)]
     pub(crate) async fn row_reader(
         &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
         limits: crate::streams::ReadLimits,
@@ -389,6 +394,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.served", level = "debug", skip_all)]
     pub(crate) async fn served(
         &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
     ) -> Result<Vec<crate::state::At<Arc<dyn std::any::Any + Send + Sync>>>, crate::streams::BeneathWindow> {
@@ -398,6 +404,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.surveyed", level = "debug", skip_all)]
     pub(crate) async fn surveyed(
         &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
         budget: usize,
@@ -408,6 +415,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.aggregated", level = "debug", skip_all)]
     pub(crate) async fn aggregated(
         &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
         kind: crate::Aggregate,
@@ -418,6 +426,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.sealed", level = "debug", skip_all)]
     pub(crate) async fn sealed(&mut self, stream: crate::streams::Definition, track: &[String]) -> Position {
         match &mut self.series {
             Some(series) => series.seal(stream, track).await,
@@ -425,6 +434,7 @@ impl<A: Application> Consumers<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.flush", level = "debug", skip_all)]
     pub(crate) async fn flush(&mut self) {
         if let Some(source) = &mut self.recovery {
             source.flush().await;

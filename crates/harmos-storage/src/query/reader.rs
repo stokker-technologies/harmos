@@ -53,6 +53,7 @@ const PROTOBUF_FRAMING: usize = 30;
 /* === Structs === */
 
 pub struct QueryReader {
+    context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
     query: Query,
@@ -94,6 +95,7 @@ enum Rows {
 
 impl QueryArrow {
     /// Resident bound for the wire value, without converting or copying its IPC.
+    #[tracing::instrument(name = "storage.query.reader.output_memory_size", level = "trace", skip_all)]
     pub fn output_memory_size(&self) -> usize {
         let capacity = match self {
             Self::Schema(schema) => schema.ipc_capacity(),
@@ -102,6 +104,7 @@ impl QueryArrow {
         std::mem::size_of::<QueryOutput>().saturating_add(capacity)
     }
 
+    #[tracing::instrument(name = "storage.query.reader.output", level = "trace", skip_all)]
     pub fn output(self) -> QueryOutput {
         match self {
             Self::Schema(schema) => QueryOutput::Schema(ArrowIpc::from(schema)),
@@ -131,76 +134,90 @@ impl MemorySize for QueryArrow {
     }
 }
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.query.reader.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         crate::ReadSession::standalone(self).query(query).await
     }
 }
 
 impl<C> crate::ReadSession<C> {
+    #[tracing::instrument(name = "storage.read_session.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
-        query.validate()?;
-        self.manager.inner.primary.history().check(&query.at.history)?;
+        let result = async {
+            query.validate()?;
+            self.manager.inner.primary.history().check(&query.at.history)?;
 
-        // Admit A Query Slot Before Charging Its Description. Queued Callers
-        // Hold No Read Bytes That An Active Reader Might Need To Finish.
-        // Grouped Reads Refuse Slot Saturation Instead Of Waiting On Their Peers.
-        let active = if self.queued {
-            query_slot(&self.manager.inner).await?
-        } else {
-            Arc::clone(&self.manager.inner.query_active).try_acquire_owned().map_err(|error| match error {
-                tokio::sync::TryAcquireError::Closed => Error::Closing { domain: "storage queries" },
-                tokio::sync::TryAcquireError::NoPermits => Error::ResourceExhausted { resource: "active storage queries" },
-            })?
-        };
-        let held = self.held.clone();
-        let description_bytes = query.memory_size().saturating_add(ENTRY_OVERHEAD);
-        let description =
-            Reservation::wait(&self.manager.inner, Pool::Read, &held, description_bytes, None).await.map_err(Refusal::into_error)?;
+            // Admit A Query Slot Before Charging Its Description. Queued Callers
+            // Hold No Read Bytes That An Active Reader Might Need To Finish.
+            // Grouped Reads Refuse Slot Saturation Instead Of Waiting On Their Peers.
+            let active = if self.queued {
+                query_slot(&self.manager.inner).await?
+            } else {
+                Arc::clone(&self.manager.inner.query_active).try_acquire_owned().map_err(|error| match error {
+                    tokio::sync::TryAcquireError::Closed => Error::Closing { domain: "storage queries" },
+                    tokio::sync::TryAcquireError::NoPermits => Error::ResourceExhausted { resource: "active storage queries" },
+                })?
+            };
+            let held = self.held.clone();
+            let description_bytes = query.memory_size().saturating_add(ENTRY_OVERHEAD);
+            let description =
+                Reservation::wait(&self.manager.inner, Pool::Read, &held, description_bytes, None).await.map_err(Refusal::into_error)?;
 
-        // Pin The Requested Image For The Whole Invocation.
-        let snapshot = self.manager.snapshot(&query.at, &held).await?;
-        let after = match &query.source {
-            Source::Stream(selection) => selection.after,
-            _ => 0,
-        };
-        Ok(QueryReader {
-            inner: Arc::clone(&self.manager.inner),
-            held,
-            query,
-            snapshot: Some(snapshot),
-            active: Some(active),
-            _description: description,
-            schema: None,
-            objects: None,
-            plan: None,
-            after,
-            rows: SCAN_ROWS,
-            source_done: false,
-            pending: None,
-            pending_offset: 0,
-            delivered: 0,
-            exhausted: false,
-            failed: false,
-            inflight: false,
-        })
+            // Pin The Requested Image For The Whole Invocation.
+            let snapshot = self.manager.snapshot(&query.at, &held).await?;
+            let after = match &query.source {
+                Source::Stream(selection) => selection.after,
+                _ => 0,
+            };
+            Ok(QueryReader {
+                context: crate::execution::Context::current(),
+                inner: Arc::clone(&self.manager.inner),
+                held,
+                query,
+                snapshot: Some(snapshot),
+                active: Some(active),
+                _description: description,
+                schema: None,
+                objects: None,
+                plan: None,
+                after,
+                rows: SCAN_ROWS,
+                source_done: false,
+                pending: None,
+                pending_offset: 0,
+                delivered: 0,
+                exhausted: false,
+                failed: false,
+                inflight: false,
+            })
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 }
 
 impl QueryReader {
     pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
-        if self.failed || self.inflight {
-            self.fail();
-            return Err(Error::NotReady { domain: "failed or interrupted storage query" });
-        }
-        self.inflight = true;
-        let result = self.advance().await;
-        self.inflight = false;
-        if result.is_err() {
-            self.fail();
-        }
-        result
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
+        let future = async {
+            if self.failed || self.inflight {
+                self.fail();
+                return Err(Error::NotReady { domain: "failed or interrupted storage query" });
+            }
+            self.inflight = true;
+            let result = self.advance().await;
+            self.inflight = false;
+            if result.is_err() {
+                self.fail();
+            }
+            result
+        };
+        context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
+    #[tracing::instrument(name = "storage.query.reader.completion", level = "trace", skip_all)]
     pub fn completion(&self) -> Result<QueryCompletion> {
         if !self.exhausted || self.failed || self.inflight {
             return Err(Error::NotReady { domain: "storage query completion" });
@@ -223,6 +240,7 @@ impl QueryReader {
         self.active = None;
     }
 
+    #[tracing::instrument(name = "storage.query.reader.advance", level = "trace", skip_all)]
     async fn advance(&mut self) -> Result<Option<QueryArrow>> {
         if self.exhausted {
             return Ok(None);
@@ -252,6 +270,7 @@ impl QueryReader {
     }
 
     // Resolve Source Schemas, Validate The Plan And Fix The Output Schema.
+    #[tracing::instrument(name = "storage.query.reader.prepare", level = "trace", skip_all)]
     async fn prepare(&mut self) -> Result<ArrowSchema> {
         let snapshot = self.snapshot.as_ref().expect("prepared query owns its snapshot");
         let mut transforms = std::mem::take(&mut self.query.transforms);
@@ -295,6 +314,7 @@ impl QueryReader {
     }
 
     // Load, Convert And Process One Source Page As One Reloadable Attempt.
+    #[tracing::instrument(name = "storage.query.reader.next_page", level = "trace", skip_all, fields(after = self.after, rows = self.rows.get()))]
     async fn next_page(&mut self) -> Result<()> {
         let mut credit = 0usize;
         loop {
@@ -318,6 +338,7 @@ impl QueryReader {
         }
     }
 
+    #[tracing::instrument(name = "storage.query.reader.page_attempt", level = "trace", skip_all)]
     async fn page_attempt(&mut self, bank: &MemoryBank) -> Result<()> {
         // Charge The Raw Page Before Backend I/O.
         let scan_bytes = self.inner.settings.scan_bytes();
@@ -355,6 +376,7 @@ impl QueryReader {
     }
 
     // Produce The Global Output Once; `false` When Nothing Remains.
+    #[tracing::instrument(name = "storage.query.reader.finish", level = "trace", skip_all)]
     async fn finish(&mut self) -> Result<bool> {
         let Some((plan, _)) = self.plan.as_mut() else {
             return Ok(false);
@@ -376,6 +398,7 @@ impl QueryReader {
     }
 
     // Split Pending Output Into Response Batches Within Both Ceilings.
+    #[tracing::instrument(name = "storage.query.reader.deliver", level = "trace", skip_all)]
     async fn deliver(&mut self) -> Result<Option<ArrowBatch>> {
         let Some(batch) = &self.pending else {
             return Ok(None);
@@ -413,6 +436,7 @@ impl QueryReader {
         }
     }
 
+    #[tracing::instrument(name = "storage.query.reader.convert", level = "trace", skip_all)]
     fn convert(&self, rows: Option<&Rows>, bank: &MemoryBank) -> Result<RecordBatch> {
         let schema = self.schema.as_ref().map(|(schema, _)| schema);
         match (&self.query.source, rows) {
@@ -450,6 +474,7 @@ impl Rows {
 
 /* === Public Functions === */
 
+#[tracing::instrument(name = "storage.query.reader.schema_at", level = "trace", skip_all)]
 pub(crate) async fn schema_at(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
 ) -> Result<(StorageSchema, RetainedMemory)> {
@@ -458,6 +483,7 @@ pub(crate) async fn schema_at(
         .ok_or(Error::InvalidInput { field: "storage schema", reason: "schema is unavailable at requested cursor" })
 }
 
+#[tracing::instrument(name = "storage.query.reader.find_schema", level = "trace", skip_all)]
 pub(crate) async fn find_schema(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
 ) -> Result<Option<(StorageSchema, RetainedMemory)>> {
@@ -485,6 +511,7 @@ pub(crate) async fn find_schema(
     }
 }
 
+#[tracing::instrument(name = "storage.query.reader.query_slot", level = "trace", skip_all)]
 pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermit> {
     if let Ok(active) = Arc::clone(&inner.query_active).try_acquire_owned() {
         return Ok(active);
@@ -495,6 +522,7 @@ pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermi
     Arc::clone(&inner.query_active).acquire_owned().await.map_err(|_| Error::Closing { domain: "storage queries" })
 }
 
+#[tracing::instrument(name = "storage.query.reader.admit", level = "trace", skip_all)]
 pub(crate) async fn admit(inner: &Arc<Inner>, held: &Held, credit: usize) -> Result<MemoryBank> {
     MemoryBank::admit(inner, held, credit, None).await.map_err(Refusal::into_error)
 }
@@ -515,6 +543,7 @@ pub(crate) fn retry(bank: &MemoryBank, error: Error, rows: Option<&mut NonZeroUs
 
 /* === Private Functions === */
 
+#[tracing::instrument(name = "storage.query.reader.scan", level = "trace", skip_all)]
 async fn scan<T: Entry>(
     snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows, memory: RetainedMemory,
 ) -> Result<(Rows, usize)> {

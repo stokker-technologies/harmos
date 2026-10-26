@@ -159,6 +159,7 @@ impl<C> ObjectGroup<'_, C> {
 }
 
 impl<C: ObjectCatalog> StorageManager<C> {
+    #[tracing::instrument(name = "storage.objects.write_object", level = "debug", skip_all)]
     pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt>
     where
         C: Contains<T>,
@@ -167,12 +168,14 @@ impl<C: ObjectCatalog> StorageManager<C> {
         Ok(receipts.into_iter().next().unwrap())
     }
 
+    #[tracing::instrument(name = "storage.objects.write_object_group", level = "debug", skip_all)]
     pub async fn write_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 
+    #[tracing::instrument(name = "storage.objects.read_object", level = "debug", skip_all)]
     pub async fn read_object<T: StoredObject>(
         &self, key: &T::Key, version: ObjectVersion,
     ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
@@ -184,6 +187,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
 }
 
 impl<C: ObjectCatalog> crate::ReadSession<C> {
+    #[tracing::instrument(name = "storage.read_session.read_object", level = "debug", skip_all)]
     pub async fn read_object<T: StoredObject>(
         &self, key: &T::Key, version: ObjectVersion,
     ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
@@ -243,17 +247,22 @@ impl<C> StorageManager<C> {
     /// before writing. Move the resulting cursor and claim into pending ownership
     /// before the next await; retries reuse that receipt instead of reissuing an
     /// ordinary group write. This method neither allocates nor admits memory.
+    #[tracing::instrument(name = "storage.objects.object_receipts_memory", level = "trace", skip_all, fields(count = count.get(), outcome = "cancelled"))]
     pub fn object_receipts_memory(&self, count: NonZeroUsize) -> Result<usize> {
-        let history = self.inner.primary.history();
-        let exhausted = || Error::ResourceExhausted { resource: "object receipt memory" };
-        let history = history.store.as_str().len().checked_add(history.epoch.as_str().len()).ok_or_else(exhausted)?;
-        let receipt =
-            history.checked_mul(2).and_then(|bytes| bytes.checked_add(std::mem::size_of::<ObjectReceipt>())).ok_or_else(exhausted)?;
-        count
-            .get()
-            .checked_mul(receipt)
-            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<ObjectReceipt>>()))
-            .ok_or_else(exhausted)
+        let result: Result<usize> = (|| {
+            let history = self.inner.primary.history();
+            let exhausted = || Error::ResourceExhausted { resource: "object receipt memory" };
+            let history = history.store.as_str().len().checked_add(history.epoch.as_str().len()).ok_or_else(exhausted)?;
+            let receipt =
+                history.checked_mul(2).and_then(|bytes| bytes.checked_add(std::mem::size_of::<ObjectReceipt>())).ok_or_else(exhausted)?;
+            count
+                .get()
+                .checked_mul(receipt)
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<ObjectReceipt>>()))
+                .ok_or_else(exhausted)
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(super) fn object_admission_bytes(&self) -> NonZeroUsize {
@@ -263,14 +272,16 @@ impl<C> StorageManager<C> {
         .unwrap()
     }
 
+    #[tracing::instrument(name = "storage.objects.admit_object_group", level = "debug", skip_all)]
     pub(super) async fn admit_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
         build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
-        let _writer = self.inner.object_writes.lock().await;
+        let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         self.admit_object_group_locked(max_bytes, count, mutation, build).await
     }
 
+    #[tracing::instrument(name = "storage.objects.admit_object_group_locked", level = "debug", skip_all)]
     pub(super) async fn admit_object_group_locked(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
         build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,

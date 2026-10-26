@@ -54,25 +54,35 @@ const MAX_DEPTH: usize = 64;
 /// Counting borrows Arrow values and uses only bounded stack scratch. The same
 /// schema/encoding validation and cumulative `max_bytes` limit apply as encoding.
 /// This does not include consumer codec decoding or its projected DTO allocations.
+#[tracing::instrument(name = "storage.arrow.encode_payloads_memory", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
 pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<usize> {
-    let mut count = payload_counter(payload.len(), max_bytes)?;
-    for row in 0..payload.len() {
-        encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
-    }
-    Ok(count.bytes)
+    let result: Result<usize> = (|| {
+        let mut count = payload_counter(payload.len(), max_bytes)?;
+        for row in 0..payload.len() {
+            encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
+        }
+        Ok(count.bytes)
+    })();
+    tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+    result
 }
 
+#[tracing::instrument(name = "storage.arrow.encode_payloads", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
 pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
-    let mut count = payload_counter(payload.len(), max_bytes)?;
-    let mut rows = Vec::with_capacity(payload.len());
-    for row in 0..payload.len() {
-        let previous = count.bytes;
-        encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
-        let mut bytes = Vec::with_capacity(count.bytes - previous);
-        encode_message(schema, schema.root, payload, row, encoding, 0, &mut bytes)?;
-        rows.push(bytes);
-    }
-    Ok(rows)
+    let result: Result<Vec<Vec<u8>>> = (|| {
+        let mut count = payload_counter(payload.len(), max_bytes)?;
+        let mut rows = Vec::with_capacity(payload.len());
+        for row in 0..payload.len() {
+            let previous = count.bytes;
+            encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
+            let mut bytes = Vec::with_capacity(count.bytes - previous);
+            encode_message(schema, schema.root, payload, row, encoding, 0, &mut bytes)?;
+            rows.push(bytes);
+        }
+        Ok(rows)
+    })();
+    tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+    result
 }
 
 pub fn records(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema) -> Result<Vec<RecordInput>> {

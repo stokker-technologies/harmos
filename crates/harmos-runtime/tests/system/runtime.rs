@@ -97,6 +97,7 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 
 #[tokio::test]
 async fn runtime_baseline_walks() {
+    let _report = crate::report::system();
     // Boot The Host Over A Journal On Disk
     let root = tempfile::tempdir().unwrap();
     let settings = JsonStorageSettings { root: root.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() };

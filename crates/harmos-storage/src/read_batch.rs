@@ -29,6 +29,9 @@ use crate::capacity::Reservation;
 
 /* === Type Aliases === */
 
+/// A retained collection of original typed row pages.
+pub type ReadPages<T> = ReadBatch<Vec<ReadBatch<Vec<T>>>>;
+
 /* === Structs === */
 
 pub struct ReadBatch<T> {
@@ -47,16 +50,22 @@ struct ReadOwner<T> {
 /* === Implementations === */
 
 impl<C> crate::StorageManager<C> {
+    #[tracing::instrument(name = "storage.read_batch.read_memory", level = "trace", skip_all, fields(bytes = bytes.get(), outcome = "cancelled"))]
     pub async fn read_memory(&self, bytes: std::num::NonZeroUsize) -> crate::Result<RetainedMemory> {
-        crate::capacity::Reservation::wait_lifecycle(
-            &self.inner,
-            crate::capacity::Pool::Read,
-            &crate::capacity::Held::default(),
-            bytes.get(),
-        )
-        .await
-        .map(Reservation::retain)
-        .map_err(crate::capacity::Refusal::into_error)
+        let result = async {
+            crate::capacity::Reservation::wait_lifecycle(
+                &self.inner,
+                crate::capacity::Pool::Read,
+                &crate::capacity::Held::default(),
+                bytes.get(),
+            )
+            .await
+            .map(Reservation::retain)
+            .map_err(crate::capacity::Refusal::into_error)
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 }
 
@@ -81,29 +90,34 @@ impl<T> ReadBatch<T> {
     /// refused; failure consumes this handle. Existing and additional claims remain
     /// conservative until their last owner drops, including on independently shared
     /// memory claims. No automatic shrinking or payload cloning occurs.
+    #[tracing::instrument(name = "storage.read_batch.try_map", level = "trace", skip_all, fields(additional_peak = additional_peak, outcome = "cancelled"))]
     pub fn try_map<U, E>(
         self, additional_peak: usize, map: impl FnOnce(T) -> std::result::Result<U, E>,
     ) -> std::result::Result<ReadBatch<U>, E>
     where
         E: From<crate::Error>,
     {
-        let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires a unique owner" };
-        // Weak aliases can retain the old Arc allocation after its value moves.
-        let mut inner = self.inner;
-        if Arc::get_mut(&mut inner).is_none() {
-            return Err(shared().into());
-        }
-        let owner = Arc::try_unwrap(inner).map_err(|_| E::from(shared()))?;
-        let growth = std::mem::size_of::<ReadOwner<U>>().saturating_sub(std::mem::size_of::<ReadOwner<T>>());
-        let additional = additional_peak
-            .checked_add(growth)
-            .ok_or_else(|| E::from(crate::Error::ResourceExhausted { resource: "read projection memory" }))?;
-        if additional != 0 {
-            owner._memory.first().expect("read owner retains admission").try_grow_by(additional).map_err(E::from)?;
-        }
-        let ReadOwner { value, _memory } = owner;
-        let value = map(value)?;
-        Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+        let result: std::result::Result<crate::ReadBatch<U>, E> = (|| {
+            let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires a unique owner" };
+            // Weak aliases can retain the old Arc allocation after its value moves.
+            let mut inner = self.inner;
+            if Arc::get_mut(&mut inner).is_none() {
+                return Err(shared().into());
+            }
+            let owner = Arc::try_unwrap(inner).map_err(|_| E::from(shared()))?;
+            let growth = std::mem::size_of::<ReadOwner<U>>().saturating_sub(std::mem::size_of::<ReadOwner<T>>());
+            let additional = additional_peak
+                .checked_add(growth)
+                .ok_or_else(|| E::from(crate::Error::ResourceExhausted { resource: "read projection memory" }))?;
+            if additional != 0 {
+                owner._memory.first().expect("read owner retains admission").try_grow_by(additional).map_err(E::from)?;
+            }
+            let ReadOwner { value, _memory } = owner;
+            let value = map(value)?;
+            Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     /// Consumes two unique owners while retaining every input memory claim.
@@ -116,48 +130,53 @@ impl<T> ReadBatch<T> {
     /// Combining claims does not unify their admission groups. Inputs used by later
     /// dependent reads should originate from the same `ReadSession`. Nested pages
     /// must continue to retain or map their own guards.
+    #[tracing::instrument(name = "storage.read_batch.try_map_with", level = "trace", skip_all, fields(additional_peak = additional_peak, outcome = "cancelled"))]
     pub fn try_map_with<U, V, E>(
         self, other: ReadBatch<U>, additional_peak: usize, map: impl FnOnce(T, U) -> std::result::Result<V, E>,
     ) -> std::result::Result<ReadBatch<V>, E>
     where
         E: From<crate::Error>,
     {
-        let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires unique owners" };
-        let exhausted = || crate::Error::ResourceExhausted { resource: "read projection memory" };
-        let mut left = self.inner;
-        let mut right = other.inner;
-        if Arc::get_mut(&mut left).is_none() || Arc::get_mut(&mut right).is_none() {
-            return Err(shared().into());
-        }
-        let mut left = Arc::try_unwrap(left).map_err(|_| E::from(shared()))?;
-        let mut right = Arc::try_unwrap(right).map_err(|_| E::from(shared()))?;
-        let count = left._memory.len().checked_add(right._memory.len()).ok_or_else(|| E::from(exhausted()))?;
-        // A Replacement Lives Alongside Both Original Guard Arrays.
-        let target = if count > left._memory.capacity() {
-            left._memory.capacity().checked_mul(2).unwrap_or(count).max(count)
-        } else {
-            left._memory.capacity()
-        };
-        let metadata = if target > left._memory.capacity() {
-            target.checked_mul(std::mem::size_of::<RetainedMemory>()).ok_or_else(|| E::from(exhausted()))?
-        } else {
-            0
-        };
-        let growth = std::mem::size_of::<ReadOwner<V>>().saturating_sub(std::mem::size_of::<ReadOwner<T>>());
-        let additional =
-            additional_peak.checked_add(metadata).and_then(|bytes| bytes.checked_add(growth)).ok_or_else(|| E::from(exhausted()))?;
-        if additional != 0 {
-            left._memory.first().expect("read owner retains admission").try_grow_by(additional).map_err(E::from)?;
-        }
-        if target > left._memory.capacity() {
-            left._memory.try_reserve_exact(target - left._memory.len()).map_err(|_| E::from(exhausted()))?;
-        }
-        left._memory.append(&mut right._memory);
-        let ReadOwner { value: left, _memory } = left;
-        let ReadOwner { value: right, _memory: empty } = right;
-        drop(empty);
-        let value = map(left, right)?;
-        Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+        let result: std::result::Result<crate::ReadBatch<V>, E> = (|| {
+            let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires unique owners" };
+            let exhausted = || crate::Error::ResourceExhausted { resource: "read projection memory" };
+            let mut left = self.inner;
+            let mut right = other.inner;
+            if Arc::get_mut(&mut left).is_none() || Arc::get_mut(&mut right).is_none() {
+                return Err(shared().into());
+            }
+            let mut left = Arc::try_unwrap(left).map_err(|_| E::from(shared()))?;
+            let mut right = Arc::try_unwrap(right).map_err(|_| E::from(shared()))?;
+            let count = left._memory.len().checked_add(right._memory.len()).ok_or_else(|| E::from(exhausted()))?;
+            // A Replacement Lives Alongside Both Original Guard Arrays.
+            let target = if count > left._memory.capacity() {
+                left._memory.capacity().checked_mul(2).unwrap_or(count).max(count)
+            } else {
+                left._memory.capacity()
+            };
+            let metadata = if target > left._memory.capacity() {
+                target.checked_mul(std::mem::size_of::<RetainedMemory>()).ok_or_else(|| E::from(exhausted()))?
+            } else {
+                0
+            };
+            let growth = std::mem::size_of::<ReadOwner<V>>().saturating_sub(std::mem::size_of::<ReadOwner<T>>());
+            let additional =
+                additional_peak.checked_add(metadata).and_then(|bytes| bytes.checked_add(growth)).ok_or_else(|| E::from(exhausted()))?;
+            if additional != 0 {
+                left._memory.first().expect("read owner retains admission").try_grow_by(additional).map_err(E::from)?;
+            }
+            if target > left._memory.capacity() {
+                left._memory.try_reserve_exact(target - left._memory.len()).map_err(|_| E::from(exhausted()))?;
+            }
+            left._memory.append(&mut right._memory);
+            let ReadOwner { value: left, _memory } = left;
+            let ReadOwner { value: right, _memory: empty } = right;
+            drop(empty);
+            let value = map(left, right)?;
+            Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(crate) fn owner_bytes() -> crate::Result<usize> {

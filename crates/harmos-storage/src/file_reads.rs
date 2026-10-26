@@ -46,6 +46,7 @@ use harmos_domain::operations::storage::ReadFile;
 /* === Structs === */
 
 pub struct FileReader {
+    context: crate::execution::Context,
     source: Source,
 }
 
@@ -74,8 +75,11 @@ struct StoredReader {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
     pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
-        self.read_file_with_held(request, Held::default()).await
+        let context = crate::execution::Context::current();
+        let span = context.sync(|| tracing::debug_span!("storage.file.read_file", outcome = "cancelled"));
+        context.result(span, async { self.read_file_with_held(request, Held::default()).await }).await
     }
 
     pub(crate) async fn read_file_with_held(&self, request: ReadFile, held: Held) -> Result<FileReader> {
@@ -83,7 +87,7 @@ impl<C> StorageManager<C> {
             FileSource::Stored(file) => Source::Stored(Box::new(self.read_stored_file(file, request.range, held).await?)),
             FileSource::Local(path) => Source::Local(LocalReader::open(&self.inner, path, request.range, held).await?),
         };
-        Ok(FileReader { source })
+        Ok(FileReader { context: crate::execution::Context::current(), source })
     }
 
     async fn read_stored_file(&self, file: FileReference, range: ByteRange, held: Held) -> Result<StoredReader> {
@@ -170,10 +174,15 @@ impl FileReader {
     }
 
     pub(crate) async fn next_raw(&mut self, event: bool) -> Result<Option<(FileBatch, RetainedMemory)>> {
-        match &mut self.source {
-            Source::Stored(reader) => reader.next(event).await,
-            Source::Local(reader) => reader.next(event).await,
-        }
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.page", outcome = "cancelled"));
+        let future = async {
+            match &mut self.source {
+                Source::Stored(reader) => reader.next(event).await,
+                Source::Local(reader) => reader.next(event).await,
+            }
+        };
+        context.result(span, future).await
     }
 
     pub(crate) async fn check_unchanged(&self) -> Result<()> {

@@ -164,10 +164,12 @@ where
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
     async fn initialize<'ctx>(component: Arc<Component>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
         Ok(Self { component, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run<'ctx>(
         &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
@@ -266,11 +268,13 @@ impl super::Bindings<'_> {
 }
 
 impl Component {
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.initialize_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation))]
     async fn initialize_encoded<'ctx>(&self, state: &mut ComponentState, context: &Context<'ctx>) -> Result<(), ComponentError> {
         if state.invocation.is_none() {
             let invocation = context.id().value();
             // Record Ownership Before Sending: A Lost Ack May Still Own Remote State
             state.invocation = Some(invocation);
+            tracing::Span::current().record("invocation", invocation);
             let payload = state.payload.take().expect("one inert request is owned");
             let command = WireCommand::Prepare { invocation, operation: state.operation.to_string(), payload };
             let answer = self.endpoint.phase(command, None).await?;
@@ -295,10 +299,12 @@ impl Component {
         }
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.phase_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation, phase = match &phase { Phase::Initialize => "initialize", Phase::Attempt => "attempt", Phase::Stream(_) => "stream_attempt" }))]
     async fn phase_encoded<'ctx>(
         &self, state: &ComponentState, context: &Context<'ctx>, phase: Phase,
     ) -> Result<WireAnswer, ComponentError> {
         let invocation = state.invocation.expect("prepared identity is retained");
+        tracing::Span::current().record("invocation", invocation);
         let mut token = [0; 32];
         getrandom::fill(&mut token)?;
         let (requests, mut incoming) = mpsc::channel::<ChildRequest>(CHILD_REQUESTS);
@@ -325,10 +331,12 @@ impl Component {
         Ok(answer)
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.finalize_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation))]
     async fn finalize_encoded(&self, state: &mut ComponentState) -> Result<(), ComponentError> {
         let Some(invocation) = state.invocation else {
             return Ok(());
         };
+        tracing::Span::current().record("invocation", invocation);
         if !self.endpoint.accepts() {
             self.endpoint.settle().await?;
             return Ok(());
@@ -396,10 +404,12 @@ impl Operation for SdkOperation {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
     async fn initialize<'ctx>(binding: Arc<SdkBinding>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
         Ok(Self { binding, state: None })
     }
 
+    #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run<'ctx>(
         &mut self, context: Self::Context<'ctx>, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {

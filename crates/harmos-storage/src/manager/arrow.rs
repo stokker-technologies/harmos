@@ -35,12 +35,14 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.manager.arrow.lookup_schema", level = "debug", skip_all)]
     pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<(StorageSchema, RetainedMemory)> {
         let held = Held::default();
         let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
         crate::query::schema_at(&self.inner, &held, &snapshot, key).await
     }
 
+    #[tracing::instrument(name = "storage.manager.arrow.admit_arrow_records", level = "debug", skip_all)]
     pub async fn admit_arrow_records(&self, scope: Option<&Identifier>, batch: &crate::writes::DecodedBatch) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -59,6 +61,7 @@ impl<C> StorageManager<C> {
         result
     }
 
+    #[tracing::instrument(name = "storage.manager.arrow.admit_arrow_streams", level = "debug", skip_all)]
     pub async fn admit_arrow_streams(&self, scope: Option<&Identifier>, batch: &crate::writes::DecodedBatch) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -68,13 +71,14 @@ impl<C> StorageManager<C> {
         result
     }
 
+    #[tracing::instrument(name = "storage.manager.arrow.admit_arrow_objects", level = "debug", skip_all)]
     pub async fn admit_arrow_objects(&self, _scope: Option<&Identifier>, batch: &crate::writes::DecodedBatch) -> Result<StorageCursor> {
         use crate::MemorySize;
         if batch.destination != batch.schema.id {
             return Err(Error::InvalidInput { field: "object destination", reason: "destination differs from object schema" });
         }
         let scratch = self.reserve_arrow_write(batch).await?;
-        let _writer = self.inner.object_writes.lock().await;
+        let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         let definition = (self.inner.object_definition)(&batch.schema)?;
         let graph = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
         let values = crate::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
@@ -112,6 +116,7 @@ impl<C> StorageManager<C> {
             .ok_or(Error::InvalidInput { field: "object batch", reason: "accepted batch has no receipt" })
     }
 
+    #[tracing::instrument(name = "storage.manager.arrow.check_object_preconditions", level = "debug", skip_all)]
     pub(super) async fn check_object_preconditions(
         &self, batch: &crate::writes::DecodedBatch, values: &[crate::ObjectValue],
     ) -> Result<()> {
@@ -168,6 +173,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.manager.arrow.reserve_arrow_write", level = "debug", skip_all)]
     pub(super) async fn reserve_arrow_write(&self, batch: &crate::writes::DecodedBatch) -> Result<Reservation> {
         use crate::MemorySize;
         if batch.data.as_record_batch().num_rows() == 0 {
@@ -184,6 +190,7 @@ impl<C> StorageManager<C> {
 
     // Conversion Scratch Draws On At Most Half The Write Budget So The Admitted
     // Native Copy Always Has Coexistence Space.
+    #[tracing::instrument(name = "storage.manager.arrow.reserve_conversion", level = "debug", skip_all)]
     pub(super) async fn reserve_conversion(&self, bytes: usize) -> Result<Reservation> {
         Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None).await.map_err(Refusal::into_error)
     }

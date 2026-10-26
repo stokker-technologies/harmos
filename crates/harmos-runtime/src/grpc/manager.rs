@@ -159,6 +159,7 @@ impl GrpcManager {
         self.host.close();
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.shutdown", level = "debug", skip_all)]
     pub async fn shutdown(&self) -> Result<()> {
         self.close_admission();
         self.host.shutdown().await

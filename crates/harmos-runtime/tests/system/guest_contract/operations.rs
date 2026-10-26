@@ -64,6 +64,7 @@ fn pending_settings() -> harmos_runtime::config::PluginSettings {
 
 #[tokio::test]
 async fn inert_plan_denies() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let definitions = lifecycle.candidate(()).await;
@@ -92,6 +93,7 @@ async fn inert_plan_denies() {
 
 #[tokio::test]
 async fn declared_operation_roundtrip() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
@@ -125,6 +127,7 @@ async fn declared_operation_roundtrip() {
 
 #[tokio::test]
 async fn wrong_catalog_refused() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     serve_host(&runtime, GuestLanes::Open);
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
@@ -138,6 +141,7 @@ async fn wrong_catalog_refused() {
 // A Pending Guest Stop Retains Cleanup After Its Deadline
 #[tokio::test]
 async fn shutdown_retains_cleanup() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     serve_host(&runtime, GuestLanes::Open);
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
@@ -172,6 +176,7 @@ async fn shutdown_retains_cleanup() {
 
 #[tokio::test]
 async fn overlay_preserves_parent() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
@@ -189,6 +194,7 @@ async fn overlay_preserves_parent() {
 
 #[tokio::test]
 async fn phases_retain_capacity() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
@@ -243,6 +249,7 @@ async fn phases_retain_capacity() {
 
 #[tokio::test]
 async fn exact_live_bindings() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("mismatch").await).unwrap();
@@ -267,6 +274,7 @@ async fn exact_live_bindings() {
 
 #[tokio::test]
 async fn children_retire_authority() {
+    let _report = crate::report::system();
     for serial in [false, true] {
         let runtime = harmos_runtime::Runtime::<support::Bank>::builder(support::Ledger::default(), ())
             .operation_settings(harmos_runtime::operations::Settings {
@@ -295,6 +303,7 @@ async fn children_retire_authority() {
 
 #[tokio::test]
 async fn initialization_cleans_failure() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("initialize-fail").await).unwrap();
@@ -316,6 +325,7 @@ async fn initialization_cleans_failure() {
 
 #[tokio::test]
 async fn initialization_children_retired() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime);
     let mut manager = Manager::new(lifecycle.candidate("initialize-child").await).unwrap();
@@ -331,6 +341,7 @@ async fn initialization_children_retired() {
 
 #[tokio::test]
 async fn wire_alias_refused() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
@@ -368,6 +379,7 @@ async fn wire_alias_refused() {
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn grpc_original_owner() {
+    let _report = crate::report::system();
     use std::num::NonZeroUsize;
     use std::time::Duration;
     let runtime = runtime().await;
@@ -417,6 +429,7 @@ async fn grpc_original_owner() {
 
 #[tokio::test]
 async fn stream_lifecycle_preserved() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();

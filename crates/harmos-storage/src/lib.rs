@@ -74,7 +74,7 @@ pub use json::{JsonStorage, JsonStorageSettings};
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;
 pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
-pub use read_batch::ReadBatch;
+pub use read_batch::{ReadBatch, ReadPages};
 pub use read_session::ReadSession;
 pub use receipts::{MutationReceipt, MutationValue};
 pub use staging::StorageFile;

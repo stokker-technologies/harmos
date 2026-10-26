@@ -19,11 +19,13 @@ use std::sync::{Arc, Mutex, Once, Weak};
 // Third Party Imports
 use tokio::sync::watch;
 use tokio::time::Instant;
+use tracing::Instrument;
 
 // Local Imports
 use super::cleanup::{Cleanup, Finalize, Resource};
 use super::executor;
 use crate::Error;
+use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
@@ -47,6 +49,8 @@ pub struct Status {
 }
 
 pub(crate) struct Instance {
+    dispatcher: tracing::Dispatch,
+    trace: Mutex<Option<tracing::Span>>,
     status: watch::Sender<Status>,
     // Resident instances end Stopped; request-scoped ones end Settled.
     terminal: Phase,
@@ -181,6 +185,10 @@ impl Instance {
             settled_at: None,
         };
         Self {
+            dispatcher: tracing::dispatcher::get_default(Clone::clone),
+            trace: Mutex::new(Some(
+                tracing::debug_span!(target: "harmos::operations", "operations.instance", instance_id = tracing::field::Empty, operation = tracing::field::Empty, generation = tracing::field::Empty, outcome = tracing::field::Empty, settled = false),
+            )),
             status: watch::channel(status).0,
             terminal: Phase::Settled,
             finished: Once::new(),
@@ -202,11 +210,18 @@ impl Instance {
         self.status.borrow().clone()
     }
 
+    pub(crate) fn trace(&self) -> tracing::Span {
+        self.trace.lock().expect("instance trace lock is healthy").clone().unwrap_or_else(tracing::Span::none)
+    }
+
     pub(crate) fn settlement(&self) -> watch::Receiver<Status> {
         self.status.subscribe()
     }
 
     pub(crate) fn transition(&self, phase: Phase) {
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            tracing::debug!(target: "harmos::operations", parent: &self.trace(), ?phase, "instance transition");
+        });
         assert!(
             !matches!(phase, Phase::Queued | Phase::Stopped | Phase::Settled),
             "admission and physical settlement own terminal transitions"
@@ -238,6 +253,9 @@ impl Instance {
     }
 
     fn begin_attempt(&self, attempt: usize, phase: Phase) -> bool {
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            tracing::debug!(target: "harmos::operations", parent: &self.trace(), attempt, ?phase, "instance attempt");
+        });
         let now = executor::now();
         let mut admitted = false;
         self.status.send_modify(|status| {
@@ -254,6 +272,9 @@ impl Instance {
     }
 
     pub(crate) fn complete(&self, outcome: Outcome) {
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            self.trace().record("outcome", tracing::field::debug(outcome));
+        });
         self.status.send_modify(|status| {
             if !status.phase.is_terminal() {
                 status.outcome = Some(outcome);
@@ -282,6 +303,12 @@ impl Instance {
                 status.settled_at = Some(now);
             });
             drop(failure);
+            let trace = self.trace.lock().expect("instance trace lock is healthy").take();
+            tracing::dispatcher::with_default(&self.dispatcher, || {
+                if let Some(trace) = trace {
+                    trace.record("settled", true);
+                }
+            });
         });
     }
 
@@ -377,41 +404,48 @@ impl Instance {
     }
 
     pub(crate) fn settle(&self) -> Finalize<'_> {
-        Box::pin(async move {
-            let mut changed = self.settlement();
-            loop {
-                changed.borrow_and_update();
-                self.settle_dependents().await?;
-                let retained = self.retained.lock().expect("instance cleanup lock is healthy").clone();
-                if let Some(retained) = retained {
-                    if let Err(failure) = retained.settle().await {
-                        let mut previous = None;
-                        self.status.send_modify(|status| {
-                            if !status.phase.is_terminal() {
-                                previous = status.cleanup_failure.replace(Arc::clone(&failure));
-                            }
-                        });
-                        drop(previous);
+        Box::pin(
+            async move {
+                let mut changed = self.settlement();
+                loop {
+                    changed.borrow_and_update();
+                    self.settle_dependents().await?;
+                    let retained = self.retained.lock().expect("instance cleanup lock is healthy").clone();
+                    if let Some(retained) = retained {
+                        if let Err(failure) = retained.settle().await {
+                            let mut previous = None;
+                            self.status.send_modify(|status| {
+                                if !status.phase.is_terminal() {
+                                    previous = status.cleanup_failure.replace(Arc::clone(&failure));
+                                }
+                            });
+                            drop(previous);
+                            return Err(failure);
+                        }
+                        self.finished();
+                        return Ok(());
+                    }
+                    let status = self.status();
+                    if status.phase.is_terminal() {
+                        return Ok(());
+                    }
+                    if let Some(failure) = status.cleanup_failure {
                         return Err(failure);
                     }
-                    self.finished();
-                    return Ok(());
-                }
-                let status = self.status();
-                if status.phase.is_terminal() {
-                    return Ok(());
-                }
-                if let Some(failure) = status.cleanup_failure {
-                    return Err(failure);
-                }
-                if changed.changed().await.is_err() {
-                    return Err(Arc::new(Error::Closing { domain: "instance settlement" }));
+                    if changed.changed().await.is_err() {
+                        return Err(Arc::new(Error::Closing { domain: "instance settlement" }));
+                    }
                 }
             }
-        })
+            .instrument(self.trace())
+            .in_context(self.dispatcher.clone()),
+        )
     }
 
     pub(crate) fn cancel(&self) {
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
+        });
         let mut interrupt = false;
         self.status.send_modify(|status| {
             interrupt = status.dependents == 0;
@@ -430,6 +464,13 @@ impl Instance {
         for child in children {
             child.cancel();
         }
+    }
+}
+
+impl Drop for Instance {
+    fn drop(&mut self) {
+        let span = self.trace.get_mut().expect("instance trace lock is healthy").take();
+        tracing::dispatcher::with_default(&self.dispatcher, || drop(span));
     }
 }
 

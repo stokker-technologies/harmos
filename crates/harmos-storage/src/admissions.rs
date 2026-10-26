@@ -45,16 +45,19 @@ pub(super) struct Mutation<'a> {
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
     pub async fn write_schema_once(
         &self, mutation: &MutationId, key: super::SchemaKey, schema: impl Into<std::sync::Arc<crate::schema::graph::Schema>>,
     ) -> Result<StorageCursor> {
         self.admit_schema(key, schema.into(), Some(mutation)).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.write_records_once", level = "debug", skip_all)]
     pub async fn write_records_once(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         self.admit_record_values(mutation, records).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.admit_record_values", level = "debug", skip_all)]
     pub(crate) async fn admit_record_values(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         nonempty(records.len())?;
         let mut hash = Sha256::new();
@@ -66,10 +69,12 @@ impl<C> StorageManager<C> {
         self.admit_records(records, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.write_stream_once", level = "debug", skip_all)]
     pub async fn write_stream_once(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         self.admit_stream_values(mutation, rows).await
     }
 
+    #[tracing::instrument(name = "storage.admissions.admit_stream_values", level = "debug", skip_all)]
     pub(crate) async fn admit_stream_values(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         nonempty(rows.len())?;
         let mut hash = Sha256::new();

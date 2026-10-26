@@ -109,6 +109,7 @@ impl Session {
 
 #[tokio::test]
 async fn sdk_lifecycle_retained() {
+    let _report = crate::report::system();
     let bytes = support::component();
     let mut config = Config::new();
     config.wasm_component_model(true);

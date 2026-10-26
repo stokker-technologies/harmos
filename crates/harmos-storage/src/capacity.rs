@@ -209,6 +209,7 @@ impl Reservation {
         Ok(reservation)
     }
 
+    #[tracing::instrument(name = "storage.capacity.wait", level = "trace", skip_all)]
     pub(super) async fn wait(
         inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize, deadline: Option<Instant>,
     ) -> std::result::Result<Self, Refusal> {
@@ -241,6 +242,7 @@ impl Reservation {
         }
     }
 
+    #[tracing::instrument(name = "storage.capacity.grow", level = "trace", skip_all)]
     pub(super) async fn grow(&mut self, additional: usize, deadline: Option<Instant>) -> std::result::Result<(), Refusal> {
         if additional == 0 {
             return Ok(());
@@ -406,6 +408,7 @@ impl Drop for Reservation {
 }
 
 impl Inner {
+    #[tracing::instrument(name = "storage.capacity.wait", level = "trace", skip_all)]
     pub(super) async fn wait<T>(
         &self, deadline: Option<Instant>, mut attempt: impl FnMut(&mut State) -> Attempt<T>,
     ) -> std::result::Result<T, Refusal> {
@@ -427,6 +430,7 @@ impl Inner {
 }
 
 impl Inner {
+    #[tracing::instrument(name = "storage.capacity.admit_when", level = "trace", skip_all)]
     pub(super) async fn admit_when<T>(&self, mut check: impl FnMut(&mut State) -> Result<Option<T>>) -> Result<T> {
         self.wait(None, |state| match check(state) {
             Ok(Some(value)) => Attempt::Ready(value),

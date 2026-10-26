@@ -29,6 +29,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 // Local Imports
 use crate::evidence::{Declaration, Evidence, Vault};
 use crate::services::{Once as DeclaredService, ServiceDefinition};
@@ -37,6 +38,7 @@ use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
 use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
 use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
+use crate::supervision::executor::InContext;
 use crate::{
     Application, DefinitionId, Error, operations::LaneSet, operations::OperationPolicy, services::Resident, state::At,
     state::CaptureLimits, state::DecodeError, state::Entry, state::JournalCapture, state::Kind, state::Position, state::StateManager,
@@ -1141,22 +1143,23 @@ async fn answer<A: Application>(
     request: ReadRequest<A>, consumers: &mut Consumers<A>, catalog: Option<&Dispatch<A, Payload<A>>>, inverses: Inverting<A>,
 ) {
     match request {
-        ReadRequest::Entries { after, through, reply } => {
-            let answer = consumers.read(after, through).await.map(|recovery| {
-                recovery
-                    .entries
-                    .into_iter()
-                    .map(|envelope| Entry {
-                        prepared: envelope.payload.prepared.clone(),
-                        position: envelope.position,
-                        metadata: envelope.metadata,
-                        value: envelope.payload.value,
-                    })
-                    .collect()
-            });
+        ReadRequest::Entries { after, through, reply, trace } => {
+            let answer =
+                consumers.read(after, through).instrument(trace.span.clone()).in_context(trace.dispatcher.clone()).await.map(|recovery| {
+                    recovery
+                        .entries
+                        .into_iter()
+                        .map(|envelope| Entry {
+                            prepared: envelope.payload.prepared.clone(),
+                            position: envelope.position,
+                            metadata: envelope.metadata,
+                            value: envelope.payload.value,
+                        })
+                        .collect()
+                });
             let _ = reply.send(answer);
         }
-        ReadRequest::State { origin, at, reply } => {
+        ReadRequest::State { origin, at, reply, trace } => {
             let answer = async {
                 let recovery = consumers.read(origin.position, at).await?;
                 if recovery
@@ -1177,6 +1180,8 @@ async fn answer<A: Application>(
 
                 Ok(state)
             }
+            .instrument(trace.span.clone())
+            .in_context(trace.dispatcher.clone())
             .await;
             let _ = reply.send(answer);
         }

@@ -63,6 +63,7 @@ impl<T: Message> Prepared<T> {
         self.memory
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.postcard.decode", level = "trace", skip_all, fields(bytes = self.postcard.len(), required_bytes = self.memory))]
     pub fn decode(self) -> Result<T, MessageError> {
         T::decode(&self.postcard)
     }
@@ -78,17 +79,22 @@ impl<T: Message> Prepared<T> {
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.
 
+#[tracing::instrument(target = "harmos::grpc", name = "grpc.protobuf.encode", level = "trace", skip_all)]
 pub fn encode<T: Message + Described>(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     transcode::encode(&T::DEFINITION, &value.encode_to_vec(), bytes)
 }
 
+#[tracing::instrument(target = "harmos::grpc", name = "grpc.protobuf.decode", level = "trace", skip_all)]
 pub fn decode<T: Message + Described>(input: DecodeInput<'_>) -> Result<T, MessageError> {
     T::decode(&transcode::decode(&T::DEFINITION, input)?)
 }
 
+#[tracing::instrument(target = "harmos::grpc", name = "grpc.prepare", level = "trace", skip_all, fields(canonical_bytes = tracing::field::Empty, required_bytes = tracing::field::Empty))]
 pub fn prepare<T: Message + Described>(input: DecodeInput<'_>) -> Result<Prepared<T>, MessageError> {
     let postcard = transcode::decode(&T::DEFINITION, input)?;
     let memory = decoding_add(postcard.capacity(), T::decoding_memory(&postcard)?)?;
+    tracing::Span::current().record("canonical_bytes", postcard.len());
+    tracing::Span::current().record("required_bytes", memory);
     Ok(Prepared { postcard, memory, value: PhantomData })
 }
 

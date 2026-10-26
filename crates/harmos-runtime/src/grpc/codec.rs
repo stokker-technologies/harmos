@@ -138,6 +138,7 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Cod
     }
 }
 impl<W, E: Encode<W>> Encoder<W, E> {
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.encode", level = "trace", skip_all)]
     fn message(&mut self, value: &E) -> Result<&[u8], Status> {
         self.scratch.clear();
         value.write(&mut self.scratch).map_err(|error| Status::internal(error.to_string()))?;

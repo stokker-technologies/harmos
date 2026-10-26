@@ -36,13 +36,14 @@ use super::*;
 
 /* === Public Functions === */
 
+#[tracing::instrument(name = "storage.staging.perform.perform", level = "debug", skip_all)]
 pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) -> Result<FileCompleted> {
     match action {
         FileAction::Create { id, metadata, staging, resumable } => {
             let actual = if *resumable {
-                inner.bounded(inner.primary.create_production(metadata)).await?
+                inner.bounded("primary.create_production", inner.primary.create_production(metadata)).await?
             } else {
-                inner.bounded(inner.primary.create_file(metadata)).await?
+                inner.bounded("primary.create_file", inner.primary.create_file(metadata)).await?
             };
             if actual != *staging {
                 if let Some(file) = inner.state.lock().unwrap().files.get_mut(id) {
@@ -53,16 +54,16 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
             Ok(FileCompleted::Created)
         }
         FileAction::Resume { staging, expected, next, .. } => {
-            inner.bounded(inner.primary.fence_production(staging, *expected, *next)).await?;
+            inner.bounded("primary.fence_production", inner.primary.fence_production(staging, *expected, *next)).await?;
             Ok(FileCompleted::Resumed(*next))
         }
         FileAction::Write { staging, offset, bytes, .. } => {
-            inner.bounded(inner.primary.write_file(staging, *offset, bytes.clone())).await?;
+            inner.bounded("primary.write_file", inner.primary.write_file(staging, *offset, bytes.clone())).await?;
             Ok(FileCompleted::Written)
         }
         FileAction::Finish { staging, metadata, target, length, sha256, .. } => {
             let position = StorageCursor { history: inner.primary.history().clone(), sequence: target.sequence };
-            let reference = inner.bounded(inner.primary.finish_file(staging, &position, *length, *sha256)).await?;
+            let reference = inner.bounded("primary.finish_file", inner.primary.finish_file(staging, &position, *length, *sha256)).await?;
             if reference.position != position
                 || reference.metadata != **metadata
                 || reference.length != *length
@@ -74,16 +75,24 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
         }
         FileAction::Abandon { staging, extra, .. } => {
             if let Some(extra) = extra {
-                inner.bounded(inner.primary.abandon_file(extra)).await?;
+                inner.bounded("primary.abandon_file", inner.primary.abandon_file(extra)).await?;
             }
-            inner.bounded(inner.primary.abandon_file(staging)).await?;
+            inner.bounded("primary.abandon_file", inner.primary.abandon_file(staging)).await?;
             Ok(FileCompleted::Aborted)
         }
         FileAction::Abort { staging, extra, .. } => {
             if let Some(extra) = extra {
-                inner.primary.abort_file(extra).await?;
+                tracing::Instrument::instrument(
+                    inner.primary.abort_file(extra),
+                    tracing::debug_span!("storage.backend", method = "primary.abort_file"),
+                )
+                .await?;
             }
-            inner.primary.abort_file(staging).await?;
+            tracing::Instrument::instrument(
+                inner.primary.abort_file(staging),
+                tracing::debug_span!("storage.backend", method = "primary.abort_file"),
+            )
+            .await?;
             Ok(FileCompleted::Aborted)
         }
         FileAction::Refuse { .. } => Err(size_error()),

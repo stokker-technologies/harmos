@@ -56,6 +56,7 @@ impl<C: 'static> Operation for Handler<C> {
         Ok(Self { storage })
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_production", level = "trace", skip_all)]
     async fn run<'a>(
         &mut self, ctx: Self::Context<'a>, request: &mut FollowProduction, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProgress>> {

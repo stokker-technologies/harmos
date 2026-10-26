@@ -35,6 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.staging.mutations.append.append_file_once", level = "debug", skip_all)]
     pub async fn append_file_once(
         &self, mutation: &MutationId, token: &FileSession, offset: u64, bytes: impl Into<crate::FileChunk>,
     ) -> Result<FileProducer> {
@@ -64,6 +65,8 @@ impl<C> StorageManager<C> {
             reserve(state, mutation, fingerprint, outcome.memory_size(), payload.capacity(), &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.ticket = ticket;
+            file.context = crate::execution::Context::current();
+            file.queued = Some(tracing::debug_span!("storage.file.queue"));
             let payload = bytes.take().expect("unadmitted file payload");
             let charge = crate::batch::WriteCharge::new(&self.inner, payload.allocation_bytes());
             file.command = Some(Command::Write(payload.retained(charge)));

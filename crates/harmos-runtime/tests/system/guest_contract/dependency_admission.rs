@@ -44,6 +44,7 @@ use super::*;
 
 #[tokio::test]
 async fn dependencies_share_admission() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
@@ -66,6 +67,7 @@ async fn dependencies_share_admission() {
 
 #[tokio::test]
 async fn cancelled_dependency_admission() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
@@ -86,6 +88,7 @@ async fn cancelled_dependency_admission() {
 
 #[tokio::test]
 async fn background_cleanup_retained() {
+    let _report = crate::report::system();
     use std::sync::{Arc, atomic::Ordering};
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
@@ -158,6 +161,7 @@ async fn background_cleanup_retained() {
 
 #[tokio::test]
 async fn missing_provider_refused() {
+    let _report = crate::report::system();
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
@@ -185,6 +189,7 @@ async fn missing_provider_refused() {
 
 #[tokio::test]
 async fn shutdown_fences_callers() {
+    let _report = crate::report::system();
     use std::sync::Arc;
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
@@ -206,6 +211,7 @@ async fn shutdown_fences_callers() {
 
 #[tokio::test]
 async fn cancelled_shutdown_cleanup() {
+    let _report = crate::report::system();
     use std::sync::{Arc, atomic::Ordering};
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());

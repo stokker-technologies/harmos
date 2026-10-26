@@ -54,6 +54,7 @@ impl<C: 'static> Operation for Handler<C> {
         Ok(Self { storage })
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.operation.list_directory", level = "trace", skip_all)]
     async fn run<'a>(
         &mut self, _ctx: Self::Context<'a>, request: &mut ListDirectory, output: &mut Self::Endpoints,
     ) -> Result<Response<DirectoryCompletion>> {

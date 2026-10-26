@@ -62,6 +62,7 @@ impl ReceiveCredit {
         Arc::new(Self { ledger: Mutex::new(Ledger::default()), released: watch::channel(0).0, closed: watch::channel(false).0 })
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "sidecar.credit.admit", level = "trace", skip_all, fields(wire_bytes = encoded))]
     pub fn admit(self: &Arc<Self>, encoded: usize) -> io::Result<Consumption> {
         if !(5..=Frame::LIMIT + 4).contains(&encoded) {
             return Err(invalid("invalid credited packet length"));

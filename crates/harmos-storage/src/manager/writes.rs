@@ -35,10 +35,12 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.manager.writes.write_schema", level = "debug", skip_all)]
     pub async fn write_schema(&self, key: SchemaKey, schema: impl Into<Arc<crate::schema::graph::Schema>>) -> Result<StorageCursor> {
         self.admit_schema(key, schema.into(), None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_schema", level = "debug", skip_all)]
     pub(crate) async fn admit_schema(
         &self, key: SchemaKey, schema: Arc<crate::schema::graph::Schema>, mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
@@ -135,10 +137,12 @@ impl<C> StorageManager<C> {
         Ok(rows)
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.write_records", level = "debug", skip_all)]
     pub async fn write_records(&self, records: Vec<RecordInput>) -> Result<StorageCursor> {
         self.admit_records(records, None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_records", level = "debug", skip_all)]
     pub(crate) async fn admit_records(&self, records: Vec<RecordInput>, mutation: Option<Mutation<'_>>) -> Result<StorageCursor> {
         if records.is_empty() {
             return Ok(self.status().accepted);
@@ -158,10 +162,12 @@ impl<C> StorageManager<C> {
         Ok(self.position(sequence))
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.write_stream", level = "debug", skip_all)]
     pub async fn write_stream(&self, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         self.admit_stream(rows, None).await
     }
 
+    #[tracing::instrument(name = "storage.manager.writes.admit_stream", level = "debug", skip_all)]
     pub(crate) async fn admit_stream(&self, rows: Vec<StreamInput>, mutation: Option<Mutation<'_>>) -> Result<StorageCursor> {
         if rows.is_empty() {
             return Ok(self.status().accepted);

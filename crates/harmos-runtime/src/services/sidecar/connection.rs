@@ -284,6 +284,7 @@ impl Endpoint {
         self.request(command, Some(children)).await
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.request", level = "debug", skip_all)]
     async fn request(&self, command: WireCommand, children: Option<Children>) -> Result<WireAnswer, SidecarError> {
         if !self.accepts() {
             return Err(SidecarError::Unavailable);
@@ -300,7 +301,16 @@ impl Endpoint {
         }
         let Frame::Call { method, params, .. } = frame else { unreachable!() };
         let (answer, answered) = oneshot::channel();
-        let request = Request { method, params, answer, children };
+        let request = Request {
+            method,
+            params,
+            answer,
+            children,
+            trace: crate::supervision::executor::SpanContext::new(
+                tracing::Span::current(),
+                tracing::debug_span!(target: "harmos::carrier", "sidecar.queue"),
+            ),
+        };
         self.send(request)?;
         let payload = answered.await.map_err(|_| SidecarError::Unavailable)??;
         WireAnswer::decode(&payload).map_err(|error| SidecarError::Malformed(error.to_string()))

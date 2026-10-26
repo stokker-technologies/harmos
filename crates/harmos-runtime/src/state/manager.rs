@@ -20,6 +20,7 @@ use std::sync::{Arc, Weak};
 use futures_core::Stream;
 use tokio::sync::{RwLock, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 // Local Imports
 use super::ManagedState;
 use super::transaction::TransactionError;
@@ -64,7 +65,7 @@ pub(crate) struct Context {
 pub struct StateManager<A: Application> {
     handles: Arc<()>,
     record_schemas: Arc<crate::records::Registry>,
-    writer: mpsc::Sender<Request<A>>,
+    writer: mpsc::Sender<writer::QueuedRequest<A>>,
     context: Context,
     pub(super) tracked: Arc<TrackedState<A>>,
 }
@@ -151,6 +152,7 @@ impl<A: Application> StateManager<A> {
         )
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.commit", level = "debug", skip_all)]
     pub async fn commit<T>(&self, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
         T: Transaction<A::State> + Into<A::Transaction>,
@@ -159,6 +161,7 @@ impl<A: Application> StateManager<A> {
         self.request(None, transaction.into()).await
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.commit_keyed", level = "debug", skip_all)]
     pub async fn commit_keyed<T>(&self, key: RequestKey, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
         T: Transaction<A::State> + Into<A::Transaction>,
@@ -171,15 +174,20 @@ impl<A: Application> StateManager<A> {
         (Arc::clone(&self.tracked.catalog), Arc::clone(&self.tracked.record_preparation))
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.append_prepared", level = "debug", skip_all)]
     pub(crate) async fn append_prepared(
         &self, value: Recorded<A>, prepared: Prepared, permit: tokio::sync::OwnedSemaphorePermit,
     ) -> Result<Receipt, Error> {
         let (reply, answer) = oneshot::channel();
         let request = Request::Record { value, prepared, preparation: permit, context: self.context.clone(), reply };
 
-        if self.writer.send(request).await.is_err() {
-            return Err(self.unavailable());
-        }
+        let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
+        let permit = match waiting.await {
+            Ok(permit) => permit,
+            Err(_) => return Err(self.unavailable()),
+        };
+        let queued = tracing::debug_span!(target: "harmos::state", "state.queue");
+        permit.send((request, crate::supervision::executor::SpanContext::new(tracing::Span::current(), queued)));
         answer.await.map_err(|_| self.unavailable())?.map_err(preparation)
     }
 
@@ -194,6 +202,7 @@ impl<A: Application> StateManager<A> {
         self.query_through(after, self.applied()).await
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.query_through", level = "debug", skip_all)]
     pub async fn query_through<X>(&self, after: Position, through: Position) -> impl Iterator<Item = Result<Entry<X>, Error>>
     where
         X: Clone + Send + 'static,
@@ -229,6 +238,7 @@ impl<A: Application> StateManager<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.watch", level = "debug", skip_all)]
     pub fn watch<X>(&self, after: Position) -> impl Stream<Item = Result<Entry<X>, Error>>
     where
         X: Clone + Send + 'static,
@@ -256,6 +266,7 @@ impl<A: Application> StateManager<A> {
         *self.tracked.stored.borrow()
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.wait_until_stored", level = "debug", skip_all)]
     pub async fn wait_until_stored(&self, at: Position) {
         let mut stored = self.tracked.stored.clone();
 
@@ -266,14 +277,17 @@ impl<A: Application> StateManager<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.undo", level = "debug", skip_all)]
     pub async fn undo(&self, principal: PrincipalId, focus: Focus<A>) -> Result<Receipt, Error<TransactionError<A>>> {
         self.revert(principal, focus, Direction::Undo).await
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.redo", level = "debug", skip_all)]
     pub async fn redo(&self, principal: PrincipalId, focus: Focus<A>) -> Result<Receipt, Error<TransactionError<A>>> {
         self.revert(principal, focus, Direction::Redo).await
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.reversals", level = "debug", skip_all)]
     pub async fn reversals(&self, principal: PrincipalId, focus: Focus<A>) -> Result<At<Reversals>, Error> {
         if self.tracked.poisoned() {
             return Err(self.unavailable());
@@ -282,9 +296,13 @@ impl<A: Application> StateManager<A> {
         let (reply, answer) = oneshot::channel();
         let request = Request::Reversals { principal, focus, reply };
 
-        if self.writer.send(request).await.is_err() {
-            return Err(self.unavailable());
-        }
+        let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
+        let permit = match waiting.await {
+            Ok(permit) => permit,
+            Err(_) => return Err(self.unavailable()),
+        };
+        let queued = tracing::debug_span!(target: "harmos::state", "state.queue");
+        permit.send((request, crate::supervision::executor::SpanContext::new(tracing::Span::current(), queued)));
 
         answer.await.map_err(|_| self.unavailable())
     }
@@ -302,13 +320,18 @@ impl<A: Application> StateManager<A> {
         scoped
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.revert", level = "debug", skip_all)]
     async fn revert(&self, principal: PrincipalId, focus: Focus<A>, direction: Direction) -> Result<Receipt, Error<TransactionError<A>>> {
         let (reply, answer) = oneshot::channel();
         let request = Request::Revert { principal, focus, direction, context: self.context.clone(), reply };
 
-        if self.writer.send(request).await.is_err() {
-            return Err(self.unavailable());
-        }
+        let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
+        let permit = match waiting.await {
+            Ok(permit) => permit,
+            Err(_) => return Err(self.unavailable()),
+        };
+        let queued = tracing::debug_span!(target: "harmos::state", "state.queue");
+        permit.send((request, crate::supervision::executor::SpanContext::new(tracing::Span::current(), queued)));
         match answer.await {
             Ok(Ok(receipt)) => Ok(receipt),
             Ok(Err(Refusal::Preparation(refusal))) => Err(preparation(refusal)),
@@ -324,6 +347,7 @@ impl<A: Application> StateManager<A> {
         }
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.wait_until_captured", level = "debug", skip_all)]
     pub async fn wait_until_captured(&self, through: Position) -> Result<(), crate::state::CaptureError> {
         let Some(mut progress) = self.tracked.capture_progress.clone() else {
             return Ok(());
@@ -353,9 +377,13 @@ impl<A: Application> StateManager<A> {
         let (reply, answer) = oneshot::channel();
         let request = Request::Commit { transaction, key, context: self.context.clone(), reply };
 
-        if self.writer.send(request).await.is_err() {
-            return Err(self.unavailable());
-        }
+        let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
+        let permit = match waiting.await {
+            Ok(permit) => permit,
+            Err(_) => return Err(self.unavailable()),
+        };
+        let queued = tracing::debug_span!(target: "harmos::state", "state.queue");
+        permit.send((request, crate::supervision::executor::SpanContext::new(tracing::Span::current(), queued)));
         match answer.await {
             Ok(Ok(receipt)) => Ok(receipt),
             Ok(Err(Admission::Rejected(refusal))) => Err(Error::Rejected(E::from(refusal))),
@@ -367,12 +395,14 @@ impl<A: Application> StateManager<A> {
 
 impl<A: Application> Feed<A> {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[tracing::instrument(target = "harmos::state", name = "state.shared_page", level = "debug", skip_all)]
     pub(crate) async fn shared_page(
         &self, after: Position, through: Position, max_rows: std::num::NonZeroUsize,
     ) -> Result<history::SharedPage<A>, Error> {
         self.tracked.tail.read().await.shared_page(after, through, max_rows)
     }
 
+    #[tracing::instrument(target = "harmos::state", name = "state.since", level = "debug", skip_all)]
     pub(crate) async fn since(&self, after: Position) -> Result<Vec<Arc<Entry<Recorded<A>>>>, Error> {
         let tail = self.tracked.tail.read().await;
 

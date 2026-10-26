@@ -35,6 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
+    #[tracing::instrument(name = "storage.manager.recovery.write_recovery", level = "debug", skip_all)]
     pub async fn write_recovery(&self, payloads: Vec<Vec<u8>>) -> Result<RecoveryPosition> {
         self.check_raw_recovery()?;
         if payloads.is_empty() {
@@ -64,6 +65,7 @@ impl<C> StorageManager<C> {
         Ok(self.recovery_position(sequence))
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.write_snapshot", level = "debug", skip_all)]
     pub async fn write_snapshot(&self, snapshot: RecoverySnapshot) -> Result<()> {
         self.check_raw_recovery()?;
         self.inner.recovery.history().check(&snapshot.through.history)?;
@@ -73,20 +75,23 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.flush", level = "debug", skip_all)]
     pub async fn flush(&self) -> Result<StorageCursor> {
         let through = self.cursor_accepted();
         self.flush_until(&through).await
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.flush_until", level = "debug", skip_all)]
     pub async fn flush_until(&self, through: &StorageCursor) -> Result<StorageCursor> {
         let files = self.capture_files(Some(through))?;
         self.flush_prepared(through, &files).await
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.flush_prepared", level = "debug", skip_all)]
     pub async fn flush_prepared(&self, through: &StorageCursor, files: &Option<crate::FileSave>) -> Result<StorageCursor> {
         self.flush_domain(Domain::Data, Some(through)).await?;
         if files.is_some() {
-            let _lifecycle = self.inner.lifecycle.write().await;
+            let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.write(), tracing::trace_span!("storage.lock.wait")).await;
             if self.inner.state.lock().unwrap().status.closed {
                 return Err(Error::Closing { domain: "storage" });
             }
@@ -95,15 +100,17 @@ impl<C> StorageManager<C> {
         Ok(self.cursor_saved())
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.flush_recovery", level = "debug", skip_all)]
     pub async fn flush_recovery(&self) -> Result<RecoveryPosition> {
         self.flush_domain(Domain::Recovery, None).await?;
         Ok(self.status().recovery_saved)
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.read_recovery", level = "debug", skip_all)]
     pub async fn read_recovery(
         &self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits,
     ) -> Result<crate::ReadBatch<RecoveryPage>> {
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let charge = limits.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(limits.bytes.get());
         let reservation =
             Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?.retain();
@@ -111,7 +118,10 @@ impl<C> StorageManager<C> {
         if !status.recovery_saved.covers(through)? {
             return Err(Error::InvalidInput { field: "recovery range", reason: "frontier is not durable" });
         }
-        let page = self.inner.bounded(self.inner.recovery.read_entries(after, through, limits, reservation.clone())).await?;
+        let page = self
+            .inner
+            .bounded("recovery.read_entries", self.inner.recovery.read_entries(after, through, limits, reservation.clone()))
+            .await?;
         page.check(after, through, limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
         for entry in &page.entries {
             self.check_state_dependency(&entry.required_data)?;
@@ -119,12 +129,14 @@ impl<C> StorageManager<C> {
         Ok(crate::ReadBatch::retained(page, reservation))
     }
 
+    #[tracing::instrument(name = "storage.manager.recovery.read_snapshot", level = "debug", skip_all)]
     pub async fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
-        let _lifecycle = self.inner.lifecycle.read().await;
+        let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let charge = max_bytes.get().saturating_add(ENTRY_OVERHEAD);
         let reservation =
             Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?.retain();
-        let snapshot = self.inner.bounded(self.inner.recovery.read_snapshot(max_bytes, reservation.clone())).await?;
+        let snapshot =
+            self.inner.bounded("recovery.read_snapshot", self.inner.recovery.read_snapshot(max_bytes, reservation.clone())).await?;
         if let Some(snapshot) = &snapshot
             && (!self.status().recovery_saved.covers(&snapshot.through)?
                 || !self.status().saved.covers(&snapshot.required_data)?

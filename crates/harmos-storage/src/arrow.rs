@@ -83,8 +83,11 @@ impl RetainedMemory {
 
     /// Admits an absolute total high-water mark; this never shrinks the claim.
     /// Concurrent incremental allocators must use `try_grow_by`.
+    #[tracing::instrument(name = "storage.arrow.memory.try_grow_to", level = "trace", skip_all, fields(bytes = bytes, outcome = "cancelled"))]
     pub fn try_grow_to(&self, bytes: usize) -> Result<()> {
-        self.try_grow(bytes).map_err(crate::capacity::Refusal::into_error)
+        let result: Result<()> = self.try_grow(bytes).map_err(crate::capacity::Refusal::into_error);
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(crate) fn try_grow(&self, bytes: usize) -> std::result::Result<(), crate::capacity::Refusal> {
@@ -97,8 +100,11 @@ impl RetainedMemory {
     ///
     /// Refusal leaves the claim unchanged. Use this for independent increments
     /// through aliases; `bytes() + try_grow_to()` is not an atomic increment.
+    #[tracing::instrument(name = "storage.arrow.memory.try_grow_by", level = "trace", skip_all, fields(additional = additional, outcome = "cancelled"))]
     pub fn try_grow_by(&self, additional: usize) -> Result<()> {
-        self.owner.lock().unwrap().try_grow(additional).map_err(crate::capacity::Refusal::into_error)
+        let result: Result<()> = self.owner.lock().unwrap().try_grow(additional).map_err(crate::capacity::Refusal::into_error);
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(crate) async fn grow_to(&self, bytes: usize) -> std::result::Result<(), crate::capacity::Refusal> {
@@ -129,10 +135,15 @@ impl std::fmt::Debug for Retained {
 }
 
 impl ArrowSchema {
+    #[tracing::instrument(name = "storage.arrow.schema.try_new", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_new(schema: Arc<Schema>) -> Result<Self> {
-        validate_schema(&schema)?;
-        let ipc = Arc::new(ipc::encode(&schema, None)?);
-        Ok(Self { schema, ipc, retention: None })
+        let result: Result<Self> = (|| {
+            validate_schema(&schema)?;
+            let ipc = Arc::new(ipc::encode(&schema, None)?);
+            Ok(Self { schema, ipc, retention: None })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Self {
@@ -152,19 +163,29 @@ impl ArrowSchema {
         &self.ipc
     }
 
+    #[tracing::instrument(name = "storage.arrow.schema.from_ipc", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn from_ipc(bytes: Vec<u8>) -> Result<Self> {
-        ipc::preflight(&bytes, false)?;
-        let (schema, _) = ipc::decode(&bytes, false)?;
-        Ok(Self { schema, ipc: Arc::new(bytes), retention: None })
+        let result: Result<Self> = (|| {
+            ipc::preflight(&bytes, false)?;
+            let (schema, _) = ipc::decode(&bytes, false)?;
+            Ok(Self { schema, ipc: Arc::new(bytes), retention: None })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 }
 
 impl ArrowBatch {
+    #[tracing::instrument(name = "storage.arrow.batch.try_new", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_new(batch: RecordBatch) -> Result<Self> {
-        validate_schema(batch.schema().as_ref())?;
-        let encoded = ipc::encode(batch.schema().as_ref(), Some(&batch))?;
-        let resident = retention::resident_bytes(&batch)?;
-        Ok(Self { batch, ipc: Arc::new(encoded), resident, retention: None })
+        let result: Result<Self> = (|| {
+            validate_schema(batch.schema().as_ref())?;
+            let encoded = ipc::encode(batch.schema().as_ref(), Some(&batch))?;
+            let resident = retention::resident_bytes(&batch)?;
+            Ok(Self { batch, ipc: Arc::new(encoded), resident, retention: None })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Result<Self> {
@@ -183,20 +204,25 @@ impl ArrowBatch {
     /// The callback must transfer payloads only into its successful value; errors
     /// and external captures must not retain them. Nested owners retain their guards.
     /// Unretained batches from `try_new` or `from_ipc` refuse without conversion.
+    #[tracing::instrument(name = "storage.arrow.batch.try_map", level = "trace", skip_all, fields(additional_peak = additional_peak, outcome = "cancelled"))]
     pub fn try_map<U, E>(
         self, additional_peak: usize, map: impl FnOnce(RecordBatch) -> std::result::Result<U, E>,
     ) -> std::result::Result<crate::ReadBatch<U>, E>
     where
         E: From<Error>,
     {
-        let memory = self.retention.as_ref().ok_or_else(|| E::from(invalid("projection requires an admitted batch")))?.0.clone();
-        let additional = additional_peak
-            .checked_add(crate::ReadBatch::<U>::owner_bytes().map_err(E::from)?)
-            .ok_or_else(|| E::from(Error::ResourceExhausted { resource: "Arrow projection memory" }))?;
-        memory.try_grow_by(additional).map_err(E::from)?;
-        let Self { batch, .. } = self;
-        let value = map(batch)?;
-        Ok(crate::ReadBatch::retained(value, memory))
+        let result: std::result::Result<crate::ReadBatch<U>, E> = (|| {
+            let memory = self.retention.as_ref().ok_or_else(|| E::from(invalid("projection requires an admitted batch")))?.0.clone();
+            let additional = additional_peak
+                .checked_add(crate::ReadBatch::<U>::owner_bytes().map_err(E::from)?)
+                .ok_or_else(|| E::from(Error::ResourceExhausted { resource: "Arrow projection memory" }))?;
+            memory.try_grow_by(additional).map_err(E::from)?;
+            let Self { batch, .. } = self;
+            let value = map(batch)?;
+            Ok(crate::ReadBatch::retained(value, memory))
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn as_record_batch(&self) -> &RecordBatch {
@@ -218,12 +244,17 @@ impl ArrowBatch {
             .ok_or_else(|| invalid("Arrow encoding ownership size overflow"))
     }
 
+    #[tracing::instrument(name = "storage.arrow.batch.from_ipc", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn from_ipc(bytes: Vec<u8>) -> Result<Self> {
-        ipc::preflight(&bytes, true)?;
-        let (_, batch) = ipc::decode(&bytes, true)?;
-        let batch = batch.ok_or_else(|| invalid("missing Arrow record batch"))?;
-        let resident = retention::resident_bytes(&batch)?;
-        Ok(Self { batch, ipc: Arc::new(bytes), resident, retention: None })
+        let result: Result<Self> = (|| {
+            ipc::preflight(&bytes, true)?;
+            let (_, batch) = ipc::decode(&bytes, true)?;
+            let batch = batch.ok_or_else(|| invalid("missing Arrow record batch"))?;
+            let resident = retention::resident_bytes(&batch)?;
+            Ok(Self { batch, ipc: Arc::new(bytes), resident, retention: None })
+        })();
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn validate_schema(&self, schema: &Schema) -> Result<()> {
@@ -275,8 +306,11 @@ pub fn validate_schema(schema: &Schema) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(name = "storage.arrow.decoding_memory", level = "trace", skip_all, fields(bytes = bytes.len(), batch = batch, outcome = "cancelled"))]
 pub fn decoding_memory(bytes: &[u8], batch: bool) -> Result<usize> {
-    ipc::preflight(bytes, batch)
+    let result: Result<usize> = ipc::preflight(bytes, batch);
+    tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+    result
 }
 
 /* === Private Functions === */

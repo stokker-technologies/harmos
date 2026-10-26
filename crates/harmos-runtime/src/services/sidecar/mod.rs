@@ -122,6 +122,7 @@ enum Staging {
 }
 
 struct Request {
+    trace: crate::supervision::executor::SpanContext,
     method: String,
     params: harmos_sidecar::FramePayload,
     answer: oneshot::Sender<Result<harmos_sidecar::FramePayload, SidecarError>>,

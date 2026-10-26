@@ -25,6 +25,7 @@ mod operations;
 #[cfg(feature = "plugin")]
 #[path = "../plugin/main.rs"]
 mod plugin;
+mod report;
 #[path = "../runtime/main.rs"]
 mod runtime;
 #[path = "../services/main.rs"]

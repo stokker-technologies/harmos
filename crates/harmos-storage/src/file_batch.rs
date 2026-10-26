@@ -82,13 +82,16 @@ impl FileReadBatch {
 
     /// Moves a unique file batch through an admitted projection.
     /// Shared batches or slices refuse; allocation and escape rules match `ReadBatch::try_map`.
+    #[tracing::instrument(name = "storage.file_batch.try_map", level = "trace", skip_all, fields(additional_peak = additional_peak, outcome = "cancelled"))]
     pub fn try_map<U, E>(
         self, additional_peak: usize, map: impl FnOnce(FileBatch) -> std::result::Result<U, E>,
     ) -> std::result::Result<ReadBatch<U>, E>
     where
         E: From<Error>,
     {
-        self.owner.try_map(additional_peak, map)
+        let result: std::result::Result<ReadBatch<U>, E> = self.owner.try_map(additional_peak, map);
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn offset(&self) -> u64 {

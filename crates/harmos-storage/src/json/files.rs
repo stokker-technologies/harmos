@@ -90,7 +90,7 @@ impl Files {
         if self.closing.load(Ordering::Acquire) {
             return Err(crate::Error::Closing { domain: "JSON storage" });
         }
-        let activity = self.activity.clone().read_owned().await;
+        let activity = tracing::Instrument::instrument(self.activity.clone().read_owned(), tracing::trace_span!("storage.lock.wait")).await;
         if self.closing.load(Ordering::Acquire) {
             return Err(crate::Error::Closing { domain: "JSON storage" });
         }
@@ -113,14 +113,19 @@ impl Files {
                 }
             }
         };
-        let guard = gate.lock_owned().await;
+        let guard = tracing::Instrument::instrument(gate.lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
         let files = self.clone();
-        tokio::task::spawn_blocking(move || {
-            let _activity = activity;
-            let _lease = lease;
-            let _guard = guard;
-            action(&files, &key)
-        })
+        {
+            let context = crate::execution::Context::current();
+            tokio::task::spawn_blocking(move || {
+                context.blocking(|| {
+                    let _activity = activity;
+                    let _lease = lease;
+                    let _guard = guard;
+                    action(&files, &key)
+                })
+            })
+        }
         .await
         .map_err(super::task)?
     }

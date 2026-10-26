@@ -26,6 +26,7 @@ use std::sync::{
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 use wasmtime::AsContextMut;
 // Local Imports
 use super::{Active, Error};
@@ -34,6 +35,7 @@ use crate::operations::children::Children;
 use crate::operations::{Definition, WireAnswer, WireChildCall, WireCommand};
 use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
+use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
@@ -86,6 +88,7 @@ struct Owned<A: Application> {
 }
 
 struct Request {
+    trace: crate::supervision::executor::SpanContext,
     call: Command,
     children: Option<Children>,
     answer: oneshot::Sender<Result<Reply, Error>>,
@@ -165,8 +168,22 @@ impl Endpoint {
             return Err(unavailable());
         }
         let (answer, answered) = oneshot::channel();
-        let request = Request { call, children, answer };
-        self.requests.send(request).await.map_err(|_| unavailable())?;
+        let admission = self
+            .requests
+            .reserve()
+            .instrument(tracing::debug_span!(target: "harmos::carrier", "guest.admission_wait"))
+            .await
+            .map_err(|_| unavailable())?;
+        let request = Request {
+            call,
+            children,
+            answer,
+            trace: crate::supervision::executor::SpanContext::new(
+                tracing::Span::current(),
+                tracing::debug_span!(target: "harmos::carrier", "guest.queue"),
+            ),
+        };
+        admission.send(request);
         answered.await.map_err(|_| {
             self.failure.lock().expect("guest terminal failure lock").clone().map_or_else(unavailable, |source| Error::Execution { source })
         })?
@@ -234,12 +251,23 @@ impl<A: Application> Session<A> {
             self.instance = instance;
             if !*self.endpoint.ended.borrow() {
                 let (answer, _answered) = oneshot::channel();
-                let request = Request { call: Command::Close(self.instance.take()), children: None, answer };
-                // A Terminal Session Returns The Same Instance With Its Failed Send.
-                if let Err(error) = self.endpoint.requests.send(request).await
-                    && let Command::Close(instance) = error.0.call
-                {
-                    self.instance = instance;
+                let admission = self
+                    .endpoint
+                    .requests
+                    .reserve()
+                    .instrument(tracing::debug_span!(target: "harmos::carrier", "guest.admission_wait"))
+                    .await;
+                if let Ok(admission) = admission {
+                    let request = Request {
+                        call: Command::Close(self.instance.take()),
+                        children: None,
+                        answer,
+                        trace: crate::supervision::executor::SpanContext::new(
+                            tracing::Span::current(),
+                            tracing::debug_span!(target: "harmos::carrier", "guest.queue"),
+                        ),
+                    };
+                    admission.send(request);
                 }
             }
             self.closing = true;
@@ -313,6 +341,8 @@ impl<A: Application> Owned<A> {
                     }
                     request = incoming.recv() => {
                         let Some(mut request) = request else { break Ending::Stopped; };
+                        let mut trace = request.trace;
+                        trace.dequeued();
                         if let Command::Close(instance) = request.call { break Ending::Closing(instance); }
                         if request.answer.is_closed() { continue; }
                         let background_debts = loans.lock().expect("guest invocation loan lock").values().filter(|loan| loan.background.is_some()).count();
@@ -362,7 +392,7 @@ impl<A: Application> Owned<A> {
                                 }
                                 false
                             };
-                            pending.push(Called { future: Box::pin(future), admission: false });
+                            pending.push(Called { future: Box::pin(future.instrument(trace.span.clone()).in_context(trace.dispatcher.clone())), admission: false });
                             continue;
                         }
                         if let Some(scope) = request.children.take() {
@@ -428,7 +458,7 @@ impl<A: Application> Owned<A> {
                             if let Some(result) = result { let _ = request.answer.send(result); }
                             failed
                         };
-                        pending.push(Called { future: Box::pin(future), admission: !finalization });
+                        pending.push(Called { future: Box::pin(future.instrument(trace.span.clone()).in_context(trace.dispatcher.clone())), admission: !finalization });
                     }
                 }
             };

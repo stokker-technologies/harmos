@@ -159,6 +159,7 @@ impl WireStreams {
         self.input.as_ref().is_some_and(|input| input.transferred()) || self.output.as_ref().is_some_and(|output| output.transferred())
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.send", level = "trace", skip_all)]
     pub async fn send(&self, epoch: u64, payload: &[u8]) -> Result<(), ServingError> {
         if payload.len() > super::codec::LIMIT {
             return Err(ServingError::Stream(streaming::Error::Capacity));
@@ -187,11 +188,13 @@ impl WireStreams {
         }
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.finish_input", level = "trace", skip_all)]
     pub fn finish_input(&self, epoch: u64) -> Result<(), ServingError> {
         self.check_input(epoch)?;
         self.input.as_ref().ok_or(ServingError::StreamPhase)?.finish()
     }
 
+    #[tracing::instrument(target = "harmos::streams", name = "streams.receive", level = "trace", skip_all)]
     pub async fn receive(&self, epoch: u64) -> Result<Option<Vec<u8>>, ServingError> {
         self.output.as_ref().ok_or(ServingError::StreamPhase)?.receive(self, epoch).await
     }
@@ -308,6 +311,7 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
     fn item_type(&self) -> std::any::TypeId {
         std::any::TypeId::of::<T>()
     }
+    #[tracing::instrument(target = "harmos::streams", name = "streams.send", level = "trace", skip_all)]
     fn send<'a>(&'a self, payload: &'a [u8], #[cfg(feature = "grpc")] codec: Option<super::protobuf::ItemCodec>) -> Pending<'a, ()> {
         Box::pin(async move {
             let input = self.0.try_lock().map_err(|_| ServingError::StreamBusy)?;
@@ -341,6 +345,7 @@ impl<T: Message + MemorySize + Send + 'static> Encoder for Receiving<T> {
     fn item_type(&self) -> std::any::TypeId {
         std::any::TypeId::of::<T>()
     }
+    #[tracing::instrument(target = "harmos::streams", name = "streams.receive", level = "trace", skip_all)]
     fn receive<'a>(&'a self, streams: &'a WireStreams, epoch: u64) -> Pending<'a, Option<Vec<u8>>> {
         Box::pin(async move {
             let mut output = self.0.try_lock().map_err(|_| ServingError::StreamBusy)?;

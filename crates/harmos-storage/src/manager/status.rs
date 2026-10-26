@@ -40,29 +40,38 @@ impl<C> StorageManager<C> {
     /// Intermediate frontiers may coalesce. This does not request persistence or
     /// retry failed work. Cancellation only removes the notification waiter.
     /// A newer saved cursor is returned before checking terminal storage state.
+    #[tracing::instrument(name = "storage.manager.status.wait_saved_after", level = "debug", skip_all, fields(after = cursor.sequence, saved = tracing::field::Empty, outcome = "cancelled"))]
     pub async fn wait_saved_after(&self, cursor: &StorageCursor) -> Result<StorageCursor> {
-        self.inner.primary.history().check(&cursor.history)?;
-        self.inner
-            .wait(None, |state| {
-                if state.status.saved.sequence > cursor.sequence {
-                    return crate::capacity::Attempt::Ready(state.status.saved.clone());
-                }
-                let error = if state.status.closing || state.status.closed {
-                    Some(Error::Closing { domain: "storage" })
-                } else if let Some(source) = &state.status.failure {
-                    Some(Error::Persistence { source: Arc::clone(source) })
-                } else if !state.ready || !state.status.running {
-                    Some(Error::NotReady { domain: "storage" })
-                } else {
-                    None
-                };
-                match error {
-                    Some(error) => crate::capacity::Attempt::Refuse(Refusal::Failed(error)),
-                    None => crate::capacity::Attempt::Wait,
-                }
-            })
-            .await
-            .map_err(Refusal::into_error)
+        let result = async {
+            self.inner.primary.history().check(&cursor.history)?;
+            self.inner
+                .wait(None, |state| {
+                    if state.status.saved.sequence > cursor.sequence {
+                        return crate::capacity::Attempt::Ready(state.status.saved.clone());
+                    }
+                    let error = if state.status.closing || state.status.closed {
+                        Some(Error::Closing { domain: "storage" })
+                    } else if let Some(source) = &state.status.failure {
+                        Some(Error::Persistence { source: Arc::clone(source) })
+                    } else if !state.ready || !state.status.running {
+                        Some(Error::NotReady { domain: "storage" })
+                    } else {
+                        None
+                    };
+                    match error {
+                        Some(error) => crate::capacity::Attempt::Refuse(Refusal::Failed(error)),
+                        None => crate::capacity::Attempt::Wait,
+                    }
+                })
+                .await
+                .map_err(Refusal::into_error)
+        }
+        .await;
+        if let Ok(saved) = &result {
+            tracing::Span::current().record("saved", saved.sequence);
+        }
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
@@ -72,6 +81,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
+    #[tracing::instrument(name = "storage.manager.status.retry_transient_persistence", level = "trace", skip_all)]
     pub fn retry_transient_persistence(&self) -> bool {
         let mut state = self.inner.state.lock().unwrap();
         let Some(failure) = &state.status.failure else {
@@ -91,25 +101,31 @@ impl<C> StorageManager<C> {
         true
     }
 
+    #[tracing::instrument(name = "storage.manager.status.reserve_arrow_memory", level = "trace", skip_all, fields(bytes = bytes, outcome = "cancelled"))]
     pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
-        Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error)
+        let result: Result<RetainedMemory> =
+            Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes).map(Reservation::retain).map_err(Refusal::into_error);
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
     }
 
     pub fn write_receipt_capacity(&self) -> usize {
         self.inner.settings.request.max_pending_write_batches.get()
     }
 
+    #[tracing::instrument(name = "storage.manager.status.await_durable", level = "debug", skip_all)]
     pub async fn await_durable(&self, cursor: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&cursor.history)?;
         self.flush_domain(Domain::Data, Some(cursor)).await
     }
 
+    #[tracing::instrument(name = "storage.manager.status.release_object_history", level = "debug", skip_all)]
     pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
             return Err(Error::InvalidInput { field: "object retention", reason: "release exceeds durable frontier" });
         }
-        self.inner.bounded(self.inner.primary.release_object_history(schema, item, through)).await?;
+        self.inner.bounded("primary.release_object_history", self.inner.primary.release_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())
