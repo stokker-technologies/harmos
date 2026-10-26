@@ -42,7 +42,7 @@ use super::{
     PluginArtifact, PluginBackend, PluginCleanup, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginStatus, PluginTransition, Router,
 };
-use crate::operations::{Bindings, Contract, Lane, OperationDefinition, OperationManager, PluginRegistration};
+use crate::operations::{Bindings, Contract, Lane, Manager, OperationDefinition, PluginRegistration};
 use crate::supervision::Task;
 use crate::{Application, Error, Result};
 
@@ -75,7 +75,7 @@ struct Shared<A: Application> {
     closing: AtomicBool,
     stop_requests: tokio::sync::watch::Sender<Option<String>>,
     task: Task<std::result::Result<(), Arc<Error>>>,
-    operations: OperationManager,
+    operations: Manager,
     cleanup: PluginCleanup,
 
     #[cfg(feature = "plugin-sidecar")]
@@ -89,7 +89,7 @@ struct Shared<A: Application> {
 
 struct Lifecycle {
     driving: Driving,
-    operations: OperationManager,
+    operations: Manager,
     sources: BTreeMap<String, Source>,
 }
 
@@ -105,7 +105,7 @@ struct Progressing {
 }
 
 struct Embedded {
-    operations: OperationManager,
+    operations: Manager,
     bind: Bind,
     registration: Option<PluginRegistration>,
     endpoint: Option<super::PluginEndpoint>,
@@ -173,9 +173,7 @@ impl<A: Application> Clone for PluginHost<A> {
 }
 
 impl<A: Application> PluginHost<A> {
-    pub(crate) fn new(
-        operations: OperationManager, #[cfg(feature = "plugin-sidecar")] handles: crate::services::Handles<A>,
-    ) -> Result<Self> {
+    pub(crate) fn new(operations: Manager, #[cfg(feature = "plugin-sidecar")] handles: crate::services::Handles<A>) -> Result<Self> {
         let mut registry = Registry::new(PluginDefinitions::new([], [])?)?;
         let cleanup = registry.cleanup();
         let statuses: Snapshots = Arc::new(RwLock::new(BTreeMap::new()));

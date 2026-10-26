@@ -146,7 +146,7 @@ pub(crate) struct Start {
     pub(crate) lifecycle: Arc<Instance>,
     pub(crate) stopping: watch::Sender<bool>,
     pub(crate) report: Report,
-    pub(crate) operations: super::OperationManager,
+    pub(crate) operations: super::Manager,
 }
 
 #[derive(Clone)]
@@ -504,7 +504,7 @@ impl Registry {
     // A stopping instance is joined before its replacement starts.
     #[tracing::instrument(target = "harmos::operations", name = "operations.activate", level = "debug", skip_all)]
     pub(super) async fn activate(
-        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
+        &self, operations: &super::Manager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
     ) -> Result<Lease> {
         let mut joined = None;
         loop {
@@ -524,7 +524,7 @@ impl Registry {
     #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
     fn acquire(
-        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
+        &self, operations: &super::Manager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
         internal: bool, holder: &Identity,
     ) -> Result<Acquisition> {
         self.check_scope(scope)?;
@@ -627,7 +627,7 @@ impl Registry {
     // Start a definition that can run once, owned by the registry until the
     // runtime shuts down.
     pub(crate) fn start_once(
-        &self, operations: &super::OperationManager, definition: Definition, runner: Arc<dyn Runner>, internal: bool, reserved: bool,
+        &self, operations: &super::Manager, definition: Definition, runner: Arc<dyn Runner>, internal: bool, reserved: bool,
     ) -> Result<Lease> {
         let id = definition.id().to_owned();
         let resources = runner.resources();

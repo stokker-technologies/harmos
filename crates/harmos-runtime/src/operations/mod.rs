@@ -81,12 +81,13 @@ pub use crate::config::OperationSettings as Settings;
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_domain::observers;
+pub use harmos_sdk::operations::streaming::Error as StreamError;
 pub use harmos_sdk::operations::{EndpointSet, InputEndpoint, OutputEndpoint, host, lifecycle, streams};
+pub(crate) use manager::Manager;
 pub use manager::OperationManager;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub(crate) use manager::WeakOperationManager;
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};
-pub use harmos_sdk::operations::streaming::Error as StreamError;
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

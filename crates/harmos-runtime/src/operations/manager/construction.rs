@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub(crate) fn new(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
     ) -> Self {

@@ -46,7 +46,7 @@ use crate::{Application, Error, Result};
 pub struct GrpcManager {
     state: Arc<Mutex<State>>,
     host: Arc<dyn listener::Host>,
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
 }
 
 #[must_use = "dropping the attachment detaches the listener"]
@@ -70,7 +70,7 @@ struct State {
 /* === Implementations === */
 
 impl GrpcManager {
-    pub(crate) fn new<A: Application>(operations: &crate::operations::OperationManager) -> Self {
+    pub(crate) fn new<A: Application>(operations: &crate::operations::Manager) -> Self {
         Self {
             state: Arc::new(Mutex::new(State {
                 routes: tonic::service::Routes::default(),

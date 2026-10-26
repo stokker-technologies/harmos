@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub(crate) fn register_native<L: Lane>(&self, registration: crate::operations::Registration<L>) -> Result<()> {
         let entries = self.native_entries(
             registration,

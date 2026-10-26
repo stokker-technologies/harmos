@@ -23,8 +23,8 @@ use std::sync::{
 
 // Local Imports
 use super::{
-    OperationGeneration, OperationInstanceId, OperationManager, OperationStatus, Running, StreamInput, StreamItem, StreamOutput,
-    StreamSettings, stream,
+    Manager, OperationGeneration, OperationInstanceId, OperationStatus, Running, StreamInput, StreamItem, StreamOutput, StreamSettings,
+    stream,
 };
 use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
@@ -259,7 +259,7 @@ impl<O: OperationDeclaration> Drop for Completion<O> {
     }
 }
 
-impl OperationManager {
+impl Manager {
     pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }

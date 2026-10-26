@@ -27,7 +27,7 @@ use std::task::{Context as TaskContext, Poll};
 use tokio::sync::oneshot;
 
 // Local Imports
-use super::OperationManager;
+use super::Manager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
 use crate::operations::OperationDeclaration;
@@ -76,7 +76,7 @@ pub struct Context<'a> {
     pub(crate) id: OperationInstanceId,
     pub(crate) attempt: usize,
     pub(crate) scope: Scope<'a>,
-    pub(crate) operations: OperationManager,
+    pub(crate) operations: Manager,
     pub(super) admission: Admission,
     pub(super) source: Source,
     pub(super) origin: Origin,
@@ -90,7 +90,7 @@ pub struct HostContext {
     scope: super::scope::ScopeCore,
     id: OperationInstanceId,
     attempt: usize,
-    operations: OperationManager,
+    operations: Manager,
     admission: Admission,
     source: Source,
     origin: Origin,

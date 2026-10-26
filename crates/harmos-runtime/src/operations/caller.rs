@@ -23,7 +23,7 @@ use std::sync::{Arc, Weak};
 use super::manager::Entry;
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-use super::{OperationManager, Running};
+use super::{Manager, Running};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::Error;
@@ -46,7 +46,7 @@ use crate::operations::OperationDeclaration;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct Caller {
-    pub(super) operations: OperationManager,
+    pub(super) operations: Manager,
     pub(super) source: PluginCaller,
 }
 
@@ -128,7 +128,7 @@ pub(super) enum Identity {
 /* === Implementations === */
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-impl OperationManager {
+impl Manager {
     pub fn caller(&self, source: &PluginCaller) -> Result<Caller> {
         Source::Plugin(source.clone()).check()?;
         Ok(Caller { operations: self.clone(), source: source.clone() })
@@ -205,7 +205,9 @@ impl Source {
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
             Self::Scope(scope) => {
-                if !scope.is_ready() { return Err(Error::Closing { domain: "plugin scope" }); }
+                if !scope.is_ready() {
+                    return Err(Error::Closing { domain: "plugin scope" });
+                }
                 Some(scope.clone())
             }
             Self::Plugin(source) => Some(source.operation_scope().map_err(|source| Error::OperationCaller { source })?),

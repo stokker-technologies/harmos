@@ -21,7 +21,7 @@ use std::sync::Arc;
 // Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
-use super::{CallContext, OperationManager, Running, StreamItem};
+use super::{CallContext, Manager, Running, StreamItem};
 use crate::Result;
 use crate::operations::OperationDeclaration;
 
@@ -35,7 +35,7 @@ use crate::operations::OperationDeclaration;
 
 #[derive(Clone)]
 pub struct GrpcBinding {
-    pub(super) operations: OperationManager,
+    pub(super) operations: Manager,
     pub(super) entry: Arc<Entry>,
 }
 

@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn validate_requirements(&self, candidate: &crate::plugin::PluginDefinitions) -> Result<()> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -76,13 +76,10 @@ impl OperationManager {
                 Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() })
             } else {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-                let gate = entries.iter().find_map(|entry| entry.plugin.as_ref()).map_or(Ok(()), |scope| {
-                    if scope.is_closed() {
-                        Err(Error::Closing { domain: "plugin scope" })
-                    } else {
-                        Ok(())
-                    }
-                });
+                let gate = entries
+                    .iter()
+                    .find_map(|entry| entry.plugin.as_ref())
+                    .map_or(Ok(()), |scope| if scope.is_closed() { Err(Error::Closing { domain: "plugin scope" }) } else { Ok(()) });
                 #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
                 let gate: Result<()> = Ok(());
                 #[cfg(feature = "grpc")]

@@ -29,7 +29,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 // Local Imports
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
 use crate::operations::{OperationDeclaration, Running, StreamItem};
-use crate::{Error, Refusal, operations::OperationManager};
+use crate::{Error, Refusal, operations::Manager};
 
 /* === Constants === */
 
@@ -52,7 +52,7 @@ struct Endpoint<O> {
 
 #[derive(Clone)]
 pub enum Authority {
-    TrustedHost(OperationManager),
+    TrustedHost(Manager),
 
     Binding(crate::operations::GrpcBinding),
 
@@ -65,6 +65,10 @@ pub enum Authority {
 /* === Implementations === */
 
 impl Authority {
+    pub fn trusted_host<L: crate::operations::Lane>(operations: &crate::operations::OperationManager<L>) -> Self {
+        Self::TrustedHost(operations.execution())
+    }
+
     fn contextual<T>(&self, request: &Request<T>) -> Self {
         let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
             return self.clone();

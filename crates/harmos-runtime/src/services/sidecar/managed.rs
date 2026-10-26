@@ -33,7 +33,7 @@ use crate::plugin::{
     PluginTransition, Router,
 };
 use crate::services::Resident;
-use crate::{Application, Error, Result, operations::Lane, operations::OperationManager, services::ServiceContext};
+use crate::{Application, Error, Result, operations::Lane, operations::Manager, services::ServiceContext};
 use harmos_sidecar::{Attach, Executable};
 
 /* === Constants === */
@@ -89,7 +89,7 @@ struct Host<A: Application, S, H, L> {
     streams: crate::streams::StreamManager<A>,
     polling: Vec<(String, Polling<A, S, H>)>,
     dependencies: BTreeMap<String, BTreeSet<String>>,
-    operations: OperationManager,
+    operations: Manager,
     lane: L,
     capacity: NonZeroUsize,
     encoding_memory_bytes: NonZeroUsize,
@@ -126,7 +126,7 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<C>(
-        resident: Supervised<A, Executable, Diagnostics<A>>, definition: &PluginDefinition, operations: OperationManager,
+        resident: Supervised<A, Executable, Diagnostics<A>>, definition: &PluginDefinition, operations: Manager,
         streams: crate::streams::StreamManager<A>, lane: L, capacity: NonZeroUsize, encoding_memory_bytes: NonZeroUsize,
         progress: crate::plugin::Driving,
     ) -> Result<Self>

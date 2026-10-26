@@ -44,7 +44,7 @@ use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
 use crate::operations::{
-    Backoff, CallContext, ContextError, ContextValue, Jitter, OperationDeclaration, OperationManager, Response, RestartPolicy, Running,
+    Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, Response, RestartPolicy, Running,
 };
 use crate::supervision::executor;
 use crate::{Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager};
@@ -88,7 +88,7 @@ pub(crate) struct Handles<A: Application> {
 
 #[derive(Clone)]
 pub struct ServiceManager {
-    operations: OperationManager,
+    operations: Manager,
     runner: fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory) -> Arc<dyn crate::operations::resident::Runner>,
 }
 
@@ -100,7 +100,7 @@ struct AuthoredService {
 pub struct ServiceContext<A: Application> {
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
-    pub(crate) operations: OperationManager,
+    pub(crate) operations: Manager,
     pub(crate) streams: StreamManager<A>,
     pub(crate) evidence: Evidence<A>,
     pub(crate) stopping: watch::Receiver<bool>,
@@ -160,7 +160,7 @@ pub trait Resident<A: Application>: Send + 'static {
 /* === Implementations === */
 
 impl ServiceManager {
-    pub(crate) fn for_application<A: Application>(operations: OperationManager) -> Self {
+    pub(crate) fn for_application<A: Application>(operations: Manager) -> Self {
         Self {
             operations,
             runner: |definition, factory| {
@@ -257,7 +257,7 @@ impl ServiceDefinition {
 
 impl<A: Application> Handles<A> {
     pub(crate) fn context(
-        &self, operations: OperationManager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>,
+        &self, operations: Manager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>,
         #[cfg(feature = "plugin-sidecar")] provider: Arc<crate::supervision::instance::Instance>,
     ) -> ServiceContext<A> {
         ServiceContext {
@@ -295,8 +295,8 @@ impl<A: Application> ServiceContext<A> {
 
     // An owned host handle for calls made while this context is borrowed,
     // such as inside `until_stopping`.
-    pub fn host(&self) -> OperationManager {
-        self.operations.clone()
+    pub fn host(&self) -> crate::operations::OperationManager<A::Lanes> {
+        crate::operations::OperationManager::new(self.operations.clone())
     }
 
     pub fn records(&self) -> &crate::records::RecordManager<A> {

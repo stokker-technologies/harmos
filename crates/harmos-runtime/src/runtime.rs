@@ -70,7 +70,7 @@ pub struct Runtime<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager,
+    pub operations: crate::operations::OperationManager<A::Lanes>,
 
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
@@ -91,7 +91,7 @@ pub struct Handle<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager,
+    pub operations: crate::operations::OperationManager<A::Lanes>,
 
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
@@ -809,7 +809,7 @@ impl<A: Application> Builder<A> {
                 return Err(Incompatible::work(duplicate));
             }
         }
-        let operations = crate::operations::OperationManager::new(instances, &operation_settings, reserved, boot.identity.clone());
+        let operations = crate::operations::Manager::new(instances, &operation_settings, reserved, boot.identity.clone());
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }
@@ -847,7 +847,7 @@ impl<A: Application> Builder<A> {
             state: journal,
             records,
             streams,
-            operations,
+            operations: crate::operations::OperationManager::new(operations),
             #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
             plugin,
             #[cfg(feature = "grpc")]

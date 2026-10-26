@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn track_staging(&self, scope: &Arc<PluginScope>) -> Result<()> {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");

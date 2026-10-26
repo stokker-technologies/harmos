@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 use serde::Serialize;
 // Local Imports
-use super::{Entry, OperationManager};
+use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::operations::host::{CatalogPage, CatalogRequest};
@@ -77,7 +77,7 @@ impl Write for Bounded {
     }
 }
 
-impl OperationManager {
+impl Manager {
     pub(in crate::operations) fn discover(&self, source: &Source, request: &CatalogRequest) -> Result<CatalogPage> {
         let origin = source.check()?;
         let (rows, bytes) = limits(request)?;

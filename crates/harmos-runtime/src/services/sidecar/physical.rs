@@ -32,7 +32,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::{Notice, Supervised};
 use crate::operations::resident::Lease;
-use crate::operations::{OperationManager, RestartPolicy};
+use crate::operations::{Manager, RestartPolicy};
 use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Result};
 use harmos_sidecar::Attach;
@@ -178,7 +178,7 @@ where
 {
     // Start the connection as a service instance; the plugin manager restarts
     // plugins, so the instance itself never restarts.
-    pub(super) fn new(resident: Supervised<A, S, H>, operations: &OperationManager) -> Result<Self> {
+    pub(super) fn new(resident: Supervised<A, S, H>, operations: &Manager) -> Result<Self> {
         let number = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let definition = ServiceDefinition {
             id: format!("harmos.sidecar.{}.{number}", resident.attach.owner()),

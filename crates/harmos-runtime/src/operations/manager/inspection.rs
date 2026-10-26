@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub fn definition(&self, id: &str) -> Result<OperationDefinition> {
         self.entry(id).map(|entry| entry.definition.clone())
     }

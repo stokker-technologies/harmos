@@ -67,7 +67,13 @@ type CachedResponse = harmos_sdk::__private::ErasedResponse;
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct OperationManager {
+pub struct OperationManager<L: Lane> {
+    inner: Manager,
+    lane: std::marker::PhantomData<fn() -> L>,
+}
+
+#[derive(Clone)]
+pub struct Manager {
     pub(super) registry: Arc<Registry>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
@@ -202,12 +208,15 @@ impl std::fmt::Debug for WeakOperationManager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl WeakOperationManager {
-    pub(crate) fn upgrade(&self) -> Option<OperationManager> {
-        Some(OperationManager {
+    pub(crate) fn upgrade(&self) -> Option<Manager> {
+        Some(Manager {
             registry: self.registry.upgrade()?,
             instances: self.instances.upgrade()?,
             lanes: self.lanes.upgrade()?,
-            preparation: match &self.preparation { Some(budget) => Some(budget.upgrade()?), None => None },
+            preparation: match &self.preparation {
+                Some(budget) => Some(budget.upgrade()?),
+                None => None,
+            },
             context: self.context.upgrade()?,
             resident: self.resident.upgrade()?,
         })
@@ -215,7 +224,7 @@ impl WeakOperationManager {
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-impl OperationManager {
+impl Manager {
     pub(crate) fn downgrade(&self) -> WeakOperationManager {
         WeakOperationManager {
             registry: Arc::downgrade(&self.registry),
@@ -225,6 +234,35 @@ impl OperationManager {
             context: Arc::downgrade(&self.context),
             resident: self.resident.downgrade(),
         }
+    }
+}
+
+impl<L: Lane> OperationManager<L> {
+    pub(crate) fn new(inner: Manager) -> Self {
+        Self { inner, lane: std::marker::PhantomData }
+    }
+
+    pub(crate) fn execution(&self) -> Manager {
+        self.inner.clone()
+    }
+
+    pub async fn register(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+        self.inner.register_native(registration)
+    }
+
+    pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
+        self.inner.unregister(id).await
+    }
+
+    pub fn with_context(&self, context: super::CallContext) -> Self {
+        Self::new(self.inner.with_context(context))
+    }
+}
+
+impl<L: Lane> std::ops::Deref for OperationManager<L> {
+    type Target = Manager;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 

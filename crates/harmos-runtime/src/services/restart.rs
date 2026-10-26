@@ -31,7 +31,7 @@ use tokio::sync::watch;
 use super::runner::{Cleanup, ErasedResident, Failure};
 use super::{ServiceDefinition, ServiceExit, ServiceStatus};
 use crate::operations::resident::Report;
-use crate::operations::{OperationManager, OperationPhase, RestartPolicy};
+use crate::operations::{Manager, OperationPhase, RestartPolicy};
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::FactSource, state::SystemFact};
 
@@ -84,8 +84,8 @@ impl Health {
 /* === Public Functions === */
 
 pub(super) async fn run<A: Application>(
-    definition: &ServiceDefinition, resident: &mut dyn ErasedResident<A>, cleanup: &Cleanup<A>, report: &Report,
-    operations: &OperationManager, stopping: watch::Sender<bool>,
+    definition: &ServiceDefinition, resident: &mut dyn ErasedResident<A>, cleanup: &Cleanup<A>, report: &Report, operations: &Manager,
+    stopping: watch::Sender<bool>,
 ) -> Result<()> {
     let name = definition.id.as_str();
     let policy = definition.policy;

@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Local Imports
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use super::Binding;
-use super::OperationManager;
+use super::Manager;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use super::manager::Entry;
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
@@ -46,7 +46,7 @@ use crate::{Result, operations::Lane};
 
 /* === Type Aliases === */
 
-type BindCatalog = dyn Fn(&OperationManager) -> Result<()> + Send + Sync;
+type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 
 /* === Structs === */
 
@@ -64,7 +64,7 @@ pub(crate) struct CatalogBinding {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub struct Bindings<'a> {
-    pub(super) operations: &'a OperationManager,
+    pub(super) operations: &'a Manager,
     owner: &'a str,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -77,7 +77,7 @@ pub struct Bindings<'a> {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub struct PluginRegistration {
     scope: Arc<PluginScope>,
-    operations: OperationManager,
+    operations: Manager,
     entries: Vec<Arc<Entry>>,
 }
 
@@ -113,15 +113,12 @@ impl CatalogBinding {
     pub(crate) fn new<L: Lane>(registration: Registration<L>) -> Self {
         Self { bind: Arc::new(move |operations| operations.register_native(registration.clone())) }
     }
-    pub(crate) fn bind(&self, operations: &OperationManager) -> Result<()> {
+    pub(crate) fn bind(&self, operations: &Manager) -> Result<()> {
         (self.bind)(operations)
     }
 }
 
-impl OperationManager {
-    pub async fn register<L: Lane>(&self, registration: Registration<L>) -> Result<()> {
-        self.register_native(registration)
-    }
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn stage_plugin(&self, scope: &PluginScope, configure: impl FnOnce(&mut Bindings<'_>) -> Result<()>) -> Result<PluginRegistration> {
         if scope.is_closed() {

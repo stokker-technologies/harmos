@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub(in crate::operations) fn entry(&self, id: &str) -> Result<Arc<Entry>> {
         let entry = self.capture_entry(id)?;
         entry.available()?;

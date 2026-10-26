@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub(crate) fn close_admission(&self) {
         self.close_entries(true);
     }

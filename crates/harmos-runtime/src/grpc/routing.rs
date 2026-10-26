@@ -39,7 +39,7 @@ pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<
 
 #[derive(Clone)]
 pub(super) struct Router {
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
     settings: server::Settings,
     calls: server::Calls,
 }
@@ -51,7 +51,7 @@ pub(super) struct Router {
 /* === Implementations === */
 
 impl Router {
-    pub(super) fn new(operations: crate::operations::OperationManager, settings: server::Settings) -> Result<Self, tonic::Status> {
+    pub(super) fn new(operations: crate::operations::Manager, settings: server::Settings) -> Result<Self, tonic::Status> {
         settings.validate()?;
         Ok(Self { operations, settings, calls: server::Calls::new(settings.calls)? })
     }

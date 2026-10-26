@@ -555,7 +555,9 @@ impl PluginScope {
         matches!(*self.phase.borrow(), Phase::Closed { .. })
     }
 
-    pub(crate) fn bind_operation_registry(&self, registry: &Arc<crate::operations::Registry>, manager: crate::operations::WeakOperationManager) -> Result<()> {
+    pub(crate) fn bind_operation_registry(
+        &self, registry: &Arc<crate::operations::Registry>, manager: crate::operations::WeakOperationManager,
+    ) -> Result<()> {
         self.operation_manager.get_or_init(|| manager);
         let original = self.operation_registry.get_or_init(|| Arc::downgrade(registry));
         if !Weak::ptr_eq(original, &Arc::downgrade(registry)) {
@@ -567,9 +569,8 @@ impl PluginScope {
         Ok(())
     }
 
-    pub(crate) fn operation_manager(&self) -> Result<crate::operations::OperationManager> {
-        self.operation_manager.get().and_then(|manager| manager.upgrade())
-            .ok_or(Error::Closing { domain: "plugin operation manager" })
+    pub(crate) fn operation_manager(&self) -> Result<crate::operations::Manager> {
+        self.operation_manager.get().and_then(|manager| manager.upgrade()).ok_or(Error::Closing { domain: "plugin operation manager" })
     }
 
     pub(super) fn commit(&self) -> bool {
@@ -732,7 +733,9 @@ mod tests {
             Ok(Self)
         }
 
-        async fn run(&mut self, _: harmos_sdk::OperationContext, _: &mut (), _: &mut ()) -> std::result::Result<crate::Response<u64>, Self::Error> {
+        async fn run(
+            &mut self, _: harmos_sdk::OperationContext, _: &mut (), _: &mut (),
+        ) -> std::result::Result<crate::Response<u64>, Self::Error> {
             Ok(7.into())
         }
     }

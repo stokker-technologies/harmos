@@ -366,7 +366,7 @@ impl Component {
         self.endpoint.scope()
     }
 
-    pub fn stage_sdk(&self, operations: &super::OperationManager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
+    pub fn stage_sdk(&self, operations: &super::Manager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
         let scope = self
             .scope()
             .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "guest endpoint has no original plugin generation" })?;
@@ -498,7 +498,7 @@ where
 }
 
 fn sdk_dispatch(
-    operations: &super::OperationManager, mut submission: super::manager::Submission, source: super::caller::Source,
+    operations: &super::Manager, mut submission: super::manager::Submission, source: super::caller::Source,
     parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> crate::Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;

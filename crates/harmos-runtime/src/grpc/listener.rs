@@ -38,7 +38,7 @@ use tonic::transport::server::{Connected, TcpConnectInfo};
 // Local Imports
 use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
 use crate::operations::resident::Activation;
-use crate::operations::{OperationManager, RestartPolicy, Running};
+use crate::operations::{Manager, RestartPolicy, Running};
 use crate::services::{Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Error, Result};
 
@@ -63,7 +63,7 @@ pub(super) struct Resources {
 }
 
 pub(super) struct Owner<A: Application> {
-    operations: OperationManager,
+    operations: Manager,
     application: std::marker::PhantomData<fn() -> A>,
     closing: AtomicBool,
     generation: AtomicU64,
@@ -119,7 +119,7 @@ impl Resources {
 }
 
 impl<A: Application> Owner<A> {
-    pub(super) fn new(operations: OperationManager) -> Self {
+    pub(super) fn new(operations: Manager) -> Self {
         Self {
             operations,
             application: std::marker::PhantomData,

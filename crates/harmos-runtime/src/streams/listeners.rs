@@ -26,7 +26,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
 use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
-use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
+use crate::operations::{EncodedInvocation, Manager, PluginCallback};
 use crate::plugin::PluginScope;
 use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
@@ -50,7 +50,7 @@ type Submit = fn(&Row, Context, &PluginCallback) -> Result<EncodedInvocation>;
 pub struct PluginListenerBindings<'a, A: Application> {
     streams: &'a StreamManager<A>,
     scope: &'a PluginScope,
-    operations: &'a OperationManager,
+    operations: &'a Manager,
     sources: Vec<Captured>,
     entries: Vec<Binding>,
 }
@@ -95,7 +95,7 @@ struct Payload<'a>(&'a [u8]);
 
 impl<A: Application> StreamManager<A> {
     pub fn stage_listeners(
-        &self, scope: &PluginScope, operations: &OperationManager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
+        &self, scope: &PluginScope, operations: &Manager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
     ) -> Result<PluginListenerRegistration> {
         if scope.is_closed() || scope.has_committed() || self.closed.load(Ordering::Acquire) {
             return Err(Error::Closing { domain: "stream listener staging" });

@@ -27,7 +27,7 @@ use super::caller::Source;
 use super::execution::{Attempt, Body};
 use super::finalization::{Finalize, Finalizer};
 use super::manager::Entry;
-use super::{Context, OperationInstanceId, OperationManager};
+use super::{Context, Manager, OperationInstanceId};
 use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Result, operations::Scope};
@@ -50,7 +50,7 @@ struct Bound<D: OperationDeclaration> {
     physical: Physical,
     cached: Option<super::Response<Payload<D>>>,
     entry: Arc<Entry>,
-    operations: OperationManager,
+    operations: Manager,
     id: OperationInstanceId,
     control: Weak<Instance>,
     attempt: usize,
@@ -178,13 +178,13 @@ impl Finalizer for Owned {
 /* === Public Functions === */
 
 pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
-    operations: &OperationManager, factory: harmos_sdk::operations::OperationFactory,
+    operations: &Manager, factory: harmos_sdk::operations::OperationFactory,
 ) -> Typed<D, P> {
     factory_with(operations, move |request, endpoints| factory.prepare_native(Box::new(request), Box::new(endpoints)))
 }
 
 pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
-    operations: &OperationManager,
+    operations: &Manager,
     prepare: impl Fn(D::Request, P) -> std::result::Result<Box<dyn harmos_sdk::operations::NativeInstance>, harmos_sdk::ServingError>
     + Send
     + Sync
@@ -199,7 +199,7 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
             let super::binding::Request { value: request, retention, context, key, .. } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
-            let operations = OperationManager {
+            let operations = Manager {
                 registry,
                 context,
                 instances: instances.clone(),

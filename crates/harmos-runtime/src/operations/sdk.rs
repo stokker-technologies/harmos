@@ -22,7 +22,7 @@ use std::sync::Arc;
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
-use super::{EncodedInvocation, OperationManager};
+use super::{EncodedInvocation, Manager};
 use crate::operations::lifecycle::{Action, InitializeRequest};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
@@ -45,7 +45,7 @@ pub(super) struct Encoded(pub(super) Vec<u8>);
 
 #[must_use = "retain SDK entries through original invocation settlement"]
 pub struct PluginSdkRegistration {
-    operations: OperationManager,
+    operations: Manager,
     entries: [Arc<Entry>; 2],
     kind: PluginKind,
 }
@@ -110,7 +110,7 @@ impl OperationDeclaration for Encoded {
 }
 
 impl PluginSdkRegistration {
-    pub(super) fn new(operations: OperationManager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {
+    pub(super) fn new(operations: Manager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {
         scope.issue_generation_context()?;
         let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
         for (entry, descriptor) in entries.iter_mut().zip(pair) {

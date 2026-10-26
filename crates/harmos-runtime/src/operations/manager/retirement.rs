@@ -34,13 +34,17 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn scope_entries(&self, scope: &crate::plugin::PluginScope) -> Vec<Arc<Entry>> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
-        state.entries.values().flat_map(|owners| owners.values())
+        state
+            .entries
+            .values()
+            .flat_map(|owners| owners.values())
             .filter(|entry| entry.plugin.as_ref().is_some_and(|original| original.same_activation(scope)))
-            .cloned().collect()
+            .cloned()
+            .collect()
     }
 
     pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {

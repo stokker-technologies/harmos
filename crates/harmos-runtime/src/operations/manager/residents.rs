@@ -27,7 +27,7 @@ use super::super::caller::Identity;
 use super::super::handler::Outcome;
 use super::super::resident::{self, Activation, Definition, Key, Kind, Lease, Snapshot};
 use super::super::{OperationDeclaration, OperationInstanceId, Response, Running};
-use super::OperationManager;
+use super::Manager;
 use crate::observers::{Backend, ObserverBackend, ObserverRegistration};
 use crate::services::{Resident, ServiceDefinition};
 use crate::{Application, Result};
@@ -46,7 +46,7 @@ use crate::{Application, Result};
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub(crate) async fn start_registered_service(&self, id: &str) -> Result<()> {
         let root = self.resident.root();
         let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), Identity::Host, false).await?;

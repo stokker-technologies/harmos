@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }

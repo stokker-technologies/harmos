@@ -24,7 +24,7 @@ use std::sync::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use super::{Context, Operation, OperationManager};
+use super::{Context, Manager, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
@@ -320,7 +320,7 @@ impl Native {
         Self { endpoint }
     }
 
-    pub fn stage_sdk(&self, operations: &OperationManager, lane: impl Lane) -> Result<super::PluginSdkRegistration> {
+    pub fn stage_sdk(&self, operations: &Manager, lane: impl Lane) -> Result<super::PluginSdkRegistration> {
         let scope = self
             .scope()
             .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "native endpoint has no original plugin generation" })?;
@@ -853,8 +853,7 @@ impl super::Bindings<'_> {
 /* === Public Functions === */
 
 pub(super) fn bindings(
-    operations: &super::OperationManager, lane: &'static str, native: Arc<Native>, capacity: NonZeroUsize,
-    scope: &crate::plugin::PluginScope,
+    operations: &super::Manager, lane: &'static str, native: Arc<Native>, capacity: NonZeroUsize, scope: &crate::plugin::PluginScope,
 ) -> Result<Vec<Arc<super::manager::Entry>>> {
     validate_inventory(&native, scope)?;
     let capacity = native.endpoint.bind_capacity(capacity)?;
@@ -877,8 +876,7 @@ pub(super) fn bindings(
 
 // A sidecar that declares observers serves the built-in observe control beside its inventory.
 fn observe_entry(
-    operations: &super::OperationManager, lane: &'static str, native: &Arc<Native>, capacity: &Arc<Semaphore>,
-    scope: &crate::plugin::PluginScope,
+    operations: &super::Manager, lane: &'static str, native: &Arc<Native>, capacity: &Arc<Semaphore>, scope: &crate::plugin::PluginScope,
 ) -> Result<Option<Arc<super::manager::Entry>>> {
     let Some(contract) = scope.observe_contract() else {
         return Ok(None);
@@ -890,7 +888,7 @@ fn observe_entry(
 }
 
 fn native_entry(
-    operations: &super::OperationManager, lane: &'static str, handler: Arc<Binding>, definition: &OperationDefinition,
+    operations: &super::Manager, lane: &'static str, handler: Arc<Binding>, definition: &OperationDefinition,
     exact_contract: Option<crate::operations::Contract>, scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
     let shape = exact_contract.as_ref().map_or((false, false), |contract| (contract.input().is_some(), contract.output().is_some()));
@@ -922,7 +920,7 @@ fn native_entry(
 }
 
 pub(super) fn dispatch(
-    operations: &OperationManager, mut submission: super::manager::Submission, source: super::caller::Source,
+    operations: &Manager, mut submission: super::manager::Submission, source: super::caller::Source,
     parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;
@@ -970,8 +968,7 @@ pub(super) fn dispatch(
 /* === Private Functions === */
 
 fn encoded_binding<E: super::StreamEndpoints + Shape>(
-    operations: &OperationManager, lane: &'static str, handler: &Arc<Binding>, definition: &OperationDefinition,
-    scope: &crate::plugin::PluginScope,
+    operations: &Manager, lane: &'static str, handler: &Arc<Binding>, definition: &OperationDefinition, scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
     operations.bind_native::<Encoded<E>, EncodedOperation<E>>(
         scope.owner(),

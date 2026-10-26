@@ -29,9 +29,7 @@ use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSettings;
 use crate::guest::{Loaded, Serving};
-use crate::operations::{
-    ComponentBindings, Declarations, EncodedInvocation, Lane, OperationManager, PluginRegistration, PluginSdkRegistration,
-};
+use crate::operations::{ComponentBindings, Declarations, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
 
@@ -53,7 +51,7 @@ struct Guest<A: Application, C, L> {
     shutting_down: Option<EncodedInvocation>,
     initialized: bool,
     shutdown_attempted: bool,
-    operations: OperationManager,
+    operations: Manager,
     initialization_timeout: Duration,
     shutdown_timeout: Duration,
     encoding_memory_bytes: NonZeroUsize,

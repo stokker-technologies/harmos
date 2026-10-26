@@ -25,7 +25,7 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
-use super::{OperationInstanceId, OperationManager};
+use super::{Manager, OperationInstanceId};
 use crate::operations::OperationDeclaration;
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
@@ -37,7 +37,7 @@ use crate::{Error, Refusal, Result, operations::Scope};
 /* === Type Aliases === */
 
 type Outcome = Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>>;
-pub(super) type Dispatch = fn(&OperationManager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
+pub(super) type Dispatch = fn(&Manager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
 
 /* === Structs === */
 
@@ -54,7 +54,7 @@ pub(super) struct EncodedInput {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct PluginCallback {
-    operations: OperationManager,
+    operations: Manager,
     entry: Arc<Entry>,
     contract: crate::operations::Contract,
 }
@@ -130,7 +130,7 @@ impl Future for EncodedInvocation {
     }
 }
 
-impl OperationManager {
+impl Manager {
     pub fn submit_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<EncodedInvocation> {
         self.submit_encoded_as(operation, payload, Source::Host, None)
     }
@@ -172,7 +172,7 @@ impl OperationManager {
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-impl OperationManager {
+impl Manager {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn capture_host_control(
         &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
@@ -203,7 +203,7 @@ impl OperationManager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl PluginCallback {
-    pub(super) fn from_entry(operations: OperationManager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
+    pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
             return Err(Error::InvalidInput {
                 field: "callback contract",
@@ -329,7 +329,7 @@ impl super::Context<'_> {
 /* === Public Functions === */
 
 pub(super) fn dispatch_native(
-    operations: &OperationManager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
+    operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;

@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::{StorageBackends, StorageSettings};
-use crate::operations::{OperationManager, resident::Lease};
+use crate::operations::{Manager, resident::Lease};
 use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Result};
@@ -97,7 +97,7 @@ impl<C> StorageManager<C> {
         self.start_on::<A>(&runtime.operations).await
     }
     #[tracing::instrument(target = "harmos::storage", name = "storage.start_on", level = "debug", skip_all)]
-    pub(crate) async fn start_on<A: Application>(&self, operations: &OperationManager) -> Result<()> {
+    pub(crate) async fn start_on<A: Application>(&self, operations: &Manager) -> Result<()> {
         self.engine
             .start_with(operations.resident_identity(), |worker| {
                 let lease = operations
