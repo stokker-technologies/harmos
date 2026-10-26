@@ -34,10 +34,10 @@ pub use harmos_domain::{
     reserved, validate_config,
 };
 pub use harmos_domain::{catalog, failure, listeners};
-pub use harmos_sdk::Plugin;
 pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::Host;
-pub use harmos_sdk::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_sdk::{Dependencies, Operation, OperationContext, Plugin, RegistrationBatch, Service};
 
 pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
@@ -54,8 +54,11 @@ pub use wire::{Frame, FramePayload, PluginCatalog, Publication};
 pub use harmos_domain::observer;
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
-pub use harmos_domain::{Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked};
-pub use harmos_domain::{MemorySize, Message, MessageError, RowMetadata, Storable};
+pub use harmos_domain::{Axial, Batched, Metadata, Prefix, StreamField, Track, Tracked};
+pub use harmos_domain::{
+    Digest, Fingerprint, MemorySize, Message, MessageError, OperationDefinition, Portable, QualifiedId, RequestFor, RowMetadata,
+    ServicePolicy, Storable,
+};
 #[cfg(feature = "derive")]
 pub use harmos_domain::{listener, message, operation, stream};
 pub use harmos_sdk::plugin;

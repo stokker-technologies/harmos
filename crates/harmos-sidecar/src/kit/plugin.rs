@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Third Party Imports
 use tokio::io::AsyncWriteExt;
 // Local Imports
-use super::{Opening, Supervisor, catalog, local};
+use super::{Opening, Serving, Supervisor, catalog, local};
 use crate::inventory::{Declaration, Facility};
 use crate::{Attach, Attached, PluginCatalog, Refusal, StreamDeclaration};
 use harmos_sdk::plugin::{Declared, Owner, Plugin};
@@ -97,7 +97,7 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.streams.clone()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(self.declaration.operations.clone())
     }
 
@@ -171,18 +171,26 @@ where
     let definitions = native.declaration.operations.clone();
     let contracts = native.declaration.contracts.provides.clone();
     let registrations = catalog::registrations::<P>().map_err(std::io::Error::other)?;
-    let (owner, table) =
-        Owner::<P>::new_with_observers(contracts, native.capacity, native.declaration.observers.clone()).map_err(std::io::Error::other)?;
-    let interrupted_owner = Arc::clone(&owner);
+    let capacity = native.capacity;
+    let observers = native.declaration.observers.clone();
     Ok(Opening {
-        operations: table,
-        retirement: Box::new(move || {
-            let owner = Arc::clone(&owner);
-            Box::pin(async move { owner.retire().await.map_err(Refusal::of) })
-        }),
-        quiescence: Box::new(move || {
-            let owner = Arc::clone(&interrupted_owner);
-            Box::pin(async move { owner.quiesce().await.map_err(Refusal::of) })
+        serving: None,
+        prepare: Box::new(move |assigned_owner| {
+            let (owner, table) =
+                Owner::<P>::new_with_observers(assigned_owner, contracts.clone(), capacity, observers.clone()).map_err(Refusal::of)?;
+            let interrupted_owner = Arc::clone(&owner);
+            Ok(Serving {
+                owner: assigned_owner.to_owned(),
+                operations: table,
+                retirement: Box::new(move || {
+                    let owner = Arc::clone(&owner);
+                    Box::pin(async move { owner.retire().await.map_err(Refusal::of) })
+                }),
+                quiescence: Box::new(move || {
+                    let owner = Arc::clone(&interrupted_owner);
+                    Box::pin(async move { owner.quiesce().await.map_err(Refusal::of) })
+                }),
+            })
         }),
         catalog: PluginCatalog { registrations, operations: definitions, observers: native.declaration.observers.clone() },
     })

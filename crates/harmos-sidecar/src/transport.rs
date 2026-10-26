@@ -44,7 +44,7 @@ use crate::{Frame, FramePayload};
 
 /* === Constants === */
 
-const VERSION: u8 = 3;
+const VERSION: u8 = 4;
 const CONTROL_LIMIT: usize = 64;
 const COALESCE_BYTES: usize = 64 * 1024;
 
@@ -157,7 +157,7 @@ impl Packet {
         }
         let (version, rest) = postcard::take_from_bytes::<u8>(&bytes).map_err(invalid)?;
         if version != VERSION {
-            return Err(invalid("unsupported sidecar transport version"));
+            return Err(invalid("unsupported sidecar transport version; fingerprint and generation protocol required"));
         }
         let (body, rest) = postcard::take_from_bytes::<Body<'_>>(rest).map_err(invalid)?;
         if !rest.is_empty() {
@@ -453,6 +453,16 @@ mod tests {
         assert_eq!(writer.bytes, packet.encode().unwrap());
         assert_eq!(writer.writes, 2);
         assert!(scratch.capacity() < 32);
+    }
+
+    #[test]
+    fn version_only_peer_rejected() {
+        let packet = Packet::Frame(Frame::Answer { id: 1, result: Vec::new().into() });
+        let encoded = packet.encode().unwrap();
+        let mut body = encoded[4..].to_vec();
+        body[0] = 3;
+        let error = Packet::decode(Role::Data, body).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

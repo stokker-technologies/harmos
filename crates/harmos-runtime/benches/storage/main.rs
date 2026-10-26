@@ -77,6 +77,12 @@ struct Projection;
 
 /* === Enums === */
 
+#[harmos_runtime::lanes]
+enum Lanes {
+    #[default]
+    Open,
+}
+
 #[harmos_runtime::transactions(state = State, error = Infallible)]
 #[derive(Clone)]
 enum Transactions {
@@ -101,6 +107,7 @@ impl Clone for State {
 }
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = State;
     type Transaction = Transactions;
     type Record = Records;
@@ -130,7 +137,7 @@ impl RecordProjection for Projection {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             let value = entry.payload.get("payload").and_then(serde_json::Value::as_str).unwrap().to_owned();
-            let payload = harmos_runtime::Message::encode_to_vec(&Text { value });
+            let payload = harmos_runtime::Message::encode(&Text { value });
             let item = Identifier::new(format!("record-{}", entry.position.0)).unwrap();
             output.push(RecordInput { schema: schema(), item, payload, scope: None, source: None, source_time: None }).await?;
             Ok(())
@@ -214,7 +221,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     storage.flush_recovery().await.unwrap();
 
     let payload = "x".repeat(PAYLOAD_BYTES);
-    let encoded = harmos_runtime::Message::encode_to_vec(&Text { value: payload.clone() });
+    let encoded = harmos_runtime::Message::encode(&Text { value: payload.clone() });
     let items: Vec<_> = (0..count).map(|n| Identifier::new(format!("item-{n}")).unwrap()).collect();
     let inputs: Vec<_> = items.iter().map(|item| record(&schema, item, &encoded)).collect();
     STATE_CLONES.store(0, Ordering::Relaxed);
@@ -254,7 +261,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     let flush_recovery_ms = begin.elapsed().as_secs_f64() * 1_000.0;
     let begin = Instant::now();
     let mut reader = storage
-        .query(harmos_runtime::storage::operations::Query {
+        .query(harmos_runtime::storage::operations::QueryRequest {
             at: storage.cursor_saved(),
             source: harmos_runtime::storage::query::Source::Records(harmos_runtime::storage::query::RecordSelection {
                 schema,

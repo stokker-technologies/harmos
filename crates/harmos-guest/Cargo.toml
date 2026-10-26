@@ -105,6 +105,7 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # Local
+schematic-operations = { path = "../../examples/schematic/operations", default-features = false }
 
 # Git
 

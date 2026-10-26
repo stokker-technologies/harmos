@@ -75,8 +75,8 @@ mod tests {
 }
 
 mod sdk {
-    use super::super::protocol::{Echo, TransportPlugin};
-    use harmos_domain::operations::lifecycle::{Initialize, Shutdown};
+    use super::super::protocol::{Echo, EchoOperation, TransportPlugin};
+    use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
     use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
     use harmos_sidecar::transport::{Connection, Receiver, Sender};
     use harmos_sidecar::{Attach, Frame, Message, PluginCatalog, PluginNative};
@@ -95,9 +95,23 @@ mod sdk {
         answer
     }
 
-    async fn invoke(outgoing: &Sender, incoming: &mut Receiver, id: u64, operation: &str, payload: Vec<u8>) -> Vec<u8> {
+    async fn invoke<D: harmos_domain::operations::OperationDeclaration>(
+        outgoing: &Sender, incoming: &mut Receiver, id: u64, payload: Vec<u8>,
+    ) -> Vec<u8> {
         assert!(matches!(
-            phase(outgoing, incoming, id, WireCommand::Prepare { invocation: id, operation: operation.to_owned(), payload }).await,
+            phase(
+                outgoing,
+                incoming,
+                id,
+                WireCommand::Prepare {
+                    invocation: id,
+                    operation: harmos_domain::QualifiedId::qualify("throughput_fixture", D::ID).unwrap().as_str().to_owned(),
+                    fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+                    generation: 1,
+                    payload
+                }
+            )
+            .await,
             WireAnswer::Ready { .. }
         ));
         assert!(matches!(
@@ -120,7 +134,10 @@ mod sdk {
         let (write, read, control, _, ending) = native.attach().await.unwrap().into_parts();
         let Connection { sender: outgoing, receiver: mut incoming, mut driver } = Connection::new((read, write), control.unwrap());
         let driving = tokio::spawn(async move { driver.run().await });
-        outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new().into() }).await.unwrap();
+        outgoing
+            .send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: "throughput_fixture".to_owned().encode().into() })
+            .await
+            .unwrap();
         let received = incoming.receive().await.unwrap().unwrap();
         let Frame::Answer { id: 1, result } = received.frame else {
             panic!("registration returns inert catalog");
@@ -136,22 +153,34 @@ mod sdk {
                 &outgoing,
                 &mut incoming,
                 2,
-                WireCommand::Prepare { invocation: 2, operation: Echo::ID.to_owned(), payload: request.encode_to_vec() }
+                WireCommand::Prepare {
+                    invocation: 2,
+                    operation: format!("throughput_fixture.{}", EchoOperation::ID),
+                    fingerprint: (harmos_domain::operations::Entry::of::<EchoOperation>().fingerprint)().unwrap().0,
+                    generation: 1,
+                    payload: request.encode()
+                }
             )
             .await,
             WireAnswer::Failed { .. }
         ));
-        let initialization = Initialize { config_json: b"null".to_vec(), generation_context: Vec::new() };
-        invoke(&outgoing, &mut incoming, 3, Initialize::ID, initialization.encode_to_vec()).await;
-        let result = invoke(&outgoing, &mut incoming, 4, Echo::ID, request.encode_to_vec()).await;
+        let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+        invoke::<Initialize>(&outgoing, &mut incoming, 3, initialization.encode()).await;
+        let result = invoke::<EchoOperation>(&outgoing, &mut incoming, 4, request.encode()).await;
         assert_eq!(Echo::decode(result.as_slice()).unwrap(), request);
-        invoke(&outgoing, &mut incoming, 5, Shutdown::ID, Vec::new()).await;
+        invoke::<Shutdown>(&outgoing, &mut incoming, 5, Vec::new()).await;
         assert!(matches!(
             phase(
                 &outgoing,
                 &mut incoming,
                 6,
-                WireCommand::Prepare { invocation: 6, operation: Echo::ID.to_owned(), payload: request.encode_to_vec() }
+                WireCommand::Prepare {
+                    invocation: 6,
+                    operation: format!("throughput_fixture.{}", EchoOperation::ID),
+                    fingerprint: (harmos_domain::operations::Entry::of::<EchoOperation>().fingerprint)().unwrap().0,
+                    generation: 1,
+                    payload: request.encode()
+                }
             )
             .await,
             WireAnswer::Failed { .. }

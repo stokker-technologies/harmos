@@ -18,8 +18,11 @@
 // Third Party Imports
 use tokio::io::{AsyncReadExt, DuplexStream};
 // Local Imports
+use harmos_domain::Message;
 use harmos_sidecar::Frame;
 use harmos_sidecar::transport::{self, Connection, Io, Packet, Role};
+
+use super::protocol::EchoOperation;
 
 /* === Constants === */
 
@@ -231,7 +234,7 @@ async fn binary_sdk_lifecycle() {
     use harmos_sidecar::Message;
     use harmos_sidecar::operations::{
         OperationDeclaration, WireAnswer, WireCommand,
-        lifecycle::{Initialize, Shutdown},
+        lifecycle::{Initialize, InitializeRequest, Shutdown},
     };
     use std::num::NonZeroUsize;
     let (host_data, sdk_data) = tokio::io::duplex(65536);
@@ -243,17 +246,30 @@ async fn binary_sdk_lifecycle() {
     ));
     let Connection { sender, mut receiver, mut driver } = Connection::new(io(host_data), io(host_control));
     let driving = tokio::spawn(async move { driver.run().await });
-    let initialization = Initialize { config_json: b"null".to_vec(), generation_context: Vec::new() };
-    binary_invoke(&sender, &mut receiver, 1, Initialize::ID, initialization.encode_to_vec()).await;
+    sender
+        .send(Frame::Call { id: 0, method: Frame::REGISTER.to_owned(), params: "throughput_fixture".to_owned().encode().into() })
+        .await
+        .unwrap();
+    let registration = receiver.receive().await.unwrap().unwrap();
+    assert!(matches!(registration.frame, Frame::Answer { id: 0, .. }));
+    registration.consumption.unwrap().consumed().unwrap();
+    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+    binary_invoke::<Initialize>(&sender, &mut receiver, 1, initialization.encode()).await;
     let request = Echo { nonce: 7, payload: vec![42; 65536] };
-    let result = binary_invoke(&sender, &mut receiver, 2, Echo::ID, request.encode_to_vec()).await;
+    let result = binary_invoke::<EchoOperation>(&sender, &mut receiver, 2, request.encode()).await;
     assert_eq!(Echo::decode(&result).unwrap(), request);
-    binary_invoke(&sender, &mut receiver, 3, Shutdown::ID, Vec::new()).await;
+    binary_invoke::<Shutdown>(&sender, &mut receiver, 3, Vec::new()).await;
     assert!(matches!(
         binary_phase(
             &sender,
             &mut receiver,
-            WireCommand::Prepare { invocation: 4, operation: Echo::ID.into(), payload: request.encode_to_vec() }
+            WireCommand::Prepare {
+                invocation: 4,
+                operation: format!("throughput_fixture.{}", EchoOperation::ID),
+                fingerprint: (harmos_domain::operations::Entry::of::<EchoOperation>().fingerprint)().unwrap().0,
+                generation: 1,
+                payload: request.encode()
+            }
         )
         .await,
         WireAnswer::Failed { .. }
@@ -279,9 +295,12 @@ async fn cancelled_call_skipped() {
     }
     let task = tokio::spawn(sdk);
     for id in [77, 88] {
-        transport::write(&mut peer_data, &Packet::Frame(Frame::Call { id, method: Frame::REGISTER.into(), params: Vec::new().into() }))
-            .await
-            .unwrap();
+        transport::write(
+            &mut peer_data,
+            &Packet::Frame(Frame::Call { id, method: Frame::REGISTER.into(), params: "throughput_fixture".to_owned().encode().into() }),
+        )
+        .await
+        .unwrap();
     }
     let Some(Packet::Frame(Frame::Answer { id: 88, .. })) = transport::read(&mut peer_data, Role::Data).await.unwrap() else {
         panic!("cancelled registration must not produce an answer");
@@ -305,12 +324,18 @@ async fn binary_phase(
     answer
 }
 
-async fn binary_invoke(
-    sender: &transport::Sender, receiver: &mut transport::Receiver, invocation: u64, operation: &str, payload: Vec<u8>,
+async fn binary_invoke<D: harmos_domain::operations::OperationDeclaration>(
+    sender: &transport::Sender, receiver: &mut transport::Receiver, invocation: u64, payload: Vec<u8>,
 ) -> Vec<u8> {
     use harmos_sidecar::operations::{WireAnswer, WireCommand};
     for command in [
-        WireCommand::Prepare { invocation, operation: operation.into(), payload },
+        WireCommand::Prepare {
+            invocation,
+            operation: format!("throughput_fixture.{}", D::ID),
+            fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+            generation: 1,
+            payload,
+        },
         WireCommand::Initialize { invocation, context: [0; 32] },
     ] {
         assert!(matches!(binary_phase(sender, receiver, command).await, WireAnswer::Ready { .. }));

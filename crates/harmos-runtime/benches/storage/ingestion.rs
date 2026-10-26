@@ -158,10 +158,10 @@ fn records(kind: &str, schema: &SchemaKey, after: usize, count: usize) -> Vec<Re
     for sequence in after..count.min(after + BATCH_ROWS) {
         let payload = if kind == "samples" {
             let sample = waveforms::Sample { phase: 0, ordinal: sequence as u64, value: sequence as f64 * 0.000001 };
-            sample.encode_to_vec()
+            sample.encode()
         } else {
             let record = Record { sequence: sequence as u64, payload: vec![0x5a; 256] };
-            record.encode_to_vec()
+            record.encode()
         };
         let input = RecordInput {
             schema: schema.clone(),

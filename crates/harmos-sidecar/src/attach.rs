@@ -125,7 +125,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Vec::new()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(Vec::new())
     }
 
@@ -330,7 +330,7 @@ impl Attach for Executable {
         self.declaration.observers.clone()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(self.declaration.operations.clone())
     }
 

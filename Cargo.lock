@@ -1088,6 +1088,7 @@ version = "0.1.6"
 dependencies = [
  "harmos-domain",
  "harmos-sdk",
+ "schematic-operations",
  "serde_json",
  "tempfile",
  "thiserror",

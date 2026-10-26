@@ -54,11 +54,11 @@ macro_rules! export_plugin {
                 $crate::kit::plugin::registrations::<$plugin>()
             }
             async fn operate(
-                command: ::std::vec::Vec<u8>,
+                owner: ::std::string::String, command: ::std::vec::Vec<u8>,
             ) -> ::core::result::Result<::std::vec::Vec<u8>, $crate::kit::plugin::__bindings::harmos::guest::capabilities::Refusal> {
                 let capacity = ::std::num::NonZeroUsize::new($capacity)
                     .ok_or_else(|| $crate::kit::plugin::refusal("plugin operation capacity must be positive"))?;
-                $crate::kit::plugin::operate::<$plugin>(command, capacity).await
+                $crate::kit::plugin::operate::<$plugin>(&owner, command, capacity).await
             }
         }
         $crate::kit::plugin::__bindings::export!(__HarmosPluginAdapter);
@@ -67,13 +67,14 @@ macro_rules! export_plugin {
 
 /* === Type Aliases === */
 
-type Table = Arc<Mutex<WireTable<Context>>>;
+type Table = Arc<Mutex<WireTable>>;
 type Refusal = __bindings::harmos::guest::capabilities::Refusal;
 
 /* === Structs === */
 
 struct Instance {
     owner: TypeId,
+    assigned_owner: String,
     capacity: NonZeroUsize,
     table: Table,
 }
@@ -104,7 +105,7 @@ pub fn registrations<P: Plugin + Declared>() -> Result<Vec<__bindings::harmos::g
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(command_bytes = command.len()))]
-pub async fn operate<P>(command: Vec<u8>, capacity: NonZeroUsize) -> Result<Vec<u8>, Refusal>
+pub async fn operate<P>(assigned_owner: &str, command: Vec<u8>, capacity: NonZeroUsize) -> Result<Vec<u8>, Refusal>
 where
     P: Plugin<Context = Context> + Declared,
 {
@@ -114,7 +115,7 @@ where
     let command: WireCommand = WireCommand::decode(&command).map_err(refusal)?;
     let table = TABLE.with_borrow_mut(|active| {
         if let Some(instance) = active {
-            if instance.owner != TypeId::of::<P>() || instance.capacity != capacity {
+            if instance.owner != TypeId::of::<P>() || instance.capacity != capacity || instance.assigned_owner != assigned_owner {
                 return Err(refusal("one component instance has one plugin and capacity"));
             }
             return Ok(Arc::clone(&instance.table));
@@ -142,8 +143,9 @@ where
         if declaration.sections != P::CONTRIBUTIONS {
             return Err(refusal("contribution sections differ from authored selection"));
         }
-        let (_, table) = Owner::<P>::new(provides, capacity).map_err(refusal)?;
-        *active = Some(Instance { owner: TypeId::of::<P>(), capacity, table: Arc::clone(&table) });
+        let (_, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
+        *active =
+            Some(Instance { owner: TypeId::of::<P>(), assigned_owner: assigned_owner.to_owned(), capacity, table: Arc::clone(&table) });
         Ok(table)
     })?;
     let token = match &command {
@@ -158,7 +160,11 @@ where
     };
     let call = crate::operations::CallContext::from_portable(values).map_err(refusal)?;
     let context = Arc::new(Context { context: token, generation_context: None, call: Arc::new(call) });
-    let phase = table.lock().map_err(refusal)?.begin(command, context);
+    let call = context.context().clone();
+    let mut dependencies = crate::Dependencies::new();
+    dependencies.insert(context).map_err(refusal)?;
+    let context = crate::OperationContext::new(dependencies, call);
+    let phase = table.lock().map_err(refusal)?.begin(command, Arc::new(context));
     // The Original Slot Owns Work While Both Instance And Table Borrows Are Free
     let answer = phase.await;
     answer.encode().map_err(refusal)

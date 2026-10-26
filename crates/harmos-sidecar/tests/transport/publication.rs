@@ -19,12 +19,13 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use super::protocol::{Done, Sample, Start, TransportPlugin};
-use harmos_domain::operations::lifecycle::Initialize;
-use harmos_domain::operations::streams::Publish;
+use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest};
 use harmos_sdk::operations::{CHILD_METHOD, WireChildCall};
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport::{Connection, Receiver, Sender};
 use harmos_sidecar::{Attach, Frame, Message, PluginNative, StreamSpec};
+
+use super::protocol::StartOperation;
 
 /* === Constants === */
 
@@ -70,10 +71,16 @@ async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: Wir
     assert!(matches!(WireAnswer::decode(&result).unwrap(), WireAnswer::Ready { .. }));
 }
 
-async fn invoke(outgoing: &Sender, incoming: &mut Receiver, id: u64, operation: &str, payload: Vec<u8>) {
-    let operation = operation.to_owned();
+async fn invoke<D: harmos_domain::operations::OperationDeclaration>(outgoing: &Sender, incoming: &mut Receiver, id: u64, payload: Vec<u8>) {
+    let operation = format!("throughput_fixture.{}", D::ID);
     for command in [
-        WireCommand::Prepare { invocation: id, operation, payload },
+        WireCommand::Prepare {
+            invocation: id,
+            operation,
+            fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+            generation: 1,
+            payload,
+        },
         WireCommand::Initialize { invocation: id, context: [1; 32] },
         WireCommand::Attempt { invocation: id, context: [1; 32], values: Vec::new() },
         WireCommand::Finalize { invocation: id },
@@ -86,7 +93,13 @@ async fn invoke(outgoing: &Sender, incoming: &mut Receiver, id: u64, operation: 
 async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u32, payload_bytes: u32, batch: u32) -> Vec<Call> {
     let start = Start { samples, payload_bytes, pace_bytes_per_second: 0, batch };
     for command in [
-        WireCommand::Prepare { invocation: id, operation: Start::ID.to_owned(), payload: start.encode_to_vec() },
+        WireCommand::Prepare {
+            invocation: id,
+            operation: format!("throughput_fixture.{}", StartOperation::ID),
+            fingerprint: (harmos_domain::operations::Entry::of::<StartOperation>().fingerprint)().unwrap().0,
+            generation: 1,
+            payload: start.encode(),
+        },
         WireCommand::Initialize { invocation: id, context: [1; 32] },
     ] {
         phase(outgoing, incoming, id, command).await;
@@ -109,8 +122,8 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         assert_eq!(method, CHILD_METHOD);
         let child = WireChildCall::decode(&params).unwrap();
         assert_eq!(child.generation_context, Some(GENERATION));
-        let publication = <Publish as Message>::decode(&child.payload).unwrap();
-        outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode_to_vec(&()).into() }).await.unwrap();
+        let publication = <harmos_domain::operations::streams::PublishRequest as Message>::decode(&child.payload).unwrap();
+        outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode(&()).into() }).await.unwrap();
         if publication.stream == Done::ID {
             let finished = Done::decode(&publication.payload).unwrap();
             assert_eq!(finished.accepted, u64::from(samples));
@@ -138,10 +151,13 @@ async fn batches_split_contiguously() {
     let (write, read, control, _, _ending) = native.attach().await.unwrap().into_parts();
     let Connection { sender: outgoing, receiver: mut incoming, mut driver } = Connection::new((read, write), control.unwrap());
     let driving = tokio::spawn(async move { driver.run().await });
-    outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new().into() }).await.unwrap();
+    outgoing
+        .send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: "throughput_fixture".to_owned().encode().into() })
+        .await
+        .unwrap();
     assert!(matches!(receive(&mut incoming).await, Frame::Answer { id: 1, .. }));
-    let initialization = Initialize { config_json: b"null".to_vec(), generation_context: GENERATION.to_vec() };
-    invoke(&outgoing, &mut incoming, 2, Initialize::ID, initialization.encode_to_vec()).await;
+    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: GENERATION.to_vec() };
+    invoke::<Initialize>(&outgoing, &mut incoming, 2, initialization.encode()).await;
 
     // Row By Row, Then Ordered Batches With A Short Tail
     let single = publish(&outgoing, &mut incoming, 3, 3, 64, 1).await;

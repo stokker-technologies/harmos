@@ -60,6 +60,8 @@ fn benchmarks(c: &mut criterion::Criterion) {
         let command = harmos_sdk::operations::WireCommand::Prepare {
             invocation: u64::MAX,
             operation: "consumption.consume".to_owned(),
+            fingerprint: [255; 32],
+            generation: u64::MAX,
             payload: payload.clone(),
         };
         let envelope = command.encode().unwrap();

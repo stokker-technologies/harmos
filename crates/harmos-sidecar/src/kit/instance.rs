@@ -132,20 +132,13 @@ impl Host for Supervisor {
         Supervisor::with_value(self, value)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>, CallError> {
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, CallError> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })?;
         Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
-    // Resident resources live in the host process; a sidecar cannot lend them.
-    async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self, _: O, _: std::sync::Arc<R>,
-    ) -> Result<OperationInstance<O>, CallError> {
-        Err(CallError::LocalResources { method: O::ID })
-    }
-
-    async fn call<O: OperationDeclaration>(&self, request: O) -> Result<Response<O::Response>, CallError> {
+    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, CallError> {
         let bytes = self.child_call::<O>(&request, false).await?;
         decode_response::<O>(&bytes)
     }
