@@ -37,6 +37,17 @@ use super::*;
 /* === Implementations === */
 
 impl<C: ObjectCatalog> Data<C> {
+    #[allow(dead_code, reason = "Shared fixture also compiles in runtime stories without native snapshot reads.")]
+    pub async fn snapshots_released(&self) {
+        loop {
+            let completed = self.control.release_completed.notified();
+            if self.snapshots.lock().unwrap().is_empty() {
+                return;
+            }
+            completed.await;
+        }
+    }
+
     pub(super) fn fixture_open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {
             if self.control.block_view.load(Ordering::SeqCst) {
@@ -75,6 +86,7 @@ impl<C: ObjectCatalog> Data<C> {
             }
             self.snapshots.lock().unwrap().remove(&snapshot.token);
             self.control.releases_completed.fetch_add(1, Ordering::SeqCst);
+            self.control.release_completed.notify_waiters();
             Ok(())
         })
     }

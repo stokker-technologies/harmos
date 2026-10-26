@@ -48,24 +48,27 @@ const MAX_DEPTH: usize = 64;
 
 /* === Public Functions === */
 
-pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
-    let metadata = payload
-        .len()
-        .checked_mul(std::mem::size_of::<Vec<u8>>())
-        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<Vec<u8>>>()))
-        .ok_or_else(exhausted)?;
-    let mut count = Counter { bytes: metadata, limit: max_bytes.get() };
-    if metadata > max_bytes.get() {
-        return Err(exhausted());
-    }
+/// Bounds the owned row-vector allocation before encoding Arrow payloads.
+///
+/// Includes the outer Vec, its row slots and each exact encoded row capacity.
+/// Counting borrows Arrow values and uses only bounded stack scratch. The same
+/// schema/encoding validation and cumulative `max_bytes` limit apply as encoding.
+/// This does not include consumer codec decoding or its projected DTO allocations.
+pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<usize> {
+    let mut count = payload_counter(payload.len(), max_bytes)?;
     for row in 0..payload.len() {
         encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
     }
+    Ok(count.bytes)
+}
+
+pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
+    let mut count = payload_counter(payload.len(), max_bytes)?;
     let mut rows = Vec::with_capacity(payload.len());
     for row in 0..payload.len() {
-        let mut size = Counter { bytes: 0, limit: max_bytes.get() };
-        encode_message(schema, schema.root, payload, row, encoding, 0, &mut size)?;
-        let mut bytes = Vec::with_capacity(size.bytes);
+        let previous = count.bytes;
+        encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
+        let mut bytes = Vec::with_capacity(count.bytes - previous);
         encode_message(schema, schema.root, payload, row, encoding, 0, &mut bytes)?;
         rows.push(bytes);
     }
@@ -149,6 +152,15 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
 }
 
 /* === Private Functions === */
+
+fn payload_counter(rows: usize, max_bytes: NonZeroUsize) -> Result<Counter> {
+    let metadata = rows
+        .checked_mul(std::mem::size_of::<Vec<u8>>())
+        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<Vec<u8>>>()))
+        .filter(|bytes| *bytes <= max_bytes.get())
+        .ok_or_else(exhausted)?;
+    Ok(Counter { bytes: metadata, limit: max_bytes.get() })
+}
 
 trait Sink {
     fn append(&mut self, value: &[u8]) -> Result<()>;
@@ -334,3 +346,116 @@ fn invalid() -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow_array::{
+        ArrayRef,
+        builder::{ListBuilder, UInt64Builder},
+    };
+    use arrow_schema::{DataType, Field as ArrowField};
+    use std::sync::Arc;
+
+    fn field(name: &str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
+        Field { name: name.to_owned().into(), tag, kind, cardinality }
+    }
+
+    fn schema() -> Schema {
+        Schema {
+            root: 0,
+            definitions: vec![
+                vec![
+                    field("text", 1, Kind::String, Cardinality::Required),
+                    field("bytes", 2, Kind::Bytes, Cardinality::Required),
+                    field("values", 3, Kind::U64, Cardinality::Repeated),
+                    field("child", 4, Kind::Message { definition: 1 }, Cardinality::Required),
+                ],
+                vec![field("left", 1, Kind::U32, Cardinality::Variant), field("right", 2, Kind::String, Cardinality::Variant)],
+            ],
+        }
+    }
+
+    fn payload(conflict: bool) -> StructArray {
+        let mut lists = ListBuilder::new(UInt64Builder::new());
+        lists.values().append_value(1);
+        lists.values().append_value(300);
+        lists.append(true);
+        lists.append(true);
+        let lists = lists.finish();
+        let child = StructArray::from(vec![
+            (Arc::new(ArrowField::new("__variant", DataType::UInt32, false)), Arc::new(UInt32Array::from(vec![0, 1])) as ArrayRef),
+            (Arc::new(ArrowField::new("left", DataType::UInt32, true)), Arc::new(UInt32Array::from(vec![Some(7), None])) as ArrayRef),
+            (
+                Arc::new(ArrowField::new("right", DataType::Utf8, true)),
+                Arc::new(StringArray::from(vec![if conflict { Some("both") } else { None }, Some("chosen")])) as ArrayRef,
+            ),
+        ]);
+        StructArray::from(vec![
+            (Arc::new(ArrowField::new("text", DataType::Utf8, false)), Arc::new(StringArray::from(vec!["", "payload"])) as ArrayRef),
+            (
+                Arc::new(ArrowField::new("bytes", DataType::Binary, false)),
+                Arc::new(BinaryArray::from(vec![b"".as_slice(), &[0u8, 1, 255]])) as ArrayRef,
+            ),
+            (Arc::new(ArrowField::new("values", lists.data_type().clone(), false)), Arc::new(lists) as ArrayRef),
+            (Arc::new(ArrowField::new("child", child.data_type().clone(), false)), Arc::new(child) as ArrayRef),
+        ])
+    }
+
+    fn resident(rows: &[Vec<u8>], capacity: usize) -> usize {
+        std::mem::size_of::<Vec<Vec<u8>>>() + capacity * std::mem::size_of::<Vec<u8>>() + rows.iter().map(Vec::capacity).sum::<usize>()
+    }
+    #[test]
+    fn payload_bound_capacities() {
+        let schema = schema();
+        let payload = payload(false);
+        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
+            let maximum = NonZeroUsize::new(1_000_000).unwrap();
+            let bound = encode_payloads_memory(&schema, &payload, encoding, maximum).unwrap();
+            let exact = NonZeroUsize::new(bound).unwrap();
+            let rows = encode_payloads(&schema, &payload, encoding, exact).unwrap();
+            assert_eq!(rows.len(), 2);
+            assert!(resident(&rows, rows.capacity()) <= bound);
+            assert_eq!(encode_payloads_memory(&schema, &payload, encoding, exact).unwrap(), bound);
+            let smaller = NonZeroUsize::new(bound - 1).unwrap();
+            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, smaller), Err(Error::ResourceExhausted { .. })));
+            assert!(matches!(encode_payloads(&schema, &payload, encoding, smaller), Err(Error::ResourceExhausted { .. })));
+        }
+    }
+
+    #[test]
+    fn payload_bound_empty() {
+        let schema = Schema { root: 0, definitions: vec![vec![]] };
+        let payload = StructArray::new_empty_fields(0, None);
+        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
+            let maximum = NonZeroUsize::new(1024).unwrap();
+            let bound = encode_payloads_memory(&schema, &payload, encoding, maximum).unwrap();
+            let rows = encode_payloads(&schema, &payload, encoding, maximum).unwrap();
+            assert!(rows.is_empty());
+            assert_eq!(bound, resident(&rows, rows.capacity()));
+        }
+    }
+
+    #[test]
+    fn payload_bound_malformed() {
+        let schema = schema();
+        let payload = payload(true);
+        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
+            let maximum = NonZeroUsize::new(1_000_000).unwrap();
+            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, maximum), Err(Error::InvalidInput { .. })));
+            assert!(matches!(encode_payloads(&schema, &payload, encoding, maximum), Err(Error::InvalidInput { .. })));
+        }
+    }
+
+    #[test]
+    fn payload_bound_overflow() {
+        let schema = Schema { root: 0, definitions: vec![vec![]] };
+        // No Column Allocation Is Needed To Exercise The Row-Slot Overflow.
+        let payload = StructArray::new_empty_fields(usize::MAX, None);
+        let maximum = NonZeroUsize::new(usize::MAX).unwrap();
+        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
+            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, maximum), Err(Error::ResourceExhausted { .. })));
+            assert!(matches!(encode_payloads(&schema, &payload, encoding, maximum), Err(Error::ResourceExhausted { .. })));
+        }
+    }
+}

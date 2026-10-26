@@ -45,17 +45,25 @@ async fn admission_durability_distinct() {
     let f = Fixture::new(config()).await;
     let key = schema();
     assert_eq!(
-        f.storage.write_schema(&key, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap().sequence,
+        f.storage
+            .write_schema(key.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] })
+            .await
+            .unwrap()
+            .sequence,
         1
     );
     let item = Identifier::new("sample").unwrap();
     let stream = Identifier::new("voltage").unwrap();
-    assert_eq!(f.storage.write_records(&[record(&key, &item, &[3])]).await.unwrap().sequence, 2);
+    assert_eq!(f.storage.write_records(vec![record(&key, &item, &[3])]).await.unwrap().sequence, 2);
     assert_eq!(
-        f.storage.write_stream(&[StreamWrite { stream: &stream, sequence: 99, record: record(&key, &item, &[4]) }]).await.unwrap().sequence,
+        f.storage
+            .write_stream(vec![StreamInput { stream: stream.clone(), sequence: 99, record: record(&key, &item, &[4]) }])
+            .await
+            .unwrap()
+            .sequence,
         3
     );
-    let recovery = f.storage.write_recovery(&[b"one", b"two"]).await.unwrap();
+    let recovery = f.storage.write_recovery(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
     assert_eq!(recovery.sequence, 2);
     assert_eq!(f.storage.status().saved.sequence, 0);
     assert_eq!(f.storage.flush().await.unwrap().sequence, 3);
@@ -75,7 +83,7 @@ async fn recovery_share_backpressure() {
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
     {
-        let blocked = f.storage.write_recovery(&[b"state"]);
+        let blocked = f.storage.write_recovery(vec![b"state".to_vec()]);
         tokio::pin!(blocked);
         assert!(crate::storage::pending(blocked.as_mut()).await);
         // The Held Flush Of The First Batch Is What Keeps The Recovery Write Waiting.
@@ -88,7 +96,7 @@ async fn recovery_share_backpressure() {
     assert_eq!(f.storage.status().saved.sequence, 0);
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
-    assert_eq!(f.storage.write_recovery(&[b"state"]).await.unwrap().sequence, 1);
+    assert_eq!(f.storage.write_recovery(vec![b"state".to_vec()]).await.unwrap().sequence, 1);
     f.finish().await;
 }
 
@@ -108,7 +116,7 @@ async fn close_retains_writes() {
     let key = schema();
     let item = Identifier::new("late").unwrap();
     assert!(matches!(
-        f.storage.write_records(&[record(&key, &item, &[4])]).await,
+        f.storage.write_records(vec![record(&key, &item, &[4])]).await,
         Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
     f.data.control.permanent.store(false, Ordering::SeqCst);
@@ -186,7 +194,7 @@ async fn cancelled_close_retains() {
     let key = schema();
     let item = Identifier::new("blocked").unwrap();
     let inputs = [record(&key, &item, &[1])];
-    let producer = f.storage.write_records(&inputs);
+    let producer = f.storage.write_records((inputs).to_vec());
     tokio::pin!(producer);
     assert!(crate::storage::pending(producer.as_mut()).await, "queue is full");
     {
@@ -205,13 +213,13 @@ async fn cancelled_close_retains() {
 #[tokio::test]
 async fn snapshots_require_flush() {
     let f = Fixture::new(config()).await;
-    let through = f.storage.write_recovery(&[b"one", b"two"]).await.unwrap();
+    let through = f.storage.write_recovery(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     let snapshot = RecoverySnapshot { required_data: f.storage.cursor_saved(), through: through.clone(), payload: vec![5] };
-    f.storage.write_snapshot(&snapshot).await.unwrap();
+    f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     assert_eq!(f.recovery.control.flushes.lock().unwrap().as_slice(), &[2, 2]);
-    assert_eq!(f.storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap(), Some(snapshot));
+    assert_eq!(f.storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap().as_deref(), Some(&snapshot));
     let after = RecoveryPosition { sequence: 0, ..through.clone() };
     let page = f
         .storage
@@ -219,7 +227,7 @@ async fn snapshots_require_flush() {
         .await
         .unwrap();
     assert_eq!(page.entries.len(), 1);
-    assert_eq!(page.next.unwrap().sequence, 1);
+    assert_eq!(page.next.as_ref().unwrap().sequence, 1);
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
@@ -264,7 +272,7 @@ async fn close_seals_admission() {
     tokio::pin!(close);
     assert!(crate::storage::pending(close.as_mut()).await, "read holds the lifecycle lock");
     assert!(f.storage.status().closing);
-    assert!(matches!(f.storage.write_recovery(&[b"late"]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
+    assert!(matches!(f.storage.write_recovery(vec![b"late".to_vec()]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
 
     f.recovery.control.read_release.notify_one();
     assert!(reader.await.unwrap().unwrap().is_none());

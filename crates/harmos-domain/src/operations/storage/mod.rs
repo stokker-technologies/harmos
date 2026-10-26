@@ -14,17 +14,22 @@
 
 mod abandon_file;
 mod append_file;
+mod capture_file;
 mod create_file;
 mod delete_file;
 mod finish_file;
 mod follow_file;
 mod follow_objects;
+mod follow_production;
 mod follow_records;
 mod follow_stream;
+mod hash_file;
+mod list_directory;
 mod query;
 mod read_file;
 mod resume_file;
 mod storage_status;
+mod watch_directory;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -35,17 +40,22 @@ mod write_streams;
 
 pub use abandon_file::AbandonFile;
 pub use append_file::AppendFile;
+pub use capture_file::CaptureFile;
 pub use create_file::CreateFile;
 pub use delete_file::DeleteFile;
 pub use finish_file::FinishFile;
 pub use follow_file::FollowFile;
 pub use follow_objects::FollowObjects;
+pub use follow_production::FollowProduction;
 pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
 pub use follow_stream::FollowStream;
+pub use hash_file::HashFile;
+pub use list_directory::ListDirectory;
 pub use query::Query;
 pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
 pub use storage_status::StorageStatus;
+pub use watch_directory::WatchDirectory;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
@@ -103,8 +113,13 @@ macro_rules! catalog {
 }
 
 catalog! {
+    ListDirectory,
+    WatchDirectory,
     Query,
     ReadFile,
+    HashFile,
+    CaptureFile,
+    FollowProduction,
     FollowRecords,
     FollowStream,
     FollowFile,

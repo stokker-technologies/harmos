@@ -239,8 +239,8 @@ where
 {
     let plain = grpc::decode::<P>(DecodeInput::new(bytes));
     let boxed = grpc::decode::<B>(DecodeInput::new(bytes));
-    let plain_bound = grpc::decoding_memory::<P>(DecodeInput::new(bytes));
-    let boxed_bound = grpc::decoding_memory::<B>(DecodeInput::new(bytes));
+    let plain_bound = grpc::prepare::<P>(DecodeInput::new(bytes)).map(|prepared| prepared.memory());
+    let boxed_bound = grpc::prepare::<B>(DecodeInput::new(bytes)).map(|prepared| prepared.memory());
     let (Ok(plain), Ok(boxed)) = (plain, boxed) else {
         assert!(grpc::decode::<P>(DecodeInput::new(bytes)).is_err());
         assert!(grpc::decode::<B>(DecodeInput::new(bytes)).is_err());

@@ -28,6 +28,7 @@ pub use validator::{PayloadError, Validator};
 /* === Imports === */
 
 // Standard Library Imports
+use std::marker::PhantomData;
 
 // Third Party Imports
 
@@ -44,11 +45,33 @@ use harmos_domain::{Message, MessageError};
 
 /* === Structs === */
 
+pub struct Prepared<T> {
+    postcard: Vec<u8>,
+    memory: usize,
+    value: PhantomData<fn() -> T>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl<T: Message> Prepared<T> {
+    // Includes The Canonical Buffer Retained Until The Admitted Decode Completes.
+    pub fn memory(&self) -> usize {
+        self.memory
+    }
+
+    pub fn decode(self) -> Result<T, MessageError> {
+        T::decode(&self.postcard)
+    }
+
+    #[cfg(feature = "streaming")]
+    pub(crate) fn into_postcard(self) -> Vec<u8> {
+        self.postcard
+    }
+}
 
 /* === Public Functions === */
 
@@ -63,11 +86,40 @@ pub fn decode<T: Message + Described>(input: DecodeInput<'_>) -> Result<T, Messa
     T::decode(&transcode::decode(&T::DEFINITION, input)?)
 }
 
-pub fn decoding_memory<T: Message + Described>(input: DecodeInput<'_>) -> Result<usize, MessageError> {
+pub fn prepare<T: Message + Described>(input: DecodeInput<'_>) -> Result<Prepared<T>, MessageError> {
     let postcard = transcode::decode(&T::DEFINITION, input)?;
-    decoding_add(postcard.capacity(), T::decoding_memory(&postcard)?)
+    let memory = decoding_add(postcard.capacity(), T::decoding_memory(&postcard)?)?;
+    Ok(Prepared { postcard, memory, value: PhantomData })
 }
 
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harmos_domain::MemorySize;
+
+    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    struct Row {
+        bytes: Vec<u8>,
+        label: String,
+    }
+
+    #[test]
+    fn prepared_decode_bound() {
+        let value = Row { bytes: vec![37; 8192], label: "prepared".into() };
+        let mut encoded = Vec::new();
+        encode(&value, &mut encoded).unwrap();
+        let prepared = prepare::<Row>(DecodeInput::new(&encoded)).unwrap();
+        let memory = prepared.memory();
+        let canonical = prepared.postcard.capacity();
+        assert_eq!(prepared.postcard, value.encode_to_vec());
+        let decoded = prepared.decode().unwrap();
+        assert_eq!(decoded.bytes, value.bytes);
+        assert_eq!(decoded.label, value.label);
+        assert!(decoded.memory_size() <= memory - canonical);
+        assert!(prepare::<Row>(DecodeInput::new(&[0xff])).is_err());
+    }
+}

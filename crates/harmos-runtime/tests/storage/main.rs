@@ -14,7 +14,7 @@ mod backend;
 #[path = "../storage/coordinator.rs"]
 mod coordinator;
 #[path = "../support/storage_fixture.rs"]
-mod fixture;
+pub(crate) mod fixture;
 #[path = "../storage/manager.rs"]
 mod manager;
 #[path = "../storage/operations.rs"]

@@ -109,8 +109,8 @@ pub struct Builder<A: Application> {
     catalog: Dispatch<A, Payload<A>>,
     definitions: Vec<Definition>,
     attachments: Attachments<A>,
-    managed_state: Option<crate::storage::ReadLimits>,
-    record_projection: Option<crate::storage::capture::Projection>,
+    managed_storage: Option<crate::config::ManagedStorageSettings>,
+    record_projection: Option<Box<dyn crate::storage::RecordProjection>>,
     reconciliation: Option<boot::Reconciliation<A>>,
     initializers: Vec<boot::Initializer<A>>,
     snapshots: Option<crate::state::snapshot::Snapshots<A>>,
@@ -355,7 +355,7 @@ impl<A: Application> Runtime<A> {
             catalog: Dispatch::default(),
             definitions: Vec::new(),
             attachments: Attachments::new(),
-            managed_state: None,
+            managed_storage: None,
             record_projection: None,
             reconciliation: None,
             initializers: Vec::new(),
@@ -637,27 +637,22 @@ impl<A: Application> Builder<A> {
         Startup::new(self, None)
     }
 
-    pub fn managed_state(mut self, limits: crate::storage::ReadLimits) -> Self {
-        self.managed_state = Some(limits);
+    pub fn managed_storage(mut self, settings: crate::config::ManagedStorageSettings) -> Self
+    where
+        A::State: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        self.attachments.tail(settings.journal_tail);
+        self.snapshots = settings.snapshots.clone().map(crate::state::snapshot::Snapshots::new);
+        self.managed_storage = Some(settings);
         #[cfg(feature = "simulation")]
         self.live_only.push("managed storage recovery");
         self
     }
 
-    pub fn store_records(mut self, limits: crate::storage::ReadLimits, projection: impl crate::storage::RecordProjection) -> Self {
-        self.record_projection = Some(crate::storage::capture::Projection { limits, handler: Box::new(projection) });
+    pub fn store_records(mut self, projection: impl crate::storage::RecordProjection) -> Self {
+        self.record_projection = Some(Box::new(projection));
         #[cfg(feature = "simulation")]
         self.live_only.push("managed primary record capture");
-        self
-    }
-
-    pub fn managed_snapshots(mut self, policy: crate::state::SnapshotPolicy) -> Self
-    where
-        A::State: serde::Serialize + serde::de::DeserializeOwned,
-    {
-        self.snapshots = Some(crate::state::snapshot::Snapshots::new(policy));
-        #[cfg(feature = "simulation")]
-        self.live_only.push("managed state snapshots");
         self
     }
 
@@ -702,16 +697,13 @@ impl<A: Application> Builder<A> {
             };
             return Err(Incompatible::initialization(Box::new(source)));
         }
-        if self.snapshots.is_some() && self.managed_state.is_none() {
-            return Err(Incompatible::unreadable("managed snapshots require managed state"));
-        }
-        if self.reconciliation.is_some() && self.managed_state.is_none() {
+        if self.reconciliation.is_some() && self.managed_storage.is_none() {
             return Err(Incompatible::reconciliation("reconciliation requires managed state"));
         }
-        if self.record_projection.is_some() && self.managed_state.is_none() {
+        if self.record_projection.is_some() && self.managed_storage.is_none() {
             return Err(Incompatible::unreadable("primary record capture requires managed state"));
         }
-        if self.managed_state.is_some() && (storage.is_none() || self.attachments.has_recovery_owner()) {
+        if self.managed_storage.is_some() && (storage.is_none() || self.attachments.has_recovery_owner()) {
             return Err(Incompatible::unreadable("managed state requires storage and exclusive recovery ownership"));
         }
         let mut boot = boot::Boot::new(storage, cleanup.clone()).map_err(Incompatible::work)?;
@@ -744,7 +736,7 @@ impl<A: Application> Builder<A> {
             catalog,
             definitions,
             mut attachments,
-            managed_state,
+            managed_storage,
             record_projection,
             reconciliation,
             initializers,
@@ -773,9 +765,9 @@ impl<A: Application> Builder<A> {
         let stored = recovery.encoded.into_iter().filter(|(position, _)| *position > anchor).collect();
         state.position = state.position.max(recovery.frontier).max(anchor);
         let mut managed_durable = None;
-        if let Some(limits) = managed_state {
+        if let Some(settings) = managed_storage {
             let storage = boot.storage.as_ref().expect("managed state requires storage");
-            let loaded = StateManager::recover(storage, state, &catalog, inverses, tail, limits, snapshots.as_ref()).await?;
+            let loaded = StateManager::recover(storage, state, &catalog, inverses, tail, settings.replay, snapshots.as_ref()).await?;
             state = loaded.state;
             undos = loaded.undos;
             recovered = loaded.tail;
@@ -783,7 +775,7 @@ impl<A: Application> Builder<A> {
             attachments.capture = Some(crate::state::capture::Declaration::Managed {
                 storage: storage.clone(),
                 receipts: loaded.receipts,
-                projection: record_projection,
+                projection: record_projection.map(|handler| crate::storage::capture::Projection { limits: settings.capture, handler }),
                 snapshots,
             });
         }

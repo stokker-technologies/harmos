@@ -49,16 +49,16 @@ pub struct Store(Arc<Mutex<Frames>>);
 #[derive(Default)]
 struct Frames {
     origin: Position,
-    lines: Vec<String>,
+    lines: Vec<Arc<Vec<u8>>>,
 }
 
 pub struct Journal<A: Wire> {
     store: Store,
     batch: usize,
     after: Option<Position>,
-    forward: BTreeMap<Position, String>,
+    forward: BTreeMap<Position, Arc<Vec<u8>>>,
     halted: bool,
-    pending: Vec<String>,
+    pending: Vec<Arc<Vec<u8>>>,
     written: Position,
     checkpoint: Position,
     application: PhantomData<fn() -> A>,
@@ -91,6 +91,10 @@ pub trait Wire: Application + Sized {
 
 impl Store {
     pub fn lines(&self) -> Vec<String> {
+        self.frames().lines.iter().map(|line| std::str::from_utf8(line).unwrap().to_owned()).collect()
+    }
+
+    pub fn shared_lines(&self) -> Vec<Arc<Vec<u8>>> {
         self.frames().lines.clone()
     }
 
@@ -99,11 +103,11 @@ impl Store {
     }
 
     pub fn push(&self, line: impl Into<String>) {
-        self.frames().lines.push(line.into());
+        self.frames().lines.push(Arc::new(line.into().into_bytes()));
     }
 
     pub fn replace(&self, lines: Vec<String>) {
-        self.frames().lines = lines;
+        self.frames().lines = lines.into_iter().map(|line| Arc::new(line.into_bytes())).collect();
     }
 
     pub fn members(&self) -> Vec<serde_json::Value> {
@@ -155,17 +159,17 @@ impl<A: Wire> Journal<A> {
         self
     }
 
-    fn encode(&self, entry: &Entry<Recorded<A>>) -> Result<Member, serde_json::Error> {
+    fn encode<'a>(&self, entry: &'a Entry<Recorded<A>>) -> Result<Envelope<std::borrow::Cow<'a, serde_json::Value>>, serde_json::Error> {
         let (id, version, payload) = if let Some(prepared) = &entry.prepared {
-            (prepared.id.clone(), prepared.version, prepared.payload.clone())
+            (prepared.id.clone(), prepared.version, std::borrow::Cow::Borrowed(&prepared.payload))
         } else if let Recorded::System(fact) = &entry.value {
             let (id, version) = fact.identify();
-            let payload = serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
+            let payload = std::borrow::Cow::Owned(serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?);
 
             (id, version, payload)
         } else {
             let (id, version) = A::identify(&entry.value);
-            let payload = A::encode(&entry.value, serde_json::value::Serializer)?;
+            let payload = std::borrow::Cow::Owned(A::encode(&entry.value, serde_json::value::Serializer)?);
 
             (id, version, payload)
         };
@@ -231,7 +235,7 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
             let Ok(line) = encoded.and_then(|group| serde_json::to_string(&group)) else {
                 return self.halt();
             };
-            frames.insert(first, (end, line));
+            frames.insert(first, (end, Arc::new(line.into_bytes())));
             index += count;
         }
 
@@ -257,16 +261,13 @@ impl<A: Wire> JournalConsumer<A> for Journal<A> {
         self.persist();
     }
 
-    fn redelivered(&mut self, stored: &[(Position, Vec<u8>)]) {
+    fn redelivered(&mut self, stored: &[(Position, Arc<Vec<u8>>)]) {
         if self.halted {
             return;
         }
         for (position, bytes) in stored {
-            let Ok(line) = std::str::from_utf8(bytes) else {
-                continue;
-            };
-            if members(line).is_ok() {
-                self.forward.insert(*position, line.to_owned());
+            if members(bytes).is_ok() {
+                self.forward.insert(*position, Arc::clone(bytes));
             }
         }
     }
@@ -298,7 +299,7 @@ impl<A: Wire> Source<A> for Journal<A> {
             }
             self.written = end;
             self.checkpoint = end;
-            recovery.encoded.push((end, line.into_bytes()));
+            recovery.encoded.push((end, line));
             if group[0].metadata.commit.is_some() {
                 recovery.commits.push((first, end));
             }
@@ -339,7 +340,7 @@ impl<A: Wire> Source<A> for Journal<A> {
                 recovery.commits.push((first, end));
             }
             if first > after && end <= through {
-                recovery.encoded.push((end, line.into_bytes()));
+                recovery.encoded.push((end, line));
             }
             for member in group {
                 if member.position <= after || member.position > through {
@@ -451,8 +452,8 @@ pub fn frame(position: u64, kind: Kind, id: &str, version: u32, payload: serde_j
 
 /* === Private Functions === */
 
-fn members(line: &str) -> Result<Vec<Member>, String> {
-    let group: Vec<Member> = serde_json::from_str(line).map_err(|error| error.to_string())?;
+fn members(line: &[u8]) -> Result<Vec<Member>, String> {
+    let group: Vec<Member> = serde_json::from_slice(line).map_err(|error| error.to_string())?;
     let Some(first) = group.first() else {
         return Err("an empty frame".to_owned());
     };

@@ -124,7 +124,7 @@ impl<C> StorageManager<C> {
         let operation = build(if count == 0 { sequence } else { sequence + 1 })?;
         operation.check_entry_bytes(self.inner.settings.max_batch_bytes())?;
         if let Operation::Snapshot(snapshot) = &operation
-            && snapshot.through.sequence > sequence
+            && (snapshot.len() != 1 || snapshot.as_slice()[0].through.sequence > sequence)
         {
             return Err(Error::InvalidInput { field: "recovery snapshot", reason: "snapshot is ahead of admitted transitions" });
         }
@@ -132,7 +132,7 @@ impl<C> StorageManager<C> {
             Operation::ObjectGroup { bytes: retained, .. } => *retained,
             _ => bytes,
         };
-        let pending = Arc::new(Pending { journal: None, index, bytes, operation });
+        let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, operation));
         {
             let mut state = self.inner.state.lock().unwrap();
             if state.status.closing {

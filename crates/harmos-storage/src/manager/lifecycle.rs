@@ -143,7 +143,9 @@ impl<C> StorageManager<C> {
     }
 
     pub fn status(&self) -> StorageMetrics {
-        self.inner.state.lock().unwrap().status.clone()
+        let mut state = self.inner.state.lock().unwrap();
+        state.collect();
+        state.status.clone()
     }
 }
 

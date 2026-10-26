@@ -89,6 +89,10 @@ transport and simulation capabilities.
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
+Its sidecar and guest also provide shared transfer endpoints under the `benchmark`
+feature for the [performance suites](docs/product-guide.md#performance).
+Harmos also ships a filesystem `JsonStorage` backend for records, streams, objects
+and files; see the [storage configuration guide](docs/product-guide.md).
 
 ## Quick Start
 

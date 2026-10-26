@@ -21,7 +21,7 @@ use std::sync::Arc;
 use super::IO_TIMEOUT;
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
-use crate::{Error, MemorySize, Result};
+use crate::{Error, Result};
 use harmos_domain::model::storage::files::{FileBatch, FileCompletion};
 
 /* === Constants === */
@@ -56,13 +56,17 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self, ctx: Self::Context<'a>, request: &mut ReadFile, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
-        let grant = harmos_domain::plugin::Grant::of(ReadFile::ID, request.file.metadata.id.as_str().to_owned());
-        ctx.admit_stream_grant(&grant)?;
+        let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(ReadFile::ID, scope));
+        if let Some(grant) = &grant {
+            ctx.admit_stream_grant(grant)?;
+        }
         let mut reader = self.storage.read_file(request.clone()).await?;
         while let Some(batch) = reader.next().await? {
-            ctx.admit_stream_grant(&grant)?;
-            let charge = batch.memory_size();
-            tokio::time::timeout(IO_TIMEOUT, output.send_with(charge, || Ok(batch))).await.map_err(|_| super::output_timeout())??;
+            if let Some(grant) = &grant {
+                ctx.admit_stream_grant(grant)?;
+            }
+            let response = crate::operations::Response::from_owner(batch.owner());
+            tokio::time::timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| super::output_timeout())??;
         }
         Ok(reader.completion()?.into())
     }

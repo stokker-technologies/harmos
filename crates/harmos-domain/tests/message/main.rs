@@ -13,6 +13,7 @@ mod aggregate;
 mod allocation;
 mod boxed;
 mod enums;
+mod filesystem;
 mod graph;
 mod host;
 mod native;
@@ -188,7 +189,7 @@ fn names_never_shadow() {
         __harmos_input: true,
     };
     let encoded = crate::encode(&value);
-    let budget = grpc::decoding_memory::<DecoderNames>(DecodeInput::new(&encoded)).unwrap();
+    let budget = grpc::prepare::<DecoderNames>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap();
     let decoded = grpc::decode::<DecoderNames>(DecodeInput::new(&encoded)).unwrap();
     assert_eq!(decoded, value);
     assert!(decoded.memory_size() <= budget);
@@ -372,21 +373,21 @@ fn variant_keeps_raw() {
     let mut bytes = Vec::new();
     prost::encoding::bytes::encode(variant.tag, &wrong_type, &mut bytes);
     assert!(grpc::decode::<Choice>(DecodeInput::new(&bytes)).is_err());
-    assert!(grpc::decoding_memory::<Choice>(DecodeInput::new(&bytes)).is_err());
+    assert!(grpc::prepare::<Choice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).is_err());
     bytes.extend(crate::encode(&Choice::Empty));
     assert_eq!(grpc::decode::<Choice>(DecodeInput::new(&bytes)).unwrap(), Choice::Empty);
-    assert!(grpc::decoding_memory::<Choice>(DecodeInput::new(&bytes)).unwrap() >= std::mem::size_of::<Choice>());
+    assert!(grpc::prepare::<Choice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap() >= std::mem::size_of::<Choice>());
 
     let mut malformed = Vec::new();
     prost::encoding::bytes::encode(variant.tag, &vec![255], &mut malformed);
     malformed.extend(crate::encode(&Choice::Empty));
     assert!(grpc::decode::<Choice>(DecodeInput::new(&malformed)).is_err());
-    assert!(grpc::decoding_memory::<Choice>(DecodeInput::new(&malformed)).is_err());
+    assert!(grpc::prepare::<Choice>(DecodeInput::new(&malformed)).map(|prepared| prepared.memory()).is_err());
 }
 
 #[test]
 fn declared_unit_default() {
-    let budget = grpc::decoding_memory::<ExplicitDefault>(DecodeInput::new(&[])).unwrap();
+    let budget = grpc::prepare::<ExplicitDefault>(DecodeInput::new(&[])).map(|prepared| prepared.memory()).unwrap();
     let value = grpc::decode::<ExplicitDefault>(DecodeInput::new(&[])).unwrap();
     assert_eq!(value, ExplicitDefault::Selected);
     // The Transcoding Budget Bounds The Decoded Value From Above.

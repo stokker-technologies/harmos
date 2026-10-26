@@ -33,7 +33,7 @@ use harmos_runtime::{
 
 /* === Type Aliases === */
 
-type Kept = Arc<Mutex<Vec<At<Capture>>>>;
+type Kept = Arc<Mutex<Vec<At<Arc<Capture>>>>>;
 
 type Asked = Arc<Mutex<Vec<(String, Vec<String>)>>>;
 
@@ -92,7 +92,11 @@ impl StreamConsumer<Bank> for Tape {
     }
 
     async fn drain(&mut self, batch: Batch<Bank>) -> Cursor {
-        self.rows.lock().expect("the tape is never poisoned").extend(batch.select::<Capture>());
+        let shared: Vec<_> = batch.select_shared::<Capture>().collect();
+        for (borrowed, retained) in batch.select::<Capture>().zip(&shared) {
+            assert!(std::ptr::eq(borrowed.value, Arc::as_ptr(&retained.value)));
+        }
+        self.rows.lock().expect("the tape is never poisoned").extend(shared);
         self.cursor = batch.reaches();
 
         self.cursor
@@ -116,7 +120,7 @@ impl Series<Bank> for Tape {
             .iter()
             .filter(|At { position, .. }| admitted(start, end, *position))
             .filter(|At { value, .. }| narrowed(track, value))
-            .map(|At { value, position }| At { value: Arc::new(*value) as Arc<dyn Any + Send + Sync>, position: *position })
+            .map(|At { value, position }| At { value: Arc::clone(value) as Arc<dyn Any + Send + Sync>, position: *position })
             .collect())
     }
 
@@ -129,7 +133,7 @@ impl Series<Bank> for Tape {
         // The coarsest grouping that fits the budget, which is what a level
         // choice is: four points per bucket, so the budget is a bucket count
         // times four.
-        let rows: Vec<At<Capture>> = self
+        let rows: Vec<At<Arc<Capture>>> = self
             .rows
             .lock()
             .expect("the tape is never poisoned")
@@ -137,7 +141,7 @@ impl Series<Bank> for Tape {
             .filter(|At { position, .. }| *position <= self.sealed)
             .filter(|At { value, .. }| within(start, end, value.axis()))
             .filter(|At { value, .. }| narrowed(track, value))
-            .copied()
+            .cloned()
             .collect();
         let buckets = (budget / 4).max(1);
         let per = rows.len().div_ceil(buckets).max(1);
@@ -313,9 +317,24 @@ async fn range_beneath_window() {
 #[tokio::test]
 async fn retained_skips_tier() {
     let (tape, (rows, asked, _budgets)) = Tape::new();
-    let runtime = served(tape).await;
+    let (second, (second_rows, _, _)) = Tape::new();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .register(streams())
+        .series(tape)
+        .attach_streams(second)
+        .runtime()
+        .await
+        .unwrap();
 
     publish(&runtime, &rows, &[1, 2]).await;
+    captured(&second_rows, 2).await;
+    let original: Vec<_> = rows.lock().unwrap().iter().map(|row| Arc::clone(&row.value)).collect();
+    let shared: Vec<_> = second_rows.lock().unwrap().iter().map(|row| Arc::clone(&row.value)).collect();
+    assert_eq!(original.len(), shared.len());
+    for (first, second) in original.iter().zip(&shared) {
+        assert!(Arc::ptr_eq(first, second));
+    }
 
     let answered: Vec<u64> =
         runtime.streams.query::<Capture>(..).await.expect("nothing was evicted").map(|At { value, .. }| value.ordinal).collect();
@@ -327,6 +346,8 @@ async fn retained_skips_tier() {
     );
 
     runtime.stop().await.unwrap();
+    drop((runtime, rows, original, second_rows));
+    assert_eq!(shared.iter().map(|row| row.ordinal).collect::<Vec<_>>(), [1, 2]);
 }
 
 #[tokio::test]
@@ -336,9 +357,10 @@ async fn window_stands_durable() {
     // What a previous run left in the tier. This boot's ring never saw these
     // rows and never will, so a window that answered for the whole of history
     // until it had evicted something would call them missing.
-    rows.lock()
-        .expect("the tape is never poisoned")
-        .extend([At { value: capture(1, 1, 1, 1), position: Position(1) }, At { value: capture(1, 1, 2, 2), position: Position(2) }]);
+    rows.lock().expect("the tape is never poisoned").extend([
+        At { value: Arc::new(capture(1, 1, 1, 1)), position: Position(1) },
+        At { value: Arc::new(capture(1, 1, 2, 2)), position: Position(2) },
+    ]);
     let runtime = resumed(tape, Position(2)).await;
 
     let answered: Vec<u64> = runtime

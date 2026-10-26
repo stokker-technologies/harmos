@@ -163,15 +163,19 @@ impl Store {
         Runtime::<Model>::builder(0, ())
             .register(Transactions::catalog())
             .register(Records::catalog())
-            .tail(1)
-            .managed_state(limits(1, 64 * 1024))
-            .store_records(capture, Projection { calls: self.calls.clone(), duplicate })
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(1, 64 * 1024),
+                capture,
+                snapshots: None,
+                journal_tail: 1,
+            })
+            .store_records(Projection { calls: self.calls.clone(), duplicate })
             .runtime_with_storage(storage)
             .await
             .unwrap()
     }
     async fn ready(&self, storage: &StorageManager) {
-        storage.write_schema(&schema(), &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+        storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
         storage.flush().await.unwrap();
     }
 }
@@ -306,7 +310,7 @@ async fn primary_stop_retries() {
 async fn capture_requires_managed() {
     assert!(
         Runtime::<Model>::builder(0, ())
-            .store_records(limits(1, 4096), Projection { calls: Arc::new(AtomicUsize::new(0)), duplicate: false })
+            .store_records(Projection { calls: Arc::new(AtomicUsize::new(0)), duplicate: false })
             .runtime()
             .await
             .is_err()
@@ -357,10 +361,15 @@ async fn reconciliation_saves_capture() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Transactions::catalog())
         .register(Records::catalog())
-        .managed_state(limits(1, 64 * 1024))
-        .store_records(limits(4, 16 * 1024), Projection { calls: store.calls.clone(), duplicate: false })
+        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(1, 64 * 1024),
+            capture: limits(4, 16 * 1024),
+            snapshots: None,
+            journal_tail: 1024,
+        })
+        .store_records(Projection { calls: store.calls.clone(), duplicate: false })
         .reconcile(|_, storage| async move {
-            storage.write_schema(&schema(), &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
+            storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
             Ok(())
         })
         .service("producer", move |context: harmos_runtime::services::Service<Model>| {
@@ -426,13 +435,16 @@ async fn recovery_failure_retries() {
     let flushing = storage.clone();
     let flushing = tokio::spawn(async move { flushing.flush_recovery().await });
     store.recovery.control.write_entered.notified().await;
-    assert!(storage.status().pending_bytes > admitted);
+    let attempting = storage.status().pending_bytes;
+    assert!(attempting > 0);
+    assert!(attempting <= config().request.max_pending_write_bytes.get());
     assert_eq!(storage.status().saved.sequence, 21);
     assert_eq!(store.data.records.lock().unwrap().len(), 20);
     store.recovery.control.failures.store(1, Ordering::SeqCst);
     store.recovery.control.block_write.store(false, Ordering::SeqCst);
     store.recovery.control.write_release.notify_one();
     assert!(flushing.await.unwrap().is_err());
+    assert!(storage.status().pending_bytes < attempting);
     assert!(storage.status().pending_bytes <= admitted);
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
@@ -502,11 +514,13 @@ async fn partial_projection_refused() {
         let runtime = Runtime::<Model>::builder(0, ())
             .register(Transactions::catalog())
             .register(Records::catalog())
-            .managed_state(limits(1, 64 * 1024))
-            .store_records(
-                limits(8, 4 * 1024 * 1024),
-                IncrementalProjection { calls: store.calls.clone(), data: store.data.clone(), cancel },
-            )
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(1, 64 * 1024),
+                capture: limits(8, 4 * 1024 * 1024),
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .store_records(IncrementalProjection { calls: store.calls.clone(), data: store.data.clone(), cancel })
             .runtime_with_storage(&storage)
             .await
             .unwrap();
@@ -514,7 +528,7 @@ async fn partial_projection_refused() {
         if cancel {
             store.data.control.block_write.store(true, Ordering::SeqCst);
             let item = Identifier::new("already-accepted").unwrap();
-            storage.write_records(&[record(&schema(), &item, &vec![0; 100 * 1024])]).await.unwrap();
+            storage.write_records(vec![record(&schema(), &item, &vec![0; 100 * 1024])]).await.unwrap();
         }
         let accepted = storage.cursor_accepted();
         assert!(runtime.state.commit(Advance { panic: false }).await.is_err());
@@ -548,8 +562,8 @@ async fn registration_stores_schema() {
         .records
         .register(
             "plugin",
-            &key,
-            &harmos_runtime::schema::graph::Schema::from_declaration(
+            key.clone(),
+            harmos_runtime::schema::graph::Schema::from_declaration(
                 Message::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default(),
             )
@@ -562,8 +576,8 @@ async fn registration_stores_schema() {
         .clone()
         .register(
             "plugin",
-            &key,
-            &harmos_runtime::schema::graph::Schema::from_declaration(
+            key.clone(),
+            harmos_runtime::schema::graph::Schema::from_declaration(
                 Message::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default(),
             )

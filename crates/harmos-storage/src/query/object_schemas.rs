@@ -82,8 +82,10 @@ impl NormalizedObjects {
                         let mut raw = bank.scope();
                         raw.claim(rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(scan_bytes.get()))?;
                         let page = ScanPage { after, rows, bytes: scan_bytes };
-                        let (objects, bytes) = snapshot.scan::<ObjectEntry>(selection, page).await?;
-                        raw.claim(bytes.saturating_sub(scan_bytes.get()))?;
+                        let raw_memory = raw.retain();
+                        let (objects, bytes) = snapshot.scan::<ObjectEntry>(selection, page, raw_memory.clone()).await?;
+                        let mut raw = bank.scope();
+                        raw.claim(bytes.saturating_sub(raw_memory.bytes()))?;
                         let last = objects.last().map(|object| object.position.sequence);
                         let mut keys: Vec<SchemaKey> = Vec::new();
                         for object in &objects {

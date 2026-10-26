@@ -62,7 +62,10 @@ impl<C: 'static> Operation for Handler<C> {
         &mut self, _: Self::Context<'a>, request: &mut WriteSchema, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
-            self.storage.write_schema_once(&request.mutation, &request.schema.key, request.schema.graph()).await.map_err(Into::into)
+            self.storage
+                .write_schema_once(&request.mutation, request.schema.key.clone(), request.schema.graph_owner())
+                .await
+                .map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

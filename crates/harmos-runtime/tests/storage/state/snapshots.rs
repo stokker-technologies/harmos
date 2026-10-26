@@ -145,7 +145,12 @@ fn policy(every: u64) -> SnapshotPolicy {
 }
 
 fn builder(policy: SnapshotPolicy) -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).tail(2).managed_state(limits()).managed_snapshots(policy)
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+        replay: limits(),
+        capture: limits(),
+        snapshots: Some(policy),
+        journal_tail: 2,
+    })
 }
 
 async fn balance(runtime: &Runtime<Bank>) -> i64 {
@@ -225,7 +230,12 @@ async fn journal_replays_alone() {
     let storage = store.manager(config());
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
-        .managed_state(limits())
+        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: None,
+            journal_tail: 1024,
+        })
         .runtime_with_storage(&storage)
         .await
         .unwrap();
@@ -236,10 +246,13 @@ async fn journal_replays_alone() {
 #[tokio::test]
 async fn snapshot_keeps_history() {
     let store = Store::new();
-    let build =
-        || Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).tail(1).managed_state(limits());
+    let build = |snapshots| {
+        Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots, journal_tail: 1 },
+        )
+    };
     let storage = store.manager(config());
-    let runtime = build().runtime_with_storage(&storage).await.unwrap();
+    let runtime = build(None).runtime_with_storage(&storage).await.unwrap();
     runtime.state.commit(Add { amount: 3 }).await.unwrap();
     runtime.stop().await.unwrap();
     {
@@ -250,7 +263,7 @@ async fn snapshot_keeps_history() {
         first.payload = serde_json::to_vec(&group).unwrap();
     }
     let storage = store.manager(config());
-    let runtime = build().managed_snapshots(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    let runtime = build(Some(policy(100))).runtime_with_storage(&storage).await.unwrap();
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 6);
     runtime.stop().await.unwrap();
     let snapshot: serde_json::Value = serde_json::from_slice(&store.snapshot().payload).unwrap();
@@ -258,7 +271,7 @@ async fn snapshot_keeps_history() {
     assert_eq!(snapshot["tail"][0]["version"], 1);
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
-    let runtime = build().managed_snapshots(policy(100)).runtime_with_storage(&storage).await.unwrap();
+    let runtime = build(Some(policy(100))).runtime_with_storage(&storage).await.unwrap();
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 6);
     let facts: Vec<_> = runtime.state.query::<Records>(Position::ORIGIN).await.collect();
     assert_eq!(facts.len(), 1);
@@ -387,7 +400,18 @@ async fn snapshot_budget_blocks() {
 
 #[tokio::test]
 async fn snapshots_require_storage() {
-    assert!(Runtime::<Bank>::builder(Ledger::default(), ()).managed_snapshots(policy(100)).runtime().await.is_err());
+    assert!(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: Some(policy(100)),
+                journal_tail: 1024
+            })
+            .runtime()
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

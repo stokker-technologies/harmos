@@ -170,6 +170,11 @@ enum Envelope<'a> {
 /* === Implementations === */
 
 impl WireCommand {
+    /// Counts the versioned Prepare envelope without encoding or allocating its payload.
+    pub fn prepare_encoded_len(invocation: u64, operation: &str, payload: usize) -> Result<usize, WireCodecError> {
+        payload_size(Envelope::Prepare { invocation, operation, payload: &[] }, payload)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         encode(self.envelope())
     }
@@ -215,6 +220,11 @@ impl WireCommand {
 }
 
 impl WireAnswer {
+    /// Counts the versioned Ready envelope without encoding or allocating its payload.
+    pub fn ready_encoded_len(payload: usize) -> Result<usize, WireCodecError> {
+        payload_size(Envelope::Ready { payload: &[] }, payload)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         let envelope = match self {
             Self::Ready { payload } => Envelope::Ready { payload },
@@ -239,6 +249,29 @@ impl WireAnswer {
 }
 
 impl WireChildCall {
+    /// Counts a Child envelope with its actual portable values and payload length.
+    /// Context identifiers and the submit flag have fixed encoded widths.
+    pub fn payload_encoded_len(
+        operation: &str, payload: usize, generation_context: bool, values: &[super::super::CallValue],
+    ) -> Result<usize, WireCodecError> {
+        check_values(values)?;
+        let envelope = Envelope::Child {
+            context: [0; 32],
+            generation_context: generation_context.then_some([0; 32]),
+            values: Vec::new(),
+            operation,
+            payload: &[],
+            submit: false,
+        };
+        let count = postcard::experimental::serialized_size(&values.len())?;
+        let mut size = add_size(payload_size(envelope, payload)?, count - 1)?;
+        for value in values {
+            let value = Value { key: &value.key, payload: &value.payload };
+            size = add_size(size, postcard::experimental::serialized_size(&value)?)?;
+        }
+        Ok(size)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         check_values(&self.values)?;
         encode(Envelope::Child {
@@ -328,6 +361,16 @@ fn encode(envelope: Envelope<'_>) -> Result<Vec<u8>, WireCodecError> {
     Ok(postcard::to_allocvec(&message)?)
 }
 
+fn payload_size(envelope: Envelope<'_>, payload: usize) -> Result<usize, WireCodecError> {
+    let empty = postcard::experimental::serialized_size(&(VERSION, envelope))?;
+    let prefix = postcard::experimental::serialized_size(&payload)?;
+    add_size(add_size(empty, payload)?, prefix - 1)
+}
+
+fn add_size(left: usize, right: usize) -> Result<usize, WireCodecError> {
+    left.checked_add(right).ok_or(WireCodecError::Oversized)
+}
+
 fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
     if bytes.len() > LIMIT {
         return Err(WireCodecError::Oversized);
@@ -344,3 +387,72 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
+
+    #[test]
+    fn envelope_sizes_match() {
+        let sizes = [0, 1, 127, 128, 16383, 16384, 2097151, 2097152];
+        let ids = [0, 127, 128, u64::MAX];
+        for (index, size) in sizes.into_iter().enumerate() {
+            let operation = "λ".repeat([1, 63, 64, 65][index % 4]);
+            let invocation = ids[index % ids.len()];
+            let payload = vec![255; size];
+            let expected = WireCommand::prepare_encoded_len(invocation, &operation, size).unwrap();
+            let command = WireCommand::Prepare { invocation, operation, payload: payload.clone() };
+            assert_eq!(command.encode().unwrap().len(), expected);
+            let expected = WireAnswer::ready_encoded_len(size).unwrap();
+            assert_eq!(WireAnswer::Ready { payload }.encode().unwrap().len(), expected);
+        }
+        assert!(WireCommand::prepare_encoded_len(0, "op", usize::MAX).is_err());
+        assert!(WireAnswer::ready_encoded_len(usize::MAX).is_err());
+    }
+
+    #[test]
+    fn child_values_count() {
+        let mut maximal: Vec<_> =
+            (0..PORTABLE_VALUES).map(|index| CallValue { key: format!("k{index:02}"), payload: Vec::new() }).collect();
+        maximal[0].payload = vec![255; PORTABLE_BYTES - PORTABLE_VALUES * 3];
+        for values in [Vec::new(), vec![CallValue { key: "測定".into(), payload: vec![255; 128] }], maximal] {
+            for generation in [false, true] {
+                for submit in [false, true] {
+                    let expected = WireChildCall::payload_encoded_len("op.λ", 16384, generation, &values).unwrap();
+                    let call = WireChildCall {
+                        context: [255; 32],
+                        generation_context: generation.then_some([255; 32]),
+                        values: values.clone(),
+                        operation: "op.λ".into(),
+                        payload: vec![255; 16384],
+                        submit,
+                    };
+                    assert_eq!(call.encode().unwrap().len(), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn child_validation_matches() {
+        let invalid = [
+            vec![CallValue { key: "key".into(), payload: vec![0; PORTABLE_BYTES] }],
+            vec![CallValue { key: "same".into(), payload: Vec::new() }; 2],
+            (0..=PORTABLE_VALUES).map(|index| CallValue { key: index.to_string(), payload: Vec::new() }).collect(),
+        ];
+        for values in invalid {
+            assert!(WireChildCall::payload_encoded_len("op", 0, false, &values).is_err());
+            let call = WireChildCall {
+                context: [0; 32],
+                generation_context: None,
+                values,
+                operation: "op".into(),
+                payload: Vec::new(),
+                submit: false,
+            };
+            assert!(call.encode().is_err());
+        }
+        assert!(WireChildCall::payload_encoded_len("op", usize::MAX, false, &[]).is_err());
+    }
+}

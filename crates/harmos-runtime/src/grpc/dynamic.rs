@@ -169,19 +169,26 @@ impl Operation {
         let mut deserializer = serde_json::Deserializer::from_slice(json);
         let message = DynamicMessage::deserialize(descriptor, &mut deserializer).map_err(|error| invalid(error.to_string()))?;
         deserializer.end().map_err(|error| invalid(error.to_string()))?;
-        self.binding.check(message.encoded_len())?;
-        let encoded = message.encode_to_vec();
-        validator.validate(&encoded).map_err(|error| invalid(error.to_string()))?;
-        let message = if self.client_streaming() {
-            let mut envelope = DynamicMessage::new(self.binding.method.input());
+        let length = message.encoded_len();
+        self.binding.check(length)?;
+        let mut header = [0_u8; 16];
+        let prefix = if self.client_streaming() {
             let name = if item { "item" } else { "request" };
-            envelope.set_field_by_name(name, Value::Message(message));
-            envelope
+            let field = self.binding.method.input().get_field_by_name(name).ok_or_else(|| invalid("missing input envelope descriptor"))?;
+            let mut remaining = &mut header[..];
+            prost::encoding::encode_key(field.number(), prost::encoding::WireType::LengthDelimited, &mut remaining);
+            prost::encoding::encode_varint(length as u64, &mut remaining);
+            16 - remaining.len()
         } else {
-            message
+            0
         };
-        self.binding.check(message.encoded_len())?;
-        Ok(Payload { binding: Arc::clone(&self.binding), bytes: message.encode_to_vec() })
+        let total = prefix.checked_add(length).ok_or_else(|| invalid("dynamic envelope size overflow"))?;
+        self.binding.check(total)?;
+        let mut bytes = Vec::with_capacity(total);
+        bytes.extend_from_slice(&header[..prefix]);
+        message.encode(&mut bytes).map_err(|error| invalid(error.to_string()))?;
+        validator.validate(&bytes[prefix..]).map_err(|error| invalid(error.to_string()))?;
+        Ok(Payload { binding: Arc::clone(&self.binding), bytes })
     }
 }
 

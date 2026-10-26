@@ -20,6 +20,7 @@ pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use super::manager::ENTRY_OVERHEAD;
@@ -39,7 +40,7 @@ use crate::{Error, MemorySize, Result};
 pub struct StorageSchema {
     pub position: StorageCursor,
     pub key: SchemaKey,
-    pub schema: Schema,
+    pub schema: Arc<Schema>,
 }
 
 /* === Enums === */
@@ -53,18 +54,17 @@ impl MemorySize for StorageSchema {
         std::mem::size_of::<Self>()
             .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
             .saturating_add(self.key.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
-            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of::<Schema>()))
+            .saturating_add(self.schema.memory_size().saturating_add(2 * std::mem::size_of::<usize>()))
     }
 }
 
 impl StorageSchema {
-    pub fn new(position: StorageCursor, key: SchemaKey, schema: Schema) -> Self {
-        Self { position, key, schema }
+    pub fn new(position: StorageCursor, key: SchemaKey, schema: impl Into<Arc<Schema>>) -> Self {
+        Self { position, key, schema: schema.into() }
     }
 
     pub(super) fn resident_bytes(key: &SchemaKey, schema: &Schema, history: &StoreHistory) -> Result<usize> {
-        let allocations =
-            schema.clone_memory_bytes().map_err(|_| size_error())?.checked_sub(std::mem::size_of::<Schema>()).ok_or_else(size_error)?;
+        let allocations = schema.memory_size().checked_add(2 * std::mem::size_of::<usize>()).ok_or_else(size_error)?;
         [
             std::mem::size_of::<Self>(),
             ENTRY_OVERHEAD,

@@ -96,3 +96,20 @@ Fixture preparation joins the Product and Tests manifests and stamps those exact
 The [JSONL adapter](storage/) is the example's persistence format. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.
+
+## Transfer Benchmarks
+
+The `benchmark` feature on the sidecar and guest enables shared record, sample
+and file-byte transfer endpoints. Their [contracts](domain/src/operations/transfer.rs)
+and [handlers](transfer.rs) are reused by both example executables.
+`Put`/`Take` transfer one owned batch per unary call; `Upload`/`Download` carry
+bounded batches through streams. Transfer IDs isolate concurrent datasets.
+The feature also exposes a `Hash` bridge to the host `HashFile` operation. Each
+carrier benchmark verifies a local-file range and digest through this bridge
+before timing transfers.
+
+`mise run build:rust:bench` builds and stamps these feature-enabled artifacts.
+The host benchmarks transfer 10,000 records, 30 MiB of file bytes and 1,000,000
+samples in both directions, running the datasets concurrently on one reused
+host/plugin instance per carrier. Setup and verification are outside timing.
+The transfer store is in memory; storage benchmarks separately measure disk I/O.

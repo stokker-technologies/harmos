@@ -95,7 +95,7 @@ fn aggregate_protobuf_contract() {
         assert_eq!(encoded, crate::encode(&twin(value)), "{value:?}");
         assert_eq!(grpc::decode::<Aggregate>(DecodeInput::new(&encoded)).unwrap(), value);
         // The Transcoding Budget Bounds The Decoded Value From Above.
-        assert!(grpc::decoding_memory::<Aggregate>(DecodeInput::new(&encoded)).unwrap() >= value.memory_size());
+        assert!(grpc::prepare::<Aggregate>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap() >= value.memory_size());
         let derived = grpc::decode::<twin::Aggregate>(DecodeInput::new(&encoded)).unwrap();
         assert!(derived == twin(value), "{value:?}");
         let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
@@ -106,7 +106,7 @@ fn aggregate_protobuf_contract() {
     assert_eq!(grpc::decode::<Aggregate>(DecodeInput::new(&[])).unwrap(), Aggregate::Count);
     let wide = crate::encode(&twin::Aggregate::Percentile { rank: 256 });
     assert!(grpc::decode::<Aggregate>(DecodeInput::new(&wide)).is_err());
-    assert!(grpc::decoding_memory::<Aggregate>(DecodeInput::new(&wide)).is_err());
+    assert!(grpc::prepare::<Aggregate>(DecodeInput::new(&wide)).map(|prepared| prepared.memory()).is_err());
     // Last Occurrence Wins, Matching Derived Enum Messages
     let mut last = crate::encode(&Aggregate::Percentile(50));
     last.extend(crate::encode(&Aggregate::Max));

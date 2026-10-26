@@ -115,6 +115,18 @@ impl MemorySize for StreamInput {
 }
 
 impl RecordInput {
+    pub fn stored(self, position: StorageCursor) -> StoredRecord {
+        StoredRecord {
+            position,
+            schema: self.schema,
+            scope: self.scope,
+            item: self.item,
+            source: self.source,
+            source_time: self.source_time,
+            payload: self.payload,
+        }
+    }
+
     pub fn borrowed(&self) -> RecordWrite<'_> {
         RecordWrite {
             schema: &self.schema,
@@ -130,20 +142,6 @@ impl RecordInput {
 impl StreamInput {
     pub fn borrowed(&self) -> StreamWrite<'_> {
         StreamWrite { record: self.record.borrowed(), stream: &self.stream, sequence: self.sequence }
-    }
-}
-
-impl RecordWrite<'_> {
-    pub fn stored(&self, position: StorageCursor) -> StoredRecord {
-        StoredRecord {
-            position,
-            schema: self.schema.clone(),
-            scope: self.scope.cloned(),
-            item: self.item.clone(),
-            source: self.source.cloned(),
-            source_time: self.source_time,
-            payload: self.payload.to_vec(),
-        }
     }
 }
 

@@ -95,7 +95,7 @@ pub(super) struct FileState {
 enum Command {
     Create,
     Resume { expected: u64, next: u64 },
-    Write(Arc<[u8]>),
+    Write(crate::FileChunk),
     Finish { target: Option<Target>, sha256: [u8; 32] },
     Abort,
 }
@@ -110,7 +110,7 @@ enum Await {
 pub(super) enum FileAction {
     Create { id: u64, metadata: Arc<FileMetadata>, staging: StagedFile, resumable: bool },
     Resume { id: u64, staging: StagedFile, expected: u64, next: u64 },
-    Write { id: u64, staging: StagedFile, offset: u64, bytes: Arc<[u8]> },
+    Write { id: u64, staging: StagedFile, offset: u64, bytes: crate::FileChunk },
     Finish { id: u64, staging: StagedFile, metadata: Arc<FileMetadata>, target: Target, length: u64, sha256: [u8; 32] },
     Abandon { id: u64, staging: StagedFile, extra: Option<StagedFile> },
     Abort { id: u64, staging: StagedFile, extra: Option<StagedFile> },
@@ -128,6 +128,12 @@ pub(super) enum FileCompleted {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl FileAction {
+    pub(crate) fn independent(&self) -> bool {
+        !matches!(self, Self::Finish { .. } | Self::Refuse { .. })
+    }
+}
 
 /* === Public Functions === */
 

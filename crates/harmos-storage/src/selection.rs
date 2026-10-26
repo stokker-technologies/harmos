@@ -60,6 +60,7 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     fn pending(queued: Queued<'_>) -> &[Self];
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>>;
 }
 
@@ -94,15 +95,16 @@ impl Entry for ObjectEntry {
 
     fn pending(queued: Queued<'_>) -> &[Self] {
         match queued.0 {
-            Operation::ObjectGroup { objects, .. } => objects,
+            Operation::ObjectGroup { objects, .. } => objects.as_slice(),
             _ => &[],
         }
     }
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_objects(snapshot, selection, page)
+        backend.read_objects(snapshot, selection, page, memory)
     }
 }
 
@@ -122,15 +124,16 @@ impl Entry for StoredRecord {
 
     fn pending(queued: Queued<'_>) -> &[Self] {
         match queued.0 {
-            Operation::Records(values) => values,
+            Operation::Records(values) => values.as_slice(),
             _ => &[],
         }
     }
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_records(snapshot, selection, page)
+        backend.read_records(snapshot, selection, page, memory)
     }
 }
 
@@ -157,15 +160,16 @@ impl Entry for StoredRow {
 
     fn pending(queued: Queued<'_>) -> &[Self] {
         match queued.0 {
-            Operation::Stream(values) => values,
+            Operation::Stream(values) => values.as_slice(),
             _ => &[],
         }
     }
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_stream(snapshot, selection, page)
+        backend.read_stream(snapshot, selection, page, memory)
     }
 }
 
@@ -182,16 +186,17 @@ impl Entry for StorageSchema {
 
     fn pending(queued: Queued<'_>) -> &[Self] {
         match queued.0 {
-            Operation::Schema(value) => std::slice::from_ref(value),
-            Operation::ObjectGroup { schemas, .. } => schemas,
+            Operation::Schema(value) => value.as_slice(),
+            Operation::ObjectGroup { schemas, .. } => schemas.as_slice(),
             _ => &[],
         }
     }
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_schemas(snapshot, selection, page)
+        backend.read_schemas(snapshot, selection, page, memory)
     }
 }
 
@@ -208,15 +213,16 @@ impl Entry for FileReference {
 
     fn pending(queued: Queued<'_>) -> &[Self] {
         match queued.0 {
-            Operation::File(value) => std::slice::from_ref(value),
+            Operation::File(value) => value.as_slice(),
             _ => &[],
         }
     }
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_files(snapshot, selection, page)
+        backend.read_files(snapshot, selection, page, memory)
     }
 }
 
@@ -238,8 +244,9 @@ impl Entry for StoredIdentity {
 
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
+        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<Self>> {
-        backend.read_identities(snapshot, selection, page)
+        backend.read_identities(snapshot, selection, page, memory)
     }
 }
 

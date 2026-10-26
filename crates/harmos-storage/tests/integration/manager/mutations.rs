@@ -74,7 +74,7 @@ impl Work {
         self, storage: &StorageManager, mutation: &MutationId, session: &FileSession, file: &StagedFile,
     ) -> harmos_storage::Result<MutationValue> {
         match self {
-            Self::Append => storage.append_file_once(mutation, session, 3, b"tail").await.map(MutationValue::Producer),
+            Self::Append => storage.append_file_once(mutation, session, 3, (b"tail").to_vec()).await.map(MutationValue::Producer),
             Self::Resume => storage.resume_file_once(mutation, session).await.map(MutationValue::Producer),
             Self::Finish => {
                 let reference = storage.finish_file_once(mutation, session).await?;
@@ -185,7 +185,7 @@ async fn attached_mutations_complete() {
         let mutation = identity(&f.storage, "attached");
         set_elapsed(299);
         let mut writer = f.storage.produce_file(metadata("shared")).await.unwrap();
-        writer.write_all(b"abc").await.unwrap();
+        writer.write_all((b"abc").to_vec()).await.unwrap();
         let session = writer.session().unwrap().clone();
         let file = StagedFile { history: session.history.clone(), id: session.id.clone() };
         if matches!(work, Work::Delete) {

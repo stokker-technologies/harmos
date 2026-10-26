@@ -43,7 +43,7 @@ pub(super) struct Deletion {
 pub(super) struct DeleteWork {
     target: Target,
     pub(super) file: StagedFile,
-    pub(super) receipt: MutationReceipt,
+    receipt: crate::StorageBatch<MutationReceipt>,
 }
 
 /* === Enums === */
@@ -132,7 +132,16 @@ impl<C> StorageManager<C> {
                         let target = state.data_accepted;
                         state.deletions.insert(
                             mutation.clone(),
-                            Deletion { work: Arc::new(DeleteWork { target, file: file.clone(), receipt }), bytes, failure: None },
+                            Deletion {
+                                work: Arc::new(DeleteWork {
+                                    target,
+                                    file: file.clone(),
+                                    receipt: crate::StorageBatch::new(vec![receipt])
+                                        .retained(crate::batch::WriteCharge::read(&self.inner, bytes)),
+                                }),
+                                bytes,
+                                failure: None,
+                            },
                         );
                         retry = false;
                         notify = true;
@@ -218,11 +227,21 @@ impl State {
     }
 }
 
+impl Drop for Deletion {
+    fn drop(&mut self) {
+        self.work.receipt.retire();
+    }
+}
+
 impl DeleteWork {
+    pub(super) fn receipt(&self) -> &MutationReceipt {
+        &self.receipt.as_slice()[0]
+    }
+
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded(inner.primary.delete_file(&self.file)).await?;
-        inner.bounded(inner.primary.save_mutations(std::slice::from_ref(&self.receipt))).await?;
-        tracing::info!(file = %self.file.id, mutation = %self.receipt.mutation.key, reason = "explicit deletion", "file deleted");
+        inner.bounded(inner.primary.save_mutations(self.receipt.clone())).await?;
+        tracing::info!(file = %self.file.id, mutation = %self.receipt.as_slice()[0].mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }
 }

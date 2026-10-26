@@ -86,7 +86,8 @@ pub(crate) async fn exchange<C>(
                         reason: "sequences must increase within an invocation",
                     });
                 }
-                let batch = DecodedBatch::of(&batch)?;
+                let (batch, _claims) = batch.into_owned_request()?;
+                let batch = DecodedBatch::of(batch)?;
                 if batch.data.as_record_batch().num_rows() == 0 {
                     return Err(Error::InvalidInput {
                         field: "write batch",

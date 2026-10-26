@@ -88,6 +88,27 @@ impl MemoryBank {
         MemoryScope { bank: self, used: 0 }
     }
 
+    pub(super) fn grow_retained(&self, memory: &RetainedMemory, bytes: usize) -> Result<()> {
+        let additional = bytes.saturating_sub(memory.bytes());
+        let mut state = self.state.lock().unwrap();
+        state.requested = state.requested.max(state.used.saturating_add(state.retained).saturating_add(additional));
+        match memory.try_grow(bytes) {
+            Ok(()) => {
+                state.retained += additional;
+                Ok(())
+            }
+            Err(Refusal::Busy) => {
+                state.refusal = Some(Shortfall::Busy);
+                Err(Refusal::Busy.into_error())
+            }
+            Err(Refusal::Exceeded(_)) => {
+                state.refusal = Some(Shortfall::Exceeded);
+                Err(Refusal::Busy.into_error())
+            }
+            Err(refusal) => Err(refusal.into_error()),
+        }
+    }
+
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
         let mut state = self.state.lock().unwrap();
         state.ensure(bytes)?;
@@ -97,6 +118,15 @@ impl MemoryBank {
 }
 
 impl MemoryScope<'_> {
+    pub(super) fn retain(mut self) -> RetainedMemory {
+        let mut state = self.bank.state.lock().unwrap();
+        let bytes = self.used;
+        state.used -= bytes;
+        state.retained += bytes;
+        self.used = 0;
+        state.reservation.split(bytes).retain()
+    }
+
     pub(super) fn claim(&mut self, bytes: usize) -> Result<()> {
         let mut state = self.bank.state.lock().unwrap();
         state.ensure(bytes)?;

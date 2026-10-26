@@ -137,7 +137,17 @@ impl StateLog {
         self.files.snapshot(bound.min(self.checkpoint_bytes))
     }
 
-    pub(super) fn page(&mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits) -> Result<RecoveryPage> {
+    pub(super) fn snapshot_retained(
+        &self, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize,
+    ) -> Result<Option<RecoverySnapshot>> {
+        let bound = maximum.saturating_add(format::OVERHEAD);
+        self.files.snapshot_retained(bound.min(self.checkpoint_bytes), memory, base)
+    }
+
+    pub(super) fn page(
+        &mut self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits, memory: &crate::arrow::RetainedMemory,
+        base: usize,
+    ) -> Result<RecoveryPage> {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
         if after.sequence < self.base {
@@ -149,25 +159,45 @@ impl StateLog {
         let mut entries = Vec::new();
         let mut bytes = 0usize;
         let mut last = after.sequence;
-        self.scan(|entry| {
+        memory.try_grow_to(base.saturating_add(8192 + HEADER_BYTES * 4))?;
+        let mut reader = self.reader()?;
+        loop {
+            let retained = base.saturating_add(crate::MemorySize::memory_size(&entries));
+            let entry = match format::read_retained::<RecoveryEntry>(&mut reader, self.entry_bytes, memory, retained)? {
+                Read::End => break,
+                Read::Incomplete => return Err(corrupt("live state journal has incomplete tail")),
+                Read::Value(entry) => entry,
+            };
+            self.history.check(&entry.position.history)?;
             if entry.position.sequence <= after.sequence {
-                return Ok(true);
+                continue;
             }
             if entry.position.sequence > through.sequence {
-                return Ok(false);
+                break;
             }
             let size = crate::storage::manager::encoded_size(&entry)?;
             if entries.len() == limits.rows.get() || size > limits.bytes.get().saturating_sub(bytes) {
                 if entries.is_empty() {
                     return Err(invalid("state entry exceeds requested page size"));
                 }
-                return Ok(false);
+                break;
+            }
+            if entries.len() == entries.capacity() {
+                let replacement = entries
+                    .capacity()
+                    .checked_mul(2)
+                    .map(|capacity| capacity.max(4))
+                    .and_then(|capacity| capacity.checked_mul(std::mem::size_of::<RecoveryEntry>()))
+                    .and_then(|bytes| bytes.checked_add(retained))
+                    .and_then(|bytes| bytes.checked_add(crate::MemorySize::memory_size(&entry)))
+                    .and_then(|bytes| bytes.checked_add(8192))
+                    .ok_or_else(|| invalid("state page memory overflow"))?;
+                memory.try_grow_to(replacement)?;
             }
             bytes += size;
             last = entry.position.sequence;
             entries.push(entry);
-            Ok(true)
-        })?;
+        }
         let next = (last < through.sequence).then(|| RecoveryPosition { history: self.history.clone(), sequence: last });
         let page = RecoveryPage { entries, next };
         page.check(after, through, limits, |entry| crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX))?;

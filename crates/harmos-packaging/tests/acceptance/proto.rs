@@ -79,7 +79,7 @@ fn portable_messages_cross() {
         bytes
     };
     assert!(grpc::decode::<Annotated>(DecodeInput::new(&protobuf)).unwrap() == value);
-    assert!(grpc::decoding_memory::<Annotated>(DecodeInput::new(&protobuf)).is_ok());
+    assert!(grpc::prepare::<Annotated>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).is_ok());
     let contracts = Contracts::of::<Portable>().unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();

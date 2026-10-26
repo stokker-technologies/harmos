@@ -14,7 +14,7 @@
 pub use harmos_sidecar::operations;
 pub use harmos_sidecar::operations::{CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sidecar::{
-    Attach, Attached, ConfigError, Executable, ExecutableError, Frame, Plugin, Publication, Refusal, Registrar, Registration,
+    Attach, Attached, ConfigError, Executable, ExecutableError, Frame, FramePayload, Plugin, Publication, Refusal, Registrar, Registration,
     RegistrationError, StreamDeclaration, StreamSpec, inventory,
 };
 

@@ -78,7 +78,7 @@ async fn runtime_owns_storage() {
         Err(Error::InvalidInput { field: "service definition", .. })
     ));
     write(handle.storage().unwrap(), "final").await;
-    f.storage.write_recovery(&[b"logical-state"]).await.unwrap();
+    f.storage.write_recovery(vec![b"logical-state".to_vec()]).await.unwrap();
     let settled = f.runtime.stop().await.unwrap();
     assert_eq!(f.runtime.stop().await.unwrap(), settled);
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);

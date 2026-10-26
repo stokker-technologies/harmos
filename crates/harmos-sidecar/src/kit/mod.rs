@@ -466,7 +466,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
     };
     if method == Frame::REGISTER {
         return match serde_json::to_vec(&opening.catalog) {
-            Ok(result) => Answered::Frame(Frame::Answer { id, result }),
+            Ok(result) => Answered::Frame(Frame::Answer { id, result: result.into() }),
             Err(error) => Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) }),
         };
     }
@@ -509,7 +509,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
                 return oversized_reply(id);
             }
             match answer.encode() {
-                Ok(result) => Frame::Answer { id, result },
+                Ok(result) => Frame::Answer { id, result: result.into() },
                 Err(harmos_sdk::operations::WireCodecError::Oversized) => oversized_reply(id),
                 Err(error) => Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) },
             }

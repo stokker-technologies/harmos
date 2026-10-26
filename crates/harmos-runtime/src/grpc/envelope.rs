@@ -56,20 +56,22 @@ macro_rules! envelope {
                     $name::$second(value) => delimited(2, bytes, |bytes| <W as Wire<B>>::encode(value, bytes)),
                 }
             }
-            fn decode(input: DecodeInput<'_>) -> Result<$name<A, B>, MessageError> {
-                let (tag, payload) = input.variant(&[1, 2])?.ok_or_else(|| MessageError::borrowed("empty operation envelope"))?;
-                match tag {
-                    1 => <W as Wire<A>>::decode(payload).map($name::$first),
-                    _ => <W as Wire<B>>::decode(payload).map($name::$second),
-                }
-            }
-            fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError> {
-                let (tag, payload) = input.variant(&[1, 2])?.ok_or_else(|| MessageError::borrowed("empty operation envelope"))?;
-                let bound = match tag {
-                    1 => <W as Wire<A>>::decoding_memory(payload)?,
-                    _ => <W as Wire<B>>::decoding_memory(payload)?,
+            fn decode_admitted<C>(
+                input: DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, tonic::Status>,
+            ) -> Result<($name<A, B>, C), tonic::Status> {
+                let (tag, payload) = input
+                    .variant(&[1, 2])
+                    .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?
+                    .ok_or_else(|| tonic::Status::invalid_argument("empty operation envelope"))?;
+                let admit = |bound| {
+                    let bytes = decoding_add(std::mem::size_of::<$name<A, B>>(), bound)
+                        .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+                    admit(bytes)
                 };
-                decoding_add(std::mem::size_of::<$name<A, B>>(), bound)
+                match tag {
+                    1 => <W as Wire<A>>::decode_admitted(payload, admit).map(|(value, claim)| ($name::$first(value), claim)),
+                    _ => <W as Wire<B>>::decode_admitted(payload, admit).map(|(value, claim)| ($name::$second(value), claim)),
+                }
             }
         }
         impl<A: MemorySize, B: MemorySize> MemorySize for $name<A, B> {

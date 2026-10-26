@@ -77,6 +77,26 @@ impl Files {
         Ok(Some(value))
     }
 
+    pub(super) fn snapshot_retained(
+        &self, maximum: usize, memory: &crate::arrow::RetainedMemory, base: usize,
+    ) -> Result<Option<crate::state::RecoverySnapshot>> {
+        let file = match File::open(self.root.join("state.json")) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(io(error)),
+        };
+        memory.try_grow_to(8192usize.saturating_add(base))?;
+        let mut reader = BufReader::new(file);
+        let value = match format::read_retained(&mut reader, maximum, memory, base)? {
+            Read::Value(value) => value,
+            Read::End | Read::Incomplete => return Err(corrupt("incomplete state checkpoint")),
+        };
+        if !std::io::BufRead::fill_buf(&mut reader).map_err(io)?.is_empty() {
+            return Err(corrupt("state checkpoint contains trailing records"));
+        }
+        Ok(Some(value))
+    }
+
     pub(super) fn write_snapshot<T: Serialize>(&self, value: &T, maximum: usize) -> Result<()> {
         self.replace("state.json", |writer| format::write(writer, value, maximum))
     }

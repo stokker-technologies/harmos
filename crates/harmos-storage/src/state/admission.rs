@@ -23,7 +23,7 @@ use super::{RecoveryEntry, RecoverySnapshot};
 use crate::storage::manager::{
     ENTRY_OVERHEAD, Inner, Operation, Pending, Target, encoded_size, recovery_preparation_bytes, recovery_resident_bytes,
 };
-use crate::storage::{ReadLimits, RecordWrite, StorageCursor, StorageManager, StoredRecord};
+use crate::storage::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
 
@@ -174,12 +174,12 @@ impl Permit {
         &self.records
     }
 
-    pub async fn push(&mut self, record: RecordWrite<'_>, limits: ReadLimits) -> Result<()> {
+    pub async fn push(&mut self, record: RecordInput, limits: ReadLimits) -> Result<()> {
         let invalid = || Error::InvalidInput { field: "record projection", reason: "capture limit exceeded" };
         if self.records.len() >= limits.rows.get() {
             return Err(invalid());
         }
-        let capture = encoded_size(&record)?
+        let capture = encoded_size(&record.borrowed())?
             .checked_add(encoded_size(&self.first_record.history)?)
             .and_then(|bytes| bytes.checked_add(ENTRY_OVERHEAD))
             .ok_or_else(invalid)?;
@@ -261,12 +261,13 @@ impl Permit {
         if let Some(last) = self.records.last() {
             state.status.accepted = last.position.clone();
             state.data_accepted = Target { index: self.target.index, sequence: last.position.sequence };
-            state.queue.push_back(Arc::new(Pending {
-                index: self.target.index,
-                bytes: self.record_bytes,
-                journal: None,
-                operation: Operation::Records(std::mem::take(&mut self.records)),
-            }));
+            state.queue.push_back(Arc::new(Pending::new(
+                &self.inner,
+                None,
+                self.target.index,
+                self.record_bytes,
+                Operation::Records(crate::StorageBatch::new(std::mem::take(&mut self.records))),
+            )));
             self.target.index += 1; // Both slots were checked before mutation.
         }
         let position =
@@ -274,20 +275,25 @@ impl Permit {
         state.status.recovery_accepted = position.clone();
         state.recovery_accepted = self.target;
         state.next = self.target.index;
-        state.queue.push_back(Arc::new(Pending {
-            index: self.target.index,
-            bytes: self.bytes,
-            journal: (!self.snapshot).then_some(frontier),
-            operation: if self.snapshot {
-                Operation::Snapshot(RecoverySnapshot {
+        state.queue.push_back(Arc::new(Pending::new(
+            &self.inner,
+            (!self.snapshot).then_some(frontier),
+            self.target.index,
+            self.bytes,
+            if self.snapshot {
+                Operation::Snapshot(crate::StorageBatch::new(vec![RecoverySnapshot {
                     required_data: required_data.clone(),
                     through: position,
                     payload: std::mem::take(&mut self.payload),
-                })
+                }]))
             } else {
-                Operation::Recovery(vec![RecoveryEntry { required_data, position, payload: std::mem::take(&mut self.payload) }])
+                Operation::Recovery(crate::StorageBatch::new(vec![RecoveryEntry {
+                    required_data,
+                    position,
+                    payload: std::mem::take(&mut self.payload),
+                }]))
             },
-        }));
+        )));
         state.reserved = 0;
         state.reserved_batches = 0;
         self.active = false;

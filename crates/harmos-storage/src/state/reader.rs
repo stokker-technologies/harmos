@@ -37,11 +37,10 @@ use harmos_domain::state::Position;
 
 pub struct RecoveryReader<'a, C> {
     storage: &'a StorageManager<C>,
-    // Release Budget Before Unlocking The Recovery Lifecycle.
-    _reservation: Reservation,
     _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
+    page_bytes: usize,
     snapshot_bound: Option<NonZeroUsize>,
 }
 
@@ -61,35 +60,28 @@ impl<C> StorageManager<C> {
                     .map(|charged| NonZeroUsize::new(charged).expect("positive snapshot budget"))
             })
             .transpose()?;
-        let mut bytes = limits
+        let page_bytes = limits
             .bytes
             .get()
             .checked_mul(2)
             .and_then(|n| n.checked_add(limits.rows.get().checked_mul(ENTRY_OVERHEAD)?))
             .ok_or_else(|| invalid("recovery read size overflow"))?;
+        let mut bytes = page_bytes;
         if let Some(bound) = snapshot_bound {
             bytes = bytes.max(bound.get().checked_mul(2).ok_or_else(|| invalid("snapshot read size overflow"))?);
         }
         let through = {
             let mut current = self.inner.state.lock().unwrap();
+            current.collect();
             if current.status.running || current.status.closing || current.journal_saved.is_some() {
                 return Err(invalid("managed recovery requires a dormant acquired manager"));
             }
             if bytes > self.inner.settings.request.max_pending_write_bytes.get().saturating_sub(current.status.pending_bytes) {
                 return Err(invalid("recovery page exceeds shared memory budget"));
             }
-            current.scratch_bytes += bytes;
-            current.collect();
             current.status.recovery_saved.clone()
         };
-        Ok(RecoveryReader {
-            storage: self,
-            _lifecycle: lifecycle,
-            _reservation: Reservation::charged(&self.inner, Pool::Write, bytes),
-            through,
-            limits,
-            snapshot_bound,
-        })
+        Ok(RecoveryReader { storage: self, _lifecycle: lifecycle, through, limits, page_bytes, snapshot_bound })
     }
 }
 
@@ -98,11 +90,12 @@ impl<C> RecoveryReader<'_, C> {
         &self.through
     }
 
-    pub async fn snapshot(&self) -> Result<Option<RecoverySnapshot>> {
+    pub async fn snapshot(&self) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
         let Some(bound) = self.snapshot_bound else {
             return Ok(None);
         };
-        let snapshot = self.storage.inner.bounded(self.storage.inner.recovery.read_snapshot(bound)).await?;
+        let reservation = self.reserve(bound.get().saturating_mul(2))?.retain();
+        let snapshot = self.storage.inner.bounded(self.storage.inner.recovery.read_snapshot(bound, reservation.clone())).await?;
         if let Some(snapshot) = &snapshot
             && (!self.through.covers(&snapshot.through)? || encoded_size(snapshot)? > bound.get())
         {
@@ -111,16 +104,32 @@ impl<C> RecoveryReader<'_, C> {
         if let Some(snapshot) = &snapshot {
             self.storage.check_state_dependency(&snapshot.required_data)?;
         }
-        Ok(snapshot)
+        Ok(snapshot.map(|snapshot| crate::ReadBatch::retained(snapshot, reservation)))
     }
 
-    pub async fn page(&self, after: &RecoveryPosition) -> Result<RecoveryPage> {
-        let page = self.storage.inner.bounded(self.storage.inner.recovery.read_entries(after, &self.through, self.limits)).await?;
+    pub async fn page(&self, after: &RecoveryPosition) -> Result<crate::ReadBatch<RecoveryPage>> {
+        let reservation = self.reserve(self.page_bytes)?.retain();
+        let page = self
+            .storage
+            .inner
+            .bounded(self.storage.inner.recovery.read_entries(after, &self.through, self.limits, reservation.clone()))
+            .await?;
         page.check(after, &self.through, self.limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
         for entry in &page.entries {
             self.storage.check_state_dependency(&entry.required_data)?;
         }
-        Ok(page)
+        Ok(crate::ReadBatch::retained(page, reservation))
+    }
+
+    fn reserve(&self, bytes: usize) -> Result<Reservation> {
+        let mut state = self.storage.inner.state.lock().unwrap();
+        state.collect();
+        if bytes > self.storage.inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes) {
+            return Err(Error::ResourceExhausted { resource: "retained recovery read memory" });
+        }
+        state.scratch_bytes += bytes;
+        state.collect();
+        Ok(Reservation::charged_lifecycle(&self.storage.inner, Pool::Write, bytes))
     }
 
     pub fn finish(self, position: Position) -> watch::Receiver<Position> {

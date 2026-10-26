@@ -274,14 +274,15 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
         Ok(())
     }
 
-    fn decoding_memory(input: harmos_sdk::grpc::DecodeInput<'_>) -> std::result::Result<usize, crate::MessageError> {
-        std::mem::size_of::<Encoded<E>>()
-            .checked_add(input.contiguous()?.len())
-            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
-    }
-
-    fn decode(input: harmos_sdk::grpc::DecodeInput<'_>) -> std::result::Result<Encoded<E>, crate::MessageError> {
-        Ok(Encoded { payload: input.contiguous()?.to_vec(), grpc: true, capacity: None, endpoints: PhantomData })
+    fn decode_admitted<C>(
+        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+    ) -> std::result::Result<(Encoded<E>, C), tonic::Status> {
+        let payload = input.contiguous().map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+        let bytes = std::mem::size_of::<Encoded<E>>()
+            .checked_add(payload.len())
+            .ok_or_else(|| tonic::Status::invalid_argument("forwarded request size overflows"))?;
+        let claim = admit(bytes)?;
+        Ok((Encoded { payload: payload.to_vec(), grpc: true, capacity: None, endpoints: PhantomData }, claim))
     }
 }
 
@@ -292,14 +293,15 @@ impl crate::grpc::Wire<Opaque> for Forwarded {
         Ok(())
     }
 
-    fn decoding_memory(input: harmos_sdk::grpc::DecodeInput<'_>) -> std::result::Result<usize, crate::MessageError> {
-        std::mem::size_of::<Opaque>()
-            .checked_add(input.contiguous()?.len())
-            .ok_or_else(|| crate::MessageError::borrowed("forwarded payload size overflows"))
-    }
-
-    fn decode(input: harmos_sdk::grpc::DecodeInput<'_>) -> std::result::Result<Opaque, crate::MessageError> {
-        Ok(Opaque(input.contiguous()?.to_vec()))
+    fn decode_admitted<C>(
+        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
+    ) -> std::result::Result<(Opaque, C), tonic::Status> {
+        let payload = input.contiguous().map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+        let bytes = std::mem::size_of::<Opaque>()
+            .checked_add(payload.len())
+            .ok_or_else(|| tonic::Status::invalid_argument("forwarded payload size overflows"))?;
+        let claim = admit(bytes)?;
+        Ok((Opaque(payload.to_vec()), claim))
     }
 }
 

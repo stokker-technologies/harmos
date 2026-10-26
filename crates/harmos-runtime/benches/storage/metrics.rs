@@ -136,12 +136,12 @@ impl Observed {
             "{}",
             json!({
                 "kind": "storage_benchmark_resources", "story": story, "dataset_rows_or_bytes": dataset,
-                "backend": if settings.is_some() {"jsonl_test_fixture"} else {"arrow_transform_kernel"}, "concurrency": concurrency,
+                "backend": if settings.is_some() {"shipped_json_storage"} else {"arrow_transform_kernel"}, "concurrency": concurrency,
                 "read_accounted_sampled_peak_bytes": self.read_bytes, "pending_write_accounted_sampled_peak_bytes": self.pending_write_bytes,
                 "combined_accounted_sampled_peak_bytes": self.accounted_bytes,
                 "process_rss_baseline_max_bytes": self.rss_baseline_bytes, "process_sampled_peak_rss_bytes": self.sampled_peak_rss_bytes,
                 "rss_available": self.sampled_peak_rss_bytes.is_some(), "sample_interval_us": SAMPLE_INTERVAL.as_micros(), "samples": self.samples,
-                "settings": settings.map(|settings| format!("{settings:?}")), "provenance": provenance(),
+                "settings": settings.map(|settings| format!("{settings:?}")),
                 "memory_note": "Periodic samples include the whole benchmark process and may miss shorter peaks; unavailable platforms report null. Sampling overhead applies to all instrumented timings."
             })
         );

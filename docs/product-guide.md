@@ -241,7 +241,7 @@ singular `local_addr()` returns an address only when exactly one listener is
 active. Register shared services and middleware before attachment; they remain
 frozen while any listener is active.
 
-Storage is configured by three explicit groups, with no defaults:
+Storage uses explicit budget, request, response and filesystem settings, with no defaults:
 
 ```rust
 let settings = StorageSettings {
@@ -249,13 +249,92 @@ let settings = StorageSettings {
     request: StorageRequestSettings {
         max_pending_queries,
         max_active_queries,
+        max_active_file_operations,
         max_pending_write_batches,
         max_pending_write_bytes,
     },
     response: StorageResponseSettings { batch_rows, batch_bytes },
+    filesystem: StorageFilesystemSettings { poll_interval, max_entries, event_capacity },
 };
 let storage = StorageManager::new(StorageBackends { primary, state }, settings)?;
 ```
+
+Managed persistence composes replay, capture, snapshot policy and journal retention
+in `config::ManagedStorageSettings { replay, capture, snapshots, journal_tail }`.
+Pass it once to `builder.managed_storage(settings)`; select a record projection
+with `builder.store_records(projection)`. Managed state requires Serde encoding
+and decoding. Backend journal-entry and checkpoint bounds remain physical storage
+limits, separate from runtime snapshot cadence and payload limits.
+
+For filesystem persistence, use the shipped JSON backend:
+
+```rust
+let primary = JsonStorage::new(
+    JsonStorageSettings { root, max_entry_bytes },
+    history,
+);
+let backends = primary.into_backends(StorageStateSettings {
+    max_entry_bytes,
+    max_checkpoint_bytes,
+});
+let storage = StorageManager::new(backends, settings)?;
+```
+
+Import `StorageStateSettings` from `storage::state`. The root holds bounded JSONL
+segments in `data/`, staged and finished binary files, recovery metadata, and the
+existing state backend under `state/`. A root has one active backend owner.
+Choose the JSON entry bound to accommodate encoded metadata and payloads; JSON
+encoding can be larger than the original binary payload. This adapter is a
+simple persistence option, not a performance bound for other backends.
+
+Backend writes are independently durable typed calls: `write_schemas`,
+`write_objects`, `write_records`, `write_stream` and `write_files` consume
+`StorageBatch<T>`; file appends consume `FileChunk`. The manager owns ordering
+and retries. Each call must recognize replayed positions without duplicating
+data. A successful earlier call remains durable if a later call fails; there
+is no atomic transaction across these methods. Batch clones and slices share
+immutable backing storage. Manager record and stream admissions consume owned
+`RecordInput` and `StreamInput` vectors; inspection can still borrow them.
+
+`max_active_file_operations` bounds independent file operations. Chunks for one
+file remain ordered; final publication and durable cursors wait for their
+predecessors. Recovery writes consume `StorageBatch<RecoveryEntry>` and snapshots
+consume a singleton `StorageBatch<RecoverySnapshot>`, preserving shared ownership
+through retries and blocking filesystem work.
+
+Backend reads receive an owned `RetainedMemory` guard. Move it into blocking
+work and retain it with the completed result until the awaiting caller takes
+ownership; cancellation must not release the charge while that work still owns
+data. Admit additional parsing scratch with `try_grow_to` before allocation.
+Direct backend callers obtain a guard through `StorageManager::read_memory`
+and keep a clone for as long as they retain the returned data. Manager readers
+return shared owners that retain these charges automatically.
+
+File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
+`ReadFile` streams a selected byte range; `HashFile` returns its byte count and
+SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
+`CaptureConsistency::Stable` rejects detected source changes; it does not provide
+an atomic snapshot. `Bounded` copies the initially selected range. Local paths
+refer to the executing host and may be anywhere its process can access, including
+requests from gRPC, native plugins and Wasm guests. There are no configured-root
+boundaries, path-scoped grants or extra per-plugin allowlists for local sources.
+Normal operation exposure and existing stored-file scope grants still apply.
+Transport paths use UTF-8 and reject unrepresentable paths; native readers retain
+the host path representation. Symlink traversal is rejected.
+
+`FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
+explicit truncation/replacement events. Staged-production observation uses the
+distinct `FollowProduction` operation. Native file slices and shared read batches
+retain their memory charge until their final owner is released.
+
+`ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
+root, recursion flag and ordered include/exclude rules. Patterns match
+case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
+segments. The last matching rule wins; unmatched paths are excluded. An excluded
+ancestor does not suppress a later matching descendant. Watching subscribes before
+initial enumeration, emits `Existing` then `InitialScanComplete`, and reports
+notification uncertainty or overflow as `RescanRequired`. A modification event
+does not establish that a producer has finished writing a file.
 
 Finite storage queries select a source at a full persisted storage cursor,
 apply an ordered transform plan, and apply row `offset`/`limit` to the final
@@ -267,6 +346,11 @@ charge through clones and slices. The `storage.query` operation, declared in
 `harmos-domain`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
 `harmos::storage::operations::register`.
+
+`ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
+buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
+uniquely owned encoded buffers move through these conversions. Retained aliases
+continue to share their existing allocations and memory charges.
 
 ```rust
 let mut reader = storage.query(Query { at, source, transforms, slice }).await?;
@@ -305,19 +389,78 @@ let mut reader = storage
     })
     .await?;
 while let Some(page) = reader.next().await? {
-    // Vec<ObjectRevision<Experiment>>
+    // ReadBatch<Vec<ObjectRevision<Experiment>>>
 }
-let records = storage
+let pages = storage
     .read_records::<Reading>(RecordRead { at, selection, after: 0 })
     .await?
     .collect()
-    .await?; // Vec<StoredRecord<Reading>>
+    .await?; // ReadBatch<Vec<ReadBatch<Vec<StoredRecord<Reading>>>>>
 ```
+
+Typed `next()` results retain each page and its memory charge. `collect()` retains
+a collection of those pages without copying their records; its outer length is
+the page count. Borrow rows with `pages.iter().flat_map(|page| page.iter())`.
+For owned conversion, `page.try_map(additional_peak, convert_owned)` returns a
+new retained batch. The callback consumes the unique input; strong or weak
+aliases are refused. Bound all new output allocations and simultaneous conversion
+scratch before calling it. Admission is nonblocking and precedes the callback;
+Harmos accounts private owner growth. Existing charges remain retained without
+automatic shrinking, and failure consumes this handle. Nested pages must retain
+or map their own guards. Conversion errors and external captures must not retain
+payloads. The callback error type implements `From<harmos::storage::Error>`.
+
+`left.try_map_with(right, additional_peak, combine_owned)` moves two unique
+payloads into one retained result. It preserves every input claim and admits
+internal guard storage before allocation. This supports folding command pages
+into a retained parent object without cloning payloads or detaching their guards.
+Use one read session for dependent inputs; combining owners does not retroactively
+merge independent admission groups. Both handles are consumed on failure.
+
+Use one `storage.read_session()` when a read retains results while starting other
+object, record, Arrow or file reads. Pass that session to all participating helpers; its
+`read_objects`, `read_records`, `read_object`, `query` and `read_file` calls share admission dependencies.
+Explicit cursors and versions still select the data: a session is not a snapshot.
+Grouped reader creation returns resource exhaustion when an active query slot is
+unavailable. Independent manager reads retain their queued admission behavior.
+
+`session.collection::<Vec<ProjectedRow>>()` creates an empty retained collection
+for bounded pagination. Grow it with `try_map`, reserving the full replacement
+Vec backing before allocation; child pages keep their own charges. Stop reading
+at the selected limit and drop the reader to release its active query slot.
+Retained results remain valid after the reader and session are dropped. Do not
+use an independent `read_memory` reservation for a collection that subsequent
+reads depend on: it does not establish the shared admission dependency.
+
+For mutable metadata, `session.try_memory(payload_bytes)` reserves a nonblocking
+claim including private scaffolding. Keep the claim with the table it covers and
+call `try_grow_by(additional_peak)` before allocating or mutating. Refusal preserves
+the existing claim and table. `bytes()` includes scaffolding; `try_grow_to(total)`
+is an absolute high-water operation, not an atomic increment across aliases.
+
+`ArrowBatch::try_map` consumes its RecordBatch handle into a retained DTO result,
+admitting new allocations and scratch first. Immutable Arrow buffer aliases keep
+the shared charge; batches created by unadmitted decoding utilities refuse this
+projection. `arrow::encode_payloads_memory(schema, payload, encoding, max_bytes)`
+counts output collection and row storage using the encoding walker without heap
+scratch. First admit and retain encoded rows, then inspect their bytes for the
+consumer codec decoding bound and admit the typed projection separately.
+`FileReadBatch::try_map` delegates to its unique retained owner, so
+existing file-slice aliases refuse an owned move. Runtime query streaming retains
+the Arrow source until destination admission, then converts to IPC inside the
+admitted send closure.
 
 `harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
 `harmos::filesystem::publication` owns staged atomic installation, replacement,
 removal and explicit durability confirmation across Unix and Windows.
 
+Before a write whose receipt must remain in pending ownership, use
+`storage.object_receipts_memory(count)` for the producer's response bound, add
+caller-owned pending/response scaffolding, and preclaim through the same session.
+Move the final receipt's cursor and claim into pending ownership before the next
+await. Retry durability or delivery using that receipt; reissuing an ordinary
+`write_object_group` creates new revisions. The bound uses declared producer
+history and covers receipt-vector capacity and both history copies per receipt.
 Stored objects can enforce domain invariants through `StoredObject::validate`;
 object encoding, decoding and catalog validation apply the same check.
 
@@ -327,10 +470,16 @@ with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
 statistics. Snapshot reads run concurrently; closing storage waits for those in
 flight.
 
-`StorageManager::read_file(ReadFile { file, range })` streams a byte range of a
-finished, immutable file in response-sized batches. `FollowRecords`,
-`FollowStream`, `FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved
-history after its `after` cursor, then newly accepted entries.
+For storage-authoritative refresh, query an explicit `cursor_saved()` and then
+await `wait_saved_after(&cursor)` before querying the returned newer cursor.
+The passive wait coalesces advances without missing changes between snapshot
+and registration. It never requests persistence or retries failures. Cancellation
+drops only the waiter. Available newer durable progress is returned first;
+otherwise close, not-ready and persistence failures terminate the wait.
+`await_durable(&receipt)` remains the active completion wait for a known write.
+`FollowRecords`, `FollowStream` and `FollowObjects` deliver saved history after
+their `after` cursor, then newly accepted entries. File following uses the
+source/start contract above; staged producers use `FollowProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger takes a fixed share of the read budget;
@@ -526,6 +675,15 @@ runtime.plugin.register_sidecar::<Operations>(executable, settings, lane).await?
 runtime.plugin.initialize().await?;
 ```
 
+Sidecar wire credits bound in-flight encoded frames. Each connection also owns
+one reusable writer scratch buffer bounded by the protocol frame ceiling,
+separate from those credits. Scalar-only writers coalesce small frames to avoid
+separate header and payload writes. Frame size helpers count envelopes without
+encoding them. Child-call admission includes the actual portable context;
+`Frame::child_payload_encoded_len` supports that calculation. The general
+request helper covers routed calls and children with empty portable context.
+Logical frame sizes exclude the four-byte packet prefix; wire credits include it.
+
 Automatic restarts default to zero. A configured allowance applies to each
 explicit activation cycle, including crashes after readiness; successful startup
 does not replenish it. Status retains the lifetime startup count, last failure
@@ -563,19 +721,43 @@ authoring imports. See the [crate manifest](../crates/harmos/Cargo.toml) and
 
 ## Performance
 
-Streams and native plugin transport have separate benchmark suites, so codec
-cost, transport throughput, and application consumption can be examined
-independently.
+Storage, sidecar hosts, Wasm guests and external gRPC commands have separate
+benchmark suites. Lower-level stream and framing suites retain their codec and
+transport measurements. The carrier suites enable the `benchmark` feature on the
+shipped Schematic sidecar and guest, sharing their transfer contracts and handlers.
+Each direction uses 256-record, 4096-sample or 1 MiB file batches, comparing unary
+calls against a stream. Generation and content verification are outside timing;
+completion includes the receiver acknowledgment. Records, files and samples run
+concurrently on one reused host/plugin per carrier, with isolated transfer IDs;
+unary and streamed variants remain sequential within each dataset. The fixture retains at most
+64 MiB of data, with four queued batches and a 4 MiB stream budget. File transfer
+cases measure crossing the carrier boundary; the storage suite measures persistence.
+The real carrier hash check runs outside timing; its storage worker is started
+only for that check and stopped before command and transfer measurements.
 
 | Suite | What It Measures |
 | --- | --- |
+| [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow; directory listing and change delivery. |
+| [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
+| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
+| [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
 | [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
 
-The paced rate is a benchmark input, not a claimed throughput result. Run
-`mise run bench` to measure your checkout. Published comparisons need the
-revision, hardware, payload, batching, and carrier alongside the results;
-these native benchmarks do not establish Wasm guest performance.
+Build matching executables and carrier fixtures with `mise run build:rust:bench`,
+then run `mise run bench`. Storage uses 1 MiB chunks, 4096-row input ceilings,
+128 MiB read memory and 64 MiB pending-write memory. Reads start from persisted
+data; setup writes and verification are excluded from read timings. These are
+warm filesystem measurements, not forced cold-cache reads.
+The filesystem cases use 30 MiB files; directory listing and initial watching
+use 1,000 entries. Hash/capture include their required hashing work. Directory
+change latency includes creating the file and receiving its notification.
+
+One million samples represent one second at 1 MHz without pacing ingestion.
+The paced transport rate is also an input, not a claimed throughput result.
+Published comparisons need the revision, hardware, payload, batching and carrier
+alongside native Criterion results. The JSON backend gives one concrete reference;
+it does not establish a worst-case bound for other adapters.
 
 ## Documentation
 

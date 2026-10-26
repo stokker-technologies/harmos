@@ -20,7 +20,7 @@
 // Local Imports
 use super::manager::encoded_size;
 use super::state::Permit;
-use super::{ReadLimits, RecordWrite};
+use super::{ReadLimits, RecordInput};
 use crate::{Error, Result, state::Envelope};
 use std::{future::Future, pin::Pin};
 
@@ -60,7 +60,7 @@ impl<'a> ProjectedRecords<'a> {
         Self { permit, limits, refused: false }
     }
 
-    pub async fn push(&mut self, record: RecordWrite<'_>) -> Result<()> {
+    pub async fn push(&mut self, record: RecordInput) -> Result<()> {
         if self.refused {
             return Err(limit());
         }

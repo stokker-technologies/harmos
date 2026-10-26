@@ -23,7 +23,6 @@ use harmos_runtime::storage::query::transform::{
     project::{Project, Projection},
 };
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
-use harmos_runtime::storage::*;
 
 // Local Imports
 use super::{fixture::Fixture, waveforms};
@@ -46,21 +45,23 @@ use super::{fixture::Fixture, waveforms};
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/query");
-    for periods in [4, 64] {
+    group.sample_size(10);
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    for periods in [1, 6] {
         let samples = waveforms::samples(periods);
         let inputs = waveforms::inputs(&samples);
         for concurrency in [1, 2, 4] {
-            let fixture = executor.block_on(Fixture::new(concurrency));
+            let fixture = executor.block_on(Fixture::new());
             executor.block_on(async {
-                fixture.storage.write_schema(&waveforms::schema(), &waveforms::definition()).await.unwrap();
+                fixture.storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
                 for inputs in inputs.chunks(192) {
-                    let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-                    fixture.storage.write_stream(&batch).await.unwrap();
+                    let batch = inputs.to_vec();
+                    fixture.storage.write_stream(batch).await.unwrap();
                 }
                 fixture.storage.flush().await.unwrap();
             });
-            group.throughput(Throughput::Elements((samples.len() / 2) as u64));
-            for metric in ["first-batch", "completion"] {
+            group.throughput(Throughput::Elements(((samples.len() / 2 - 3) * concurrency) as u64));
+            for metric in ["all-first-batches", "completion"] {
                 group.bench_function(BenchmarkId::new(format!("{metric}/{concurrency}"), samples.len()), |bencher| {
                     bencher.iter_custom(|iterations| {
                         executor.block_on(async {
@@ -86,25 +87,36 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     slice: RowSlice { offset: 3, limit: None },
                                 };
                                 let probe = super::metrics::Probe::start(fixture.storage.clone());
+                                let openings = (0..concurrency).map(|_| async {
+                                    let mut reader = fixture.storage.query(query.clone()).await.unwrap();
+                                    assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
+                                    let Some(QueryArrow::Batch(first)) = reader.next().await.unwrap() else {
+                                        panic!("nonempty query");
+                                    };
+                                    (reader, first)
+                                });
+
                                 let started = Instant::now();
-                                let mut reader = fixture.storage.query(query).await.unwrap();
-                                assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
-                                let Some(QueryArrow::Batch(first)) = reader.next().await.unwrap() else {
-                                    panic!("nonempty query");
-                                };
+                                let readers = futures_util::future::join_all(openings).await;
                                 let first_elapsed = started.elapsed();
-                                let mut rows = first.as_record_batch().num_rows();
-                                drop(first);
-                                while let Some(output) = reader.next().await.unwrap() {
-                                    if let QueryArrow::Batch(batch) = output {
-                                        rows += batch.as_record_batch().num_rows();
+                                let completions = readers.into_iter().map(|(mut reader, first)| async move {
+                                    let mut rows = first.as_record_batch().num_rows();
+                                    drop(first);
+                                    while let Some(output) = reader.next().await.unwrap() {
+                                        if let QueryArrow::Batch(batch) = output {
+                                            rows += batch.as_record_batch().num_rows();
+                                        }
                                     }
-                                }
+                                    (rows, reader.completion().unwrap().rows)
+                                });
+                                let completions = futures_util::future::join_all(completions).await;
                                 let completion = started.elapsed();
                                 resources.merge(probe.finish());
-                                elapsed += if metric == "first-batch" { first_elapsed } else { completion };
-                                assert_eq!(rows, samples.len() / 2 - 3);
-                                assert_eq!(reader.completion().unwrap().rows, rows as u64);
+                                elapsed += if metric == "all-first-batches" { first_elapsed } else { completion };
+                                for (rows, completed) in completions {
+                                    assert_eq!(rows, samples.len() / 2 - 3);
+                                    assert_eq!(completed, rows as u64);
+                                }
                             }
                             resources.report(&format!("query/{metric}"), samples.len(), concurrency, Some(&fixture.settings));
                             elapsed

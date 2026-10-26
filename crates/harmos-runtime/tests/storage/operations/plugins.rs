@@ -142,13 +142,13 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     let schema = super::super::schema();
     fixture
         .storage
-        .write_schema(&schema, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![field]] })
+        .write_schema(schema.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![field]] })
         .await
         .unwrap();
     for (index, value) in values.iter().enumerate() {
         let payload = value.encode_to_vec();
         let item = Identifier::new(format!("value{index}")).unwrap();
-        fixture.storage.write_records(&[super::super::record(&schema, &item, &payload)]).await.unwrap();
+        fixture.storage.write_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
     }
     fixture.storage.flush().await.unwrap();
 }
@@ -227,7 +227,7 @@ async fn query_grants_enforced() {
     let mut collected = reducer.download::<Query>(query(&fixture, schema.clone()), super::writes::settings()).unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(&*output).unwrap() {
+        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
             let values =
                 batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
             count = Some(values.value(0));

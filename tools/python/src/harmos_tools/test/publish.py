@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/publish.py; sha256:b88b53b6ac1ecdf101a940f6fbc80c7ff022358455ae534bf67c16f95dfb06af
+# Rendered by stkr project update from templates/python/test/publish.py; sha256:7cdb1207bce9664637ff9f08aaf4e393ef96690a28bd6e23ddfa90be0353148f
 # ***
 #
 # Harmos
@@ -22,6 +22,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
+from ..build import storage
 from . import policy
 
 # Type Checking Imports
@@ -78,13 +79,14 @@ def main() -> None:
     with temporary.directory() as scratch:
         for command in commands(directory, options.rust, options.python, scratch):
             environment = dict(os.environ)
-            target = str(scratch / "cargo")
+            target = str(directory / "target/publication")
             for name in (
                 "CARGO_TARGET_DIR",
                 "CARGO_BUILD_TARGET_DIR",
                 "CARGO_BUILD_BUILD_DIR",
             ):
                 environment[name] = target
+            storage.preflight(directory, target=Path(target))
             subprocess.run(
                 command,
                 stdin=sys.stdin,

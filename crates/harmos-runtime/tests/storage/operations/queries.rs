@@ -34,7 +34,7 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::storage::{
-    ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends, StorageManager, StoredObject,
+    ObjectKey, ObjectRetention, PayloadEncoding, RecordInput, SchemaKey, StorageBackends, StorageManager, StoredObject,
 };
 use harmos_runtime::{DefinitionId, Identified, Identifier, Message, Runtime};
 
@@ -127,16 +127,23 @@ async fn query_operation_batches() {
         &harmos_runtime::config::SchemaSettings::default(),
     )
     .unwrap();
-    fixture.storage.write_schema(&schema, &graph).await.unwrap();
+    fixture.storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
     let values = [9, 4, 7, 4, 1, 8];
     let items = (0..values.len()).map(|index| Identifier::new(format!("row-{index}")).unwrap()).collect::<Vec<_>>();
     let payloads = values.iter().map(|value| Reading { value: *value }.encode_to_vec()).collect::<Vec<_>>();
     let records = items
         .iter()
         .zip(&payloads)
-        .map(|(item, payload)| RecordWrite { schema: &schema, scope: None, item, source: None, source_time: None, payload })
+        .map(|(item, payload)| RecordInput {
+            schema: schema.clone(),
+            scope: None,
+            item: item.clone(),
+            source: None,
+            source_time: None,
+            payload: (payload).to_vec(),
+        })
         .collect::<Vec<_>>();
-    fixture.storage.write_records(&records).await.unwrap();
+    fixture.storage.write_records((records).to_vec()).await.unwrap();
     let at = fixture.storage.flush().await.unwrap();
 
     // A Later Durable Row Must Not Advance The Requested Query Boundary.
@@ -144,13 +151,13 @@ async fn query_operation_batches() {
     let late_payload = Reading { value: 100 }.encode_to_vec();
     fixture
         .storage
-        .write_records(&[RecordWrite {
-            schema: &schema,
+        .write_records(vec![RecordInput {
+            schema: schema.clone(),
             scope: None,
-            item: &late_item,
+            item: late_item.clone(),
             source: None,
             source_time: None,
-            payload: &late_payload,
+            payload: (late_payload).to_vec(),
         }])
         .await
         .unwrap();
@@ -184,7 +191,7 @@ async fn query_operation_batches() {
     let instance = fixture.runtime.operations.submit_endpoints::<Query, _>(request, sender).unwrap();
 
     // One Invocation Announces One Schema, Then Bounded Batches.
-    let first = QueryArrow::try_from(&*receiver.recv().await.unwrap()).unwrap();
+    let first = QueryArrow::try_from(receiver.recv().await.unwrap().into_owned_request().unwrap().0).unwrap();
     let QueryArrow::Schema(header) = &first else {
         panic!("query must announce schema first");
     };
@@ -195,7 +202,7 @@ async fn query_operation_batches() {
     let mut identities = Vec::new();
     let mut batches = 0;
     while let Some(item) = receiver.recv().await {
-        let item = QueryArrow::try_from(&*item).unwrap();
+        let item = QueryArrow::try_from(item.into_owned_request().unwrap().0).unwrap();
         let QueryArrow::Batch(batch) = &item else {
             panic!("schema may only be announced once");
         };
@@ -308,3 +315,93 @@ async fn query_heterogeneous_projection() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn ipc_admission_retains() {
+    let fixture = Fixture::new(config()).await;
+    let schema = SchemaKey {
+        id: Identifier::new("admitted-query").unwrap(),
+        version: NonZeroU32::MIN,
+        payload_encoding: PayloadEncoding::PostcardV1,
+    };
+    let graph = harmos_runtime::schema::graph::Schema::from_declaration(
+        <Reading as harmos_runtime::schema::Described>::DEFINITION,
+        &harmos_runtime::config::SchemaSettings::default(),
+    )
+    .unwrap();
+    fixture.storage.write_schema(schema.clone(), graph).await.unwrap();
+    fixture
+        .storage
+        .write_records(vec![RecordInput {
+            schema: schema.clone(),
+            scope: None,
+            item: Identifier::new("row").unwrap(),
+            source: None,
+            source_time: None,
+            payload: Reading { value: 7 }.encode_to_vec(),
+        }])
+        .await
+        .unwrap();
+    fixture.storage.flush().await.unwrap();
+    for cancel in [true, false] {
+        let mut reader = fixture
+            .storage
+            .query(Request {
+                at: fixture.storage.cursor_saved(),
+                source: Source::Records(RecordSelection {
+                    schema: schema.clone(),
+                    scope: None,
+                    item: None,
+                    source_start: None,
+                    source_end: None,
+                }),
+                transforms: Vec::new(),
+                slice: RowSlice::default(),
+            })
+            .await
+            .unwrap();
+        let item = reader.next().await.unwrap().unwrap();
+        // The Announced Schema Shares Its Claim With The Reader's Plan.
+        // Release That Peer So This Story Isolates The Pending Output Owner.
+        drop(reader);
+        fixture.data.snapshots_released().await;
+        let before = fixture.storage.status().read_bytes;
+        assert!(before > 0);
+        let bytes = 4 * 1024 * 1024;
+        let (sender, mut receiver) =
+            harmos_runtime::operations::stream::<harmos_runtime::storage::query::QueryOutput>(harmos_runtime::operations::StreamSettings {
+                items: NonZeroUsize::MIN,
+                bytes: NonZeroUsize::new(bytes).unwrap(),
+            })
+            .unwrap();
+        let blocked = sender.reserve(bytes).await.unwrap();
+        let converted = std::cell::Cell::new(false);
+        let mut sending = Box::pin(sender.send_with(item.output_memory_size(), || {
+            converted.set(true);
+            Ok(item.output())
+        }));
+        assert!(super::super::pending(sending.as_mut()).await);
+        assert!(!converted.get());
+        assert_eq!(fixture.storage.status().read_bytes, before);
+        drop(blocked);
+        if cancel {
+            drop(sending);
+            assert!(!converted.get());
+            assert_eq!(fixture.storage.status().read_bytes, 0);
+        } else {
+            sending.await.unwrap();
+            assert!(converted.get());
+            let output = receiver.recv().await.unwrap();
+            assert!(matches!(&*output, harmos_runtime::storage::query::QueryOutput::Schema(_)));
+            assert_eq!(fixture.storage.status().read_bytes, 0);
+            // Destination Admission Now Covers The Wire Bytes Until Consumption.
+            let mut next = Box::pin(sender.reserve(bytes));
+            assert!(super::super::pending(next.as_mut()).await);
+            drop(output);
+            drop(next.await.unwrap());
+            continue;
+        }
+        assert_eq!(fixture.storage.status().read_bytes, 0);
+    }
+    fixture.finish().await;
+}

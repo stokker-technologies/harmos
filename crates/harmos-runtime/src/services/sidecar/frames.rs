@@ -150,7 +150,7 @@ where
                             let task_token = Arc::clone(&token);
                             let future = async move {
                                 let frame = match invocation.await {
-                                    Ok(result) => Frame::Answer { id, result },
+                                    Ok(result) => Frame::Answer { id, result: result.into() },
                                     Err(error) => Frame::Refusal { id, refusal: error },
                                 };
                                 let _ = returns.send((frame, task_token)).await;
@@ -170,7 +170,7 @@ where
                 let refusal = if self.routed_tasks.len() >= CHILD_REQUESTS {
                     crate::plugin::DispatchError::Busy.into_refusal()
                 } else if let Some(caller) = &self.caller {
-                    match caller.submit_encoded(&method, params) {
+                    match caller.submit_encoded(&method, params.into_vec()) {
                         Ok(invocation) => {
                             let returns = self.returns.clone();
                             let token = Arc::new(());
@@ -179,7 +179,7 @@ where
                             let future = async move {
                                 let outcome = crate::operations::children::lifecycle(invocation, cancelled).await;
                                 let frame = match outcome {
-                                    Ok(result) => Frame::Answer { id, result },
+                                    Ok(result) => Frame::Answer { id, result: result.into() },
                                     Err(error) => {
                                         let refusal = crate::operations::children::refused(error);
                                         Frame::Refusal { id, refusal }
@@ -250,7 +250,7 @@ where
         Ok(())
     }
 
-    pub(super) fn settle(&mut self, id: u64, answer: Result<Vec<u8>, SidecarError>) {
+    pub(super) fn settle(&mut self, id: u64, answer: Result<harmos_sidecar::FramePayload, SidecarError>) {
         self.child_scopes.remove(&id);
         if let Some(waiting) = self.pending.remove(&id) {
             let _ = waiting.send(answer);

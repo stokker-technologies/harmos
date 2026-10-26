@@ -43,12 +43,12 @@ use super::waveforms;
 
 /* === Private Functions === */
 
-// Start Journaled Storage With One Active Query And One Pending Write Batch.
-async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
+// Start Controlled Storage With One Active Query And One Pending Write Batch.
+async fn start() -> (Arc<Data>, StorageManager) {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-    let data = Arc::new(Data::<()>::journaled(directory, history()).unwrap());
+    let data = Arc::new(Data::new(history()));
     let storage: StorageManager =
         StorageManager::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings).unwrap();
     super::fixture::start(&storage).await;
@@ -59,16 +59,22 @@ async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager) {
 
 #[tokio::test]
 async fn dropped_write_retained() {
-    let directory = tempfile::tempdir().unwrap();
-    let (data, storage) = start(directory.path()).await;
+    let (data, storage) = start().await;
     let schema = waveforms::schema();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("cancelled").unwrap();
-    let record = |item| RecordWrite { schema: &schema, scope: None, item, source: None, source_time: None, payload: &[1, 2, 3] };
+    let record = |item: &Identifier| RecordInput {
+        schema: schema.clone(),
+        scope: None,
+        item: item.clone(),
+        source: None,
+        source_time: None,
+        payload: ([1, 2, 3]).to_vec(),
+    };
 
     // A Controlled Backend Gate Separates Acceptance From Durability.
     data.control.block_write.store(true, Ordering::SeqCst);
-    let accepted = storage.write_records(&[record(&first)]).await.unwrap();
+    let accepted = storage.write_records(vec![record(&first)]).await.unwrap();
     let flushing = {
         let storage = storage.clone();
         tokio::spawn(async move { storage.flush().await })
@@ -76,7 +82,7 @@ async fn dropped_write_retained() {
     data.control.write_entered.notified().await;
     assert_eq!(storage.cursor_saved().sequence, 0);
     let batch = [record(&second)];
-    let mut waiting = Box::pin(storage.write_records(&batch));
+    let mut waiting = Box::pin(storage.write_records((batch).to_vec()));
     assert!(super::pending(waiting.as_mut()).await);
     drop(waiting);
     // Dropping The Future Must Not Retract The Already Accepted Batch.
@@ -93,7 +99,16 @@ async fn dropped_write_retained() {
 #[tokio::test]
 async fn cancelled_query_releases() {
     let directory = tempfile::tempdir().unwrap();
-    let (_data, storage) = start(directory.path()).await;
+    let mut settings = storage_settings();
+    settings.request.max_active_queries = NonZeroUsize::MIN;
+    settings.request.max_pending_write_batches = NonZeroUsize::MIN;
+    let data = JsonStorage::new(
+        JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+        history(),
+    );
+    let backends = data.into_backends(super::fixture::state_settings());
+    let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
+    super::fixture::start(&storage).await;
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
     let query = || harmos_domain::operations::storage::Query {

@@ -56,7 +56,7 @@ pub struct Follower<T: Entry> {
 
 pub struct FollowPage<T> {
     entries: Vec<T>,
-    _charge: Reservation,
+    _charge: crate::arrow::RetainedMemory,
 }
 
 pub(super) struct Following {
@@ -100,7 +100,7 @@ impl<C> StorageManager<C> {
         let mut follower =
             Follower { inner: Arc::clone(&self.inner), id, held: Held::default(), selection, history: None, after, saved, accepted };
         if after < follower.saved.sequence {
-            follower.history = Some(self.snapshot(&follower.saved).await?);
+            follower.history = Some(self.snapshot(&follower.saved, &follower.held).await?);
         }
         Ok(follower)
     }
@@ -112,10 +112,10 @@ impl<C> StorageManager<C> {
         let rows = limits.rows.min(SCAN_ROWS);
         let bytes = limits.bytes.min(self.inner.settings.scan_bytes());
         let charge = rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get());
-        let mut reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?;
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
-        let (entries, encoded) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }).await?;
-        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
+        let reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?.retain();
+        let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
+        let (entries, encoded) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }, reservation.clone()).await?;
+        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)))?;
         Ok(FollowPage { entries, _charge: reservation })
     }
 }
@@ -146,17 +146,17 @@ impl<T: Entry> Follower<T> {
             return Ok(None);
         };
         let bytes = self.inner.settings.scan_bytes();
-        let mut reservation =
-            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?;
+        let reservation =
+            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?.retain();
         let page = ScanPage { after: self.after, rows: SCAN_ROWS, bytes };
-        let (entries, encoded) = snapshot.scan::<T>(&self.selection, page).await?;
+        let (entries, encoded) = snapshot.scan::<T>(&self.selection, page, reservation.clone()).await?;
         let Some(last) = entries.last() else {
             self.history = None;
             self.after = self.after.max(self.saved.sequence);
             return Ok(None);
         };
         self.after = last.position().sequence;
-        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
+        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)))?;
         Ok(Some(FollowPage { entries, _charge: reservation }))
     }
 
@@ -186,7 +186,7 @@ impl<T: Entry> Follower<T> {
         };
         self.after = last.position().sequence;
         reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
-        Ok(Some(FollowPage { entries, _charge: reservation }))
+        Ok(Some(FollowPage { entries, _charge: reservation.retain() }))
     }
 }
 

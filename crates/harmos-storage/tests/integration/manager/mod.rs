@@ -13,13 +13,13 @@
 
 #[allow(dead_code)]
 #[path = "../../support/storage.rs"]
-mod backend;
+pub(crate) mod backend;
 mod batching;
 mod cancellation;
 mod cursors;
 mod exhaustion;
 mod files;
-mod fixture;
+pub(crate) mod fixture;
 mod mapping;
 mod mutations;
 mod nominal;

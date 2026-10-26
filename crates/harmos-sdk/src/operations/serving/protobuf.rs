@@ -33,6 +33,9 @@ use crate::{MessageError, Portable};
 type Decode = fn(&[u8], &mut dyn Any) -> Result<(), MessageError>;
 type Encode = fn(&dyn Any) -> Result<Vec<u8>, MessageError>;
 
+#[cfg(feature = "streaming")]
+type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
+
 /* === Structs === */
 
 #[derive(Clone, Copy)]
@@ -51,9 +54,8 @@ pub(super) struct Codec {
 #[derive(Clone, Copy)]
 pub(super) struct ItemCodec {
     pub(super) item_type: std::any::TypeId,
-    pub(super) memory: fn(&[u8]) -> Result<usize, MessageError>,
+    pub(super) prepare: Prepare,
     pub(super) decode: Decode,
-    pub(super) length: fn(&dyn Any) -> Result<usize, MessageError>,
     pub(super) encode: Encode,
 }
 
@@ -91,17 +93,12 @@ fn direction<D: Direction>() -> Option<ItemCodec> {
 fn item<T: Portable>() -> ItemCodec {
     ItemCodec {
         item_type: std::any::TypeId::of::<T>(),
-        memory: |payload| grpc::decoding_memory::<T>(DecodeInput::new(payload)),
-        decode: decode::<T>,
-        length: |value| {
-            value.downcast_ref::<T>().ok_or_else(|| MessageError::borrowed("protobuf stream item type differs from operation")).and_then(
-                |value| {
-                    let mut bytes = Vec::new();
-                    grpc::encode(value, &mut bytes)?;
-                    Ok(bytes.len())
-                },
-            )
+        prepare: |payload| {
+            let prepared = grpc::prepare::<T>(DecodeInput::new(payload))?;
+            let memory = prepared.memory();
+            Ok((prepared.into_postcard(), memory))
         },
+        decode: decode_postcard::<T>,
         encode: encode::<T>,
     }
 }
@@ -109,8 +106,15 @@ fn item<T: Portable>() -> ItemCodec {
 fn decode<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
     let target =
         target.downcast_mut::<Option<T>>().ok_or_else(|| MessageError::borrowed("protobuf request type differs from operation"))?;
-    grpc::decoding_memory::<T>(DecodeInput::new(payload))?;
     *target = Some(grpc::decode::<T>(DecodeInput::new(payload))?);
+    Ok(())
+}
+
+#[cfg(feature = "streaming")]
+fn decode_postcard<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
+    let target =
+        target.downcast_mut::<Option<T>>().ok_or_else(|| MessageError::borrowed("protobuf stream item type differs from operation"))?;
+    *target = Some(T::decode(payload)?);
     Ok(())
 }
 

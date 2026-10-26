@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:4bbd131e348f56d63664234b2e3116cb786a35c6e3225fecbb44495fcd1b8b19
+# Rendered by stkr project update from templates/python/test/run.py; sha256:e47b9e19db269343651fa753e0de204271cad2455f46e4a2cac0c9db864c67bb
 # ***
 #
 # Harmos
@@ -12,12 +12,12 @@
 
 # Standard Library Imports
 import argparse
+import hashlib
 import json
 import math
 import os
 import platform
 import shutil
-import statistics
 import subprocess
 import sys
 import time
@@ -28,7 +28,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from ..build import paths
+from ..build import paths, storage
 from . import archive, nextest, policy, pytest, report, vitest
 
 # Type Checking Imports
@@ -90,6 +90,10 @@ def test(
             command = vitest.run(extra, junit, deadline)
 
         environment["STKR_TEST_PROFILE"] = profile
+        environment.pop("STKR_TEST_REPORT_DIR", None)
+        if category == "system":
+            traces = report.native_directory(directory, report.TRACES / profile / paths.target() / key)
+            environment["STKR_TEST_REPORT_DIR"] = str(traces)
         lane = _lane(
             directory,
             rules,
@@ -128,6 +132,7 @@ def coverage(
 
         # Instrumented Run
         if language == "rust":
+            storage.preflight(directory)
             binaries = archive.binaries(directory, profile)
             names = sorted(set(binaries.values()))
             expression, rest = nextest.selection(category, extra, names)
@@ -148,6 +153,7 @@ def coverage(
             raise policy.TestError("coverage is measured for rust and python")
 
         environment["STKR_TEST_PROFILE"] = profile
+        environment.pop("STKR_TEST_REPORT_DIR", None)
         lane = _lane(
             directory,
             rules,
@@ -216,17 +222,14 @@ def bench(
     if not rows:
         raise policy.TestError(f"no {category} {language} benchmark produced results")
 
-    kept = [row for row in report.parse_bench(directory / report.BENCH_CSV) if (row.category, row.language) != (category, language)]
-    merged = sorted(
-        [*kept, *rows],
-        key=lambda row: (row.category, row.language, row.domain, row.name),
-    )
-    report.write(directory / report.BENCH_CSV, report.bench_csv(merged))
-    report.write(directory / report.BENCH_MARKDOWN, report.bench_markdown(merged))
-    for row in rows:
-        if row.change_pct is not None and math.isfinite(row.change_pct) and row.change_pct > rules.bench_regression_percent:
-            print(f"benchmark regression: {row.name}: {row.change_pct:.1f}%")
-    print(f"bench {category}-{language}: {len(rows)} results; see {report.BENCH_MARKDOWN}")
+    for name, median, baseline in rows:
+        if baseline is None:
+            print(f"benchmark baseline missing: {name}")
+            continue
+        change = (median - baseline) / baseline * 100
+        if math.isfinite(change) and change > rules.bench_regression_percent:
+            print(f"benchmark regression: {name}: {change:.1f}%")
+    print(f"bench {category}-{language}: {len(rows)} native results; see {report.BENCHMARKS}")
     return 0 if status == 0 else 1
 
 
@@ -468,101 +471,64 @@ def _bench_rust(
     extra: Sequence[str],
     archive_arguments: Sequence[str],
     identity: dict,
-) -> tuple[list[report.Bench], int]:
+) -> tuple[list[tuple[str, float, float | None]], int]:
     messages = paths.output(directory, "build", "bench") / "bench/compiler.json"
     if not messages.is_file():
         raise policy.TestError("missing benchmark compiler metadata; run build:rust:bench first")
     archive.fixtures(directory, "bench", [messages.relative_to(directory).as_posix()])
-    targets = []
+    compatibility = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    rows = []
+    status = 0
     for line in messages.read_text(encoding="utf-8").splitlines():
         message = json.loads(line) if line.startswith("{") else {}
         target = message.get("target", {})
         name = target.get("name", "")
         artifact = message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable")
-        if artifact and (name == category or name.startswith(category + "-")):
-            targets.append(
-                (
-                    name,
-                    str(directory / message["executable"]),
-                    (directory / message["manifest_path"]).parent,
-                )
-            )
-
-    home = directory / CRITERION
-    baselines = _criterion_baselines(home, identity)
-    saving = refresh or not baselines
-    flags = ["--save-baseline", BASELINE] if saving else ["--baseline-lenient", BASELINE]
-    environment = dict(os.environ, CRITERION_HOME=str(home))
-    rows: list[report.Bench] = []
-    status = 0
-    for name, executable, package in targets:
+        if not artifact or not (name == category or name.startswith(category + "-")):
+            continue
+        manifest = Path(message["manifest_path"])
+        owner = manifest.parent / name
+        if manifest.is_absolute() or ".." in owner.parts:
+            raise policy.TestError("benchmark owner escapes the repository")
+        home = report.native_directory(directory, CRITERION / compatibility / owner)
+        if any(path.is_symlink() or path.is_junction() for path in home.rglob("*")):
+            raise policy.TestError("native benchmark files must not be linked")
+        baselines = _criterion_baselines(home)
         since = time.time()
-        code, peak = _measured([executable, "--bench", *flags, *extra], package, environment)
+        environment = dict(os.environ, CRITERION_HOME=str(home.resolve()))
+        environment.pop("STKR_TEST_REPORT_DIR", None)
+        code, peak = _measured(
+            [str(directory / message["executable"]), "--bench", "--baseline-lenient", BASELINE, *extra],
+            directory / manifest.parent,
+            environment,
+        )
         status = status or code
-        domain = name.removeprefix(category).removeprefix("-") or name
-        rows += _criterion_rows(home, category, domain, since, peak if measure else None, baselines)
-        if saving and code == 0:
-            for path in home.rglob(f"{BASELINE}/estimates.json"):
-                if path.stat().st_mtime >= since:
-                    report.write(
-                        path.with_name("inputs.json"),
-                        json.dumps(
-                            {"identity": identity, "sha256": archive._digest(path)},
-                            indent=2,
-                        )
-                        + "\n",
-                    )
+        if any(path.is_symlink() or path.is_junction() for path in home.rglob("*")):
+            raise policy.TestError("native benchmark files must not be linked")
+        for path in sorted(home.rglob("new/estimates.json")) if home.is_dir() else []:
+            if path.stat().st_mtime < since:
+                continue
+            benchmark = json.loads(path.with_name("benchmark.json").read_text(encoding="utf-8"))
+            estimates = json.loads(path.read_text(encoding="utf-8"))
+            key = path.parent.parent
+            rows.append((benchmark.get("full_id", key.name), estimates["median"]["point_estimate"], baselines.get(key)))
+            if code == 0 and (refresh or key not in baselines):
+                shutil.copytree(path.parent, key / BASELINE, dirs_exist_ok=True)
+        if measure and peak is not None:
+            print(f"benchmark peak memory: {owner.as_posix()}: {peak} bytes")
     return rows, status
 
 
-def _criterion_baselines(home: Path, identity: dict) -> dict[Path, float]:
-    """Median of every benchmark's `dev` baseline before this run replaces anything."""
+def _criterion_baselines(home: Path) -> dict[Path, float]:
     medians = {}
     for path in home.rglob(f"{BASELINE}/estimates.json") if home.is_dir() else []:
         try:
-            recorded = report.load(path.with_name("inputs.json"))
-            if not isinstance(recorded, dict) or recorded.get("identity") != identity or recorded.get("sha256") != archive._digest(path):
-                continue
             median = json.loads(path.read_text(encoding="utf-8"))["median"]["point_estimate"]
         except (OSError, ValueError, KeyError, TypeError):
             continue
         if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0:
             medians[path.parent.parent] = median
     return medians
-
-
-def _criterion_rows(
-    home: Path,
-    category: str,
-    domain: str,
-    since: float,
-    peak: int | None,
-    baselines: dict[Path, float],
-) -> list[report.Bench]:
-    rows = []
-    for path in sorted(home.rglob("new/benchmark.json")) if home.is_dir() else []:
-        if path.stat().st_mtime < since:
-            continue
-        identity = json.loads(path.read_text(encoding="utf-8"))
-        estimates = json.loads((path.parent / "estimates.json").read_text(encoding="utf-8"))
-        sample = json.loads((path.parent / "sample.json").read_text(encoding="utf-8"))
-        per_iteration = [time / iterations for time, iterations in zip(sample["times"], sample["iters"], strict=True)]
-        rows.append(
-            report.Bench(
-                category,
-                "rust",
-                domain,
-                identity.get("full_id", path.parent.parent.name),
-                len(per_iteration),
-                estimates["median"]["point_estimate"],
-                estimates["mean"]["point_estimate"],
-                _percentile(per_iteration, 0.95),
-                estimates.get("std_dev", {}).get("point_estimate"),
-                peak,
-                baselines.get(path.parent.parent),
-            )
-        )
-    return rows
 
 
 def _bench_python(
@@ -573,67 +539,42 @@ def _bench_python(
     measure: bool,
     extra: Sequence[str],
     identity: dict,
-) -> tuple[list[report.Bench], int]:
-    with _scratch(directory, f"bench-{category}-python", "bench") as scratch:
-        output = scratch / "benchmarks.json"
-        cwd = directory / project
-        status, peak = _measured(
-            pytest.bench(cwd, category, output, extra),
-            cwd,
-            pytest.environment(directory),
-        )
-        if not output.is_file():
-            raise policy.TestError("pytest-benchmark wrote no results")
-
-        # The Baseline Is This Runner's Own Record Of Medians
-        stored = directory / report.BENCHMARKS / f"python-{category}-{BASELINE}.json"
-        try:
-            baseline = report.load(stored)
-        except (OSError, ValueError):
-            baseline = {}
-        baselines = baseline.get("medians", {}) if isinstance(baseline, dict) and baseline.get("identity") == identity else {}
-        baselines = baselines if isinstance(baselines, dict) else {}
-        baselines = {
-            name: median
-            for name, median in baselines.items()
-            if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0
-        }
-        rows = []
-        for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
-            stats = entry["stats"]
-            data = [value * 1e9 for value in stats.get("data", [])]
-            name = entry.get("fullname", entry["name"])
-            rows.append(
-                report.Bench(
-                    category,
-                    "python",
-                    entry.get("group") or Path(name.partition("::")[0]).stem,
-                    name,
-                    stats.get("rounds", len(data)),
-                    stats["median"] * 1e9,
-                    stats["mean"] * 1e9,
-                    _percentile(data, 0.95),
-                    stats.get("stddev", 0) * 1e9,
-                    peak if measure else None,
-                    baselines.get(name),
-                )
-            )
-        if refresh or not baselines:
-            report.dump(
-                stored,
-                {
-                    "schema": 1,
-                    "identity": identity,
-                    "medians": {row.name: row.median_ns for row in rows},
-                },
-            )
-        return rows, status
-
-
-def _percentile(values: Sequence[float], quantile: float) -> float | None:
-    if len(values) < 2:
-        return values[0] if values else None
-    return statistics.quantiles(values, n=100, method="inclusive")[round(quantile * 100) - 1]
+) -> tuple[list[tuple[str, float, float | None]], int]:
+    owner = Path(project)
+    if owner.is_absolute() or ".." in owner.parts:
+        raise policy.TestError("benchmark project escapes the repository")
+    compatibility = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    home = report.native_directory(directory, report.BENCHMARKS / "python" / compatibility / owner / category)
+    output = home / "new.json"
+    stored = home / f"{BASELINE}.json"
+    if output.is_symlink() or stored.is_symlink():
+        raise policy.TestError("native benchmark files must not be linked")
+    try:
+        previous = json.loads(stored.read_text(encoding="utf-8")) if stored.is_file() else {}
+        baselines = {entry.get("fullname", entry["name"]): entry["stats"]["median"] * 1e9 for entry in previous.get("benchmarks", [])}
+    except (OSError, ValueError, KeyError, TypeError):
+        baselines = {}
+    baselines = {
+        name: value
+        for name, value in baselines.items()
+        if not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value > 0
+    }
+    output.unlink(missing_ok=True)
+    cwd = directory / project
+    environment = pytest.environment(directory)
+    environment.pop("STKR_TEST_REPORT_DIR", None)
+    status, peak = _measured(pytest.bench(cwd, category, output, extra), cwd, environment)
+    if not output.is_file():
+        raise policy.TestError("pytest-benchmark wrote no results")
+    rows = []
+    for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
+        name = entry.get("fullname", entry["name"])
+        rows.append((name, entry["stats"]["median"] * 1e9, baselines.get(name)))
+    if status == 0 and (refresh or not baselines):
+        shutil.copyfile(output, stored)
+    if measure and peak is not None:
+        print(f"benchmark peak memory: {project}/{category}: {peak} bytes")
+    return rows, status
 
 
 # === Entry Point === #

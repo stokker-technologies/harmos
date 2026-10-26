@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 // Third Party Imports
 // Local Imports
-use super::capacity::{Held, Pool, Refusal, Reservation};
+use super::capacity::{Pool, Refusal, Reservation};
 use super::manager::{Domain, ENTRY_OVERHEAD, Operation};
 use super::{
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager,
@@ -101,7 +101,7 @@ impl<C: ObjectCatalog> ObjectGroup<'_, C> {
 }
 
 impl<C> ObjectGroup<'_, C> {
-    pub(super) fn write_value(&mut self, value: &ObjectValue) -> Result<()> {
+    pub(super) fn write_value(&mut self, value: ObjectValue) -> Result<()> {
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
@@ -114,15 +114,14 @@ impl<C> ObjectGroup<'_, C> {
         let metadata = self.metadata(&value.schema, &graph)?;
         let verification =
             (self.allowance - self.used).checked_sub(metadata).ok_or_else(|| invalid("object metadata exceeds allowance"))?;
-        definition.validate_admitted(value, self.manager.inner.settings.max_batch_bytes(), verification)?;
+        definition.validate_admitted(&value, self.manager.inner.settings.max_batch_bytes(), verification)?;
         let retained = metadata
             .checked_add(value.item.memory_size())
-            .and_then(|bytes| bytes.checked_add(value.payload.len()))
+            .and_then(|bytes| bytes.checked_add(value.payload.capacity()))
             .ok_or_else(|| invalid("object size overflow"))?;
         if retained > self.allowance - self.used {
             return Err(invalid("object payload exceeds allowance"));
         }
-        let value = value.clone();
         let bytes = metadata + value.item.memory_size();
         self.append(value, graph, bytes)
     }
@@ -174,14 +173,27 @@ impl<C: ObjectCatalog> StorageManager<C> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 
-    pub async fn read_object<T: StoredObject>(&self, key: &T::Key, version: ObjectVersion) -> Result<Option<ObjectRevision<T>>>
+    pub async fn read_object<T: StoredObject>(
+        &self, key: &T::Key, version: ObjectVersion,
+    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
+    where
+        C: Contains<T>,
+    {
+        crate::ReadSession::standalone(self).read_object(key, version).await
+    }
+}
+
+impl<C: ObjectCatalog> crate::ReadSession<C> {
+    pub async fn read_object<T: StoredObject>(
+        &self, key: &T::Key, version: ObjectVersion,
+    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
     where
         C: Contains<T>,
     {
         let schema = object_schema::<T>()?;
-        let budget = self.inner.settings.scan_bytes();
+        let budget = self.manager.inner.settings.scan_bytes();
         let point = ObjectPoint { schema: schema.id.clone(), item: object_key(key, budget)?, version };
-        let saved = self.cursor_saved();
+        let saved = self.manager.cursor_saved();
         if let ObjectVersion::Exact(version) = &point.version {
             version.history().check(&saved.history)?;
             if version.revision().get() > saved.sequence {
@@ -190,14 +202,16 @@ impl<C: ObjectCatalog> StorageManager<C> {
         }
 
         // Charge The Bounded Raw Read, Then Its Decoded Value. Growth Refused As
-        // A Certain Cycle Releases The Read And Waits For Both With Nothing Held.
+        // A Certain Cycle Releases This Attempt Before Retrying Its Combined Claim.
+        // Other Session Dependencies Remain Held, Including Queued Snapshot Release.
         let raw = budget.get().saturating_add(ENTRY_OVERHEAD);
         let mut credit = raw;
-        let (object, _charge) = loop {
-            let held = Held::default();
-            let mut charge = Reservation::wait(&self.inner, Pool::Read, &held, credit, None).await.map_err(Refusal::into_error)?;
-            let snapshot = self.snapshot(&saved).await?;
-            let Some(object) = snapshot.read_object(&point).await? else {
+        let held = &self.held;
+        let (object, charge) = loop {
+            let charge =
+                Reservation::wait(&self.manager.inner, Pool::Read, held, credit, None).await.map_err(Refusal::into_error)?.retain();
+            let snapshot = self.manager.snapshot(&saved, held).await?;
+            let Some(object) = snapshot.read_object(&point, charge.clone()).await? else {
                 return Ok(None);
             };
             if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version) {
@@ -206,18 +220,42 @@ impl<C: ObjectCatalog> StorageManager<C> {
             let decoded = T::decoding_memory(&object.value.payload)
                 .map_err(|error| Error::backend("preflight object", crate::BackendFailure::Corrupt, error))?;
             let total = raw.saturating_add(decoded);
-            match charge.grow(total.saturating_sub(charge.bytes()), None).await {
+            match charge.grow_to(total).await {
                 Ok(()) => break (object, charge),
                 Err(Refusal::Cycle) => credit = total,
                 Err(refusal) => return Err(refusal.into_error()),
             }
         };
         let value = decode_admitted::<T>(&object.value, &schema)?;
-        Ok(Some(ObjectRevision { value, position: object.position, version: object.version }))
+        let revision = ObjectRevision { value, position: object.position, version: object.version };
+        let bytes = revision.memory_size().saturating_add(ENTRY_OVERHEAD);
+        charge.grow_to(bytes).await.map_err(Refusal::into_error)?;
+        charge.shrink_to(bytes)?;
+        Ok(Some(crate::ReadBatch::retained(revision, charge)))
     }
 }
 
 impl<C> StorageManager<C> {
+    /// Bounds the owned receipt Vec returned for an object group.
+    ///
+    /// Uses the producer's declared history, including both cloned histories in
+    /// each receipt. Preclaim this plus caller-owned pending/response scaffolding
+    /// before writing. Move the resulting cursor and claim into pending ownership
+    /// before the next await; retries reuse that receipt instead of reissuing an
+    /// ordinary group write. This method neither allocates nor admits memory.
+    pub fn object_receipts_memory(&self, count: NonZeroUsize) -> Result<usize> {
+        let history = self.inner.primary.history();
+        let exhausted = || Error::ResourceExhausted { resource: "object receipt memory" };
+        let history = history.store.as_str().len().checked_add(history.epoch.as_str().len()).ok_or_else(exhausted)?;
+        let receipt =
+            history.checked_mul(2).and_then(|bytes| bytes.checked_add(std::mem::size_of::<ObjectReceipt>())).ok_or_else(exhausted)?;
+        count
+            .get()
+            .checked_mul(receipt)
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<ObjectReceipt>>()))
+            .ok_or_else(exhausted)
+    }
+
     pub(super) fn object_admission_bytes(&self) -> NonZeroUsize {
         NonZeroUsize::new(
             self.inner.settings.max_batch_bytes().get().saturating_mul(4).min(self.inner.settings.request.max_pending_write_bytes.get()),
@@ -247,7 +285,7 @@ impl<C> StorageManager<C> {
                         std::mem::size_of::<StorageSchema>()
                             + std::mem::size_of::<ObjectEntry>()
                             + std::mem::size_of::<ObjectReceipt>()
-                            + 2 * std::mem::size_of::<super::StoragePart<'_>>()
+                            + 2 * std::mem::size_of::<super::StorageBatch<StorageSchema>>()
                             + 2 * ENTRY_OVERHEAD,
                     )
                     .ok_or_else(|| invalid("object group size overflow"))?;
@@ -269,7 +307,11 @@ impl<C> StorageManager<C> {
                     return Err(invalid("object group count differs from admission"));
                 }
                 receipts = Some(group.receipts);
-                Ok(Operation::ObjectGroup { schemas: group.schemas, objects: group.objects, bytes: group.used })
+                Ok(Operation::ObjectGroup {
+                    schemas: super::StorageBatch::new(group.schemas),
+                    objects: super::StorageBatch::new(group.objects),
+                    bytes: group.used,
+                })
             })
             .await?;
         if let Some(receipts) = receipts {
@@ -278,12 +320,12 @@ impl<C> StorageManager<C> {
         // A Matching Retry Reconstructs The Same Revision Tokens From Its Fixed
         // Original Group Frontier. No Payload Is Revalidated Or Readmitted.
         let first = last.checked_sub(positions as u64 - 2).ok_or_else(|| invalid("invalid object group receipt"))?;
-        Ok((0..count.get())
-            .map(|index| {
-                let position = self.position(first + (index * 2) as u64);
-                ObjectReceipt { version: ObjectVersionToken::new(position.clone()), position }
-            })
-            .collect())
+        let mut receipts = Vec::with_capacity(count.get());
+        for index in 0..count.get() {
+            let position = self.position(first + (index * 2) as u64);
+            receipts.push(ObjectReceipt { version: ObjectVersionToken::new(position.clone()), position });
+        }
+        Ok(receipts)
     }
 }
 
@@ -296,3 +338,42 @@ pub(super) fn invalid(reason: &'static str) -> crate::Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_backend::{Data, Recovery, storage_settings};
+    use std::sync::Arc;
+
+    #[test]
+    fn receipt_bound_history() {
+        let mut store = String::with_capacity(4096);
+        store.push_str("producer-store");
+        let mut epoch = String::with_capacity(4096);
+        epoch.push_str("producer-epoch");
+        let history = crate::StoreHistory { store: crate::Identifier::new(store).unwrap(), epoch: crate::Identifier::new(epoch).unwrap() };
+        let recovery = Recovery::new(history.clone());
+        let expected = history.clone();
+        let storage = StorageManager::<()>::new(
+            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history)), state: Arc::new(recovery) },
+            storage_settings(),
+        )
+        .unwrap();
+        storage.inner.state.lock().unwrap().status.saved.history.store = crate::Identifier::new("different-cursor").unwrap();
+        for count in [1, 2, 17] {
+            let bound = storage.object_receipts_memory(NonZeroUsize::new(count).unwrap()).unwrap();
+            let mut receipts = Vec::with_capacity(count);
+            for index in 0..count {
+                let position = storage.position(index as u64 + 1);
+                receipts.push(ObjectReceipt { version: ObjectVersionToken::new(position.clone()), position });
+            }
+            assert_eq!(receipts.capacity(), count);
+            assert_eq!(receipts.memory_size(), bound);
+            assert_eq!(receipts[0].position.history, expected);
+        }
+        assert!(matches!(
+            storage.object_receipts_memory(NonZeroUsize::new(usize::MAX).unwrap()),
+            Err(Error::ResourceExhausted { resource: "object receipt memory" })
+        ));
+    }
+}

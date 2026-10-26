@@ -17,14 +17,13 @@
 
 // Standard Library Imports
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 // Third Party Imports
 use arrow_array::{Array, Int64Array, StringArray, StructArray};
 
 // Local Imports
 use super::fixture::{
-    Bank, Data, Identifier, Ledger, Recovery, Runtime, SchemaKey, StorageBackends, StorageManager, catalog, config, history, record, schema,
+    Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
 use super::operations::Lanes;
 use harmos_runtime::Message;
@@ -32,6 +31,8 @@ use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::operations::Query;
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+use harmos_runtime::storage::{JsonStorage, JsonStorageSettings};
+use std::num::NonZeroUsize;
 
 /* === Constants === */
 
@@ -98,9 +99,9 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 async fn runtime_baseline_walks() {
     // Boot The Host Over A Journal On Disk
     let root = tempfile::tempdir().unwrap();
-    let data = Arc::new(Data::<()>::journaled(root.path(), history()).unwrap());
-    let recovery = Arc::new(Recovery::new(history()));
-    let backends = StorageBackends { primary: data.clone(), state: recovery.clone() };
+    let settings = JsonStorageSettings { root: root.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() };
+    let data = JsonStorage::new(settings.clone(), history());
+    let backends = data.into_backends(state_settings());
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
@@ -122,21 +123,33 @@ async fn runtime_baseline_walks() {
     let schema = schema();
     let declaration = <Reading as Described>::DEFINITION;
     let graph = Graph::from_declaration(declaration, &SchemaSettings::default()).unwrap();
-    storage.write_schema(&schema, &graph).await.unwrap();
+    storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("second").unwrap();
     let low = Message::encode_to_vec(&Reading { value: -3 });
     let high = Message::encode_to_vec(&Reading { value: 8 });
     let records = [record(&schema, &first, &low), record(&schema, &second, &high)];
-    let written = storage.write_records(&records).await.unwrap();
+    let written = storage.write_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();
     assert!(storage.cursor_saved().sequence >= written.sequence);
-    let saved = saved(&storage, &schema).await;
-    assert_eq!(saved, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
+    let expected = saved(&storage, &schema).await;
+    assert_eq!(expected, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
 
     // Shut Down; The Runtime Closes The Storage It Owns
     runtime.stop().await.unwrap();
     assert!(!storage.status().running);
-    assert_eq!(data.control.closes.load(Ordering::SeqCst), 1);
-    assert_eq!(recovery.control.closes.load(Ordering::SeqCst), 1);
+    assert!(storage.status().closed);
+
+    // Reopening The Shipped Backends Proves Shutdown Released Their Ownership.
+    let backends = JsonStorage::new(settings, history()).into_backends(state_settings());
+    let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .register(Lanes::catalog())
+        .runtime_with_storage(&reopened)
+        .await
+        .unwrap();
+    assert_eq!(saved(&reopened, &schema).await, expected);
+    runtime.stop().await.unwrap();
+    assert!(reopened.status().closed);
 }

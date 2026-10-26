@@ -210,7 +210,7 @@ pub struct Jsonl<A: Wire> {
     log: Arc<Mutex<Log>>,
     batch: usize,
     after: Option<Position>,
-    forward: BTreeMap<Position, String>,
+    forward: BTreeMap<Position, Arc<Vec<u8>>>,
     halted: bool,
     application: PhantomData<fn() -> A>,
 }
@@ -245,7 +245,7 @@ struct Log {
     schema: u32,
     append_ready: bool,
     failed: bool,
-    pending: Vec<String>,
+    pending: Vec<Arc<Vec<u8>>>,
     written: Position,
     checkpoint: Position,
 }
@@ -306,18 +306,18 @@ impl<A: Wire> Jsonl<A> {
 
     fn encode(&self, entry: &Entry<Recorded<A>>) -> Result<String, serde_json::Error> {
         let (id, version, payload) = if let Some(prepared) = &entry.prepared {
-            (prepared.id.clone(), prepared.version, prepared.payload.clone())
+            (prepared.id.clone(), prepared.version, std::borrow::Cow::Borrowed(&prepared.payload))
         } else {
             match &entry.value {
                 Recorded::System(fact) => {
                     let (id, version) = fact.identify();
-                    let payload = serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?;
+                    let payload = std::borrow::Cow::Owned(serde::Serialize::serialize(&fact.payload, serde_json::value::Serializer)?);
 
                     (id, version, payload)
                 }
                 Recorded::Transaction(_) | Recorded::Record(_) => {
                     let (id, version) = A::identify(&entry.value);
-                    let payload = A::encode(&entry.value, serde_json::value::Serializer)?;
+                    let payload = std::borrow::Cow::Owned(A::encode(&entry.value, serde_json::value::Serializer)?);
 
                     (id, version, payload)
                 }
@@ -352,7 +352,7 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
         }
         let mut frames = std::collections::BTreeMap::new();
         for (_, line) in std::mem::take(&mut self.forward) {
-            let Ok(members) = members(&line) else {
+            let Ok(members) = std::str::from_utf8(&line).map_err(io::Error::other).and_then(members) else {
                 self.halted = true;
                 return self.log().checkpoint;
             };
@@ -399,7 +399,7 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
                 self.halted = true;
                 return self.log().checkpoint;
             }
-            frames.insert(first, (end, line));
+            frames.insert(first, (end, Arc::new(line.into_bytes())));
             index += count;
         }
         let batch = self.batch;
@@ -430,7 +430,7 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
         self.log().persist();
     }
 
-    fn redelivered(&mut self, stored: &[(Position, Vec<u8>)]) {
+    fn redelivered(&mut self, stored: &[(Position, Arc<Vec<u8>>)]) {
         if self.halted {
             return;
         }
@@ -445,7 +445,7 @@ impl<A: Wire> JournalConsumer<A> for Jsonl<A> {
             if serde_json::from_str::<serde_json::Value>(line).is_err() {
                 continue;
             }
-            self.forward.insert(*position, line.to_owned());
+            self.forward.insert(*position, Arc::clone(bytes));
         }
     }
 }
@@ -473,8 +473,8 @@ impl<A: Wire> Source<A> for Jsonl<A> {
             }
             log.written = end;
             log.checkpoint = end;
-            encoded.push((end, line.as_bytes().to_vec()));
             let grouped = is_group(&line);
+            encoded.push((end, Arc::new(line.into_bytes())));
             if grouped {
                 commits.push((first, end));
             }
@@ -516,10 +516,10 @@ impl<A: Wire> Source<A> for Jsonl<A> {
             if end <= after || first > through {
                 continue;
             }
-            if first > after && end <= through {
-                encoded.push((end, line.as_bytes().to_vec()));
-            }
             let grouped = is_group(&line);
+            if first > after && end <= through {
+                encoded.push((end, Arc::new(line.into_bytes())));
+            }
             if grouped {
                 commits.push((first, end));
             }
@@ -689,7 +689,8 @@ impl Log {
             if terminated {
                 line.pop();
             }
-            let text = wire::lf_only(line.clone())?;
+            let length = line.len();
+            let text = wire::lf_only(std::mem::take(&mut line))?;
             let group = members(&text)?;
             if self.schema == LEGACY_SCHEMA && is_group(&text) {
                 return Err(io::Error::other("v2 cannot contain group frames"));
@@ -698,7 +699,7 @@ impl Log {
                 return Err(io::Error::other("journal position gap"));
             }
             expected = group.last().expect("validated group").position.checked_add(1);
-            valid += line.len() as u64 + u64::from(terminated);
+            valid += length as u64 + u64::from(terminated);
             result.push(text);
         }
         Ok((result, valid))
@@ -768,7 +769,8 @@ impl Log {
             let start = self.file.metadata()?.len();
             let result = (|| -> io::Result<()> {
                 for line in &self.pending {
-                    writeln!(self.file, "{line}")?;
+                    self.file.write_all(line)?;
+                    self.file.write_all(b"\n")?;
                 }
                 self.file.flush()?;
                 self.file.sync_all()

@@ -24,6 +24,9 @@ crate-type = ["cdylib", "rlib"]
 
 # === Features === #
 
+[features]
+benchmark = []
+
 # === Dependencies === #
 
 # The domain crate and nothing above it: a guest compiles the editor's domain

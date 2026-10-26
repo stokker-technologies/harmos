@@ -56,13 +56,21 @@ impl FileState {
         self.base_bytes
             + self.mutation.as_ref().map_or(0, crate::MemorySize::memory_size)
             + match &self.command {
-                Some(Command::Write(bytes)) => bytes.len(),
+                Some(Command::Write(bytes)) if !bytes.charged() => bytes.allocation_bytes(),
                 _ => 0,
             }
     }
 
     pub(crate) fn pending_batch(&self) -> bool {
         self.command.is_some()
+    }
+}
+
+impl Drop for FileState {
+    fn drop(&mut self) {
+        if let Some(Command::Write(bytes)) = &self.command {
+            bytes.retire();
+        }
     }
 }
 
@@ -89,13 +97,15 @@ impl FileAction {
 }
 
 impl State {
-    pub(crate) fn file_action(&mut self) -> Option<FileAction> {
+    pub(crate) fn file_action(&mut self, allow_finish: bool, selected: Option<u64>) -> Option<FileAction> {
         let ids: Vec<_> = self.files.keys().copied().collect();
         let id =
             ids.iter().copied().filter(|id| *id > self.file_cursor).chain(ids.iter().copied().filter(|id| *id <= self.file_cursor)).find(
                 |id| {
                     let file = &self.files[id];
-                    !file.in_flight
+                    selected.is_none_or(|selected| selected == *id)
+                        && !file.in_flight
+                        && (allow_finish || !matches!(file.command, Some(Command::Finish { .. })))
                         && (file.abandoned || file.command.is_some())
                         && (!matches!(file.command, Some(Command::Finish { .. }))
                             || (self.reserved == 0 && self.finishing.is_none_or(|owner| owner == *id)))
@@ -104,6 +114,9 @@ impl State {
         self.file_cursor = id;
         let file = self.files.get_mut(&id).unwrap();
         if file.abandoned && !matches!(file.command, Some(Command::Finish { .. })) {
+            if let Some(Command::Write(bytes)) = &file.command {
+                bytes.retire();
+            }
             file.command = Some(Command::Abort);
         }
         let action = match file.command.as_mut()? {
@@ -155,13 +168,18 @@ impl State {
                 file.progress.lock().unwrap().failure = Some(source);
             }
             if matches!(action, FileAction::Refuse { .. }) {
+                if let Some(Command::Write(bytes)) = &file.command {
+                    bytes.retire();
+                }
                 file.command = Some(Command::Abort);
                 file.abandoned = true;
             }
         }
     }
 
-    pub(crate) fn file_completed(&mut self, action: FileAction, completed: FileCompleted, session_timeout: Duration) {
+    pub(crate) fn file_completed(
+        &mut self, action: FileAction, completed: FileCompleted, session_timeout: Duration, inner: &Arc<crate::manager::Inner>,
+    ) {
         let id = action.id();
         let Some(file) = self.files.get_mut(&id) else {
             return;
@@ -228,7 +246,8 @@ impl State {
             }
             FileCompleted::Written => {
                 let Some(Command::Write(bytes)) = file.command.take() else { unreachable!("one owned batch") };
-                file.hash.update(&bytes);
+                bytes.retire();
+                file.hash.update(bytes.as_slice());
                 file.length += bytes.len() as u64;
                 progress.length = file.length;
                 progress.completed = file.ticket;
@@ -240,12 +259,13 @@ impl State {
                 self.next = target.index;
                 self.data_accepted = target;
                 self.finishing = None;
-                self.queue.push_back(Arc::new(Pending {
-                    journal: None,
-                    index: target.index,
-                    bytes: file.reference_bytes,
-                    operation: Operation::File(reference.clone()),
-                }));
+                self.queue.push_back(Arc::new(Pending::new(
+                    inner,
+                    None,
+                    target.index,
+                    file.reference_bytes,
+                    Operation::File(crate::StorageBatch::new(vec![reference.clone()])),
+                )));
                 progress.reference = Some(reference);
                 progress.closed = true;
             }
@@ -269,3 +289,100 @@ impl State {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_backend::{Data, Recovery, history, storage_settings};
+
+    fn storage() -> crate::StorageManager {
+        crate::StorageManager::new(
+            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            storage_settings(),
+        )
+        .unwrap()
+    }
+
+    fn file(inner: &Arc<crate::manager::Inner>) -> FileState {
+        let metadata = FileMetadata {
+            id: crate::Identifier::new("charged-file").unwrap(),
+            scope: None,
+            media_type: "application/octet-stream".into(),
+            expected_length: None,
+            expected_sha256: None,
+        };
+        let mut bytes = Vec::with_capacity(128);
+        bytes.extend_from_slice(b"body");
+        let charge = crate::batch::WriteCharge::new(inner, bytes.capacity());
+        FileState {
+            staging: StagedFile { history: history(), id: metadata.id.clone() },
+            metadata: Arc::new(metadata),
+            session: None,
+            mutation: None,
+            extra: None,
+            progress: Arc::new(Mutex::new(Progress::default())),
+            hash: Sha256::new(),
+            length: 0,
+            ticket: 1,
+            command: Some(Command::Write(crate::FileChunk::new(bytes).retained(charge))),
+            abandoned: false,
+            in_flight: false,
+            retrying: false,
+            base_bytes: 1024,
+            reference_bytes: 256,
+        }
+    }
+
+    #[test]
+    fn command_retention() {
+        let storage = storage();
+        let (failed, detached) = {
+            let mut state = storage.inner.state.lock().unwrap();
+            state.files.insert(1, file(&storage.inner));
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 1152);
+            assert_eq!(state.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst), 0);
+            let action = state.file_action(true, None).unwrap();
+            let FileAction::Write { bytes, .. } = &action else { unreachable!() };
+            let detached = bytes.slice(1..2);
+            state.file_failed(&action, Arc::new(Error::NotReady { domain: "injected write" }), false);
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 1152);
+            let retry = state.file_action(true, None).unwrap();
+            state.file_completed(retry, FileCompleted::Written, Duration::from_secs(60), &storage.inner);
+            state.collect();
+            assert_eq!(state.files[&1].length, 4);
+            assert_eq!(state.status.pending_bytes, 1152);
+            (action, detached)
+        };
+        drop(failed);
+        assert_eq!(storage.status().pending_bytes, 1152);
+        drop(detached);
+        assert_eq!(storage.status().pending_bytes, 1024);
+        storage.inner.state.lock().unwrap().files.clear();
+        assert_eq!(storage.status().pending_bytes, 0);
+    }
+
+    #[test]
+    fn shutdown_retention() {
+        let storage = storage();
+        let detached = {
+            let mut state = storage.inner.state.lock().unwrap();
+            let mut file = file(&storage.inner);
+            let Some(Command::Write(bytes)) = &file.command else { unreachable!() };
+            let detached = bytes.slice(0..0);
+            file.abandoned = true;
+            state.files.insert(1, file);
+            state.status.closing = true;
+            let abort = state.file_action(true, None).unwrap();
+            state.file_completed(abort, FileCompleted::Aborted, Duration::from_secs(60), &storage.inner);
+            state.status.closed = true;
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 128);
+            detached
+        };
+        assert_eq!(storage.status().pending_bytes, 128);
+        drop(detached);
+        assert_eq!(storage.status().pending_bytes, 0);
+    }
+}

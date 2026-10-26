@@ -107,8 +107,8 @@ async fn discovery_shares_producer() {
         .records
         .register(
             "plugin",
-            &schema,
-            &harmos_runtime::schema::graph::Schema::from_declaration(
+            schema.clone(),
+            harmos_runtime::schema::graph::Schema::from_declaration(
                 Message::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default(),
             )
@@ -123,8 +123,8 @@ async fn discovery_shares_producer() {
         &producer
             .register(
                 "plugin",
-                &schema,
-                &harmos_runtime::schema::graph::Schema::from_declaration(
+                schema.clone(),
+                harmos_runtime::schema::graph::Schema::from_declaration(
                     Message::DEFINITION,
                     &harmos_runtime::config::SchemaSettings::default()
                 )
@@ -140,8 +140,8 @@ async fn discovery_shares_producer() {
         producer
             .register(
                 "other",
-                &schema,
-                &harmos_runtime::schema::graph::Schema::from_declaration(
+                schema.clone(),
+                harmos_runtime::schema::graph::Schema::from_declaration(
                     Message::DEFINITION,
                     &harmos_runtime::config::SchemaSettings::default()
                 )
@@ -151,7 +151,10 @@ async fn discovery_shares_producer() {
             .is_err()
     );
     assert!(
-        producer.register("plugin", &schema, &harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.is_err()
+        producer
+            .register("plugin", schema.clone(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] })
+            .await
+            .is_err()
     );
     assert_eq!(producer.definitions().len(), 1);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);

@@ -16,6 +16,7 @@
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 // Third Party Imports
@@ -23,7 +24,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos_storage::Identifier;
-use harmos_storage::StreamWrite;
+use harmos_storage::StreamInput;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
 
@@ -51,30 +52,37 @@ enum FlushGate {
 /* === Private Functions === */
 
 #[tokio::test(start_paused = true)]
-async fn append_kinds_coalesce() {
+async fn typed_prefix_survives() {
     let f = Fixture::new(config()).await;
-    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "one").await;
     write(&f.storage, "two").await;
     for sequence in 1..=2 {
         f.storage
-            .write_stream(&[StreamWrite {
-                stream: &Identifier::new("voltage").unwrap(),
+            .write_stream(vec![StreamInput {
+                stream: Identifier::new("voltage").unwrap().clone(),
                 sequence,
                 record: record(&schema(), &Identifier::new(format!("row-{sequence}")).unwrap(), &[1]),
             }])
             .await
             .unwrap();
     }
-    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "three").await;
     write(&f.storage, "four").await;
-    f.storage.write_recovery(&[b"first"]).await.unwrap();
-    f.storage.write_recovery(&[b"second"]).await.unwrap();
+    f.storage.write_recovery(vec![b"first".to_vec()]).await.unwrap();
+    f.storage.write_recovery(vec![b"second".to_vec()]).await.unwrap();
+    // The First Type Is Durable Even When The Following Typed Call Fails.
+    f.data.control.write_failure_at.store(2, Ordering::SeqCst);
+    assert!(f.storage.flush().await.is_err());
+    assert_eq!(f.storage.cursor_saved().sequence, 1);
+    assert_eq!(f.data.schemas.lock().unwrap().len(), 1);
+    assert!(f.data.records.lock().unwrap().is_empty());
+    assert!(f.data.rows.lock().unwrap().is_empty());
     assert_eq!(f.storage.flush().await.unwrap().sequence, 8);
     f.storage.flush_recovery().await.unwrap();
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 4, 1, 2]);
-    assert_eq!(*f.data.control.writes.lock().unwrap(), (1..=8).collect::<Vec<_>>());
+    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 2, 2, 2, 1, 2]);
+    assert_eq!(*f.data.control.writes.lock().unwrap(), [1, 2, 3, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), vec![2]);
 
     let schemas = f.data.schemas.lock().unwrap().clone();
@@ -209,7 +217,7 @@ async fn failure_retains_work() {
     let key = schema();
     let item = Identifier::new("not-admitted").unwrap();
     let inputs = [record(&key, &item, &[1])];
-    let failure = f.storage.write_records(&inputs).await.unwrap_err();
+    let failure = f.storage.write_records((inputs).to_vec()).await.unwrap_err();
     assert!(matches!(failure, harmos_storage::Error::Persistence { .. }));
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
@@ -244,7 +252,7 @@ async fn queued_writes_wait() {
         tokio::task::yield_now().await;
     }
     for entry in [b"first".as_slice(), b"second".as_slice()] {
-        f.storage.write_recovery(&[entry]).await.unwrap();
+        f.storage.write_recovery(vec![entry.to_vec()]).await.unwrap();
         tokio::task::yield_now().await;
     }
     assert!(f.data.control.writes.lock().unwrap().is_empty());
@@ -293,7 +301,7 @@ async fn progress_preserves_cursor() {
         through: f.storage.status().recovery_accepted,
         payload: vec![7],
     };
-    f.storage.write_snapshot(&snapshot).await.unwrap();
+    f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     write(&f.storage, "after").await;
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 2);
@@ -307,7 +315,7 @@ async fn progress_preserves_cursor() {
 }
 
 #[tokio::test]
-async fn atomic_batch_retries() {
+async fn typed_batch_retries() {
     let f = Fixture::new(config()).await;
     let key = schema();
     let item = Identifier::new("group").unwrap();
@@ -315,10 +323,10 @@ async fn atomic_batch_retries() {
     let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.failures.store(1, Ordering::SeqCst);
-    let accepted = f.storage.write_records(&records).await.unwrap();
+    let accepted = f.storage.write_records((records).to_vec()).await.unwrap();
     let admitted = f.storage.status().pending_bytes;
 
-    // A Valid Atomic Batch Retains Its Entire Reservation While The Backend Is Blocked.
+    // A Typed Batch Retains Its Entire Reservation While The Backend Is Blocked.
     let flushing = {
         let storage = f.storage.clone();
         tokio::spawn(async move { storage.flush().await })
@@ -351,7 +359,7 @@ async fn item_refuses_whole() {
     let item = Identifier::new("oversized").unwrap();
     let large = vec![255; 8192];
     let inputs = [record(&key, &item, b"small"), record(&key, &item, &large)];
-    assert!(matches!(f.storage.write_records(&inputs).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
+    assert!(matches!(f.storage.write_records((inputs).to_vec()).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);
     assert!(f.data.control.writes.lock().unwrap().is_empty());
@@ -363,12 +371,12 @@ async fn schema_decoding_bounded() {
     let fields: Vec<_> = (1..=64)
         .map(|tag| Field { name: Cow::Owned(format!("field-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
         .collect();
-    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] };
+    let graph = Arc::new(harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] });
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;
     let key = schema();
-    let position = f.storage.write_schema(&key, &graph).await.unwrap();
+    let position = f.storage.write_schema(key.clone(), graph.clone()).await.unwrap();
     assert_eq!(position.sequence, 1);
     assert!(f.storage.status().pending_bytes < policy.request.max_pending_write_bytes.get());
     f.storage.flush().await.unwrap();
@@ -376,6 +384,7 @@ async fn schema_decoding_bounded() {
         let saved = f.data.schemas.lock().unwrap();
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[&1].schema, graph);
+        assert!(Arc::ptr_eq(&saved[&1].schema, &graph));
         for definitions in [1usize, 32, 256] {
             let mut metadata = saved[&1].clone();
             let fields = (1..definitions)
@@ -386,8 +395,9 @@ async fn schema_decoding_bounded() {
                     kind: Kind::Message { definition },
                 })
                 .collect();
-            metadata.schema.definitions = vec![Vec::new(); definitions];
-            metadata.schema.definitions[0] = fields;
+            let graph = Arc::make_mut(&mut metadata.schema);
+            graph.definitions = vec![Vec::new(); definitions];
+            graph.definitions[0] = fields;
             let encoded = serde_json::to_vec(&metadata).unwrap();
             let admitted = harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
             let decoded: harmos_storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
@@ -397,6 +407,20 @@ async fn schema_decoding_bounded() {
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
     }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn schema_capacity_charged() {
+    let mut definitions = Vec::with_capacity(4096);
+    definitions.push(Vec::new());
+    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions };
+    let mut policy = config();
+    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+    let f = Fixture::new(policy).await;
+    assert!(matches!(f.storage.write_schema(schema(), graph).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
+    assert_eq!(f.storage.cursor_accepted().sequence, 0);
+    assert!(f.data.schemas.lock().unwrap().is_empty());
     f.finish().await;
 }
 
@@ -414,7 +438,7 @@ async fn schema_validation_reserves() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
     let f = Fixture::new(policy.clone()).await;
     assert!(matches!(
-        f.storage.write_schema(&schema(), &graph).await,
+        f.storage.write_schema(schema(), graph.clone()).await,
         Err(harmos_storage::Error::ResourceExhausted { resource: "storage write memory" })
     ));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
@@ -423,10 +447,86 @@ async fn schema_validation_reserves() {
     f.finish().await;
     policy.request.max_pending_write_bytes = NonZeroUsize::new(64 * 1024).unwrap();
     let f = Fixture::new(policy).await;
-    f.storage.write_schema(&schema(), &graph).await.unwrap();
+    f.storage.write_schema(schema(), graph.clone()).await.unwrap();
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn raw_reads_retained() {
+    let f = Fixture::new(config()).await;
+    let through = f.storage.write_recovery(vec![vec![7; 256]]).await.unwrap();
+    f.storage.flush_recovery().await.unwrap();
+    let after = harmos_storage::RecoveryPosition { history: through.history.clone(), sequence: 0 };
+    let page = f
+        .storage
+        .read_recovery(&after, &through, harmos_storage::ReadLimits { rows: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() })
+        .await
+        .unwrap();
+    let alias = page.clone();
+    let pointer = page.entries[0].payload.as_ptr();
+    let owner = alias.owner();
+    drop(page);
+    drop(alias);
+    assert!(f.storage.status().read_bytes > 0);
+    let retained: &harmos_storage::state::RecoveryPage = std::borrow::Borrow::borrow(owner.as_ref());
+    assert_eq!(retained.entries[0].payload.as_ptr(), pointer);
+    drop(owner);
+    assert_eq!(f.storage.status().read_bytes, 0);
+
+    f.storage
+        .write_snapshot(harmos_storage::state::RecoverySnapshot { required_data: f.storage.cursor_saved(), through, payload: vec![8; 256] })
+        .await
+        .unwrap();
+    f.storage.flush_recovery().await.unwrap();
+    let snapshot = f.storage.read_snapshot(NonZeroUsize::new(4096).unwrap()).await.unwrap().unwrap();
+    let alias = snapshot.clone();
+    drop(snapshot);
+    assert!(f.storage.status().read_bytes > 0);
+    drop(alias);
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn recovery_owner_retained() {
+    let f = Fixture::new(config()).await;
+    let mut payload = Vec::with_capacity(4096);
+    payload.extend_from_slice(b"recovery");
+    let pointer = payload.as_ptr() as usize;
+    f.recovery.control.retain_recovery.store(true, Ordering::SeqCst);
+    f.storage.write_recovery(vec![payload]).await.unwrap();
+    let admitted = f.storage.status().pending_bytes;
+    f.storage.flush_recovery().await.unwrap();
+    assert_eq!(f.storage.status().pending_batches, 0);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    let detached = f.recovery.control.retained_recovery.lock().unwrap().take().unwrap();
+    assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
+    let empty = detached.slice(1..1);
+    drop(detached);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    drop(empty);
+    assert_eq!(f.storage.status().pending_bytes, 0);
+
+    let mut payload = Vec::with_capacity(2048);
+    payload.extend_from_slice(b"snapshot");
+    let pointer = payload.as_ptr() as usize;
+    f.recovery.control.retain_snapshot.store(true, Ordering::SeqCst);
+    let snapshot = harmos_storage::state::RecoverySnapshot {
+        required_data: f.storage.cursor_saved(),
+        through: f.storage.status().recovery_saved,
+        payload,
+    };
+    f.storage.write_snapshot(snapshot).await.unwrap();
+    let admitted = f.storage.status().pending_bytes;
+    f.storage.flush_recovery().await.unwrap();
+    let detached = f.recovery.control.retained_snapshot.lock().unwrap().take().unwrap();
+    assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    drop(detached);
+    assert_eq!(f.storage.status().pending_bytes, 0);
+    f.finish().await;
+}

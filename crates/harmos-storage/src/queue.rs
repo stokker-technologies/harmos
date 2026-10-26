@@ -51,6 +51,10 @@ impl PendingQueue {
         self.entries.iter()
     }
 
+    pub(super) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Arc<Pending>> {
+        self.entries.iter_mut()
+    }
+
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -74,6 +78,7 @@ impl PendingQueue {
                 && entry.operation.domain() == domain
                 && (sequence == u64::MAX || entry.operation.sequence() <= sequence)
             {
+                entry.retire();
                 *bytes -= entry.bytes;
                 false
             } else {

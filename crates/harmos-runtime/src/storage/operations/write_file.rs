@@ -59,8 +59,10 @@ impl<C: 'static> Operation for Handler<C> {
         ctx.admit_stream_grant(&grant)?;
         self.storage.retry_transient_persistence();
         let mut file = self.storage.create_file(request.metadata.clone()).await?;
+
         let mut offset = 0u64;
         while let Some(batch) = input.recv().await {
+            let (batch, _claims) = batch.into_owned_request()?;
             ctx.admit_stream_grant(&grant)?;
             if batch.offset != offset || batch.bytes.is_empty() {
                 return Err(Error::InvalidInput { field: "file batch", reason: "nonempty batches must have contiguous byte offsets" });
@@ -68,9 +70,10 @@ impl<C: 'static> Operation for Handler<C> {
             let next = offset
                 .checked_add(batch.bytes.len() as u64)
                 .ok_or(Error::InvalidInput { field: "file batch offset", reason: "byte offset overflow" })?;
-            file.write_all(&batch.bytes).await?;
+            file.write_all(batch.bytes).await?;
             offset = next;
         }
+
         ctx.admit_stream_grant(&grant)?;
         let reference = file.finish().await?;
         self.storage.await_durable(&reference.position).await?;

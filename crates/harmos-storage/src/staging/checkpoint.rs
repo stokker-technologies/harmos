@@ -31,12 +31,11 @@ use crate::storage::capacity::{Pool, Reservation};
 
 pub struct FileSave {
     snapshot: FileSnapshot,
-    _reservation: Reservation,
 }
 
 pub(crate) struct FileSnapshot {
-    checkpoints: Vec<FileCheckpoint>,
-    receipts: Vec<super::super::MutationReceipt>,
+    checkpoints: crate::StorageBatch<FileCheckpoint>,
+    receipts: crate::StorageBatch<super::super::MutationReceipt>,
 }
 
 /* === Enums === */
@@ -57,7 +56,7 @@ impl<C> StorageManager<C> {
         }
         state.read_bytes += bytes;
         state.collect();
-        Ok(Some(FileSave { snapshot, _reservation: Reservation::charged(&self.inner, Pool::Read, bytes) }))
+        Ok(Some(FileSave { snapshot: snapshot.retained(Reservation::charged(&self.inner, Pool::Read, bytes).retain()) }))
     }
 
     // The Caller Holds Lifecycle Ownership Across Backend Access.
@@ -84,9 +83,10 @@ impl<C> StorageManager<C> {
             }
             state.read_bytes += bytes;
             state.collect();
-            Reservation::charged(&self.inner, Pool::Read, bytes)
+            Reservation::charged_lifecycle(&self.inner, Pool::Read, bytes)
         };
-        let checkpoints = self.inner.bounded(self.inner.primary.recover_productions(limits)).await?;
+        let memory = reservation.retain();
+        let checkpoints = self.inner.bounded(self.inner.primary.recover_productions(limits, memory.clone())).await?;
         if checkpoints.len() > limits.rows.get() || checkpoints.memory_size() > bytes {
             return Err(Error::InvalidInput { field: "file recovery", reason: "backend exceeded recovery bounds" });
         }
@@ -161,7 +161,7 @@ impl<C> StorageManager<C> {
             state.files = restored;
             state.collect();
         }
-        drop(reservation);
+        drop(memory);
         Ok(())
     }
 
@@ -183,7 +183,10 @@ impl State {
         let selected = |file: &&FileState| file.session.is_some() && file.progress.lock().unwrap().ready;
         let count = self.files.values().filter(selected).count();
         if count == 0 && self.receipts.snapshot_bytes() == 0 && extra == 0 {
-            return Ok((FileSnapshot { checkpoints: Vec::new(), receipts: Vec::new() }, extra));
+            return Ok((
+                FileSnapshot { checkpoints: crate::StorageBatch::new(Vec::new()), receipts: crate::StorageBatch::new(Vec::new()) },
+                extra,
+            ));
         }
         let bytes = self.files.values().filter(selected).try_fold(
             std::mem::size_of::<FileSave>()
@@ -211,22 +214,29 @@ impl State {
         }
         let receipts = self.receipts.snapshot(through);
         self.collect();
-        Ok((FileSnapshot { checkpoints, receipts }, bytes))
+        Ok((FileSnapshot { checkpoints: crate::StorageBatch::new(checkpoints), receipts: crate::StorageBatch::new(receipts) }, bytes))
     }
 }
 
 impl FileSnapshot {
+    fn retained(mut self, memory: crate::arrow::RetainedMemory) -> Self {
+        self.checkpoints = self.checkpoints.retain_memory(memory.clone());
+        self.receipts = self.receipts.retain_memory(memory);
+        self
+    }
+
     pub(crate) async fn persist(&self, inner: &Arc<super::super::manager::Inner>) -> Result<()> {
-        for checkpoint in &self.checkpoints {
+        for index in 0..self.checkpoints.len() {
+            let checkpoint = &self.checkpoints.as_slice()[index];
             inner
-                .bounded(inner.primary.save_production(checkpoint))
+                .bounded(inner.primary.save_production(self.checkpoints.slice(index..index + 1)))
                 .await
                 .inspect_err(|error| {
                     tracing::error!(file = %checkpoint.session.id, generation = checkpoint.session.generation, offset = checkpoint.length, error = %error, reason = "file checkpoint failed", "storage save failed");
                 })?;
         }
         if !self.receipts.is_empty() {
-            inner.bounded(inner.primary.save_mutations(&self.receipts)).await?;
+            inner.bounded(inner.primary.save_mutations(self.receipts.clone())).await?;
         }
         Ok(())
     }

@@ -88,6 +88,18 @@ pub enum ObjectVersion {
 
 /* === Implementations === */
 
+impl MemorySize for ObjectPoint {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
+            .saturating_add(self.item.memory_size().saturating_sub(std::mem::size_of::<ObjectKey>()))
+            .saturating_add(match &self.version {
+                ObjectVersion::Latest => 0,
+                ObjectVersion::Exact(token) => token.memory_size().saturating_sub(std::mem::size_of::<ObjectVersionToken>()),
+            })
+    }
+}
+
 impl MemorySize for ObjectEntry {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

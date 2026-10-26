@@ -9,11 +9,10 @@
 
 /* === Modules === */
 
-#[allow(dead_code, reason = "Reuse the controlled backend without its fault scenarios")]
-#[path = "../../../harmos-storage/tests/support/storage.rs"]
-mod backend;
 mod contention;
+mod directories;
 mod files;
+mod filesystem;
 mod fixture;
 mod ingestion;
 mod metrics;
@@ -29,15 +28,13 @@ mod waveforms;
 // Standard Library Imports
 use std::convert::Infallible;
 use std::num::{NonZeroU32, NonZeroUsize};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 // Third Party Imports
-use criterion::{BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, SamplingMode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 // Local Imports
-use backend::{Data, Recovery, history};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope};
 
@@ -132,9 +129,10 @@ impl RecordProjection for Projection {
         &'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
-            let payload = serde_json::to_vec(entry).unwrap();
+            let value = entry.payload.get("payload").and_then(serde_json::Value::as_str).unwrap().to_owned();
+            let payload = harmos_runtime::Message::encode_to_vec(&Text { value });
             let item = Identifier::new(format!("record-{}", entry.position.0)).unwrap();
-            output.push(record(&schema(), &item, &payload)).await?;
+            output.push(RecordInput { schema: schema(), item, payload, scope: None, source: None, source_time: None }).await?;
             Ok(())
         })
     }
@@ -148,20 +146,15 @@ fn main() {
     println!("{}", serde_json::json!({"kind":"storage_benchmark_provenance", "provenance": metrics::provenance()}));
     let executor = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 
-    executor.block_on(async {
-        for repetition in 0..3 {
-            for count in [500, 1_000, 2_000] {
-                for mode in ["direct", "direct_grouped", "journal", "captured_record", "transaction"] {
-                    measure(mode, count, Some(repetition)).await;
-                }
-            }
-        }
-    });
-
-    let mut criterion = Criterion::default().configure_from_args();
+    let mut criterion = Criterion::default()
+        .sample_size(10)
+        .warm_up_time(Duration::from_millis(100))
+        .measurement_time(Duration::from_millis(1))
+        .configure_from_args();
     let mut group = criterion.benchmark_group("storage");
     group.sample_size(10);
-    for count in [500, 1_000, 2_000] {
+    group.sampling_mode(SamplingMode::Flat);
+    for count in [50, 100, 200] {
         for mode in ["direct", "direct_grouped", "journal", "captured_record", "transaction"] {
             group.bench_with_input(BenchmarkId::new(mode, count), &count, |b, &count| {
                 b.iter_custom(|iterations| {
@@ -181,40 +174,35 @@ fn main() {
     query::run(&mut criterion, &executor);
     transforms::run(&mut criterion, &executor);
     files::run(&mut criterion, &executor);
+    filesystem::run(&mut criterion, &executor);
+    directories::run(&mut criterion, &executor);
     contention::run(&mut criterion, &executor);
     criterion.final_summary();
 }
 
 async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duration {
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
-    let config = StorageSettings {
-        // The Controlled Backend Pins Whole Tables Before Producing A Page.
-        budget: {
-            let mut settings = backend::storage_settings().budget;
-            settings.read_memory_bytes = nonzero(32 * 1_024 * 1_024);
-            settings
-        },
-        request: {
-            let mut settings = backend::storage_settings().request;
-            settings.max_pending_write_batches = nonzero(8_192);
-            settings.max_pending_write_bytes = nonzero(128 * 1_024 * 1_024);
-            settings
-        },
-        ..backend::storage_settings()
-    };
-    let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
-    let mut builder =
-        Runtime::<Model>::builder(State::default(), ()).register(Transactions::catalog()).register(Records::catalog()).tail(1);
+    let directory = tempfile::tempdir().unwrap();
+    let storage: StorageManager = StorageManager::new(fixture::backends(directory.path()), fixture::settings()).unwrap();
+    let mut builder = Runtime::<Model>::builder(State::default(), ()).register(Transactions::catalog()).register(Records::catalog());
+    if matches!(mode, "journal" | "captured_record" | "transaction") {
+        builder = builder.managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(1, 64 * 1_024),
+            capture: limits(1, 64 * 1_024),
+            snapshots: None,
+            journal_tail: 1,
+        });
+    } else {
+        builder = builder.tail(1);
+    }
     if matches!(mode, "captured_record" | "transaction") {
-        builder = builder.managed_state(limits(1, 64 * 1_024)).store_records(limits(1, 64 * 1_024), Projection);
+        builder = builder.store_records(Projection);
     }
     let runtime = builder.runtime_with_storage(&storage).await.unwrap();
     let schema = schema();
     storage
         .write_schema(
-            &schema,
-            &harmos_runtime::schema::graph::Schema::from_declaration(
+            schema.clone(),
+            harmos_runtime::schema::graph::Schema::from_declaration(
                 <Text as harmos_runtime::schema::Described>::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default(),
             )
@@ -224,10 +212,6 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
         .unwrap();
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
-    data.control.write_sizes.lock().unwrap().clear();
-    data.control.flushes.lock().unwrap().clear();
-    recovery.control.write_sizes.lock().unwrap().clear();
-    recovery.control.flushes.lock().unwrap().clear();
 
     let payload = "x".repeat(PAYLOAD_BYTES);
     let encoded = harmos_runtime::Message::encode_to_vec(&Text { value: payload.clone() });
@@ -236,7 +220,9 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     STATE_CLONES.store(0, Ordering::Relaxed);
     let begin = Instant::now();
     let mut halves = Vec::new();
-    for part in inputs.chunks(count / 2) {
+    let mut inputs = inputs.into_iter();
+    for _ in 0..2 {
+        let part: Vec<_> = inputs.by_ref().take(count / 2).collect();
         let half = Instant::now();
         if mode == "direct_grouped" {
             storage.write_records(part).await.unwrap();
@@ -244,7 +230,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
             for input in part {
                 match mode {
                     "direct" => {
-                        storage.write_records(std::slice::from_ref(input)).await.unwrap();
+                        storage.write_records(vec![input]).await.unwrap();
                     }
                     "transaction" => {
                         runtime.state.commit(Advance { payload: payload.clone() }).await.unwrap();
@@ -302,15 +288,15 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
                 "admission_ms": admission_ms, "half_admission_ms": halves,
                 "flush_data_ms": flush_data_ms, "flush_recovery_ms": flush_recovery_ms,
                 "saved_replay_ms": replay_ms, "state_clone_calls": state_clones,
-                "data_write_sizes": *data.control.write_sizes.lock().unwrap(),
-                "recovery_write_sizes": *recovery.control.write_sizes.lock().unwrap(),
-                "data_flush_calls": data.control.flushes.lock().unwrap().len(),
-                "recovery_flush_calls": recovery.control.flushes.lock().unwrap().len(),
-                "recovery_entries": recovery.entries.lock().unwrap().len(),
+                "recovery_saved_sequence": storage.status().recovery_saved.sequence,
+
             })
         );
     }
     drop(reader);
+    verify_records(&storage, if mode == "journal" { 0 } else { count }, &payload).await;
+    assert_eq!(storage.status().recovery_saved.sequence, if mode.starts_with("direct") { 0 } else { count as u64 });
+    verify_recovery(&storage).await;
     storage.close().await.unwrap();
     runtime.stop().await.unwrap();
 
@@ -333,8 +319,44 @@ fn schema() -> SchemaKey {
     }
 }
 
-fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordWrite<'a> {
-    RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
+fn record(schema: &SchemaKey, item: &Identifier, payload: &[u8]) -> RecordInput {
+    RecordInput { schema: schema.clone(), scope: None, item: item.clone(), source: None, source_time: None, payload: payload.to_vec() }
+}
+
+async fn verify_records(storage: &StorageManager, count: usize, payload: &str) {
+    let selection =
+        harmos_runtime::storage::query::RecordSelection { schema: schema(), scope: None, item: None, source_start: None, source_end: None };
+    let mut reader = storage.read_records::<Text>(RecordRead { at: storage.cursor_saved(), selection, after: 0 }).await.unwrap();
+    let mut checked = 0;
+    let mut after = 0;
+    while let Some(page) = reader.next().await.unwrap() {
+        assert!(page.len() <= fixture::settings().response.batch_rows.get());
+        for record in page.iter() {
+            assert!(record.position.sequence > after);
+            after = record.position.sequence;
+            assert_eq!(record.payload.value, payload);
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, count);
+}
+
+async fn verify_recovery(storage: &StorageManager) {
+    let through = storage.status().recovery_saved;
+    let mut after = RecoveryPosition { history: through.history.clone(), sequence: 0 };
+    let mut count = 0;
+    while after.sequence < through.sequence {
+        let page = storage.read_recovery(&after, &through, limits(4096, 1024 * 1024)).await.unwrap();
+        assert!(!page.entries.is_empty());
+        for entry in &page.entries {
+            assert_eq!(entry.position.sequence, after.sequence + 1);
+            assert!(storage.cursor_saved().covers(&entry.required_data).unwrap());
+            serde_json::from_slice::<serde_json::Value>(&entry.payload).unwrap();
+            after = entry.position.clone();
+            count += 1;
+        }
+    }
+    assert_eq!(count, through.sequence);
 }
 
 /* === Tests === */

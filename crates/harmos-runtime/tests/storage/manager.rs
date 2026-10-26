@@ -63,16 +63,16 @@ fn metadata(name: &str) -> FileMetadata {
 async fn resume_continues_offset() {
     let f = Fixture::new(config()).await;
     let mut first = f.storage.produce_file(metadata("resume")).await.unwrap();
-    first.write_all(b"first").await.unwrap();
+    first.write_all((b"first").to_vec()).await.unwrap();
     let token = first.session().unwrap().clone();
     let mut resumed = f.storage.resume_file(&token).await.unwrap();
     assert_eq!(resumed.length(), 5);
     assert_eq!(resumed.session().unwrap().generation, token.generation + 1);
-    assert!(first.write_all(b"stale").await.is_err());
+    assert!(first.write_all((b"stale").to_vec()).await.is_err());
     assert!(first.finish().await.is_err());
     assert!(first.abort().await.is_err());
     drop(first);
-    resumed.write_all(b"second").await.unwrap();
+    resumed.write_all((b"second").to_vec()).await.unwrap();
     assert_eq!(resumed.length(), 11);
     let token = resumed.session().unwrap().clone();
     drop(resumed);
@@ -93,7 +93,7 @@ async fn resume_reconciles_write() {
     let token = file.session().unwrap().clone();
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     {
-        let write = file.write_all(b"retained");
+        let write = file.write_all((b"retained").to_vec());
         tokio::pin!(write);
         tokio::select! {
             biased;
@@ -101,7 +101,7 @@ async fn resume_reconciles_write() {
             _ = f.data.control.chunk_entered.notified() => {}
         }
     }
-    assert!(file.write_all(b"ambiguous").await.is_err());
+    assert!(file.write_all((b"ambiguous").to_vec()).await.is_err());
     drop(file);
     let mut resumed = {
         let resume = f.storage.resume_file(&token);
@@ -116,7 +116,7 @@ async fn resume_reconciles_write() {
         resume.await.unwrap()
     };
     assert_eq!(resumed.length(), 8);
-    resumed.write_all(b" bytes").await.unwrap();
+    resumed.write_all((b" bytes").to_vec()).await.unwrap();
     let reference = resumed.finish().await.unwrap();
     assert_eq!(f.data.blobs.lock().unwrap()[reference.metadata.id.as_str()].1, b"retained bytes");
     f.finish().await;
@@ -126,12 +126,12 @@ async fn resume_reconciles_write() {
 async fn idle_session_expires() {
     let f = Fixture::new(config()).await;
     let mut file = f.storage.produce_file(metadata("expired")).await.unwrap();
-    file.write_all(b"partial").await.unwrap();
+    file.write_all((b"partial").to_vec()).await.unwrap();
     let token = file.session().unwrap().clone();
     tokio::time::advance(Duration::from_secs(61)).await;
 
     // A Connected Producer Never Expires While Idle.
-    file.write_all(b" after idle").await.unwrap();
+    file.write_all((b" after idle").to_vec()).await.unwrap();
     assert_eq!(file.session().unwrap(), &token);
     drop(file);
     tokio::time::advance(Duration::from_secs(59)).await;
@@ -179,7 +179,7 @@ async fn cancelled_resume_expires() {
 async fn abandon_retains_bytes() {
     let f = Fixture::new(config()).await;
     let mut file = f.storage.produce_file(metadata("abandoned")).await.unwrap();
-    file.write_all(b"partial").await.unwrap();
+    file.write_all((b"partial").to_vec()).await.unwrap();
     file.abort().await.unwrap();
     assert_eq!(f.data.staged.lock().unwrap()["abandoned"].1, b"partial");
     assert!(f.storage.produce_file(metadata("abandoned")).await.is_err());
@@ -193,13 +193,13 @@ async fn follow_tails_production() {
     use std::num::NonZeroUsize;
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("growing")).await.unwrap();
-    producer.write_all(b"first").await.unwrap();
+    producer.write_all((b"first").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
     let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
-    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
+    let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     let max = NonZeroUsize::new(3).unwrap();
-    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"fir");
-    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"st");
+    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes(), b"fir");
+    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes(), b"st");
     assert_eq!(reader.offset(), 5);
     {
         let next = reader.next_batch(max);
@@ -209,22 +209,22 @@ async fn follow_tails_production() {
             std::task::Poll::Ready(())
         })
         .await;
-        producer.write_all(b"second").await.unwrap();
-        assert_eq!(next.await.unwrap().unwrap().bytes, b"sec");
+        producer.write_all((b"second").to_vec()).await.unwrap();
+        assert_eq!(next.await.unwrap().unwrap().bytes(), b"sec");
     }
     drop(reader);
-    let mut resumed = f.storage.follow_file(&identity, 8).await.unwrap();
-    assert_eq!(resumed.next_batch(max).await.unwrap().unwrap().bytes, b"ond");
+    let mut resumed = f.storage.follow_production(&identity, 8).await.unwrap();
+    assert_eq!(resumed.next_batch(max).await.unwrap().unwrap().bytes(), b"ond");
     producer.finish().await.unwrap();
     assert!(resumed.next_batch(max).await.unwrap().is_none());
     assert_eq!(resumed.progress().phase, FilePhase::Finished);
     assert_eq!(resumed.offset(), 11);
-    assert!(f.storage.follow_file(&identity, 12).await.is_err());
+    assert!(f.storage.follow_production(&identity, 12).await.is_err());
     drop(resumed);
-    let mut replay = f.storage.follow_file(&identity, 0).await.unwrap();
+    let mut replay = f.storage.follow_production(&identity, 0).await.unwrap();
     let mut all = Vec::new();
     while let Some(chunk) = replay.next_batch(max).await.unwrap() {
-        all.extend_from_slice(&chunk.bytes);
+        all.extend_from_slice(chunk.bytes());
     }
     assert_eq!(all, b"firstsecond");
     drop(replay);
@@ -237,18 +237,18 @@ async fn follow_ends_abandoned() {
     use std::num::NonZeroUsize;
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("partial-reader")).await.unwrap();
-    producer.write_all(b"partial").await.unwrap();
+    producer.write_all((b"partial").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
     let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
-    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
+    let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     producer.abort().await.unwrap();
     let max = NonZeroUsize::new(100).unwrap();
-    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"partial");
+    assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes(), b"partial");
     assert!(reader.next_batch(max).await.unwrap().is_none());
     assert_eq!(reader.progress().phase, FilePhase::Abandoned);
     drop(reader);
-    let mut replay = f.storage.follow_file(&identity, 3).await.unwrap();
-    assert_eq!(replay.next_batch(max).await.unwrap().unwrap().bytes, b"tial");
+    let mut replay = f.storage.follow_production(&identity, 3).await.unwrap();
+    assert_eq!(replay.next_batch(max).await.unwrap().unwrap().bytes(), b"tial");
     assert!(replay.next_batch(max).await.unwrap().is_none());
     assert_eq!(replay.progress().phase, FilePhase::Abandoned);
     drop(replay);
@@ -261,10 +261,10 @@ async fn cancelled_follow_offset() {
     use std::num::NonZeroUsize;
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("cancel-reader")).await.unwrap();
-    producer.write_all(b"first").await.unwrap();
+    producer.write_all((b"first").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
     let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
-    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
+    let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     f.data.control.block_read.store(true, Ordering::SeqCst);
     {
         let read = reader.next_batch(NonZeroUsize::new(3).unwrap());
@@ -278,7 +278,7 @@ async fn cancelled_follow_offset() {
     assert_eq!(reader.offset(), 0);
     drop(reader);
     f.data.control.block_read.store(false, Ordering::SeqCst);
-    producer.write_all(b"second").await.unwrap();
+    producer.write_all((b"second").to_vec()).await.unwrap();
     assert_eq!(producer.finish().await.unwrap().length, 11);
     f.finish().await;
 }
@@ -288,9 +288,9 @@ async fn private_files_hidden() {
     use harmos_runtime::storage::StagedFile;
     let f = Fixture::new(config()).await;
     let mut private = f.storage.create_file(metadata("private")).await.unwrap();
-    private.write_all(b"private bytes").await.unwrap();
+    private.write_all((b"private bytes").to_vec()).await.unwrap();
     let identity = StagedFile { history: f.storage.cursor_accepted().history, id: Identifier::new("private").unwrap() };
-    assert!(f.storage.follow_file(&identity, 0).await.is_err());
+    assert!(f.storage.follow_production(&identity, 0).await.is_err());
     assert!(f.storage.file_progress(&identity).await.is_err());
     private.abort().await.unwrap();
     f.finish().await;

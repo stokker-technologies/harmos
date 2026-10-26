@@ -52,7 +52,7 @@ pub struct Recovery<A: Application> {
     pub commits: Vec<(Position, Position)>,
     pub frontier: Position,
     pub entries: Vec<Envelope<Payload<A>>>,
-    pub encoded: Vec<(Position, Vec<u8>)>,
+    pub encoded: Vec<(Position, Arc<Vec<u8>>)>,
 }
 
 pub(crate) struct Attachments<A: Application> {
@@ -75,7 +75,7 @@ pub(crate) struct Consumers<A: Application> {
     retention: Option<Horizon>,
     durable: Option<watch::Sender<Position>>,
     recovered: Vec<Arc<Entry<Recorded<A>>>>,
-    stored: Vec<(Position, Vec<u8>)>,
+    stored: Vec<(Position, Arc<Vec<u8>>)>,
     frontier: Position,
     source_frontier: Position,
     snapshot_frontier: Position,
@@ -313,7 +313,9 @@ impl<A: Application> Consumers<A> {
         }
     }
 
-    pub(crate) fn redelivering(&mut self, recovered: Vec<Arc<Entry<Recorded<A>>>>, stored: Vec<(Position, Vec<u8>)>, frontier: Position) {
+    pub(crate) fn redelivering(
+        &mut self, recovered: Vec<Arc<Entry<Recorded<A>>>>, stored: Vec<(Position, Arc<Vec<u8>>)>, frontier: Position,
+    ) {
         self.recovered = recovered;
         self.stored = stored;
         self.frontier = frontier;
@@ -518,7 +520,7 @@ fn mismatched(id: DefinitionId, version: u32) -> DecodeError {
 }
 
 async fn fold<A: Application>(
-    consumer: &mut dyn Attached<A>, recovered: &[Arc<Entry<Recorded<A>>>], stored: &[(Position, Vec<u8>)], frontier: Position,
+    consumer: &mut dyn Attached<A>, recovered: &[Arc<Entry<Recorded<A>>>], stored: &[(Position, Arc<Vec<u8>>)], frontier: Position,
     feed: &Feed<A>, applied: Position,
 ) -> Position {
     let resume = consumer.resume();

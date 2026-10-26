@@ -52,16 +52,16 @@ fn identity(storage: &StorageManager, key: &str) -> MutationId {
 async fn resume_receipt_replays() {
     let f = Fixture::new(config()).await;
     let mut file = f.storage.produce_file(metadata("once")).await.unwrap();
-    file.write_all(b"prefix").await.unwrap();
+    file.write_all((b"prefix").to_vec()).await.unwrap();
     let token = file.session().unwrap().clone();
     let id = identity(&f.storage, "resume");
     let first = f.storage.resume_file_once(&id, &token).await.unwrap();
     assert_eq!(first.length, 6);
     assert_eq!(first.session.generation, 2);
     assert_eq!(f.storage.resume_file_once(&id, &token).await.unwrap(), first);
-    assert!(file.write_all(b"stale").await.is_err());
+    assert!(file.write_all((b"stale").to_vec()).await.is_err());
     let mut later = f.storage.resume_file(&first.session).await.unwrap();
-    later.write_all(b"tail").await.unwrap();
+    later.write_all((b"tail").to_vec()).await.unwrap();
     assert_eq!(f.storage.resume_file_once(&id, &token).await.unwrap(), first);
     assert!(f.storage.resume_file_once(&id, later.session().unwrap()).await.is_err());
     assert_eq!(later.session().unwrap().generation, 3);

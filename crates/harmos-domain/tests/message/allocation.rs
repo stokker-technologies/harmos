@@ -253,7 +253,7 @@ fn peak_fits_preflight() {
 fn native_decode_peak() {
     let row = selection();
     let encoded = crate::encode(&row);
-    let (budget, inspected) = measure(|| grpc::decoding_memory::<Selection>(DecodeInput::new(&encoded)).unwrap());
+    let (budget, inspected) = measure(|| grpc::prepare::<Selection>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap());
     assert_eq!(inspected.live, 0, "{inspected:?}");
     let (decoded, measured) = measure(|| grpc::decode::<Selection>(DecodeInput::new(&encoded)).unwrap());
     assert_eq!(decoded, row);
@@ -267,7 +267,8 @@ fn boxed_decode_peak() {
     for choice in [BoxedChoice::Selected(Box::new(nested())), BoxedChoice::Named { row: Box::new(Leaf { payload: vec![7; 4096] }) }] {
         let row = BoxedSelection { row: Box::new(nested()), choice };
         let encoded = crate::encode(&row);
-        let (budget, inspected) = measure(|| grpc::decoding_memory::<BoxedSelection>(DecodeInput::new(&encoded)).unwrap());
+        let (budget, inspected) =
+            measure(|| grpc::prepare::<BoxedSelection>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap());
         assert_eq!(inspected.live, 0, "{inspected:?}");
         let (decoded, measured) = measure(|| grpc::decode::<BoxedSelection>(DecodeInput::new(&encoded)).unwrap());
         assert!(decoded == row);
@@ -286,7 +287,7 @@ fn boxed_refusal_bounded() {
     let mut bytes = Vec::new();
     prost::encoding::bytes::encode(tag(BoxedLeaf::FIELDS, "row"), &row, &mut bytes);
 
-    let (refused, inspected) = measure(|| grpc::decoding_memory::<BoxedLeaf>(DecodeInput::new(&bytes)));
+    let (refused, inspected) = measure(|| grpc::prepare::<BoxedLeaf>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()));
     // A Refusal Retains Nothing And Never Outgrows The Payload It Refused.
     assert!(refused.is_err());
     assert!(inspected.live == 0 && inspected.peak <= bytes.len(), "{inspected:?}");
@@ -298,7 +299,7 @@ fn boxed_refusal_bounded() {
 #[test]
 fn preflight_refusal_bounded() {
     for bytes in [&[0xff][..], &[0][..], &[10, 255][..]] {
-        let (refused, measured) = measure(|| grpc::decoding_memory::<Selection>(DecodeInput::new(bytes)));
+        let (refused, measured) = measure(|| grpc::prepare::<Selection>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()));
         assert!(refused.is_err());
         assert!(measured.live == 0 && measured.peak <= bytes.len(), "{measured:?}");
     }
@@ -315,7 +316,7 @@ fn strings_fit_bound() {
     let after = Strings { label: "d".repeat(1025), optional: Some(String::new()), labels: vec!["e".repeat(65)], counts: vec![u32::MAX] };
     let mut encoded = crate::encode(&before);
     encoded.extend(crate::encode(&after));
-    let (budget, inspected) = measure(|| grpc::decoding_memory::<Strings>(DecodeInput::new(&encoded)).unwrap());
+    let (budget, inspected) = measure(|| grpc::prepare::<Strings>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap());
     assert_eq!(inspected.live, 0, "{inspected:?}");
     let (decoded, measured) = measure(|| grpc::decode::<Strings>(DecodeInput::new(&encoded)).unwrap());
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");

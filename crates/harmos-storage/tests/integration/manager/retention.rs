@@ -44,7 +44,6 @@ use std::sync::atomic::Ordering;
 // Journaled Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
     _directory: tempfile::TempDir,
-    data: Arc<Data<Objects>>,
     storage: StorageManager<Objects>,
     first: Experiment,
     first_receipt: ObjectReceipt,
@@ -52,7 +51,6 @@ struct Revisions {
     earlier: StorageCursor,
     durable: StorageCursor,
     schema: SchemaKey,
-    item: ObjectKey,
 }
 
 /* === Enums === */
@@ -64,12 +62,11 @@ struct Revisions {
 impl Revisions {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let data = Arc::new(Data::<Objects>::journaled(directory.path(), history()).unwrap());
-        let storage = StorageManager::<Objects>::new(
-            StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) },
-            storage_settings(),
-        )
-        .unwrap();
+        let data = JsonStorage::new(
+            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            history(),
+        );
+        let storage = StorageManager::<Objects>::new(data.into_backends(super::fixture::state_settings()), storage_settings()).unwrap();
         super::fixture::start(&storage).await;
 
         // Two Revisions Of One Object Are Durable At Distinct Cursors.
@@ -79,18 +76,7 @@ impl Revisions {
         let second_receipt = storage.write_object(&Experiment { id: first.id.clone(), label: "second".into() }).await.unwrap();
         let durable = storage.flush().await.unwrap();
         let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
-        Self {
-            _directory: directory,
-            data,
-            storage,
-            first,
-            first_receipt,
-            second_receipt,
-            earlier,
-            durable,
-            schema: encoded.schema,
-            item: encoded.item,
-        }
+        Self { _directory: directory, storage, first, first_receipt, second_receipt, earlier, durable, schema: encoded.schema }
     }
 
     async fn finish(self) {
@@ -152,20 +138,28 @@ async fn reads_pin_cursor() {
 
 #[tokio::test]
 async fn release_reclaims_history() {
-    let r = Revisions::new().await;
+    // A Controlled Result Gate Separates Reclamation From Its Acknowledgement.
+    let data = Arc::new(Data::<Objects>::with_catalog(history()));
+    let backends = StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) };
+    let storage = StorageManager::<Objects>::new(backends, storage_settings()).unwrap();
+    super::fixture::start(&storage).await;
+    let first = Experiment { id: "experiment".into(), label: "first".into() };
+    storage.write_object(&first).await.unwrap();
+    let earlier = storage.flush().await.unwrap();
+    storage.write_object(&Experiment { id: first.id.clone(), label: "second".into() }).await.unwrap();
+    let durable = storage.flush().await.unwrap();
+    let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
 
-    // Unreleased Lifecycle History Survives; Release Lets Pruning Reclaim It.
-    assert_eq!(r.data.objects.lock().unwrap().len(), 2);
-    r.data.control.block_prune_result.store(true, Ordering::SeqCst);
-    r.storage.release_object_history(&r.schema, &r.item, &r.durable).await.unwrap();
-    r.data.control.prune_result_entered.notified().await;
-    assert_eq!(r.data.objects.lock().unwrap().len(), 1);
-    r.data.control.block_prune_result.store(false, Ordering::SeqCst);
-    r.data.control.prune_result_release.notify_one();
+    assert_eq!(data.objects.lock().unwrap().len(), 2);
+    data.control.block_prune_result.store(true, Ordering::SeqCst);
+    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    data.control.prune_result_entered.notified().await;
+    assert_eq!(data.objects.lock().unwrap().len(), 1);
+    data.control.block_prune_result.store(false, Ordering::SeqCst);
+    data.control.prune_result_release.notify_one();
 
-    // Pruned History Is Unavailable Explicitly; The Current Image Remains.
-    let latest = |at| labels(&r.storage, at, &r.schema, ObjectVersions::Latest);
-    assert!(latest(&r.earlier).await.is_err());
-    assert_eq!(latest(&r.durable).await.unwrap(), ["second"]);
-    r.finish().await;
+    // Reclaimed History Fails Explicitly While The Current Image Remains.
+    assert!(labels(&storage, &earlier, &encoded.schema, ObjectVersions::Latest).await.is_err());
+    assert_eq!(labels(&storage, &durable, &encoded.schema, ObjectVersions::Latest).await.unwrap(), ["second"]);
+    storage.close().await.unwrap();
 }

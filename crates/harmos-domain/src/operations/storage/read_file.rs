@@ -21,7 +21,8 @@
 use super::IO_POLICY;
 use crate::MemorySize;
 use crate::model::storage::codec::{Nested, product};
-use crate::model::storage::{ByteRange, FileBatch, FileCompletion, FileReference};
+use crate::model::storage::files::FileSource;
+use crate::model::storage::{ByteRange, FileBatch, FileCompletion};
 use crate::operations::{ReplaySafety, Visibility};
 
 /* === Constants === */
@@ -29,7 +30,7 @@ use crate::operations::{ReplaySafety, Visibility};
 /* === Macros === */
 
 product!(ReadFile {
-    file: Nested<FileReference> => 1,
+    source: Nested<FileSource> => 1,
     range: Nested<ByteRange> => 2,
 });
 
@@ -42,17 +43,17 @@ crate::declare!(ReadFile {
     visibility: Visibility::Shared,
     replay: ReplaySafety::Idempotent,
     grpc: ("harmos.storage.v1", "Storage", "ReadFile"),
-    grant: |request: &ReadFile| Some(crate::plugin::Grant::of("storage.read_file", request.file.metadata.id.as_str().to_owned(),)),
+    grant: |request: &ReadFile| request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.read_file", scope)),
 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
-// Read A Byte Range Of A Finished, Immutable File.
+// Read A Bounded Byte Range Of A Stored Or Local File.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReadFile {
-    pub file: FileReference,
+    pub source: FileSource,
     pub range: ByteRange,
 }
 
@@ -65,7 +66,7 @@ pub struct ReadFile {
 impl MemorySize for ReadFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
             .saturating_add(self.range.memory_size().saturating_sub(std::mem::size_of_val(&self.range)))
     }
 }

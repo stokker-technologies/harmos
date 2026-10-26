@@ -16,8 +16,6 @@ mod read_backend;
 #[path = "settings.rs"]
 mod settings;
 pub use settings::storage_settings;
-#[path = "journal.rs"]
-mod journal;
 
 /* === Re-Exports === */
 
@@ -52,6 +50,17 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 
 #[derive(Default)]
 pub struct Control {
+    pub block_chunk_file: Mutex<Option<String>>,
+    pub permanent_chunk_file: Mutex<Option<String>>,
+    pub chunk_active: Mutex<BTreeMap<String, usize>>,
+    pub chunk_peak_by_file: Mutex<BTreeMap<String, usize>>,
+    pub chunk_peak: AtomicUsize,
+    pub chunk_changed: Notify,
+    pub chunk_pointers: Mutex<Vec<(String, u64, usize, usize)>>,
+    pub retain_recovery: AtomicBool,
+    pub retained_recovery: Mutex<Option<StorageBatch<RecoveryEntry>>>,
+    pub retain_snapshot: AtomicBool,
+    pub retained_snapshot: Mutex<Option<StorageBatch<RecoverySnapshot>>>,
     pub delete_failures: AtomicUsize,
     pub block_delete: AtomicBool,
     pub delete_entered: Notify,
@@ -104,6 +113,7 @@ pub struct Control {
     pub corrupt_file: AtomicBool,
     pub permanent: AtomicBool,
     pub failures: AtomicUsize,
+    pub write_failure_at: AtomicUsize,
     pub invalid_page: AtomicBool,
     pub block_view: AtomicBool,
     pub view_entered: Notify,
@@ -114,6 +124,7 @@ pub struct Control {
     pub release_release: Notify,
     pub releases: AtomicUsize,
     pub releases_completed: AtomicUsize,
+    pub release_completed: Notify,
     pub block_read: AtomicBool,
     pub read_entered: Notify,
     pub read_release: Notify,
@@ -140,7 +151,6 @@ pub struct Control {
     pub closes: AtomicUsize,
     pub writes: Mutex<Vec<u64>>,
     pub write_sizes: Mutex<Vec<usize>>,
-    pub write_bytes: Mutex<Vec<usize>>,
     pub flushes: Mutex<Vec<u64>>,
 }
 
@@ -164,7 +174,6 @@ pub struct Release {
 pub struct Data<C = ()> {
     pub object_releases: Mutex<Vec<Release>>,
     catalog: PhantomData<fn() -> C>,
-    journal: Option<journal::Journal>,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
     pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>>,
     pub staged: Mutex<BTreeMap<String, (FileMetadata, Vec<u8>)>>,
@@ -219,13 +228,18 @@ impl Control {
     async fn write(&self, positions: impl IntoIterator<Item = u64>) -> Result<()> {
         let positions: Vec<_> = positions.into_iter().collect();
         self.write_sizes.lock().unwrap().push(positions.len());
-        self.writes.lock().unwrap().extend(positions);
+        self.writes.lock().unwrap().extend(positions.iter().copied());
         if self.block_write.load(Ordering::SeqCst) {
             self.write_entered.notify_one();
             self.write_release.notified().await;
         }
         if self.permanent.load(Ordering::SeqCst) {
             return Err(failure(BackendFailure::Permanent));
+        }
+        let failure_at = self.write_failure_at.load(Ordering::SeqCst);
+        if failure_at != 0 && positions.contains(&(failure_at as u64)) {
+            self.write_failure_at.store(0, Ordering::SeqCst);
+            return Err(failure(BackendFailure::Transient));
         }
         if self.failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
             return Err(failure(BackendFailure::Transient));
@@ -263,7 +277,6 @@ impl<C: ObjectCatalog> Data<C> {
         Self {
             object_releases: Mutex::new(Vec::new()),
             catalog: PhantomData,
-            journal: None,
             objects: Mutex::default(),
             object_schemas: Mutex::default(),
             staged: Mutex::default(),
@@ -287,14 +300,6 @@ impl<C: ObjectCatalog> Data<C> {
             saved: AtomicUsize::new(0),
         }
     }
-    #[allow(dead_code, reason = "Shared fixture: only journal-backed story binaries use this constructor")]
-    pub fn journaled(root: &std::path::Path, history: StoreHistory) -> Result<Self> {
-        let mut data = Self::with_catalog(history);
-        data.journal = Some(journal::Journal::new(root)?);
-        data.journal.as_ref().unwrap().restore(&data)?;
-        Ok(data)
-    }
-
     fn at(&self, sequence: u64) -> StorageCursor {
         StorageCursor { history: self.history.clone(), sequence }
     }
@@ -310,9 +315,6 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 return Err(failure(BackendFailure::Conflict));
             }
             let release = Release { schema: schema.clone(), item: item.clone(), through: through.clone() };
-            if let Some(journal) = &self.journal {
-                journal.release(&release)?;
-            }
             upsert_release(&mut self.object_releases.lock().unwrap(), release);
             Ok(())
         })
@@ -341,112 +343,49 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn write<'a>(&'a self, batch: StorageBatch<'a>) -> StorageFuture<'a, StorageCursor> {
-        Box::pin(async move {
-            self.history.check(&batch.first().history)?;
-            self.control.write_bytes.lock().unwrap().push(batch.encoded_bytes());
-            self.control.write(batch.entries().map(|entry| entry.position().sequence)).await?;
-            // Validate The Entire Atomic Batch Before Publishing Any Entry.
-            for entry in batch.entries() {
-                let position = entry.position().sequence;
-                let conflict = match entry {
-                    StorageEntry::Schema(value) => self.schemas.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
-                    StorageEntry::Object(value) => {
-                        C::validate_value(&value.value, NonZeroUsize::MAX)?;
-                        self.objects.lock().unwrap().get(&position).is_some_and(|prior| prior != value)
-                    }
-                    StorageEntry::Record(value) => self.records.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
-                    StorageEntry::Row(value) => self.rows.lock().unwrap().get(&position).is_some_and(|prior| prior != value),
-                    StorageEntry::File(value) => {
-                        !self.blobs.lock().unwrap().get(value.metadata.id.as_str()).is_some_and(|(prior, _)| prior == value)
-                    }
-                };
-                if conflict {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-            }
-            if let Some(journal) = &self.journal {
-                journal.commit(batch)?;
-            }
-            for entry in batch.entries() {
-                let position = entry.position().sequence;
-                match entry {
-                    StorageEntry::Schema(schema) => {
-                        let mut stored = self.schemas.lock().unwrap();
-                        if stored.get(&position).is_some_and(|previous| previous != schema) {
-                            return Err(failure(BackendFailure::Conflict));
-                        }
-                        stored.insert(position, schema.clone());
-                    }
-                    StorageEntry::Object(object) => {
-                        C::validate_value(&object.value, NonZeroUsize::MAX)?;
-                        let mut stored = self.objects.lock().unwrap();
-                        if stored.get(&position).is_some_and(|previous| previous != object) {
-                            return Err(failure(BackendFailure::Conflict));
-                        }
-                        let definition = C::definitions()
-                            .try_for_each(
-                                |definition| {
-                                    if definition.schema().unwrap() == object.value.schema { Err(*definition) } else { Ok(()) }
-                                },
-                            )
-                            .err()
-                            .unwrap();
-                        self.object_schemas.lock().unwrap().insert(
-                            (object.value.schema.id.to_string(), object.value.schema.version.get()),
-                            (definition.declaration().fields)().to_vec(),
-                        );
-                        stored.insert(position, object.clone());
-                    }
-                    StorageEntry::Record(record) => {
-                        let mut stored = self.records.lock().unwrap();
-                        if stored.get(&position).is_some_and(|previous| previous != record) {
-                            return Err(failure(BackendFailure::Conflict));
-                        }
-                        stored.insert(position, record.clone());
-                    }
-                    StorageEntry::Row(row) => {
-                        let mut stored = self.rows.lock().unwrap();
-                        if stored.get(&position).is_some_and(|previous| previous != row) {
-                            return Err(failure(BackendFailure::Conflict));
-                        }
-                        stored.insert(position, row.clone());
-                    }
-                    StorageEntry::File(file) => {
-                        if !self.blobs.lock().unwrap().get(file.metadata.id.as_str()).is_some_and(|(finished, _)| finished == file) {
-                            return Err(failure(BackendFailure::Corrupt));
-                        }
-                        self.files.lock().unwrap().insert(position, file.clone());
-                    }
-                }
-            }
-            let through = batch.through();
-            for position in (self.saved.load(Ordering::SeqCst) as u64 + 1)..=through.sequence {
-                let count = usize::from(self.schemas.lock().unwrap().contains_key(&position))
-                    + usize::from(self.objects.lock().unwrap().contains_key(&position))
-                    + usize::from(self.records.lock().unwrap().contains_key(&position))
-                    + usize::from(self.rows.lock().unwrap().contains_key(&position))
-                    + usize::from(self.files.lock().unwrap().contains_key(&position));
-                if count != 1 {
+    fn write_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
+        self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(()))
+    }
+    fn write_objects(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
+        self.persist(
+            batch,
+            &self.objects,
+            |value| &value.position,
+            |object| {
+                C::validate_value(&object.value, NonZeroUsize::MAX)?;
+                let definition = C::definitions()
+                    .try_for_each(|definition| if definition.schema().unwrap() == object.value.schema { Err(*definition) } else { Ok(()) })
+                    .err()
+                    .unwrap();
+                let fields = (definition.declaration().fields)().to_vec();
+                self.object_schemas.lock().unwrap().insert((object.value.schema.id.to_string(), object.value.schema.version.get()), fields);
+                Ok(())
+            },
+        )
+    }
+    fn write_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
+        self.persist(batch, &self.records, |value| &value.position, |_| Ok(()))
+    }
+    fn write_stream(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
+        self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()))
+    }
+    fn write_files(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
+        self.persist(
+            batch,
+            &self.files,
+            |value| &value.position,
+            |file| {
+                if !self.blobs.lock().unwrap().get(file.metadata.id.as_str()).is_some_and(|(finished, _)| finished == file) {
                     return Err(failure(BackendFailure::Corrupt));
                 }
-            }
-            self.control.flush(through.sequence).await?;
-            if self.control.wrong_receipt.load(Ordering::SeqCst) {
-                return Ok(self.at(0));
-            }
-            let sequence = through
-                .sequence
-                .max(self.saved.load(Ordering::SeqCst) as u64)
-                .max(self.control.flush_advance.load(Ordering::SeqCst) as u64);
-            self.saved.store(sequence as usize, Ordering::SeqCst);
-            if self.control.flush_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(self.at(sequence))
-        })
+                Ok(())
+            },
+        )
     }
-    fn prune_objects<'a>(&'a self, through: &'a StorageCursor, max_entries: NonZeroUsize) -> StorageFuture<'a, bool> {
+    fn prune_objects<'a>(
+        &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize,
+        retention: fn(&SchemaKey) -> harmos_domain::Result<ObjectRetention>,
+    ) -> StorageFuture<'a, bool> {
         Box::pin(async move {
             self.history.check(&through.history)?;
             assert!(through.sequence <= self.saved.load(Ordering::SeqCst) as u64);
@@ -457,21 +396,12 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             }
             let done = {
                 let mut objects = self.objects.lock().unwrap();
-                let definitions = C::definitions();
                 let mut remove = Vec::new();
                 let mut done = true;
                 // Controlled test storage uses a scan; real adapters use their key index.
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
-                    let retention = definitions
-                        .try_for_each(
-                            |definition| {
-                                if definition.schema().unwrap().id == object.value.schema.id { Err(*definition) } else { Ok(()) }
-                            },
-                        )
-                        .err()
-                        .unwrap()
-                        .retention();
+                    let retention = retention(&object.value.schema)?;
                     if retention == ObjectRetention::UntilReleased
                         && !self.object_releases.lock().unwrap().iter().any(|release| {
                             release.schema == object.value.schema
@@ -494,9 +424,6 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                         }
                         remove.push(position);
                     }
-                }
-                if let Some(journal) = &self.journal {
-                    journal.prune(through, &remove)?;
                 }
                 for position in &remove {
                     objects.remove(position);
@@ -522,7 +449,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn close(&self) -> StorageFuture<'_, ()> {
         Box::pin(async { self.control.close() })
     }
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    fn open_snapshot<'a>(
+        &'a self, at: &'a StorageCursor, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'a, BackendSnapshot> {
         self.fixture_open_snapshot(at)
     }
     fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
@@ -530,30 +459,37 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     }
     fn read_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         self.fixture_read_schemas(snapshot, selection, page)
     }
     fn read_objects<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         self.fixture_read_objects(snapshot, selection, page)
     }
     fn read_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         self.fixture_read_records(snapshot, selection, page)
     }
     fn read_stream<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         self.fixture_read_stream(snapshot, selection, page)
     }
     fn read_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         self.fixture_read_files(snapshot, selection, page)
     }
-    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn read_object<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'a, Option<ObjectEntry>> {
         self.fixture_read_object(snapshot, query)
     }
     fn supports_file_sessions(&self) -> bool {
@@ -562,10 +498,12 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn supports_mutation_receipts(&self) -> bool {
         self.fixture_supports_mutation_receipts()
     }
-    fn save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
-        self.fixture_save_mutations(receipts)
+    fn save_mutations(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
+        Box::pin(async move { self.fixture_save_mutations(receipts.as_slice()).await })
     }
-    fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn recover_mutations(
+        &self, limits: ReadLimits, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'_, Vec<MutationReceipt>> {
         self.fixture_recover_mutations(limits)
     }
     fn create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
@@ -574,16 +512,27 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
         self.fixture_fence_production(file, expected, next)
     }
-    fn save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
-        self.fixture_save_production(checkpoint)
+    fn save_production(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
+        Box::pin(async move {
+            if checkpoint.len() != 1 {
+                return Err(harmos_storage::Error::InvalidInput { field: "file checkpoint", reason: "requires exactly one checkpoint" });
+            }
+            self.fixture_save_production(&checkpoint.as_slice()[0]).await
+        })
     }
-    fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn recover_productions(
+        &self, limits: ReadLimits, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         self.fixture_recover_productions(limits)
     }
-    fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+    fn file_progress<'a>(
+        &'a self, file: &'a StagedFile, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'a, FileProgress> {
         self.fixture_file_progress(file)
     }
-    fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(
+        &'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_production(file, offset, max_bytes)
     }
 
@@ -600,7 +549,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         self.fixture_create_file(metadata)
     }
-    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: &'a [u8]) -> StorageFuture<'a, ()> {
+    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         self.fixture_write_file(staging, offset, bytes)
     }
     fn finish_file<'a>(
@@ -613,12 +562,64 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     }
     fn read_file<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_file(snapshot, file, offset, max_bytes)
     }
 }
 
 impl<C: ObjectCatalog> Data<C> {
+    fn persist<'a, T: Clone + PartialEq + Send + Sync + 'static>(
+        &'a self, batch: StorageBatch<T>, stored: &'a Mutex<BTreeMap<u64, T>>, position: fn(&T) -> &StorageCursor,
+        validate: impl Fn(&T) -> Result<()> + Send + 'a,
+    ) -> StorageFuture<'a, StorageCursor> {
+        Box::pin(async move {
+            let values = batch.as_slice();
+            let through =
+                position(values.last().ok_or(Error::InvalidInput { field: "controlled write", reason: "typed batch is empty" })?).clone();
+            for value in values {
+                self.history.check(&position(value).history)?;
+            }
+            self.control.write(values.iter().map(|value| position(value).sequence)).await?;
+
+            // Each Typed Call Validates Its Own Replay Identity Before Inserting.
+            for value in values {
+                validate(value)?;
+                if stored.lock().unwrap().get(&position(value).sequence).is_some_and(|prior| prior != value) {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+            }
+            for value in values {
+                stored.lock().unwrap().insert(position(value).sequence, value.clone());
+            }
+
+            // A Later Type Can Fail Without Rolling Back An Earlier Durable Call.
+            for sequence in (self.saved.load(Ordering::SeqCst) as u64 + 1)..=through.sequence {
+                let count = usize::from(self.schemas.lock().unwrap().contains_key(&sequence))
+                    + usize::from(self.objects.lock().unwrap().contains_key(&sequence))
+                    + usize::from(self.records.lock().unwrap().contains_key(&sequence))
+                    + usize::from(self.rows.lock().unwrap().contains_key(&sequence))
+                    + usize::from(self.files.lock().unwrap().contains_key(&sequence));
+                if count != 1 {
+                    return Err(failure(BackendFailure::Corrupt));
+                }
+            }
+            self.control.flush(through.sequence).await?;
+            if self.control.wrong_receipt.load(Ordering::SeqCst) {
+                return Ok(self.at(0));
+            }
+            let sequence = through
+                .sequence
+                .max(self.saved.load(Ordering::SeqCst) as u64)
+                .max(self.control.flush_advance.load(Ordering::SeqCst) as u64);
+            self.saved.store(sequence as usize, Ordering::SeqCst);
+            if self.control.flush_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
+                return Err(failure(BackendFailure::Transient));
+            }
+            Ok(self.at(sequence))
+        })
+    }
+
     fn image(&self, snapshot: &BackendSnapshot) -> Result<Snapshot> {
         self.snapshots.lock().unwrap().get(&snapshot.token).cloned().ok_or(Error::Closing { domain: "test snapshot" })
     }
@@ -657,25 +658,36 @@ impl StateBackend for Recovery {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn write_entries<'a>(&'a self, entries: &'a [RecoveryEntry]) -> StorageFuture<'a, ()> {
+    fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
-            self.control.write(entries.iter().map(|e| e.position.sequence)).await?;
+            if self.control.retain_recovery.load(Ordering::SeqCst) {
+                *self.control.retained_recovery.lock().unwrap() = Some(entries.clone());
+            }
+            self.control.write(entries.as_slice().iter().map(|e| e.position.sequence)).await?;
             let mut stored = self.entries.lock().unwrap();
-            for entry in entries {
+            for entry in entries.as_slice() {
                 stored.insert(entry.position.sequence, entry.clone());
             }
             Ok(())
         })
     }
-    fn write_snapshot<'a>(&'a self, snapshot: &'a RecoverySnapshot) -> StorageFuture<'a, ()> {
+    fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
+            if self.control.retain_snapshot.load(Ordering::SeqCst) {
+                *self.control.retained_snapshot.lock().unwrap() = Some(snapshot.clone());
+            }
+            let [snapshot] = snapshot.as_slice() else {
+                return Err(Error::InvalidInput { field: "state snapshot", reason: "requires exactly one snapshot" });
+            };
             self.control.write([snapshot.through.sequence]).await?;
             *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
             self.control.snapshot_written.notify_one();
             Ok(())
         })
     }
-    fn read_snapshot(&self, _: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
+    fn read_snapshot(
+        &self, _: NonZeroUsize, _memory: harmos_storage::arrow::RetainedMemory,
+    ) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async {
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
@@ -686,6 +698,7 @@ impl StateBackend for Recovery {
     }
     fn read_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
+        _memory: harmos_storage::arrow::RetainedMemory,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             if self.control.block_read.load(Ordering::SeqCst) {
@@ -781,6 +794,18 @@ fn upsert_release(releases: &mut Vec<Release>, release: Release) {
     } else {
         releases.push(release);
     }
+}
+
+pub async fn read_memory() -> harmos_storage::arrow::RetainedMemory {
+    let manager = harmos_storage::StorageManager::<()>::new(
+        harmos_storage::StorageBackends {
+            primary: std::sync::Arc::new(Data::<()>::new(history())),
+            state: std::sync::Arc::new(Recovery::new(history())),
+        },
+        storage_settings(),
+    )
+    .unwrap();
+    manager.read_memory(NonZeroUsize::new(32 * 1024).unwrap()).await.unwrap()
 }
 
 /* === Tests === */

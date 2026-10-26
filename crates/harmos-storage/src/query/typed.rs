@@ -33,7 +33,7 @@ use crate::storage::memory::MemoryBank;
 use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
 use crate::storage::{ObjectCatalog, ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager, StoredObject, StoredRecord};
-use crate::{BackendFailure, Error, MemorySize, Message, Result};
+use crate::{BackendFailure, Error, MemorySize, Message, ReadBatch, Result};
 use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
@@ -95,26 +95,41 @@ impl<C: ObjectCatalog> StorageManager<C> {
     where
         C: Contains<T>,
     {
-        let schema = object_schema::<T>()?;
-        let key = read.key.map(|key| object_key(key, self.inner.settings.scan_bytes())).transpose()?;
-        let selection = ObjectSelection { schema: Some(schema.clone()), key, versions: read.versions };
-        let pages = Pages::open(self, read.at, selection).await?;
-        Ok(ObjectReader { pages, schema, _value: PhantomData })
+        crate::ReadSession::standalone(self).read_objects(read).await
     }
 }
 
 impl<C> StorageManager<C> {
-    pub async fn read_records<T: Message>(&self, read: RecordRead) -> Result<RecordReader<T>> {
+    pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
+        crate::ReadSession::standalone(self).read_records(read).await
+    }
+}
+
+impl<C: ObjectCatalog> crate::ReadSession<C> {
+    pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
+    where
+        C: Contains<T>,
+    {
+        let schema = object_schema::<T>()?;
+        let key = read.key.map(|key| object_key(key, self.manager.inner.settings.scan_bytes())).transpose()?;
+        let selection = ObjectSelection { schema: Some(schema.clone()), key, versions: read.versions };
+        let pages = Pages::open(&self.manager, &self.held, self.queued, read.at, selection).await?;
+        Ok(ObjectReader { pages, schema, _value: PhantomData })
+    }
+}
+
+impl<C> crate::ReadSession<C> {
+    pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
         read.selection.schema.require_postcard()?;
-        let mut pages = Pages::open(self, read.at, read.selection).await?;
+        let mut pages = Pages::open(&self.manager, &self.held, self.queued, read.at, read.selection).await?;
         pages.after = read.after;
         Ok(RecordReader { pages, _payload: PhantomData })
     }
 }
 
 impl<T: StoredObject> ObjectReader<T> {
-    pub async fn next(&mut self) -> Result<Option<Vec<ObjectRevision<T>>>> {
+    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<ObjectRevision<T>>>>> {
         let schema = &self.schema;
         self.pages
             .next(
@@ -130,17 +145,26 @@ impl<T: StoredObject> ObjectReader<T> {
             .await
     }
 
-    pub async fn collect(mut self) -> Result<Vec<ObjectRevision<T>>> {
-        let mut values = Vec::new();
+    pub async fn collect(mut self) -> Result<ReadBatch<Vec<ReadBatch<Vec<ObjectRevision<T>>>>>> {
+        let mut collection =
+            Reservation::wait(&self.pages.inner, Pool::Read, &self.pages.held, ENTRY_OVERHEAD, None).await.map_err(Refusal::into_error)?;
+        let mut pages = Vec::new();
         while let Some(page) = self.next().await? {
-            values.extend(page);
+            let bytes = pages
+                .len()
+                .checked_add(1)
+                .and_then(|count| count.checked_mul(4 * std::mem::size_of_val(&page)))
+                .and_then(|bytes| bytes.checked_add(ENTRY_OVERHEAD))
+                .ok_or(Error::ResourceExhausted { resource: "typed page collection" })?;
+            collection.grow(bytes.saturating_sub(collection.bytes()), None).await.map_err(Refusal::into_error)?;
+            pages.push(page);
         }
-        Ok(values)
+        Ok(ReadBatch::new(pages, collection))
     }
 }
 
-impl<T: Message> RecordReader<T> {
-    pub async fn next(&mut self) -> Result<Option<Vec<StoredRecord<T>>>> {
+impl<T: Message + MemorySize> RecordReader<T> {
+    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRecord<T>>>>> {
         self.pages
             .next(
                 |record| decoding::<T>(&record.payload),
@@ -160,12 +184,21 @@ impl<T: Message> RecordReader<T> {
             .await
     }
 
-    pub async fn collect(mut self) -> Result<Vec<StoredRecord<T>>> {
-        let mut values = Vec::new();
+    pub async fn collect(mut self) -> Result<ReadBatch<Vec<ReadBatch<Vec<StoredRecord<T>>>>>> {
+        let mut collection =
+            Reservation::wait(&self.pages.inner, Pool::Read, &self.pages.held, ENTRY_OVERHEAD, None).await.map_err(Refusal::into_error)?;
+        let mut pages = Vec::new();
         while let Some(page) = self.next().await? {
-            values.extend(page);
+            let bytes = pages
+                .len()
+                .checked_add(1)
+                .and_then(|count| count.checked_mul(4 * std::mem::size_of_val(&page)))
+                .and_then(|bytes| bytes.checked_add(ENTRY_OVERHEAD))
+                .ok_or(Error::ResourceExhausted { resource: "typed page collection" })?;
+            collection.grow(bytes.saturating_sub(collection.bytes()), None).await.map_err(Refusal::into_error)?;
+            pages.push(page);
         }
-        Ok(values)
+        Ok(ReadBatch::new(pages, collection))
     }
 }
 
@@ -173,13 +206,20 @@ impl<E: Entry> Pages<E>
 where
     E::Selection: MemorySize,
 {
-    async fn open<C>(manager: &StorageManager<C>, at: StorageCursor, selection: E::Selection) -> Result<Self> {
+    async fn open<C>(manager: &StorageManager<C>, held: &Held, queued: bool, at: StorageCursor, selection: E::Selection) -> Result<Self> {
         let inner = &manager.inner;
-        let active = query_slot(inner).await?;
-        let held = Held::default();
+        let active = if queued {
+            query_slot(inner).await?
+        } else {
+            Arc::clone(&inner.query_active).try_acquire_owned().map_err(|error| match error {
+                tokio::sync::TryAcquireError::Closed => Error::Closing { domain: "storage queries" },
+                tokio::sync::TryAcquireError::NoPermits => Error::ResourceExhausted { resource: "active storage queries" },
+            })?
+        };
+        let held = held.clone();
         let description = selection.memory_size().saturating_add(ENTRY_OVERHEAD);
         let description = Reservation::wait(inner, Pool::Read, &held, description, None).await.map_err(Refusal::into_error)?;
-        let snapshot = manager.snapshot(&at).await?;
+        let snapshot = manager.snapshot(&at, &held).await?;
         Ok(Self {
             inner: Arc::clone(inner),
             held,
@@ -196,7 +236,9 @@ where
 }
 
 impl<E: Entry> Pages<E> {
-    async fn next<V>(&mut self, memory: impl Fn(&E) -> Result<usize>, build: impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
+    async fn next<V: MemorySize>(
+        &mut self, memory: impl Fn(&E) -> Result<usize>, build: impl Fn(E) -> Result<V>,
+    ) -> Result<Option<ReadBatch<Vec<V>>>> {
         if self.failed || self.inflight {
             self.fail();
             return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
@@ -210,7 +252,9 @@ impl<E: Entry> Pages<E> {
         result
     }
 
-    async fn advance<V>(&mut self, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>) -> Result<Option<Vec<V>>> {
+    async fn advance<V: MemorySize>(
+        &mut self, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
+    ) -> Result<Option<ReadBatch<Vec<V>>>> {
         while self.snapshot.is_some() {
             let mut credit = 0usize;
             let page = loop {
@@ -242,17 +286,19 @@ impl<E: Entry> Pages<E> {
     }
 
     // Scan And Decode One Page; State Advances Only After Every Claim Succeeded.
-    async fn attempt<V>(
+    async fn attempt<V: MemorySize>(
         &mut self, bank: &MemoryBank, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
-    ) -> Result<Option<Vec<V>>> {
+    ) -> Result<Option<ReadBatch<Vec<V>>>> {
         let bytes = self.inner.settings.scan_bytes().min(self.inner.settings.response.batch_bytes);
         let page = ScanPage { after: self.after, rows: self.rows, bytes };
         let mut raw = bank.scope();
         raw.claim(self.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get()))?;
         let snapshot = self.snapshot.as_ref().expect("running reader owns its snapshot");
-        let (entries, size) = snapshot.scan::<E>(&self.selection, page).await?;
+        let raw_memory = raw.retain();
+        let (entries, size) = snapshot.scan::<E>(&self.selection, page, raw_memory.clone()).await?;
+        let mut raw = bank.scope();
         // A Single Oversized Entry Is Charged At Its Actual Size.
-        raw.claim(size.saturating_sub(bytes.get()))?;
+        raw.claim(size.saturating_sub(raw_memory.bytes()))?;
         let Some(last) = entries.last().map(|entry| entry.position().sequence) else {
             return Ok(None);
         };
@@ -261,8 +307,14 @@ impl<E: Entry> Pages<E> {
             decoded.claim(memory(entry)?)?;
         }
         let values = entries.into_iter().map(build).collect::<Result<Vec<_>>>()?;
+        drop(decoded);
+        drop(raw);
+        drop(raw_memory);
+        let bytes =
+            values.memory_size().checked_add(ENTRY_OVERHEAD).ok_or(Error::ResourceExhausted { resource: "typed page ownership" })?;
+        let memory = bank.reserve(bytes)?;
         self.after = last;
-        Ok(Some(values))
+        Ok(Some(ReadBatch::retained(values, memory)))
     }
 
     fn fail(&mut self) {

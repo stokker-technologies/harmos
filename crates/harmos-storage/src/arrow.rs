@@ -16,7 +16,7 @@ mod retention;
 
 /* === Re-Exports === */
 
-pub use super::writes::convert::encode_payloads;
+pub use super::writes::convert::{encode_payloads, encode_payloads_memory};
 
 /* === Imports === */
 
@@ -76,6 +76,35 @@ impl RetainedMemory {
         Self { owner }
     }
 
+    /// Total admitted bytes, including any private owner allowance.
+    pub fn bytes(&self) -> usize {
+        self.owner.lock().unwrap().bytes()
+    }
+
+    /// Admits an absolute total high-water mark; this never shrinks the claim.
+    /// Concurrent incremental allocators must use `try_grow_by`.
+    pub fn try_grow_to(&self, bytes: usize) -> Result<()> {
+        self.try_grow(bytes).map_err(crate::capacity::Refusal::into_error)
+    }
+
+    pub(crate) fn try_grow(&self, bytes: usize) -> std::result::Result<(), crate::capacity::Refusal> {
+        let mut owner = self.owner.lock().unwrap();
+        let additional = bytes.saturating_sub(owner.bytes());
+        owner.try_grow(additional)
+    }
+
+    /// Atomically admits an additional allocation peak without waiting.
+    ///
+    /// Refusal leaves the claim unchanged. Use this for independent increments
+    /// through aliases; `bytes() + try_grow_to()` is not an atomic increment.
+    pub fn try_grow_by(&self, additional: usize) -> Result<()> {
+        self.owner.lock().unwrap().try_grow(additional).map_err(crate::capacity::Refusal::into_error)
+    }
+
+    pub(crate) async fn grow_to(&self, bytes: usize) -> std::result::Result<(), crate::capacity::Refusal> {
+        Reservation::grow_shared(&self.owner, bytes).await
+    }
+
     pub(crate) fn shrink_to(&self, bytes: usize) -> Result<()> {
         let mut held = self.owner.lock().unwrap();
         if bytes > held.bytes() {
@@ -83,6 +112,12 @@ impl RetainedMemory {
         }
         held.shrink_to(bytes);
         Ok(())
+    }
+}
+
+impl std::fmt::Debug for RetainedMemory {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("RetainedMemory")
     }
 }
 
@@ -109,14 +144,18 @@ impl ArrowSchema {
         &self.schema
     }
 
+    pub(crate) fn ipc_capacity(&self) -> usize {
+        self.ipc.capacity()
+    }
+
     pub fn ipc_bytes(&self) -> &[u8] {
         &self.ipc
     }
 
-    pub fn from_ipc(bytes: &[u8]) -> Result<Self> {
-        ipc::preflight(bytes, false)?;
-        let (schema, _) = ipc::decode(bytes, false)?;
-        Ok(Self { schema, ipc: Arc::new(bytes.to_vec()), retention: None })
+    pub fn from_ipc(bytes: Vec<u8>) -> Result<Self> {
+        ipc::preflight(&bytes, false)?;
+        let (schema, _) = ipc::decode(&bytes, false)?;
+        Ok(Self { schema, ipc: Arc::new(bytes), retention: None })
     }
 }
 
@@ -136,8 +175,36 @@ impl ArrowBatch {
         Ok(self)
     }
 
+    /// Projects an admitted batch while preserving its original shared claim.
+    ///
+    /// `additional_peak` bounds new output allocations and conversion scratch.
+    /// Private output-owner storage is admitted separately, before the callback.
+    /// Immutable Arrow buffer clones and slices may share the original claim.
+    /// The callback must transfer payloads only into its successful value; errors
+    /// and external captures must not retain them. Nested owners retain their guards.
+    /// Unretained batches from `try_new` or `from_ipc` refuse without conversion.
+    pub fn try_map<U, E>(
+        self, additional_peak: usize, map: impl FnOnce(RecordBatch) -> std::result::Result<U, E>,
+    ) -> std::result::Result<crate::ReadBatch<U>, E>
+    where
+        E: From<Error>,
+    {
+        let memory = self.retention.as_ref().ok_or_else(|| E::from(invalid("projection requires an admitted batch")))?.0.clone();
+        let additional = additional_peak
+            .checked_add(crate::ReadBatch::<U>::owner_bytes().map_err(E::from)?)
+            .ok_or_else(|| E::from(Error::ResourceExhausted { resource: "Arrow projection memory" }))?;
+        memory.try_grow_by(additional).map_err(E::from)?;
+        let Self { batch, .. } = self;
+        let value = map(batch)?;
+        Ok(crate::ReadBatch::retained(value, memory))
+    }
+
     pub fn as_record_batch(&self) -> &RecordBatch {
         &self.batch
+    }
+
+    pub(crate) fn ipc_capacity(&self) -> usize {
+        self.ipc.capacity()
     }
 
     pub fn ipc_bytes(&self) -> &[u8] {
@@ -151,12 +218,12 @@ impl ArrowBatch {
             .ok_or_else(|| invalid("Arrow encoding ownership size overflow"))
     }
 
-    pub fn from_ipc(bytes: &[u8]) -> Result<Self> {
-        ipc::preflight(bytes, true)?;
-        let (_, batch) = ipc::decode(bytes, true)?;
+    pub fn from_ipc(bytes: Vec<u8>) -> Result<Self> {
+        ipc::preflight(&bytes, true)?;
+        let (_, batch) = ipc::decode(&bytes, true)?;
         let batch = batch.ok_or_else(|| invalid("missing Arrow record batch"))?;
         let resident = retention::resident_bytes(&batch)?;
-        Ok(Self { batch, ipc: Arc::new(bytes.to_vec()), resident, retention: None })
+        Ok(Self { batch, ipc: Arc::new(bytes), resident, retention: None })
     }
 
     pub fn validate_schema(&self, schema: &Schema) -> Result<()> {
@@ -173,15 +240,19 @@ impl MemorySize for ArrowSchema {
     }
 }
 
-impl From<&ArrowBatch> for harmos_domain::model::storage::ArrowIpc {
-    fn from(batch: &ArrowBatch) -> Self {
-        Self::new(batch.ipc_bytes().to_vec())
+impl From<ArrowSchema> for harmos_domain::model::storage::ArrowIpc {
+    fn from(schema: ArrowSchema) -> Self {
+        Self::from(schema.ipc)
     }
 }
 
 impl From<ArrowBatch> for harmos_domain::model::storage::ArrowIpc {
     fn from(batch: ArrowBatch) -> Self {
-        Self::from(&batch)
+        let ArrowBatch { batch, ipc, retention, .. } = batch;
+        drop(batch);
+        let encoded = Self::from(ipc);
+        drop(retention);
+        encoded
     }
 }
 
@@ -296,14 +367,24 @@ mod tests {
         let original = batch();
         let encoded = ArrowBatch::try_new(original.clone()).unwrap();
         let bound = decoding_memory(encoded.ipc_bytes(), true).unwrap();
-        let decoded = ArrowBatch::from_ipc(encoded.ipc_bytes()).unwrap();
+        let bytes = encoded.ipc_bytes().to_vec();
+        let allocation = bytes.as_ptr();
+        let decoded = ArrowBatch::from_ipc(bytes).unwrap();
+        assert_eq!(decoded.ipc_bytes().as_ptr(), allocation);
         assert_eq!(decoded.as_record_batch(), &original);
         assert!(bound >= decoded.memory_size());
         let header = ArrowSchema::try_new(original.schema()).unwrap();
-        let decoded_header = ArrowSchema::from_ipc(header.ipc_bytes()).unwrap();
+        let decoded_header = ArrowSchema::from_ipc(header.ipc_bytes().to_vec()).unwrap();
         decoded.validate_schema(decoded_header.as_schema()).unwrap();
-        assert!(ArrowSchema::from_ipc(encoded.ipc_bytes()).is_err());
-        assert!(ArrowBatch::from_ipc(header.ipc_bytes()).is_err());
+        let output = harmos_domain::model::storage::ArrowIpc::from(decoded);
+        assert_eq!(output.bytes().as_ptr(), allocation);
+        assert_eq!(output.bytes(), encoded.ipc_bytes());
+        let shared = encoded.clone();
+        let output = harmos_domain::model::storage::ArrowIpc::from(shared);
+        assert_eq!(output.bytes(), encoded.ipc_bytes());
+        assert_ne!(output.bytes().as_ptr(), encoded.ipc_bytes().as_ptr());
+        assert!(ArrowSchema::from_ipc(encoded.ipc_bytes().to_vec()).is_err());
+        assert!(ArrowBatch::from_ipc(header.ipc_bytes().to_vec()).is_err());
 
         // Malformed Framing Is Refused Before Arrow Allocates Arrays.
         for length in [0, 1, 4, encoded.ipc_bytes().len() - 1] {
@@ -318,5 +399,113 @@ mod tests {
         assert!(ArrowSchema::try_new(Arc::new(unsupported)).is_err());
         let duplicate = Schema::new(vec![Field::new("x", DataType::Int64, false), Field::new("x", DataType::Int64, false)]);
         assert!(ArrowSchema::try_new(Arc::new(duplicate)).is_err());
+    }
+    fn admitted(bytes: usize) -> (crate::StorageManager, ArrowBatch) {
+        use crate::capacity::{Held, Pool, Reservation};
+        use crate::test_backend::{Data, Recovery, history, storage_settings};
+        let storage = crate::StorageManager::new(
+            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            storage_settings(),
+        )
+        .unwrap();
+        {
+            let mut state = storage.inner.state.lock().unwrap();
+            state.ready = true;
+            state.status.running = true;
+        }
+        let memory = Reservation::try_new(&storage.inner, Pool::Read, &Held::default(), bytes).unwrap().retain();
+        let batch = ArrowBatch::try_new(batch()).unwrap().retain(memory).unwrap();
+        (storage, batch)
+    }
+
+    #[test]
+    fn projection_aliases_retain() {
+        let (storage, batch) = admitted(16_384);
+        let alias = batch.clone();
+        let slice = batch.as_record_batch().slice(1, 2);
+        let pointer = batch.as_record_batch().column(0).as_any().downcast_ref::<Int64Array>().unwrap().values().as_ptr();
+        let projected = batch.try_map(0, Ok::<_, crate::Error>).unwrap();
+        assert_eq!(projected.column(0).as_any().downcast_ref::<Int64Array>().unwrap().values().as_ptr(), pointer);
+        drop(projected);
+        drop(alias);
+        assert!(storage.status().read_bytes > 0);
+        assert_eq!(slice.column(0).as_any().downcast_ref::<Int64Array>().unwrap().value(0), 1);
+        drop(slice);
+        assert_eq!(storage.status().read_bytes, 0);
+    }
+
+    #[test]
+    fn projection_dto_retains() {
+        let (storage, batch) = admitted(16_384);
+        let projected = batch
+            .try_map(4 * std::mem::size_of::<i64>(), |batch| {
+                Ok::<_, crate::Error>(batch.column(0).as_any().downcast_ref::<Int64Array>().unwrap().values().to_vec())
+            })
+            .unwrap();
+        assert_eq!(projected.as_slice(), &[2, 1, 1, 2]);
+        assert!(storage.status().read_bytes > 16_384);
+        drop(projected);
+        assert_eq!(storage.status().read_bytes, 0);
+    }
+
+    #[test]
+    fn unretained_projection_refuses() {
+        let encoded = ArrowBatch::try_new(batch()).unwrap();
+        let decoded = ArrowBatch::from_ipc(encoded.ipc_bytes().to_vec()).unwrap();
+        for batch in [encoded, decoded] {
+            let called = std::cell::Cell::new(false);
+            let result = batch.try_map(0, |batch| {
+                called.set(true);
+                Ok::<_, crate::Error>(batch)
+            });
+            assert!(result.is_err());
+            assert!(!called.get());
+        }
+    }
+
+    #[test]
+    fn projection_budget_refuses() {
+        let bytes = crate::test_backend::storage_settings().budget.read_memory_bytes.get();
+        let (storage, batch) = admitted(bytes);
+        let called = std::cell::Cell::new(false);
+        let result = batch.try_map(0, |batch| {
+            called.set(true);
+            Ok::<_, crate::Error>(batch)
+        });
+        assert!(matches!(result, Err(crate::Error::ResourceExhausted { .. })));
+        assert!(!called.get());
+        assert_eq!(storage.status().read_bytes, 0);
+    }
+
+    #[test]
+    fn projection_failure_retains() {
+        let (storage, batch) = admitted(16_384);
+        let alias = batch.clone();
+        let result = batch.try_map(64, |_| -> crate::Result<()> {
+            Err(crate::Error::InvalidInput { field: "projection", reason: "injected conversion failure" })
+        });
+        assert!(result.is_err());
+        assert!(storage.status().read_bytes > 16_384);
+        drop(alias);
+        assert_eq!(storage.status().read_bytes, 0);
+    }
+
+    #[test]
+    fn projection_alias_growth() {
+        let (storage, batch) = admitted(16_384);
+        let values = std::thread::scope(|scope| {
+            let mut tasks = Vec::new();
+            for _ in 0..2 {
+                let batch = batch.clone();
+                tasks.push(scope.spawn(move || batch.try_map(0, |batch| Ok::<_, crate::Error>(batch.num_rows())).unwrap()));
+            }
+            tasks.into_iter().map(|task| task.join().unwrap()).collect::<Vec<_>>()
+        });
+        let scaffold = crate::ReadBatch::<usize>::owner_bytes().unwrap();
+        assert_eq!(storage.status().read_bytes, 16_384 + 2 * scaffold);
+        drop(batch);
+        assert!(values.iter().all(|value| **value == 4));
+        drop(values);
+        assert_eq!(storage.status().read_bytes, 0);
     }
 }

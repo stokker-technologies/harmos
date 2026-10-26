@@ -85,6 +85,7 @@ clap = { version = "4", default-features = false }
 
 # Filesystem
 notify = { version = "8.2.0", default-features = false }
+same-file = { version = "1", default-features = false }
 tar = { version = "0.4.46", default-features = false }
 tempfile = { version = "3", default-features = false }
 

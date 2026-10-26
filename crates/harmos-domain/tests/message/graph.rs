@@ -323,7 +323,9 @@ fn wire_round_trip(schema: &Schema) {
     assert!(<Schema as harmos_domain::Message>::decoding_memory(&postcard).unwrap() >= std::mem::size_of::<Schema>());
     assert_eq!(&<Schema as harmos_domain::Message>::decode(&postcard).unwrap(), schema);
     let protobuf = crate::encode(schema);
-    assert!(grpc::decoding_memory::<Schema>(DecodeInput::new(&protobuf)).unwrap() >= std::mem::size_of::<Schema>());
+    assert!(
+        grpc::prepare::<Schema>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).unwrap() >= std::mem::size_of::<Schema>()
+    );
     assert_eq!(&grpc::decode::<Schema>(DecodeInput::new(&protobuf)).unwrap(), schema);
 }
 

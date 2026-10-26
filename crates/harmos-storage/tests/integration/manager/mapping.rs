@@ -14,7 +14,6 @@
 
 // Standard Library Imports
 use std::num::{NonZeroU32, NonZeroUsize};
-use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
@@ -24,7 +23,7 @@ use harmos_storage::*;
 use harmos_storage::{Identifier, Message};
 
 // Local Imports
-use super::backend::{Data, history, storage_settings};
+use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
 
 /* === Constants === */
@@ -71,10 +70,11 @@ impl Mapped {
     async fn new<T: harmos_domain::schema::Described + Message>(settings: StorageSettings, id: &str, payloads: &[T]) -> Self {
         // Start Storage Over A Real Journal And File State Root.
         let directory = tempfile::tempdir().unwrap();
-        let data = Data::<()>::journaled(directory.path(), history()).unwrap();
-        let state_root = directory.path().join("state");
-        let state = harmos_storage::state::file::FileBackend::new(state_root, history(), state_settings());
-        let backends = StorageBackends { primary: Arc::new(data), state: Arc::new(state) };
+        let data = JsonStorage::new(
+            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            history(),
+        );
+        let backends = data.into_backends(state_settings());
         let storage = StorageManager::new(backends, settings).unwrap();
         super::fixture::start(&storage).await;
 
@@ -84,17 +84,17 @@ impl Mapped {
         let graph =
             harmos_domain::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_domain::config::SchemaSettings::default())
                 .unwrap();
-        storage.write_schema(&schema, &graph).await.unwrap();
+        storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
         for (index, payload) in payloads.iter().enumerate() {
             let item = Identifier::new(format!("row-{index}")).unwrap();
             storage
-                .write_records(&[RecordWrite {
-                    schema: &schema,
+                .write_records(vec![RecordInput {
+                    schema: schema.clone(),
                     scope: None,
-                    item: &item,
+                    item: item.clone(),
                     source: None,
                     source_time: None,
-                    payload: &payload.encode_to_vec(),
+                    payload: payload.encode_to_vec(),
                 }])
                 .await
                 .unwrap();

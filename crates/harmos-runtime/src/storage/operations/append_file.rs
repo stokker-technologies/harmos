@@ -24,7 +24,7 @@ use std::sync::Arc;
 // Local Imports
 
 use crate::operations::{Context, Operation};
-use crate::storage::FileProducer;
+use crate::storage::{FileChunk, FileProducer};
 
 use crate::storage::StorageManager;
 
@@ -40,6 +40,7 @@ use crate::{Error, Result};
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
+    payload: Option<FileChunk>,
 }
 
 /* === Enums === */
@@ -55,14 +56,19 @@ impl<C: 'static> Operation for Handler<C> {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
     async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
-        Ok(Self { storage })
+        Ok(Self { storage, payload: None })
     }
 
     async fn run<'a>(
         &mut self, _: Self::Context<'a>, request: &mut AppendFile, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProducer>> {
+        if self.payload.is_none() {
+            let bytes = std::mem::take(&mut request.bytes);
+            self.payload = Some(FileChunk::new(bytes));
+        }
+        let payload = self.payload.as_ref().expect("retained file payload").clone();
         let result: ::core::result::Result<FileProducer, Self::Error> = async move {
-            self.storage.append_file_once(&request.mutation, &request.session, request.offset, &request.bytes).await.map_err(Into::into)
+            self.storage.append_file_once(&request.mutation, &request.session, request.offset, payload).await.map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

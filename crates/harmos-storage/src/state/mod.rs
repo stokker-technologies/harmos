@@ -27,8 +27,8 @@ pub use reader::RecoveryReader;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{ReadLimits, RecoveryPosition, StorageFuture, StoreHistory};
-use crate::{Error, Result};
+use super::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
+use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
@@ -71,17 +71,47 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
-    fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
-    fn write_snapshot<'a>(&'a self, snapshot: &'a RecoverySnapshot) -> StorageFuture<'a, ()>;
+    fn read_snapshot(
+        &self, max_bytes: std::num::NonZeroUsize, memory: crate::arrow::RetainedMemory,
+    ) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+    fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
     fn read_entries<'a>(
-        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
+        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits, memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, RecoveryPage>;
-    fn write_entries<'a>(&'a self, entries: &'a [RecoveryEntry]) -> StorageFuture<'a, ()>;
+    fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()>;
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition>;
     fn close(&self) -> StorageFuture<'_, ()>;
 }
 
 /* === Implementations === */
+
+impl MemorySize for RecoveryEntry {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.required_data.memory_size().saturating_sub(std::mem::size_of::<super::StorageCursor>()))
+            .saturating_add(self.position.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
+            .saturating_add(self.payload.capacity())
+    }
+}
+
+impl MemorySize for RecoverySnapshot {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.required_data.memory_size().saturating_sub(std::mem::size_of::<super::StorageCursor>()))
+            .saturating_add(self.through.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
+            .saturating_add(self.payload.capacity())
+    }
+}
+
+impl MemorySize for RecoveryPage {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.entries.memory_size().saturating_sub(std::mem::size_of::<Vec<RecoveryEntry>>()))
+            .saturating_add(
+                self.next.as_ref().map_or(0, |next| next.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>())),
+            )
+    }
+}
 
 impl RecoveryPage {
     pub fn check(

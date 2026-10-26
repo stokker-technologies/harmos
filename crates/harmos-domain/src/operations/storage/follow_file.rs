@@ -18,10 +18,10 @@
 // Third Party Imports
 
 // Local Imports
-use super::STREAM_POLICY;
+use super::IO_POLICY;
 use crate::MemorySize;
-use crate::model::storage::codec::{Nested, Unsigned, product};
-use crate::model::storage::{FileBatch, FileProgress, StagedFile};
+use crate::model::storage::codec::{Nested, product};
+use crate::model::storage::files::{FileCompletion, FileEvent, FileSource, FollowStart};
 use crate::operations::Visibility;
 
 /* === Constants === */
@@ -29,17 +29,19 @@ use crate::operations::Visibility;
 /* === Macros === */
 
 product!(FollowFile {
-    file: Nested<StagedFile> => 1,
-    offset: Unsigned => 2,
+    source: Nested<FileSource> => 1,
+    start: Nested<FollowStart> => 2,
 });
 
 crate::declare!(FollowFile {
     id: "storage.follow_file",
     version: 1,
-    policy: STREAM_POLICY,
-    response: FileProgress,
-    output: FileBatch,
-    visibility: Visibility::Host,
+    policy: IO_POLICY,
+    response: FileCompletion,
+    output: FileEvent,
+    visibility: Visibility::Shared,
+    grpc: ("harmos.storage.v1", "Storage", "FollowFile"),
+    grant: |request: &FollowFile| request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.follow_file", scope)),
 });
 
 /* === Type Aliases === */
@@ -48,8 +50,8 @@ crate::declare!(FollowFile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowFile {
-    pub file: StagedFile,
-    pub offset: u64,
+    pub source: FileSource,
+    pub start: FollowStart,
 }
 
 /* === Enums === */
@@ -61,8 +63,8 @@ pub struct FollowFile {
 impl MemorySize for FollowFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
-            .saturating_add(self.offset.memory_size().saturating_sub(std::mem::size_of_val(&self.offset)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.start.memory_size().saturating_sub(std::mem::size_of_val(&self.start)))
     }
 }
 

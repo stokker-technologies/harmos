@@ -14,14 +14,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 
 // Third Party Imports
 use harmos_runtime::Runtime;
 use harmos_runtime::storage::*;
+use harmos_storage::json::{JsonStorage, JsonStorageSettings};
 
 // Local Imports
-use super::{Model, State, backend};
+use super::{Model, State};
 
 /* === Constants === */
 
@@ -36,7 +36,6 @@ pub struct Fixture {
     _directory: tempfile::TempDir,
     pub storage: StorageManager,
     pub runtime: Runtime<Model>,
-    pub data: Arc<backend::Data>,
 }
 /* === Enums === */
 
@@ -45,25 +44,18 @@ pub struct Fixture {
 /* === Implementations === */
 
 impl Fixture {
-    pub async fn new(concurrency: usize) -> Self {
+    pub async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let data = Arc::new(backend::Data::journaled(directory.path(), backend::history()).unwrap());
-        let mut settings = backend::storage_settings();
-        settings.request.max_active_queries = super::nonzero(concurrency);
-        settings.budget.read_memory_bytes = super::nonzero(128 * 1024 * 1024);
-        settings.request.max_pending_write_bytes = super::nonzero(32 * 1024 * 1024);
-        let storage = StorageManager::new(
-            StorageBackends { primary: data.clone(), state: Arc::new(backend::Recovery::new(backend::history())) },
-            settings.clone(),
-        )
-        .unwrap();
+        let settings = settings();
+        let backends = backends(directory.path());
+        let storage = StorageManager::new(backends, settings.clone()).unwrap();
         let runtime = Runtime::<Model>::builder(State::default(), ())
             .register(super::Transactions::catalog())
             .register(super::Records::catalog())
             .runtime_with_storage(&storage)
             .await
             .unwrap();
-        Self { settings, _directory: directory, storage, runtime, data }
+        Self { settings, _directory: directory, storage, runtime }
     }
 
     pub async fn finish(self) {
@@ -72,6 +64,37 @@ impl Fixture {
     }
 }
 /* === Public Functions === */
+
+pub fn settings() -> StorageSettings {
+    StorageSettings {
+        filesystem: harmos_storage::StorageFilesystemSettings {
+            poll_interval: std::time::Duration::from_millis(100),
+            max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
+            event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
+        },
+        budget: StorageBudget { read_memory_bytes: super::nonzero(128 * 1024 * 1024) },
+        request: StorageRequestSettings {
+            max_active_queries: super::nonzero(4),
+            max_active_file_operations: super::nonzero(4),
+            max_pending_queries: super::nonzero(64),
+            max_pending_write_batches: super::nonzero(256),
+            max_pending_write_bytes: super::nonzero(64 * 1024 * 1024),
+        },
+        response: StorageResponseSettings { batch_rows: super::nonzero(4096), batch_bytes: super::nonzero(1024 * 1024) },
+    }
+}
+
+pub fn backends(root: &std::path::Path) -> StorageBackends {
+    let history = StoreHistory {
+        store: harmos_runtime::Identifier::new("benchmark-store").unwrap(),
+        epoch: harmos_runtime::Identifier::new("benchmark-epoch").unwrap(),
+    };
+    let settings = JsonStorageSettings { root: root.to_owned(), max_entry_bytes: super::nonzero(16 * 1024 * 1024) };
+    JsonStorage::new(settings, history).into_backends(harmos_storage::state::StorageStateSettings {
+        max_entry_bytes: super::nonzero(16 * 1024 * 1024),
+        max_checkpoint_bytes: super::nonzero(64 * 1024 * 1024),
+    })
+}
 
 /* === Private Functions === */
 

@@ -60,8 +60,8 @@ pub struct Transcoded;
 
 pub trait Wire<T>: Send + Sync + 'static {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError>;
-    fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError>;
-    fn decode(input: DecodeInput<'_>) -> Result<T, MessageError>;
+
+    fn decode_admitted<C>(input: DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>) -> Result<(T, C), Status>;
 }
 
 pub trait Encode<W>: Send + 'static {
@@ -84,12 +84,11 @@ impl<T: Portable> Wire<T> for Transcoded {
         harmos_sdk::grpc::encode(value, bytes)
     }
 
-    fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError> {
-        harmos_sdk::grpc::decoding_memory::<T>(input)
-    }
-
-    fn decode(input: DecodeInput<'_>) -> Result<T, MessageError> {
-        harmos_sdk::grpc::decode::<T>(input)
+    fn decode_admitted<C>(input: DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>) -> Result<(T, C), Status> {
+        let prepared = harmos_sdk::grpc::prepare::<T>(input).map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let claim = admit(prepared.memory())?;
+        let value = prepared.decode().map_err(|error| Status::invalid_argument(error.to_string()))?;
+        Ok((value, claim))
     }
 }
 

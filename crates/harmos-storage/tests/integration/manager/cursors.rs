@@ -74,8 +74,8 @@ async fn flush_preserves_batches() {
     // An Interior Cursor Flushes Its Entire Atomic Batch, Keeping Later Work Queued.
     let key = schema();
     let item = Identifier::new("item").unwrap();
-    let records = [record(&key, &item, b"one"); 3];
-    let end = f.storage.write_records(&records).await.unwrap();
+    let records = vec![record(&key, &item, b"one"); 3];
+    let end = f.storage.write_records((records).to_vec()).await.unwrap();
     let later = write(&f.storage, "later").await;
     let middle = StorageCursor { sequence: 4, ..end.clone() };
     assert_eq!(f.storage.flush_until(&middle).await.unwrap(), end);
@@ -179,3 +179,36 @@ async fn receipt_cannot_cover() {
 }
 
 /* === Tests === */
+
+#[tokio::test(start_paused = true)]
+async fn saved_wait_passive() {
+    let f = Fixture::new(config()).await;
+    let before = f.storage.cursor_saved();
+    let first = write(&f.storage, "passive-first").await;
+    let second = write(&f.storage, "passive-second").await;
+    {
+        let mut waiting = Box::pin(f.storage.wait_saved_after(&before));
+        assert!(super::fixture::pending(waiting.as_mut()).await);
+        assert_eq!(f.storage.cursor_saved(), before);
+        assert_eq!(f.storage.cursor_accepted(), second);
+        assert!(f.data.control.writes.lock().unwrap().is_empty());
+        assert!(f.data.control.flushes.lock().unwrap().is_empty());
+        drop(waiting);
+    }
+    assert_eq!(f.storage.status().pending_batches, 2);
+    assert!(f.data.control.writes.lock().unwrap().is_empty());
+    assert!(f.data.control.flushes.lock().unwrap().is_empty());
+    // The Observer Does Not Drive This Explicit Persistence Request.
+    assert_eq!(f.storage.flush_until(&second).await.unwrap(), second);
+    assert_eq!(f.storage.wait_saved_after(&before).await.unwrap(), second);
+    assert!(second.sequence > first.sequence);
+    let saved = f.storage.cursor_saved();
+    let waiting = f.storage.wait_saved_after(&saved);
+    let third = write(&f.storage, "snapshot-race").await;
+    f.storage.flush_until(&third).await.unwrap();
+    assert_eq!(waiting.await.unwrap(), third);
+    let closed = f.storage.clone();
+    f.finish().await;
+    assert!(matches!(closed.wait_saved_after(&third).await, Err(Error::Closing { .. })));
+    assert_eq!(closed.wait_saved_after(&before).await.unwrap(), third);
+}
