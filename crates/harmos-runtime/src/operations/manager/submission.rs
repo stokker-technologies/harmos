@@ -132,7 +132,7 @@ impl Manager {
             let Some(factory) = original.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
                 return Err(original);
             };
-            if factory.definition.fingerprint != O::definition().fingerprint {
+            if factory.definition.fingerprint != O::definition().fingerprint || !factory.accepts_native::<O, P>() {
                 return Err(original);
             }
             Ok(Arc::new(crate::operations::authored::factory::<O, P>(self, factory.clone())))

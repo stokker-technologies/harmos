@@ -40,26 +40,26 @@ where
     S: Attach,
     H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, context: ServiceContext<A>) -> Result<(), String> {
+    async fn run(&mut self, context: ServiceContext<A>) -> Result<(), Self::Error> {
         let result = self.attempt(context).await;
         // An application fault is terminal: a caller awaiting staging learns the attempt was refused.
         if result.is_err() {
             self.calls.refuse();
         }
-        result
+        result.map_err(std::io::Error::other)
     }
 
-    async fn stop(&mut self) -> Result<(), String> {
+    async fn stop(&mut self) -> Result<(), Self::Error> {
         self.calls.close();
         if let Some(cleanup) = self.cleanup.get_mut().as_mut() {
-            cleanup.finish().await?;
+            cleanup.finish().await.map_err(std::io::Error::other)?;
         }
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> Result<(), String> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.cleanup.get_mut().take();
         Ok(())
     }

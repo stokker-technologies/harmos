@@ -38,7 +38,7 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use super::app::App;
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Operation, RetryPolicy};
 use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
 
 /* === Constants === */
@@ -61,38 +61,27 @@ struct Measure(Arc<Gauge>);
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
+use super::support::Lanes;
 
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
-
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = MeasureContract, infer_request,
         response = (),
-        id = "lanes.measure",
-        version = 1,
-        policy = OperationPolicy {
+        id = "lanes_measure",
+
+        policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
         },
     )]
+struct MeasureContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct MeasureContract {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    MeasureContract(MeasureContract),
+    MeasureContract(MeasureContractDeclaration),
 }
 
 /* === Traits === */
@@ -100,19 +89,21 @@ enum Operations {
 /* === Implementations === */
 
 impl Operation for Measure {
-    type Declaration = MeasureContract;
-    type Resources = Gauge;
+    type Request = MeasureContract;
+    type Response = <MeasureContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(resources: Arc<Gauge>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Gauge>().expect("fixture registers its dependency");
         Ok(Self(resources))
     }
 
-    async fn run<'ctx>(
-        &mut self, _context: Self::Context<'ctx>, _request: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _context: harmos_runtime::OperationContext, _request: &mut MeasureContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let _context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.ran.fetch_add(1, Ordering::SeqCst);
             let active = self.0.active.fetch_add(1, Ordering::SeqCst) + 1;
@@ -141,8 +132,23 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         release: Semaphore::new(0),
     });
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime.operations.register_operation::<Measure>("app", lane, gauge.clone()).unwrap();
-    let instances: Vec<_> = (0..count).map(|_| runtime.operations.submit(MeasureContract {}).unwrap()).collect();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(gauge.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<MeasureContractDeclaration, Measure>(),
+            lane,
+        ))
+        .await
+        .unwrap();
+    let mut instances = Vec::new();
+    for _ in 0..count {
+        instances.push(runtime.operation(MeasureContract {}).start().await.unwrap());
+    }
 
     for _ in 0..admitted {
         receiver.recv().await.unwrap();

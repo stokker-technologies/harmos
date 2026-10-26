@@ -99,7 +99,7 @@ pub trait OperationDeclaration: 'static {
     const GRPC: Option<Grpc> = None;
 
     fn definition() -> OperationDefinition {
-        OperationDefinition::of::<Self>().expect("valid operation declaration")
+        Entry::of::<Self>().declared().expect("representable operation declaration")
     }
 
     fn grant(_request: &Self::Request) -> Option<crate::plugin::Grant> {
@@ -115,15 +115,7 @@ pub trait RequestFor: crate::Portable {
     type Operation: OperationDeclaration<Request = Self>;
 }
 
-pub trait Declares {
-    type Declaration: OperationDeclaration;
-}
-
 /* === Implementations === */
-
-impl<O: OperationDeclaration> Declares for O {
-    type Declaration = O;
-}
 
 impl<'de> Deserialize<'de> for OperationDefinition {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> Result<Self, D::Error> {

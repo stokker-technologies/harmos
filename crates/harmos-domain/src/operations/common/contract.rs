@@ -365,8 +365,8 @@ impl Visitor for Contracts {
     type Entry = WireDeclaration;
 }
 
-impl<M: super::Declares> Member<M> for Contracts {
-    const ENTRY: WireDeclaration = WireDeclaration::of::<M::Declaration>();
+impl<M: OperationDeclaration> Member<M> for Contracts {
+    const ENTRY: WireDeclaration = WireDeclaration::of::<M>();
 }
 
 impl Contracts {

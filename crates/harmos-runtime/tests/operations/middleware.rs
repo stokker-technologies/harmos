@@ -22,16 +22,15 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::middleware::{Enter, Invocation, Middleware, Observation};
-use harmos_runtime::operations::{CallContext, Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{CallContext, Operation, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
 
-const POLICY: OperationPolicy = OperationPolicy {
+const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -49,29 +48,41 @@ struct Overlay<const CHILD: bool>;
 struct Read<const CHILD: bool>;
 // Each Side Of A Parent/Child Pair Selects Its Own Declarations.
 struct Side<const CHILD: bool>;
+#[harmos_runtime::operation(request = OverlayParent, infer_request, id = "overlay_parent",  response = String, policy = POLICY)]
+struct OverlayParentDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "overlay.parent", version = 1, response = String, policy = POLICY)]
+
 struct OverlayParent {}
+#[harmos_runtime::operation(request = OverlayChild, infer_request, id = "overlay_child",  response = String, policy = POLICY)]
+struct OverlayChildDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "overlay.child", version = 1, response = String, policy = POLICY)]
+
 struct OverlayChild {}
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "middleware.parent",
-    version = 1,
+#[harmos_runtime::operation(request = DeclareParent, infer_request,
+    id = "middleware_parent",
+
     response = String,
     policy = POLICY,
     key = keyed
 )]
+struct DeclareParentDeclaration;
+
+#[harmos_runtime::message]
+
 struct DeclareParent {}
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "middleware.child",
-    version = 1,
+#[harmos_runtime::operation(request = DeclareChild, infer_request,
+    id = "middleware_child",
+
     response = String,
     policy = POLICY,
     key = keyed
 )]
+struct DeclareChildDeclaration;
+
+#[harmos_runtime::message]
+
 struct DeclareChild {}
 struct Policy {
     name: &'static str,
@@ -95,30 +106,31 @@ impl harmos_runtime::operations::ContextValue for Stage {
 }
 
 impl Sided for Side<false> {
-    type Overlay = OverlayParent;
-    type Declare = DeclareParent;
+    type Overlay = OverlayParentDeclaration;
+    type Declare = DeclareParentDeclaration;
 }
 
 impl Sided for Side<true> {
-    type Overlay = OverlayChild;
-    type Declare = DeclareChild;
+    type Overlay = OverlayChildDeclaration;
+    type Declare = DeclareChildDeclaration;
 }
 
 impl<const CHILD: bool> Operation for Overlay<CHILD>
 where
     Side<CHILD>: Sided,
 {
-    type Declaration = <Side<CHILD> as Sided>::Overlay;
-    type Resources = ();
+    type Request = <<Side<CHILD> as Sided>::Overlay as OperationDeclaration>::Request;
+    type Response = String;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _: &mut Self::Declaration, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<String>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
             let actor = context.context().require::<Principal>()?.0;
             let stage = context.context().value::<Stage>()?.unwrap();
@@ -129,7 +141,7 @@ where
             let child = context.with_value(Stage { id: "child".into() })?;
             let stage = child.context().require::<Stage>()?;
             assert_eq!(stage.id, "child");
-            let answer = child.call(OverlayChild {}).await?;
+            let answer = child.call::<OverlayChildDeclaration>(OverlayChild {}).await?;
             Ok(format!("{actor}:{}:{answer}", "parent"))
         }
         .await;
@@ -141,23 +153,24 @@ impl<const CHILD: bool> Operation for Read<CHILD>
 where
     Side<CHILD>: Sided,
 {
-    type Declaration = <Side<CHILD> as Sided>::Declare;
-    type Resources = ();
+    type Request = <<Side<CHILD> as Sided>::Declare as OperationDeclaration>::Request;
+    type Response = String;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Self::Declaration, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<String>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
             let actor = context.context().require::<Principal>()?.0;
             if CHILD {
                 return Ok(actor.into());
             }
-            let child = context.call(DeclareChild {}).await?;
+            let child = context.call::<DeclareChildDeclaration>(DeclareChild {}).await?;
             Ok(format!("{actor}:{child}"))
         }
         .await;
@@ -193,8 +206,24 @@ fn keyed<O>(_: &O) -> Option<harmos_runtime::operations::CacheKey> {
 
 async fn runtime() -> Runtime<App> {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime.operations.register_operation::<Read<false>>("app", Lanes::Open, Arc::new(())).unwrap();
-    runtime.operations.register_operation::<Read<true>>("app", Lanes::Open, Arc::new(())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<DeclareParentDeclaration, Read<false>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<DeclareChildDeclaration, Read<true>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     runtime
 }
 
@@ -217,13 +246,13 @@ fn portable_preserves_local() {
     assert_eq!(original.require::<Stage>().unwrap().id, "parent");
     assert_eq!(child.require::<Stage>().unwrap().id, "child");
     assert_eq!(child.value::<Stage>().unwrap().unwrap().id, "child");
-    let values = vec![CallValue { key: "test.stage".into(), payload: Stage { id: "wire".into() }.encode_to_vec() }];
+    let values = vec![CallValue { key: "test.stage".into(), payload: Stage { id: "wire".into() }.encode() }];
     let mut call = harmos_runtime::operations::WireChildCall {
         context: [7; 32],
         generation_context: Some([9; 32]),
         values: values.clone(),
         operation: "overlay.child".into(),
-        payload: ().encode_to_vec(),
+        payload: ().encode(),
         submit: true,
     };
     let encoded = call.encode().unwrap();
@@ -263,14 +292,30 @@ fn portable_preserves_local() {
 #[tokio::test]
 async fn child_preserves_authority() {
     let runtime = runtime().await;
-    runtime.operations.register_operation::<Overlay<false>>("app", Lanes::Open, Arc::new(())).unwrap();
-    runtime.operations.register_operation::<Overlay<true>>("app", Lanes::Open, Arc::new(())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<OverlayParentDeclaration, Overlay<false>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<OverlayChildDeclaration, Overlay<true>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let mut original = context("alice");
     original.insert_portable(Stage { id: "parent".into() }).unwrap();
     let operations = runtime.operations.with_context(original.clone());
-    assert_eq!(&*operations.call(OverlayParent {}).await.unwrap(), "alice:parent:alice:child");
+    assert_eq!(&*operations.call::<OverlayParentDeclaration>(OverlayParent {}).await.unwrap(), "alice:parent:alice:child");
     assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-    assert_eq!(&*operations.call(OverlayChild {}).await.unwrap(), "alice:parent");
+    assert_eq!(&*operations.call::<OverlayChildDeclaration>(OverlayChild {}).await.unwrap(), "alice:parent");
     runtime.stop().await.unwrap();
 }
 
@@ -282,23 +327,24 @@ async fn children_inherit_principals() {
         runtime.operations.register_middleware(Arc::new(Policy { name, events: events.clone(), reject: false })).unwrap();
     }
     let alice = runtime.operations.with_context(context("alice"));
-    assert_eq!(&*alice.call(DeclareParent {}).await.unwrap(), "alice:alice");
+    assert_eq!(&*alice.call::<DeclareParentDeclaration>(DeclareParent {}).await.unwrap(), "alice:alice");
     assert_eq!(
         *events.lock().unwrap(),
         [
-            "first enter middleware.parent",
-            "second enter middleware.parent",
-            "first enter middleware.child",
-            "second enter middleware.child",
-            "second observe middleware.child",
-            "first observe middleware.child",
-            "second observe middleware.parent",
-            "first observe middleware.parent",
+            "first enter middleware_parent",
+            "second enter middleware_parent",
+            "first enter middleware_child",
+            "second enter middleware_child",
+            "second observe middleware_child",
+            "first observe middleware_child",
+            "second observe middleware_parent",
+            "first observe middleware_parent",
         ]
     );
     assert!(runtime.operations.register_middleware(Arc::new(Policy { name: "late", events: events.clone(), reject: false })).is_err());
     let bob = runtime.operations.with_context(context("bob"));
-    let (a, b) = tokio::join!(alice.call(DeclareParent {}), bob.call(DeclareParent {}));
+    let (a, b) =
+        tokio::join!(alice.call::<DeclareParentDeclaration>(DeclareParent {}), bob.call::<DeclareParentDeclaration>(DeclareParent {}));
     assert_eq!(&*a.unwrap(), "alice:alice");
     assert_eq!(&*b.unwrap(), "bob:bob");
     runtime.stop().await.unwrap();
@@ -311,14 +357,14 @@ async fn layers_skips_layers() {
     for (name, reject) in [("first", false), ("reject", true), ("unreached", false)] {
         runtime.operations.register_middleware(Arc::new(Policy { name, events: events.clone(), reject })).unwrap();
     }
-    assert!(runtime.operations.with_context(context("alice")).call(DeclareParent {}).await.is_err());
+    assert!(runtime.operations.with_context(context("alice")).call::<DeclareParentDeclaration>(DeclareParent {}).await.is_err());
     assert_eq!(
         *events.lock().unwrap(),
         [
-            "first enter middleware.parent",
-            "reject enter middleware.parent",
-            "reject observe middleware.parent",
-            "first observe middleware.parent",
+            "first enter middleware_parent",
+            "reject enter middleware_parent",
+            "reject observe middleware_parent",
+            "first observe middleware_parent",
         ]
     );
     runtime.stop().await.unwrap();
@@ -330,7 +376,7 @@ async fn cancellation_interrupts_policy() {
     let entered = Arc::new(tokio::sync::Semaphore::new(0));
     let observed = Arc::new(Mutex::new(Vec::new()));
     runtime.operations.register_middleware(Arc::new(Wait { entered: entered.clone(), observed: observed.clone() })).unwrap();
-    let invocation = runtime.operations.with_context(context("alice")).submit(DeclareParent {}).unwrap();
+    let invocation = runtime.operations.with_context(context("alice")).submit::<DeclareParentDeclaration>(DeclareParent {}).unwrap();
     (entered.acquire()).await.unwrap().forget();
     invocation.cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
@@ -346,23 +392,44 @@ async fn cancellation_interrupts_policy() {
 #[tokio::test]
 async fn overrides_preserve_type() {
     let runtime = runtime().await;
-    runtime.operations.register_operation_id::<Read<true>>("camera", "camera.child", Lanes::Open, Arc::new(())).unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", DeclareChildDeclaration::ID).unwrap()).await.unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<DeclareChildDeclaration, Read<true>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let operations = runtime.operations.with_context(context("alice"));
-    let result = operations.submit_at("camera.child", DeclareChild {}).unwrap().await.unwrap();
+    let result = operations.submit_at::<DeclareChildDeclaration>(DeclareChildDeclaration::ID, DeclareChild {}).unwrap().await.unwrap();
     assert_eq!(&*result, "alice");
-    assert!(operations.submit_at("camera.child", DeclareParent {}).is_err());
+    assert!(operations.submit_at::<DeclareParentDeclaration>(DeclareChildDeclaration::ID, DeclareParent {}).is_err());
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
 async fn retries_preserve_principal() {
     let runtime = runtime().await;
-    runtime.operations.register_operation::<Retrying>("app", Lanes::Open, Arc::new(())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(())).unwrap();
+                dependencies
+            })
+            .implementation::<RetryDeclaration, Retrying>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     runtime.operations.register_middleware(Arc::new(Policy { name: "once", events: events.clone(), reject: false })).unwrap();
-    let answer = runtime.operations.with_context(context("alice")).call(Retry {}).await.unwrap();
+    let answer = runtime.operations.with_context(context("alice")).call::<RetryDeclaration>(Retry {}).await.unwrap();
     assert_eq!(&*answer, "alice:3");
-    assert_eq!(*events.lock().unwrap(), ["once enter middleware.retry", "once observe middleware.retry"]);
+    assert_eq!(*events.lock().unwrap(), ["once enter middleware_retry", "once observe middleware_retry"]);
     runtime.stop().await.unwrap();
 }
 
@@ -382,32 +449,37 @@ impl Middleware for Wait {
     }
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "middleware.retry",
-    version = 1,
+#[harmos_runtime::operation(request = Retry, infer_request,
+    id = "middleware_retry",
+
     response = String,
     policy = super::Compute::POLICY
 )]
+struct RetryDeclaration;
+
+#[harmos_runtime::message]
+
 struct Retry {}
 struct Retrying {
     attempts: usize,
 }
 impl Operation for Retrying {
-    type Declaration = Retry;
-    type Resources = ();
+    type Request = Retry;
+    type Response = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
         Ok(Self { attempts: 0 })
     }
     fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Retry, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Retry, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Self::Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
+
         let result: ::core::result::Result<String, Self::Error> = async move {
             assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
             self.attempts += 1;

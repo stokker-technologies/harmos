@@ -28,7 +28,7 @@ use tokio::sync::Semaphore;
 use super::{Lanes, app::App};
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
-use harmos_runtime::operations::{Context, Operation, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Operation, OperationPhase, RetryPolicy};
 
 /* === Constants === */
 
@@ -40,19 +40,21 @@ type Request = Produce;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "grpc.produce",
-    version = 1,
+#[harmos_runtime::operation(request = Produce, infer_request,
+    id = "grpc_produce",
+
     response = u32,
     output = u32,
-    policy = OperationPolicy {
+    policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     }
 )]
+struct ProduceDeclaration;
+
+#[harmos_runtime::message]
+
 struct Produce {
     count: u32,
     fail: bool,
@@ -93,17 +95,17 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
 /* === Implementations === */
 
 impl Operation for Production {
-    type Declaration = Produce;
-    type Resources = Trace;
+    type Request = Produce;
+    type Response = <ProduceDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = harmos_runtime::operations::StreamOutput<u32>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
         trace.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { trace })
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut Request, sender: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, sender: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u32>, Self::Error> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             for value in 0..request.count {
@@ -156,7 +158,19 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         finalized: AtomicUsize::new(0),
         dropped: AtomicUsize::new(0),
     });
-    runtime.operations.register_operation::<Production>("grpc", Lanes::Serial, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<ProduceDeclaration, Production>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     (runtime, trace)
 }
 fn item(
@@ -183,7 +197,7 @@ async fn items_precede_settled() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(3);
     let permit = sender.reserve(4).await.unwrap();
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 2, fail: false }, sender.clone()).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 2, fail: false }, sender.clone()).unwrap();
     let id = instance.id();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.finalizing.acquire().await.unwrap().forget();
@@ -214,7 +228,7 @@ async fn items_precede_settled() {
 async fn output_releases_backpressure() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(1);
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 3, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 3, fail: false }, sender).unwrap();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire_many(2).await.unwrap().forget();
     for expected in 0..3 {
@@ -232,7 +246,7 @@ async fn output_releases_backpressure() {
 async fn abandonment_retains_cleanup() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(1);
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 3, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 3, fail: false }, sender).unwrap();
     let id = instance.id();
     // Only a constructed instance has cleanup to retain.
     let stream = harmos_runtime::grpc::stream(instance, receiver);
@@ -253,7 +267,7 @@ async fn abandonment_retains_cleanup() {
 async fn items_remain_visible() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(2);
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 2, fail: true }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 2, fail: true }, sender).unwrap();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.finalizing.acquire().await.unwrap().forget();
     trace.release.add_permits(1);
@@ -271,7 +285,7 @@ async fn failure_not_success() {
     let observations = Arc::new(Mutex::new(Vec::new()));
     runtime.operations.register_middleware(Arc::new(Observe(observations.clone()))).unwrap();
     let (sender, receiver) = channel(1);
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 1, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 1, fail: false }, sender).unwrap();
     let id = instance.id();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     assert_eq!(item(stream.next().await.unwrap()), 0);
@@ -301,7 +315,7 @@ async fn deadline_settles_draining() {
     let (runtime, trace) = runtime().await;
     trace.release.add_permits(1);
     let (sender, receiver) = channel(1);
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 3, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 3, fail: false }, sender).unwrap();
     let id = instance.id();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire_many(2).await.unwrap().forget();
@@ -323,7 +337,7 @@ async fn held_item_backpressures() {
         bytes: std::num::NonZeroUsize::new(4).unwrap(),
     })
     .unwrap();
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 2, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 2, fail: false }, sender).unwrap();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire_many(2).await.unwrap().forget();
     let Event::Item(held) = stream.next().await.unwrap().unwrap() else { panic!("expected item") };
@@ -352,7 +366,7 @@ async fn abandonment_cancels_operation() {
         bytes: std::num::NonZeroUsize::new(4).unwrap(),
     })
     .unwrap();
-    let instance = runtime.operations.submit_endpoints::<Produce, _>(Request { count: 2, fail: false }, sender).unwrap();
+    let instance = runtime.operations.submit_endpoints::<ProduceDeclaration, _>(Request { count: 2, fail: false }, sender).unwrap();
     let id = instance.id();
     let mut stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire_many(2).await.unwrap().forget();

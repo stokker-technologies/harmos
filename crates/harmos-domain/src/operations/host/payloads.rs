@@ -83,7 +83,10 @@ impl CatalogRequest {
             CatalogKind::Streams => ("streams", "streams:*"),
             CatalogKind::Objects => ("objects", "objects:*"),
         };
-        Some(Grant::of("host.catalog", self.schema.as_ref().map_or_else(|| all.to_owned(), |schema| format!("{family}:schema:{schema}"))))
+        Some(Grant::of(
+            <super::Catalog as crate::operations::OperationDeclaration>::ID,
+            self.schema.as_ref().map_or_else(|| all.to_owned(), |schema| format!("{family}:schema:{schema}")),
+        ))
     }
 }
 

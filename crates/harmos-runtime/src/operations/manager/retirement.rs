@@ -120,7 +120,8 @@ impl Manager {
         for entry in entries {
             if (!preserve_explicit || entry.retirement.load(Ordering::Acquire) != Retirement::Explicit as u8)
                 && entry.settled()
-                && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
+                && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry))
+            {
                 state.remove_owned(entry.id(), entry.owner.as_str());
             }
         }

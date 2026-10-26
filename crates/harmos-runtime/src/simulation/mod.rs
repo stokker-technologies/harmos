@@ -485,16 +485,16 @@ where
     A: Application,
     R: Resident<A>,
 {
-    type Error = String;
+    type Error = std::io::Error;
 
     async fn run(&mut self, context: ServiceContext<A>) -> Result<(), Self::Error> {
         self.control.attempts.fetch_add(1, Ordering::AcqRel);
         let mut faults = self.control.faults.subscribe();
         let answer = tokio::select! {
-            answer = self.resident.run(context) => answer.map_err(|error| error.to_string()),
-            delivered = faults.recv() => Err(delivered.unwrap_or_else(|_| {
+            answer = self.resident.run(context) => answer.map_err(std::io::Error::other),
+            delivered = faults.recv() => Err(std::io::Error::other(delivered.unwrap_or_else(|_| {
                 "simulation fault channel closed".to_owned()
-            })),
+            }))),
         };
         self.control.exited(match &answer {
             Ok(()) => "stopped".to_owned(),
@@ -504,11 +504,11 @@ where
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
-        self.resident.stop().await.map_err(|error| error.to_string())
+        self.resident.stop().await.map_err(std::io::Error::other)
     }
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.resident.cleanup().await.map_err(|error| error.to_string())
+        self.resident.cleanup().await.map_err(std::io::Error::other)
     }
 }
 

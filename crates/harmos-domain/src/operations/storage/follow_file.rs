@@ -45,7 +45,7 @@ impl crate::operations::OperationDeclaration for FollowFile {
     const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "FollowFile"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.follow_file", scope))
+        request.source.grant_scope().map(|scope| crate::plugin::Grant::of(Self::ID, scope))
     }
 }
 

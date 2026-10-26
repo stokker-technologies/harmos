@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 // Third Party Imports
 
 // Local Imports
-use super::{Declares, Direction, OperationDeclaration, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
+use super::{Direction, OperationDeclaration, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
 use crate::catalog::{self, Catalog, Member, Node, Projection, Visitor};
 use crate::{Error, Identifier, Result};
 
@@ -74,6 +74,12 @@ impl Entry {
     }
 
     pub fn definition(&self) -> Result<OperationDefinition> {
+        let definition = self.declared()?;
+        definition.validate()?;
+        Ok(definition)
+    }
+
+    pub(super) fn declared(&self) -> Result<OperationDefinition> {
         let id = Identifier::new(self.id)?;
         let definition = OperationDefinition {
             id,
@@ -83,7 +89,6 @@ impl Entry {
             replay: self.replay,
             fingerprint: (self.fingerprint)()?,
         };
-        definition.validate()?;
         Ok(definition)
     }
 }
@@ -92,8 +97,8 @@ impl Visitor for Declarations {
     type Entry = Entry;
 }
 
-impl<M: Declares> Member<M> for Declarations {
-    const ENTRY: Entry = Entry::of::<M::Declaration>();
+impl<M: OperationDeclaration> Member<M> for Declarations {
+    const ENTRY: Entry = Entry::of::<M>();
 }
 
 impl Declarations {

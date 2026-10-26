@@ -45,7 +45,7 @@ impl crate::operations::OperationDeclaration for WriteFile {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Unknown;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "WriteFile"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        Some(crate::plugin::Grant::of("storage.write_file", request.metadata.id.as_str().to_owned()))
+        Some(crate::plugin::Grant::of(Self::ID, request.metadata.id.as_str().to_owned()))
     }
 }
 

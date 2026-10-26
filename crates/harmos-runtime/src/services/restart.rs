@@ -226,6 +226,19 @@ async fn settle<A: Application>(
                 report.health(ServiceStatus::Stopped);
                 return Some(Ok(()));
             }
+            if matches!(restart, RestartPolicy::Never) {
+                return Some(
+                    deactivate(
+                        name,
+                        ServiceExit::Application(error.message),
+                        std::mem::take(&mut health.history),
+                        error.source,
+                        report,
+                        handles,
+                    )
+                    .await,
+                );
+            }
             health.history.push(error.message);
             let backoff = match restart {
                 RestartPolicy::OnFailure { backoff, .. } if health.credit > 0 => backoff,

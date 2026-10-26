@@ -23,8 +23,8 @@ use tokio::sync::Notify;
 use super::closed;
 use crate::storage::{Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
 use harmos_runtime::{
-    Builder, runtime::Incompatible, services::Fault, services::Service, state::Entry, state::Position, state::Recorded,
-    storage::JournalConsumer, storage::Recovery, storage::Source,
+    Builder, runtime::Incompatible, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
+    storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -147,9 +147,9 @@ async fn failed_open_skips() {
         let started = Arc::new(AtomicBool::new(false));
         let mark = started.clone();
         let result = builder()
-            .service("application", move |_context: Service<Bank>| {
+            .service("application", move |_context: ServiceContext<Bank>| {
                 mark.store(true, Ordering::SeqCst);
-                async { Ok::<(), Fault<String>>(()) }
+                async { Ok::<(), std::io::Error>(()) }
             })
             .runtime_with_storage(&storage)
             .await;
@@ -279,8 +279,8 @@ async fn reserved_service_refused() {
         let storage: StorageManager =
             StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, policy).unwrap();
         let result = builder()
-            .service(name, |_context: Service<Bank>| async {
-                Err::<(), Fault<String>>(Fault::Application("application service unexpectedly started".to_owned()))
+            .service(name, |_context: ServiceContext<Bank>| async {
+                Err::<(), std::io::Error>(std::io::Error::other("application service unexpectedly started"))
             })
             .runtime_with_storage(&storage)
             .await;
@@ -298,7 +298,7 @@ async fn service_start_writes() {
     let entered = Arc::new(Notify::new());
     let ready = entered.clone();
     let runtime = builder()
-        .service("writer", move |mut context: Service<Bank>| {
+        .service("writer", move |mut context: ServiceContext<Bank>| {
             let storage = storage.clone();
             let ready = ready.clone();
             async move {
@@ -306,7 +306,7 @@ async fn service_start_writes() {
                 storage.flush().await.unwrap();
                 ready.notify_one();
                 context.stopping().await;
-                Ok::<(), Fault<String>>(())
+                Ok::<(), std::io::Error>(())
             }
         })
         .runtime_with_storage(&probe.storage)
@@ -436,7 +436,7 @@ async fn deadline_awaits_cleanup() {
     let committed = Arc::new(AtomicBool::new(false));
     let cleanup_commit = Arc::clone(&committed);
     let startup = builder()
-        .service("cleanup", move |mut context: Service<Bank>| {
+        .service("cleanup", move |mut context: ServiceContext<Bank>| {
             let gate = Arc::clone(&resident_gate);
             let committed = Arc::clone(&cleanup_commit);
             async move {
@@ -447,7 +447,7 @@ async fn deadline_awaits_cleanup() {
                 let receipt =
                     context.state().commit(crate::storage::support::Deposit { account: crate::storage::support::HOUSE, amount: 1 }).await;
                 committed.store(receipt.is_ok(), Ordering::SeqCst);
-                Ok::<(), Fault<std::io::Error>>(())
+                Ok::<(), std::io::Error>(())
             }
         })
         .initialize(Duration::from_millis(5), |_| async { std::future::pending::<Result<(), std::io::Error>>().await });
@@ -475,7 +475,7 @@ async fn cancelled_init_settles() {
     let service_started = Arc::new(tokio::sync::Notify::new());
     let resident_started = Arc::clone(&service_started);
     let startup = builder()
-        .service("cleanup", move |mut context: Service<Bank>| {
+        .service("cleanup", move |mut context: ServiceContext<Bank>| {
             let gate = Arc::clone(&resident_gate);
             let started = Arc::clone(&resident_started);
             async move {
@@ -484,7 +484,7 @@ async fn cancelled_init_settles() {
                 context.stopping().await;
                 gate.entered.notify_one();
                 gate.release.notified().await;
-                Ok::<(), Fault<std::io::Error>>(())
+                Ok::<(), std::io::Error>(())
             }
         })
         .initialize(Duration::from_secs(1), move |_| {

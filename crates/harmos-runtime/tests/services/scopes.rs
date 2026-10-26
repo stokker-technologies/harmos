@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 use super::{Bank, assembly};
 use harmos_runtime::operations::OperationManager;
 use harmos_runtime::services::ServiceDefinition;
-use harmos_runtime::{Error, services::Fault, services::Service, services::ServiceStatus};
+use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -52,12 +52,12 @@ struct Resources {
 
 /* === Private Functions === */
 
-fn register(manager: &OperationManager) {
+fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>) {
     manager
         .register_service(
             ServiceDefinition { id: "scoped".into(), policy: harmos_runtime::services::POLICY },
             |resources: Arc<Resources>| {
-                move |mut service: Service<Bank>| {
+                move |mut service: ServiceContext<Bank>| {
                     let resources = resources.clone();
                     async move {
                         resources.started.fetch_add(1, SeqCst);
@@ -66,7 +66,7 @@ fn register(manager: &OperationManager) {
                         resources.stopping.notify_one();
                         resources.cleanup.notified().await;
                         resources.finished.fetch_add(1, SeqCst);
-                        Ok::<(), Fault<&'static str>>(())
+                        Ok::<(), std::io::Error>(())
                     }
                 }
             },
@@ -295,7 +295,7 @@ async fn shutdown_preserve_typed() {
     struct Refused(u32);
 
     fn typed(error: &(dyn std::error::Error + 'static)) -> bool {
-        if let Some(Fault::Application(Refused(42))) = error.downcast_ref::<Fault<Refused>>() {
+        if let Some(Refused(42)) = error.downcast_ref::<Refused>() {
             true
         } else if let Some(Error::TaskFailed { source, .. }) = error.downcast_ref::<Error>() {
             typed(source.as_ref())
@@ -308,7 +308,7 @@ async fn shutdown_preserve_typed() {
     runtime
         .operations
         .register_service(ServiceDefinition { id: "broken".into(), policy: harmos_runtime::services::POLICY }, |_: Arc<()>| {
-            |_service: Service<Bank>| async { Err::<(), _>(Fault::Application(Refused(42))) }
+            |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) }
         })
         .unwrap();
     let lease = runtime.operations.submit_resident("broken").await.unwrap();
@@ -346,7 +346,7 @@ async fn shutdown_signals_scope() {
 #[tokio::test]
 async fn unregister_drops_factory() {
     struct Reentrant {
-        manager: OperationManager,
+        manager: OperationManager<<Bank as harmos_runtime::Application>::Lanes>,
         dropped: Arc<AtomicUsize>,
     }
     impl Drop for Reentrant {
@@ -372,7 +372,7 @@ async fn unregister_drops_factory() {
 
 #[tokio::test]
 async fn resident_not_reinitialized() {
-    let runtime = assembly().service("one-shot", |_service| async { Ok::<(), Fault<&str>>(()) }).runtime().await.unwrap();
+    let runtime = assembly().service("one-shot", |_service| async { Ok::<(), std::io::Error>(()) }).runtime().await.unwrap();
     let key = harmos_runtime::operations::resident::Key::root("one-shot");
     runtime
         .operations

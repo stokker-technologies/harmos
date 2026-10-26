@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{app::App, service_status};
 use harmos_runtime::operations::{OperationOutcome, OperationPhase};
-use harmos_runtime::{Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus};
+use harmos_runtime::{Runtime, services::Resident, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -61,9 +61,9 @@ enum CleanupRequest {
 /* === Implementations === */
 
 impl Resident<App> for RetainedCleanup {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, context: harmos_runtime::services::Service<App>) -> Result<(), Fault<String>> {
+    async fn run(&mut self, context: harmos_runtime::services::ServiceContext<App>) -> Result<(), Self::Error> {
         let gate = self.gate.take().expect("one original blocking worker");
         let completed = self.completed.clone();
         self.join = Some(tokio::task::spawn_blocking(move || {
@@ -72,21 +72,21 @@ impl Resident<App> for RetainedCleanup {
         }));
         context.ready();
         if self.environmental {
-            return Err(Fault::Environmental("original transport exit".into()));
+            return Err(std::io::Error::other("original transport exit"));
         }
         std::future::pending().await
     }
 
-    async fn cleanup(&mut self) -> Result<(), String> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         if self.attempts.fetch_add(1, Ordering::AcqRel) == 0 {
             if self.panic_first {
                 panic!("first original cleanup panics");
             }
-            return Err("first original cleanup fails".into());
+            return Err(std::io::Error::other("first original cleanup fails"));
         }
         self.finalizing.notify_one();
         if let Some(join) = &mut self.join {
-            join.await.map_err(|error| error.to_string())?;
+            join.await.map_err(std::io::Error::other)?;
             self.join = None;
         }
         Ok(())
@@ -99,7 +99,7 @@ impl Resident<App> for RetainedCleanup {
 
 async fn stop_cleanup(
     runtime: &Runtime<App>, scope: &Arc<()>, request: CleanupRequest,
-    lease: &harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    lease: &harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
 ) -> harmos_runtime::Result<()> {
     match request {
         CleanupRequest::Instance => {
@@ -128,7 +128,7 @@ async fn unregister_retains_cleanup() {
                 harmos_runtime::services::ServiceDefinition { id: "reload".into(), policy: harmos_runtime::services::POLICY },
                 move |_: Arc<()>| {
                     let signals = signals.clone();
-                    move |mut context: harmos_runtime::services::Service<App>| {
+                    move |mut context: harmos_runtime::services::ServiceContext<App>| {
                         let (entered, release, cleaned) = signals.clone();
                         async move {
                             context.ready();
@@ -136,7 +136,7 @@ async fn unregister_retains_cleanup() {
                             entered.notify_one();
                             release.notified().await;
                             cleaned.store(true, Ordering::SeqCst);
-                            Ok::<(), Fault<String>>(())
+                            Ok::<(), std::io::Error>(())
                         }
                     }
                 },
@@ -189,7 +189,7 @@ async fn stop_joins_cleanup() {
         let release = Arc::new(Notify::new());
         let cleaned = Arc::new(AtomicBool::new(false));
         let signals = (entered.clone(), release.clone(), cleaned.clone());
-        let resident = move |mut context: harmos_runtime::services::Service<App>| {
+        let resident = move |mut context: harmos_runtime::services::ServiceContext<App>| {
             let (entered, release, cleaned) = signals.clone();
             async move {
                 context.ready();
@@ -197,7 +197,7 @@ async fn stop_joins_cleanup() {
                 entered.notify_one();
                 release.notified().await;
                 cleaned.store(true, Ordering::SeqCst);
-                Ok::<(), Fault<String>>(())
+                Ok::<(), std::io::Error>(())
             }
         };
         let mut lease = None;
@@ -255,10 +255,7 @@ async fn timeout_retains_cleanup() {
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "retained-cleanup".into(),
-                    policy: harmos_runtime::operations::OperationPolicy {
-                        timeout: Duration::from_millis(10),
-                        ..harmos_runtime::services::POLICY
-                    },
+                    policy: harmos_runtime::ServicePolicy { stop_timeout: Duration::from_millis(10), ..harmos_runtime::services::POLICY },
                 },
                 move |_: Arc<()>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
@@ -366,7 +363,7 @@ async fn exit_cause_preserved() {
     let Some(harmos_runtime::Error::TaskFailed { source, .. }) = source.downcast_ref::<harmos_runtime::Error>() else {
         panic!("original attempt failure remains available");
     };
-    assert!(matches!(source.downcast_ref::<Fault<String>>(), Some(Fault::Environmental(message)) if message == "original transport exit"));
+    assert_eq!(source.to_string(), "original transport exit");
     assert!(observed.load(Ordering::Acquire));
     drop(lease);
     runtime.stop().await.unwrap();

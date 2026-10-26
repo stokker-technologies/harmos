@@ -53,7 +53,7 @@ impl crate::operations::OperationDeclaration for Query {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "Query"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        Some(crate::plugin::Grant::of("storage.query", request.source.grant_scope()))
+        Some(crate::plugin::Grant::of(Self::ID, request.source.grant_scope()))
     }
 }
 

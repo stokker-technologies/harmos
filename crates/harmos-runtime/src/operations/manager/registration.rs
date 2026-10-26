@@ -94,9 +94,13 @@ impl Manager {
         }
         let mut entries = Vec::with_capacity(batch.operations.len());
         for factory in batch.operations {
-            factory
-                .validate()
-                .map_err(|source| Error::OperationFailed { operation: factory.definition.id.to_string(), source: Arc::new(source) })?;
+            factory.definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
+            factory.validate().map_err(|source| match source {
+                harmos_sdk::ServingError::EndpointTypes => {
+                    Error::InvalidInput { field: "operation endpoint types", reason: "endpoints differ from the declaration" }
+                }
+                source => Error::OperationFailed { operation: factory.definition.id.to_string(), source: Arc::new(source) },
+            })?;
             let contract = match factory.contract() {
                 Ok(contract) => Some(contract),
                 Err(crate::operations::ContractError::Codec { .. }) => None,

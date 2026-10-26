@@ -216,7 +216,7 @@ where
             self.stopped = false;
             Resident::run(&mut self.resident, context)
                 .await
-                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(super::FailureSource(error)) })
+                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
         })
     }
 
@@ -226,13 +226,11 @@ where
                 self.transition(OperationPhase::Stopping);
                 Resident::stop(&mut self.resident)
                     .await
-                    .map_err(|error| Failure { message: error.to_string(), source: Arc::new(super::FailureSource(error)) })?;
+                    .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })?;
                 self.stopped = true;
             }
             self.transition(OperationPhase::Finalizing);
-            Resident::cleanup(&mut self.resident)
-                .await
-                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(super::FailureSource(error)) })
+            Resident::cleanup(&mut self.resident).await.map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
         })
     }
 }

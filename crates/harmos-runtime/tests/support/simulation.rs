@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
-use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
+use harmos_runtime::{Builder, simulation::SimulatedRuntime};
 use harmos_runtime::{DefinitionId, Identified};
 
 // Standard Library Imports
@@ -58,14 +58,14 @@ pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
     sim.commit(alice(), Deposit { account: super::support::HOUSE, amount: 7 }).expect("the scripted commit lands");
     sim.record(alice(), Noted("seeded".to_owned())).expect("the scripted record lands");
     sim.publish(pulse(4)).expect("the row catalog is frozen");
-    sim.fault("adapter", Fault::Environmental("bus reset")).expect("the running service receives its exit");
+    sim.fault("adapter", "bus reset").expect("the running service receives its exit");
     sim.advance_ms(12);
     sim
 }
 
 /* === Private Functions === */
 
-async fn resident(mut context: harmos_runtime::services::Service<Bank>) -> Result<(), Fault<&'static str>> {
+async fn resident(mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), std::io::Error> {
     context.ready();
     context.stopping().await;
     Ok(())

@@ -137,22 +137,22 @@ where
     S: Attach,
     H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, context: ServiceContext<A>) -> Outcome {
+    async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
         let mut stopping = context.clone();
         let mut end = self.end.clone();
         // Ending Drops The Connection Attempt; Its Cleanup Runs Afterwards
         let running = AssertUnwindSafe(self.supervised.run(context)).catch_unwind();
         let ended = tokio::select! {
             ended = running => Some(ended.unwrap_or_else(|_| {
-                Err("native physical attempt panicked".into())
+                Err(std::io::Error::other("native physical attempt panicked"))
             })),
             _ = end.wait_for(|ended| *ended) => None,
             () = stopping.stopping() => None,
         };
         if let Some(outcome) = ended {
-            self.outcome.send_replace(Some(outcome));
+            self.outcome.send_replace(Some(outcome.map_err(|error| error.to_string())));
             tokio::select! {
                 _ = end.wait_for(|ended| *ended) => {}
                 () = stopping.stopping() => {}
@@ -161,11 +161,11 @@ where
         Ok(())
     }
 
-    async fn stop(&mut self) -> std::result::Result<(), String> {
+    async fn stop(&mut self) -> std::result::Result<(), Self::Error> {
         self.supervised.stop().await
     }
 
-    async fn cleanup(&mut self) -> std::result::Result<(), String> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
         self.supervised.cleanup().await
     }
 }

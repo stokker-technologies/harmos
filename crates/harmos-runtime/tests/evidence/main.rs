@@ -28,7 +28,7 @@ use tokio::sync::watch;
 // Local Imports
 use harmos_runtime::{
     Builder, DefinitionId, Identified, Runtime, evidence::EvidenceError, evidence::EvidenceKind, evidence::Vault, runtime::Incompatible,
-    services::Fault, services::Resident, services::Service, state::Position,
+    services::Resident, services::ServiceContext, state::Position,
 };
 use support::{Bank, Copied, Ledger, Stored, catalog};
 use vault::Directory;
@@ -232,9 +232,9 @@ impl Vault for Counted {
 }
 
 impl Resident<Bank> for Idle {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, mut context: Service<Bank>) -> Result<(), Fault<String>> {
+    async fn run(&mut self, mut context: ServiceContext<Bank>) -> Result<(), std::io::Error> {
         context.ready();
         context.stopping().await;
 

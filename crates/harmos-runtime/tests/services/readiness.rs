@@ -21,7 +21,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 // Local Imports
 use super::{Bank, assembly, service_status, support};
-use harmos_runtime::{services::Fault, services::Service, services::ServiceExit, services::ServiceStatus};
+use harmos_runtime::{services::ServiceContext, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -47,13 +47,13 @@ async fn late_ready_ignored() {
     let runtime = assembly()
         .service("initializing", {
             let entered = entered.clone();
-            move |mut context: Service<Bank>| {
+            move |mut context: ServiceContext<Bank>| {
                 let entered = entered.clone();
                 async move {
                     entered.notify_one();
                     context.stopping().await;
                     context.ready(); // A late signal during cleanup is ignored.
-                    Ok::<(), Fault<&str>>(())
+                    Ok::<(), std::io::Error>(())
                 }
             }
         })
@@ -77,7 +77,7 @@ async fn readiness_follows_initialization() {
         .service("gated", {
             let entered = entered.clone();
             let initialized = initialized.clone();
-            move |mut context: Service<Bank>| {
+            move |mut context: ServiceContext<Bank>| {
                 let entered = entered.clone();
                 let initialized = initialized.clone();
                 async move {
@@ -87,7 +87,7 @@ async fn readiness_follows_initialization() {
                         context.ready();
                         context.stopping().await;
                     }
-                    Ok::<(), Fault<&str>>(())
+                    Ok::<(), std::io::Error>(())
                 }
             }
         })
@@ -121,8 +121,8 @@ async fn initialization_preserves_credit() {
     let runtime = assembly()
         .service_with(
             "unready",
-            harmos_runtime::operations::OperationPolicy {
-                restart: harmos_runtime::operations::RestartPolicy::OnTransient {
+            harmos_runtime::ServicePolicy {
+                restart: harmos_runtime::operations::RestartPolicy::OnFailure {
                     credit: 1,
                     sustained_health: Duration::from_secs(1),
                     backoff: harmos_runtime::operations::Backoff::Exponential {
@@ -137,7 +137,7 @@ async fn initialization_preserves_credit() {
                 let entered = entered.clone();
                 let fail = fail.clone();
                 let attempts = attempts.clone();
-                move |_context: Service<Bank>| {
+                move |_context: ServiceContext<Bank>| {
                     let entered = entered.clone();
                     let fail = fail.clone();
                     let index = attempts.fetch_add(1, SeqCst);
@@ -146,7 +146,7 @@ async fn initialization_preserves_credit() {
                             entered.notify_one();
                             fail.notified().await;
                         }
-                        Err::<(), _>(Fault::Environmental("not initialized"))
+                        Err::<(), _>(std::io::Error::other("not initialized"))
                     }
                 }
             },
@@ -194,7 +194,7 @@ async fn retirement_fences_readiness() {
             let probe = probe.clone();
             let probed = probed.clone();
             let initialized = initialized.clone();
-            move |mut context: Service<Bank>| {
+            move |mut context: ServiceContext<Bank>| {
                 let retired = retired.clone();
                 let entered = entered.clone();
                 let probe = probe.clone();
@@ -204,7 +204,7 @@ async fn retirement_fences_readiness() {
                 async move {
                     if index == 0 {
                         assert!(retired.send(context).is_ok());
-                        return Err(Fault::Environmental("replace"));
+                        return Err(std::io::Error::other("replace"));
                     }
                     entered.notify_one();
                     // The probe round trip runs inside the supervisor's poll,
@@ -260,11 +260,11 @@ async fn activated_service_starting() {
         .register_service(
             harmos_runtime::services::ServiceDefinition { id: "tenant".into(), policy: harmos_runtime::services::POLICY },
             |_: Arc<()>| {
-                |context: harmos_runtime::services::Service<Bank>| async move {
+                |context: harmos_runtime::services::ServiceContext<Bank>| async move {
                     let mut context = context;
                     context.ready();
                     context.stopping().await;
-                    Ok::<(), Fault<String>>(())
+                    Ok::<(), std::io::Error>(())
                 }
             },
         )
@@ -293,9 +293,9 @@ async fn activated_service_starting() {
 async fn context_publishes_streams() {
     let runtime = assembly()
         .register(support::streams())
-        .service("source", |context: harmos_runtime::services::Service<Bank>| async move {
+        .service("source", |context: harmos_runtime::services::ServiceContext<Bank>| async move {
             context.streams().publish(support::pulse(7));
-            Ok::<(), Fault<&'static str>>(())
+            Ok::<(), std::io::Error>(())
         })
         .runtime()
         .await

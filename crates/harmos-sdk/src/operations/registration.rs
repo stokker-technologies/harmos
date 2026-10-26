@@ -66,6 +66,7 @@ pub struct OperationFactory {
     install: Install,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
+    native_types: fn() -> (std::any::TypeId, std::any::TypeId, std::any::TypeId),
     encoded: PrepareEncoded,
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     grpc: fn(Dependencies, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
@@ -152,6 +153,9 @@ impl RegistrationBatch {
                 WireDeclaration::of::<D>().contract()
             },
             install: WireTable::install::<D, O>,
+            native_types: || {
+                (std::any::TypeId::of::<O::Request>(), std::any::TypeId::of::<O::Response>(), std::any::TypeId::of::<O::Endpoints>())
+            },
             endpoints_valid: || {
                 use super::EndpointSet;
                 O::Endpoints::item_types() == super::item_types::<D>()
@@ -260,10 +264,17 @@ impl RegistrationBatch {
 }
 
 impl OperationFactory {
+    pub fn accepts_native<D: OperationDeclaration, P: 'static>(&self) -> bool {
+        (self.native_types)() == (std::any::TypeId::of::<D::Request>(), std::any::TypeId::of::<D::Response>(), std::any::TypeId::of::<P>())
+    }
+
     pub fn validate(&self) -> Result<(), ServingError> {
         self.definition.validate().map_err(ServingError::from)?;
-        if self.definition != (self.declared)() || !(self.endpoints_valid)() {
+        if self.definition != (self.declared)() {
             return Err(ServingError::Catalog);
+        }
+        if !(self.endpoints_valid)() {
+            return Err(ServingError::EndpointTypes);
         }
         Ok(())
     }

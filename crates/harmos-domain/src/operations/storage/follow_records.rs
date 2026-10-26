@@ -77,7 +77,7 @@ impl crate::operations::OperationDeclaration for FollowRecords {
     const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "FollowRecords"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        { Some(crate::plugin::Grant::of("storage.follow_records", request.selection.schema.id.as_str().to_owned())) }
+        Some(crate::plugin::Grant::of(Self::ID, request.selection.schema.id.as_str().to_owned()))
     }
 }
 

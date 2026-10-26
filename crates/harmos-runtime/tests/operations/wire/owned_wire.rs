@@ -23,8 +23,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy,
-    RetryPolicy,
+    Backoff, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy,
 };
 use harmos_runtime::{Message, Runtime};
 
@@ -56,11 +55,10 @@ struct Text {
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = ReadContract, infer_request,
         response = Text,
-        id = "owned-wire.read",
-        version = 1,
+        id = "owned_wire_read",
+
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -68,30 +66,19 @@ struct Text {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
             },
-            restart: RestartPolicy::Never,
         },
     )]
+struct ReadContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct ReadContract {
     value: String,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ReadContract(ReadContract),
-}
-
-#[harmos_runtime::catalog]
-enum Authored {
-    #[nested]
-    Inner(Implementation),
-
-    #[nested]
-    Empty(()),
-}
-
-#[harmos_runtime::catalog]
-enum Implementation {
-    Read(Read),
+    ReadContract(ReadContractDeclaration),
 }
 
 /* === Traits === */
@@ -99,13 +86,15 @@ enum Implementation {
 /* === Implementations === */
 
 impl Operation for Read {
-    type Declaration = ReadContract;
-    type Resources = Resources;
+    type Request = ReadContract;
+    type Response = <ReadContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(resources: Arc<Resources>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Resources>().expect("fixture registers its dependency");
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let constructed: Result<Self, Self::Error> = async move {
             resources.events.lock().unwrap().push("new");
             Ok(Self { resources, attempts: Cell::new(0) })
@@ -123,9 +112,11 @@ impl Operation for Read {
         Ok(operation)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Text>, Self::Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Text, Self::Error> = async move {
             self.resources.events.lock().unwrap().push("run");
             self.resources.ids.lock().unwrap().push(context.id());
@@ -173,7 +164,19 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
         .await
         .unwrap();
     let resources = Arc::new(Resources::default());
-    runtime.operations.register_operations::<Authored, _>("app", Lanes::Open, resources.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<ReadContractDeclaration, Read>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     assert!(resources.events.lock().unwrap().is_empty());
     (runtime, resources)
 }
@@ -188,12 +191,23 @@ async fn wire_bindings_execute() {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
                 ..Default::default()
             })
-            .wire_operations::<Authored, _>("app", Lanes::Open, Arc::clone(&resources))
+            .with_registration(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(resources.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<ReadContractDeclaration, Read>(),
+                Lanes::Open,
+            ))
             .runtime()
             .await
             .unwrap();
         assert!(resources.events.lock().unwrap().is_empty());
-        let invocation = runtime.operations.submit_encoded(ReadContract::ID, Text { value: "hello".into() }.encode_to_vec()).unwrap();
+        let invocation = runtime
+            .operations
+            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), Text { value: "hello".into() }.encode())
+            .unwrap();
         let response = invocation.await.unwrap();
         assert_eq!(Text::decode(&response).unwrap().value, "hello:1");
         assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "new").count(), 1);
@@ -201,10 +215,15 @@ async fn wire_bindings_execute() {
     }
     {
         let (runtime, resources) = runtime().await;
-        let encoded = runtime.operations.submit_encoded(ReadContract::ID, payload("complete")).unwrap().await.unwrap();
+        let encoded = runtime
+            .operations
+            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), payload("complete"))
+            .unwrap()
+            .await
+            .unwrap();
         assert_eq!(Text::decode(&encoded).unwrap().value, "complete:1");
         assert_eq!(*resources.events.lock().unwrap(), ["new", "initialize", "run", "stop", "finalize", "drop"]);
-        let answer = runtime.operations.call(ReadContract { value: "local".to_owned() }).await.unwrap();
+        let answer = runtime.operation(ReadContract { value: "local".to_owned() }).run().await.unwrap();
         assert_eq!(answer.value, "local:1");
         runtime.stop().await.unwrap();
     }
@@ -212,41 +231,46 @@ async fn wire_bindings_execute() {
 
 #[tokio::test]
 async fn registration_refuses_stream() {
+    #[harmos_runtime::operation(request = StreamContract, infer_request, response = (), input = Text, output = (), id = "owned_wire_stream",  policy = ReadContractDeclaration::POLICY)]
+    struct StreamContractDeclaration;
+
     #[harmos_runtime::message]
-    #[harmos_runtime::operation(response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
+
     struct StreamContract {}
 
     #[harmos_runtime::catalog]
     enum StreamContracts {
-        StreamContract(StreamContract),
+        StreamContract(StreamContractDeclaration),
     }
     struct Stream;
     impl Operation for Stream {
-        type Declaration = StreamContract;
-        type Resources = Resources;
+        type Request = StreamContract;
+        type Response = <StreamContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
         type Error = std::io::Error;
         type Endpoints = ();
-        type Context<'a> = Context<'a>;
-        async fn initialize<'ctx>(_: Arc<Resources>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+        async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
             panic!("unsupported binding must not construct an operation")
         }
-        async fn run<'ctx>(
-            &mut self, _: Self::Context<'ctx>, _request: &mut StreamContract, _endpoints: &mut Self::Endpoints,
+        async fn run(
+            &mut self, _: harmos_runtime::OperationContext, _request: &mut StreamContract, _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
             let result: ::core::result::Result<(), Self::Error> = async move { unreachable!() }.await;
             result.map(::core::convert::Into::into)
         }
-    }
-    #[harmos_runtime::catalog]
-    enum Implemented {
-        Stream(Stream),
     }
     let (runtime, resources) = runtime().await;
     let contracts = harmos_runtime::operations::Contracts::of::<StreamContracts>().unwrap();
     assert!(contracts[0].input().is_some());
     assert!(contracts[0].output().unwrap().fields().is_empty());
     assert!(matches!(
-        runtime.operations.register_wire_operations::<Implemented, _>("app", Lanes::Open, resources.clone()),
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                    .implementation::<StreamContractDeclaration, Stream>(),
+                Lanes::Open
+            ))
+            .await,
         Err(harmos_runtime::Error::InvalidInput { field: "operation endpoint types", .. })
     ));
     assert!(resources.events.lock().unwrap().is_empty());
@@ -255,33 +279,61 @@ async fn registration_refuses_stream() {
 
 #[tokio::test]
 async fn contracts_guard_identity() {
-    use harmos_runtime::operations::{Contract, WireDeclaration};
     let (runtime, resources) = runtime().await;
-    let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
     for change_policy in [false, true] {
-        let mut definition = declaration.operation().clone();
-        definition.id = harmos_runtime::Identifier::new("camera.read").unwrap();
+        let mut batch = harmos_runtime::RegistrationBatch::new({
+            let mut dependencies = harmos_runtime::Dependencies::new();
+            dependencies.insert(resources.clone()).unwrap();
+            dependencies
+        })
+        .implementation::<ReadContractDeclaration, Read>();
         if change_policy {
-            definition.policy.timeout += Duration::from_secs(1);
+            batch.operations[0].definition.policy.timeout += Duration::from_secs(1);
+        } else {
+            batch.operations[0].definition.id = harmos_runtime::Identifier::new("camera_read").unwrap();
         }
-        let contract =
-            Contract::new(definition, declaration.version() + u32::from(!change_policy), declaration.codec(), declaration.schema().clone())
-                .unwrap();
-        assert!(runtime.operations.register_wire_contract::<Read>("camera", &contract, Lanes::Open, resources.clone()).is_err());
+        assert!(runtime.operations.register(harmos_runtime::RegistrationExt::lane(batch, Lanes::Open)).await.is_err());
     }
     assert!(resources.events.lock().unwrap().is_empty());
+    runtime.stop().await.unwrap();
+}
 
+#[cfg(feature = "plugin")]
+#[tokio::test]
+async fn owner_assignments_isolate_instances() {
+    let (runtime, _) = runtime().await;
     let mut owners = Vec::new();
     for owner in ["camera", "simulator"] {
         let resources = Arc::new(Resources::default());
-        let mut definition = declaration.operation().clone();
-        definition.id = harmos_runtime::Identifier::new(format!("{owner}.read")).unwrap();
-        let contract = Contract::new(definition, declaration.version(), declaration.codec(), declaration.schema().clone()).unwrap();
-        runtime.operations.register_wire_contract::<Read>(owner, &contract, Lanes::Open, resources.clone()).unwrap();
+        runtime
+            .plugin
+            .register_embedded(
+                harmos_runtime::plugin::PluginDefinition {
+                    id: owner.into(),
+                    version: "1.0.0".parse().unwrap(),
+                    artifact: harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
+                    requires: vec![],
+                    configuration: b"null".to_vec(),
+                    contributions: Default::default(),
+                },
+                Default::default(),
+                harmos_runtime::RegistrationExt::lane(
+                    harmos_runtime::RegistrationBatch::new({
+                        let mut dependencies = harmos_runtime::Dependencies::new();
+                        dependencies.insert(resources.clone()).unwrap();
+                        dependencies
+                    })
+                    .implementation::<ReadContractDeclaration, Read>(),
+                    Lanes::Open,
+                ),
+            )
+            .await
+            .unwrap();
+        runtime.plugin.initialize().await.unwrap();
         assert!(resources.events.lock().unwrap().is_empty());
         let response = runtime
             .operations
-            .submit_encoded(contract.operation().id.as_str(), Text { value: owner.into() }.encode_to_vec())
+            .submit_encoded(&format!("{owner}.{}", ReadContractDeclaration::ID), Text { value: owner.into() }.encode())
             .unwrap()
             .await
             .unwrap();
@@ -294,7 +346,7 @@ async fn contracts_guard_identity() {
 }
 
 fn payload(value: &str) -> Vec<u8> {
-    Text { value: value.to_owned() }.encode_to_vec()
+    Text { value: value.to_owned() }.encode()
 }
 
 /* === Tests === */

@@ -188,6 +188,9 @@ pub enum WireAnswer {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServingError {
+    #[error("operation endpoint types differ from the declaration")]
+    EndpointTypes,
+
     #[error("carrier invocation does not support stream commands")]
     StreamUnsupported,
 

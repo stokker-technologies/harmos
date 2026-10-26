@@ -47,7 +47,7 @@ impl crate::operations::OperationDeclaration for ReadFile {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "ReadFile"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        request.source.grant_scope().map(|scope| crate::plugin::Grant::of("storage.read_file", scope))
+        request.source.grant_scope().map(|scope| crate::plugin::Grant::of(Self::ID, scope))
     }
 }
 

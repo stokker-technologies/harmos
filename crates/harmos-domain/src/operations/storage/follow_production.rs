@@ -48,7 +48,7 @@ impl crate::operations::OperationDeclaration for FollowProduction {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Unknown;
     const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("harmos.storage.v1", "Storage", "FollowProduction"));
     fn grant(request: &Self::Request) -> Option<crate::plugin::Grant> {
-        { Some(crate::plugin::Grant::of("storage.follow_production", request.file.id.as_str().to_owned())) }
+        Some(crate::plugin::Grant::of(Self::ID, request.file.id.as_str().to_owned()))
     }
 }
 

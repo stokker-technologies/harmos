@@ -30,8 +30,8 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, CacheKey, Context, Jitter, NoStream, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Stream,
-    StreamInput, StreamOutput, StreamSettings, stream,
+    Backoff, CacheKey, Jitter, NoStream, Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Stream, StreamInput, StreamOutput,
+    StreamSettings, stream,
 };
 use harmos_runtime::{Error, Runtime};
 
@@ -101,28 +101,33 @@ impl harmos_runtime::MemorySize for ParentDeclaration {
     }
 }
 
+impl harmos_runtime::RequestFor for ParentDeclaration {
+    type Operation = Self;
+}
+
 impl OperationDeclaration for ParentDeclaration {
+    type Request = Self;
     type Response = u32;
     type Input = NoStream;
     type Output = NoStream;
-    const ID: &'static str = "endpoints.parent";
-    const VERSION: u32 = 1;
+    const ID: &'static str = "endpoints_parent";
     const POLICY: OperationPolicy = Declaration::<0>::POLICY;
 }
 impl<const CHARGED: bool> Operation for Parent<CHARGED> {
-    type Declaration = ParentDeclaration;
-    type Resources = ();
+    type Request = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut ParentDeclaration, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<u32, Self::Error> = async move {
             let endpoints = request.endpoints.get_mut().unwrap().take().expect("one transfer of original endpoints");
             let child = if CHARGED {
@@ -133,7 +138,7 @@ impl<const CHARGED: bool> Operation for Parent<CHARGED> {
                 requests.send_with(1, || Ok(Declaration { consume: true })).await?;
                 context.submit_charged::<Declaration<0>, _>(decoded.recv().await.unwrap(), endpoints)?
             } else {
-                context.submit_endpoints(Declaration::<0> { consume: true }, endpoints)?
+                context.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, endpoints)?
             };
             Ok(*child.await?)
         }
@@ -164,11 +169,12 @@ impl Shape for Kind<4> {
 }
 
 impl<const N: u8> harmos_runtime::Message for Declaration<N> {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        harmos_runtime::Message::encode_to_vec(&Consume { consume: self.consume })
+    const CODEC: &'static str = <Consume as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&Consume { consume: self.consume })
     }
-    fn encoded_len(&self) -> usize {
-        harmos_runtime::Message::encoded_len(&Consume { consume: self.consume })
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&Consume { consume: self.consume })
     }
     fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
         <Consume as harmos_runtime::Message>::decoding_memory(bytes)
@@ -190,18 +196,25 @@ impl<const N: u8> harmos_runtime::schema::Described for Declaration<N> {
     const MARKER: &'static [u8] = DECLARATION_MARKER;
 }
 
+impl<const N: u8> harmos_runtime::RequestFor for Declaration<N>
+where
+    Kind<N>: Shape,
+{
+    type Operation = Self;
+}
+
 impl<const N: u8> OperationDeclaration for Declaration<N>
 where
     Kind<N>: Shape,
 {
+    type Request = Self;
     type Response = u32;
     type Input = <Kind<N> as Shape>::Input;
     type Output = <Kind<N> as Shape>::Output;
-    const VERSION: u32 = 1;
     const ID: &'static str = match N {
-        1 => "endpoints.retry",
-        2 => "endpoints.cache",
-        _ => "endpoints.forward",
+        1 => "endpoints_retry",
+        2 => "endpoints_cache",
+        _ => "endpoints_forward",
     };
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(3),
@@ -211,9 +224,8 @@ where
         } else {
             RetryPolicy::Never
         },
-        restart: RestartPolicy::Never,
     };
-    fn key(&self) -> Option<CacheKey> {
+    fn key(_: &Self::Request) -> Option<CacheKey> {
         (N == 2).then(|| CacheKey::new(vec![1]).unwrap())
     }
 }
@@ -221,12 +233,12 @@ impl<const N: u8> Operation for Forward<N>
 where
     Kind<N>: Shape,
 {
-    type Declaration = Declaration<N>;
-    type Resources = Trace;
+    type Request = <Declaration<N> as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <Declaration<N> as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = Endpoints;
-    async fn initialize<'ctx>(trace: Arc<Trace>, _context: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+        let trace = _context.dependency::<Trace>().expect("fixture registers its dependency");
         let constructed: harmos_runtime::Result<Self> = async move {
             trace.new.fetch_add(1, Ordering::SeqCst);
             Ok(Self { trace })
@@ -242,8 +254,8 @@ where
         started?;
         Ok(operation)
     }
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Declaration<N>, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Declaration<N>, endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             if !request.consume {
@@ -311,32 +323,91 @@ async fn endpoint_admission_contract() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
     assert!(matches!(
-        runtime.operations.register_operation::<Forward<3>>("app", Lanes::Open, trace.clone()),
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(trace.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<Declaration<3>, Forward<3>>(),
+                Lanes::Open
+            ))
+            .await,
         Err(Error::InvalidInput { field: "operation endpoint types", .. })
     ));
     assert!(matches!(
-        runtime.operations.register_operation::<Forward<4>>("app", Lanes::Open, trace.clone()),
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(trace.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<Declaration<4>, Forward<4>>(),
+                Lanes::Open
+            ))
+            .await,
         Err(Error::InvalidInput { field: "operation endpoint types", .. })
     ));
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
 
     {
-        runtime.operations.register_operation::<Forward<1>>("app", Lanes::Open, trace.clone()).unwrap();
-        runtime.operations.register_operation::<Forward<2>>("app", Lanes::Open, trace.clone()).unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(trace.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<Declaration<1>, Forward<1>>(),
+                Lanes::Open,
+            ))
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(trace.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<Declaration<2>, Forward<2>>(),
+                Lanes::Open,
+            ))
+            .await
+            .unwrap();
         let (input, receiving) = channel();
         let (sending, _output) = channel();
         assert!(matches!(
-            runtime.operations.submit_endpoints(Declaration::<2> { consume: false }, (receiving, sending)),
+            runtime.operations.submit_endpoints::<Declaration<2>, _>(Declaration::<2> { consume: false }, (receiving, sending)),
             Err(Error::InvalidInput { field: "operation stream cache", .. })
         ));
         assert_eq!(trace.new.load(Ordering::SeqCst), 0);
         assert!(input.is_closed());
     }
 
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, mut output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     drop(input);
     let item = bounded(output.recv()).await.unwrap();
@@ -356,10 +427,23 @@ async fn endpoint_admission_contract() {
 async fn cancellation_settles_owner() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, mut output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     bounded(input.send_with(4, || Ok(1))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();
     bounded(input.send_with(4, || Ok(2))).await.unwrap();
@@ -384,10 +468,23 @@ async fn cleanup_retains_endpoints() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
     trace.fail_stop.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
     assert!(matches!(bounded(instance).await, Err(Error::OperationFinalization { .. })));
     assert!(!input.is_closed());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
@@ -411,13 +508,26 @@ async fn cancellation_settles_child() {
 async fn half_close_joins() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (producer, mut decoded) = channel();
     producer.send_with(4, || Ok(7)).await.unwrap();
     let item = decoded.recv().await.unwrap();
     let (input, receiving) = channel();
     let (sending, mut output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     let incoming = futures_util::stream::iter([Ok(item)]);
     let result = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap();
     assert_eq!(*result, 7);
@@ -433,10 +543,23 @@ async fn half_close_joins() {
 async fn settlement_never_wait() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: false }, (receiving, sending)).unwrap();
     let result = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap();
     assert_eq!(*result, 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -449,10 +572,23 @@ async fn failure_preserves_cleanup() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
     trace.fail_stop.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     // Only a constructed instance has cleanup to preserve.
     let initialized = trace.clone();
     let incoming = futures_util::stream::once(async move {
@@ -476,10 +612,23 @@ async fn failure_preserves_cleanup() {
 async fn input_drop_cancels() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending()));
     bounded(runtime.stop()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
@@ -492,10 +641,23 @@ async fn input_drop_cancels() {
 async fn deadline_settles_peer() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     let error = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap_err();
     assert!(
         matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut)))
@@ -512,7 +674,19 @@ async fn grpc_exchange_polls() {
     use futures_util::StreamExt;
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (producer, mut decoded) =
         stream::<u32>(StreamSettings { items: NonZeroUsize::new(3).unwrap(), bytes: NonZeroUsize::new(12).unwrap() }).unwrap();
     let mut items = Vec::new();
@@ -522,7 +696,8 @@ async fn grpc_exchange_polls() {
     }
     let (input, receiving) = channel();
     let (sending, output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     let mut exchange = harmos_runtime::grpc::exchange(instance, input, futures_util::stream::iter(items), output);
     for expected in 1..=3 {
         let event = bounded(exchange.next()).await.unwrap().unwrap();
@@ -545,10 +720,23 @@ async fn failure_retains_cleanup() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
     trace.fail_stop.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     // Only a constructed instance has cleanup to retain.
     let initialized = trace.clone();
     let incoming = futures_util::stream::once(async move {
@@ -577,10 +765,23 @@ async fn failure_retains_cleanup() {
 async fn exchange_drop_cancels() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
-    let instance = runtime.operations.submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
+    let instance =
+        runtime.operations.submit_endpoints::<Declaration<0>, _>(Declaration::<0> { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::exchange(instance, input, futures_util::stream::pending(), output));
     bounded(runtime.stop()).await.unwrap();
     // Abandoned before it started, the instance never constructed.
@@ -592,7 +793,19 @@ async fn exchange_drop_cancels() {
 async fn charged_request_ownership() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (requests, mut decoded) =
         stream::<Declaration<0>>(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(1).unwrap() }).unwrap();
     requests.send_with(1, || Ok(Declaration { consume: false })).await.unwrap();
@@ -640,7 +853,19 @@ async fn opening_admission_exchange() {
 
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let frames = futures_util::stream::iter([
         Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
@@ -661,11 +886,31 @@ async fn opening_admission_exchange() {
 async fn parent_cancellation<const CHARGED: bool>() {
     let runtime = runtime().await;
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Forward<0>>("app", Lanes::Open, trace.clone()).unwrap();
-    runtime.operations.register_operation::<Parent<CHARGED>>("app", Lanes::Open, Arc::new(())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Declaration<0>, Forward<0>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                .implementation::<ParentDeclaration, Parent<CHARGED>>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, mut output) = channel();
-    let parent = runtime.operations.submit(ParentDeclaration { endpoints: Mutex::new(Some((receiving, sending))) }).unwrap();
+    let parent = runtime.operation(ParentDeclaration { endpoints: Mutex::new(Some((receiving, sending))) }).start().await.unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();
     parent.cancel();

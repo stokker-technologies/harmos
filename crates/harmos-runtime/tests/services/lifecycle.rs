@@ -27,7 +27,7 @@ use tokio::sync::{Notify, Semaphore, watch};
 use super::app::App;
 use harmos_runtime::operations::{OperationOutcome, OperationPhase, OperationStatus};
 use harmos_runtime::services::ServiceDefinition;
-use harmos_runtime::{Runtime, services::Fault, services::Resident, services::Service};
+use harmos_runtime::{Runtime, services::Resident, services::ServiceContext};
 
 /* === Constants === */
 
@@ -66,12 +66,12 @@ enum Mode {
 impl Resident<App> for Worker {
     type Error = std::io::Error;
 
-    async fn run(&mut self, mut context: Service<App>) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: ServiceContext<App>) -> Result<(), Self::Error> {
         let attempt = self.0.attempts.fetch_add(1, Ordering::SeqCst);
         context.ready();
         match self.0.mode {
             Mode::Complete => Ok(()),
-            Mode::Retry if attempt == 0 => Err(Fault::Environmental(std::io::Error::other("disconnected"))),
+            Mode::Retry if attempt == 0 => Err(std::io::Error::other("disconnected")),
             Mode::Retry => {
                 context.stopping().await;
                 Ok(())
@@ -118,7 +118,7 @@ fn trace(mode: Mode, block_cleanup: bool, fail_cleanup: bool) -> Arc<Trace> {
 
 async fn runtime(
     mode: Mode, block_cleanup: bool, fail_cleanup: bool, backoff: Duration,
-) -> (Runtime<App>, harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>, Arc<Trace>) {
+) -> (Runtime<App>, harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
     let trace = trace(mode, block_cleanup, fail_cleanup);
     runtime
@@ -126,8 +126,8 @@ async fn runtime(
         .register_service(
             ServiceDefinition {
                 id: "worker".into(),
-                policy: harmos_runtime::operations::OperationPolicy {
-                    restart: harmos_runtime::operations::RestartPolicy::OnTransient {
+                policy: harmos_runtime::ServicePolicy {
+                    restart: harmos_runtime::operations::RestartPolicy::OnFailure {
                         credit: 3,
                         sustained_health: Duration::from_millis(250),
                         backoff: harmos_runtime::operations::Backoff::Exponential {

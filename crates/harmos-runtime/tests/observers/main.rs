@@ -44,7 +44,7 @@ use tokio::sync::Semaphore;
 // Local Imports
 use harmos_runtime::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos_runtime::operations::resident::{Activation, Definition, Key, Kind};
-use harmos_runtime::operations::{OperationInstance, OperationManager, OperationOutcome, OperationPhase};
+use harmos_runtime::operations::{OperationManager, OperationOutcome, OperationPhase, Running};
 #[cfg(feature = "plugin-sidecar")]
 use harmos_runtime::sidecar::{ActivationId, Activity, ObserverError};
 use harmos_runtime::{Error, Runtime};
@@ -64,7 +64,7 @@ const STOPPED: &[OperationPhase] = &[OperationPhase::Stopped];
 
 /* === Type Aliases === */
 
-type Lease = OperationInstance<Activation>;
+type Lease = Running<Activation>;
 
 /* === Structs === */
 
@@ -88,7 +88,7 @@ struct Backend {
 }
 
 struct Reentrant {
-    manager: OperationManager,
+    manager: OperationManager<support::Lanes>,
     dropped: Arc<AtomicBool>,
 }
 
@@ -289,32 +289,32 @@ async fn reached(signal: &Semaphore) {
     signal.acquire().await.unwrap().forget();
 }
 
-async fn phase(manager: &OperationManager, key: &Key, phases: &[OperationPhase]) {
+async fn phase(manager: &OperationManager<support::Lanes>, key: &Key, phases: &[OperationPhase]) {
     let mut states = manager.watch_residents();
     states.wait_for(|states| states.get(key).is_some_and(|state| phases.contains(&state.lifecycle.phase()))).await.unwrap();
 }
 
-fn key(manager: &OperationManager, lease: &Lease) -> Key {
+fn key(manager: &OperationManager<support::Lanes>, lease: &Lease) -> Key {
     manager.resident_key(lease.id()).expect("resident instance is registered")
 }
 
-fn leases(manager: &OperationManager, key: &Key) -> usize {
+fn leases(manager: &OperationManager<support::Lanes>, key: &Key) -> usize {
     manager.resident(key).unwrap().leases
 }
 
-fn current(manager: &OperationManager, key: &Key) -> OperationPhase {
+fn current(manager: &OperationManager<support::Lanes>, key: &Key) -> OperationPhase {
     manager.resident(key).unwrap().lifecycle.phase()
 }
 
-fn observers(manager: &OperationManager) -> Vec<Definition> {
+fn observers(manager: &OperationManager<support::Lanes>) -> Vec<Definition> {
     manager.resident_definitions().into_iter().filter(|definition| definition.kind() == Kind::Observer).collect()
 }
 
-fn observer_instances(manager: &OperationManager) -> usize {
+fn observer_instances(manager: &OperationManager<support::Lanes>) -> usize {
     manager.residents().values().filter(|snapshot| snapshot.kind == Kind::Observer).count()
 }
 
-fn register(manager: &OperationManager, id: &'static str, mode: Mode) {
+fn register(manager: &OperationManager<support::Lanes>, id: &'static str, mode: Mode) {
     manager.register_observer(Backend { id, mode }).unwrap();
 }
 

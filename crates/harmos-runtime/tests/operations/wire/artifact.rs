@@ -22,9 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{
-    Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility,
-};
+use harmos_runtime::operations::{Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy, Visibility};
 
 /* === Constants === */
 
@@ -33,11 +31,10 @@ use harmos_runtime::operations::{
 macro_rules! inert_plugin {
     ($name:ident, $id:literal, $context:ty, $provided:ty) => {
         impl harmos_runtime::operations::lifecycle::Policy for $name {
-            const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
+            const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
                 timeout: Duration::from_secs(2),
                 attempt_timeout: Duration::from_secs(2),
                 retries: RetryPolicy::Never,
-                restart: RestartPolicy::Never,
             };
             const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
         }
@@ -50,7 +47,7 @@ macro_rules! inert_plugin {
             fn prepare(_: ()) -> Result<Self, Self::Error> { panic!("inert inspection never prepares resources") }
             fn resources(&self) -> std::sync::Arc<()> { panic!("inert inspection never acquires resources") }
             async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never initializes resources") }
-            fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable<Self::Context>) -> Result<(), harmos_runtime::operations::ServingError> { panic!("inert inspection never binds resources") }
+            fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> { panic!("inert inspection never binds resources") }
             async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never shuts resources down") }
             async fn cleanup(&mut self) -> Result<(), Self::Error> { panic!("inert inspection never releases resources") }
         }
@@ -79,10 +76,9 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "fixture.selected",
-    version = 1,
+#[harmos_runtime::operation(request = Selected, infer_request,
+    id = "fixture_selected",
+
     response = Response,
     description = "Selected \"operation\" Русский",
     visibility = Visibility::Shared,
@@ -98,18 +94,24 @@ inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest:
                 jitter: harmos_runtime::operations::Jitter::Deterministic,
             },
         },
-        restart: RestartPolicy::Never,
     },
 )]
-struct Selected {}
+struct SelectedDeclaration;
 
 #[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "fixture.unselected",
-    version = 1,
+
+struct Selected {}
+
+#[harmos_runtime::operation(request = Unselected, infer_request,
+    id = "fixture_unselected",
+
     response = Response,
-    policy = Selected::POLICY
+    policy = SelectedDeclaration::POLICY
 )]
+struct UnselectedDeclaration;
+
+#[harmos_runtime::message]
+
 struct Unselected {}
 
 #[harmos_runtime::message]
@@ -139,7 +141,7 @@ struct ExplicitEmptyNative;
 
 #[harmos_runtime::catalog]
 enum Leaves {
-    Selected(Selected),
+    Selected(SelectedDeclaration),
 }
 
 #[harmos_runtime::catalog]
@@ -178,7 +180,7 @@ fn native_inventory_contains() {
     let expected = Declarations::of::<Operations>().unwrap();
     assert_eq!(inspected.operations, expected.clone());
     assert_eq!(harmos_runtime::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
-    assert_ne!(expected[0].id.as_str(), Unselected::ID);
+    assert_ne!(expected[0].id.as_str(), UnselectedDeclaration::ID);
 
     for bytes in [<EmptyNative as Declared>::markers().unwrap().concat(), <ExplicitEmptyNative as Declared>::markers().unwrap().concat()] {
         assert_eq!(Declaration::inspect(&bytes, Facility::Sidecar).unwrap().operations, vec![]);
@@ -196,7 +198,7 @@ fn guest_inventory_contains() {
     let expected = Declarations::of::<Operations>().unwrap();
     assert_eq!(inspected.operations, expected.clone());
     assert_eq!(harmos_runtime::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0].operation().clone(), expected[0]);
-    assert_ne!(expected[0].id.as_str(), Unselected::ID);
+    assert_ne!(expected[0].id.as_str(), UnselectedDeclaration::ID);
 
     for bytes in [<EmptyGuest as Declared>::markers().unwrap().concat(), <ExplicitEmptyGuest as Declared>::markers().unwrap().concat()] {
         assert_eq!(Declaration::inspect(&bytes, Facility::Guest).unwrap().operations, vec![]);

@@ -25,8 +25,7 @@ use std::time::Duration;
 // Local Imports
 use super::{assembly, service_status, support::Bank};
 use harmos_runtime::{
-    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position,
-    state::SystemFact,
+    Runtime, services::Resident, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 
 /* === Constants === */
@@ -54,17 +53,17 @@ enum AdapterExit {
 /* === Implementations === */
 
 impl Resident<Bank> for MutableAdapter {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, mut context: harmos_runtime::services::Service<Bank>) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), Self::Error> {
         self.attempts += 1;
         let attempt = self.attempts;
         context.ready();
         match context.until_stopping(self.exits.recv()).await {
             None => Ok(()),
-            Some(Some(AdapterExit::Environmental)) => Err(Fault::Environmental(format!("reset on attempt {attempt}"))),
-            Some(Some(AdapterExit::Application)) => Err(Fault::Application(format!("failed on attempt {attempt}"))),
-            Some(None) => Err(Fault::Application("exit channel closed".to_owned())),
+            Some(Some(AdapterExit::Environmental)) => Err(std::io::Error::other(format!("reset on attempt {attempt}"))),
+            Some(Some(AdapterExit::Application)) => Err(std::io::Error::other(format!("failed on attempt {attempt}"))),
+            Some(None) => Err(std::io::Error::other("exit channel closed")),
         }
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -90,13 +89,17 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
 /* === Tests === */
 
 #[tokio::test]
-async fn fault_deactivates_service() {
+async fn never_restart_preserves_failure() {
     for panics in [false, true] {
         let runtime = assembly()
-            .service("analysis", move |_context| async move {
-                assert!(!panics, "analysis invariant panicked");
-                Err::<(), _>(Fault::Application("bad invariant"))
-            })
+            .service_with(
+                "analysis",
+                harmos_runtime::ServicePolicy { restart: harmos_runtime::RestartPolicy::Never, ..harmos_runtime::services::POLICY },
+                move |_context| async move {
+                    assert!(!panics, "analysis invariant panicked");
+                    Err::<(), _>(std::io::Error::other("bad invariant"))
+                },
+            )
             .runtime()
             .await
             .expect("the service declaration is valid");
@@ -124,7 +127,7 @@ async fn credit_exhaustion_history() {
             let attempts = Arc::clone(&service_attempts);
             async move {
                 attempts.fetch_add(1, Ordering::SeqCst);
-                Err::<(), _>(Fault::Environmental("still disconnected"))
+                Err::<(), _>(std::io::Error::other("still disconnected"))
             }
         })
         .runtime()
@@ -148,8 +151,8 @@ async fn credit_exhaustion_history() {
 #[tokio::test(start_paused = true)]
 async fn credit_survive_restarts() {
     let (exits, receiver) = tokio::sync::mpsc::unbounded_channel();
-    let policy = harmos_runtime::operations::OperationPolicy {
-        restart: harmos_runtime::operations::RestartPolicy::OnTransient {
+    let policy = harmos_runtime::ServicePolicy {
+        restart: harmos_runtime::operations::RestartPolicy::OnFailure {
             credit: 1,
             sustained_health: Duration::from_millis(20),
             backoff: harmos_runtime::operations::Backoff::Exponential {
@@ -183,13 +186,11 @@ async fn credit_survive_restarts() {
         .expect("sustained health refills the visible credit");
 
     exits.send(AdapterExit::Application).expect("the second attempt is live");
+    service_status(statuses.clone(), "adapter", |status| *status == ServiceStatus::Running { credit: 0 }).await;
+    assert_eq!(runtime.operations.resident(&key).unwrap().instance, instance_id);
+    exits.send(AdapterExit::Application).expect("the third attempt is live");
     let status = service_status(statuses, "adapter", |status| matches!(status, ServiceStatus::Inactive { .. })).await;
-    assert!(matches!(
-        status,
-        ServiceStatus::Inactive {
-            cause: ServiceExit::Application(ref error),
-            ref history,
-        } if error == "failed on attempt 2" && history == &["reset on attempt 1"]
-    ));
+    assert!(matches!(status, ServiceStatus::Inactive { cause: ServiceExit::CreditExhausted, ref history }
+        if history == &["reset on attempt 1", "failed on attempt 2", "failed on attempt 3"]));
     assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }

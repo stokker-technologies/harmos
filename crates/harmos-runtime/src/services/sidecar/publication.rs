@@ -34,15 +34,6 @@ use super::*;
 
 /* === Implementations === */
 
-impl<A, S, H> crate::operations::Declares for Publish<A, S, H>
-where
-    A: Application,
-    S: Attach,
-    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
-{
-    type Declaration = crate::operations::streams::Publish;
-}
-
 impl<A, S, H> crate::operations::Operation for Publish<A, S, H>
 where
     A: Application,
@@ -77,10 +68,6 @@ where
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl crate::operations::Declares for HostPublish {
-    type Declaration = crate::operations::streams::Publish;
 }
 
 // The host-wide `host.publish` provider: each call reaches the caller generation's live native endpoint.

@@ -34,7 +34,6 @@ pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, Publ
 /* === Imports === */
 
 // Standard Library Imports
-use std::fmt;
 use std::future::Future;
 use std::sync::Arc;
 use std::task::Poll;
@@ -133,10 +132,6 @@ pub struct ServiceContext<A: Application> {
 
 /* === Enums === */
 
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub(super) struct FailureSource<E: fmt::Debug + fmt::Display>(pub(super) E);
-
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ServiceExit {
     #[error("application: {0}")]
@@ -167,7 +162,7 @@ pub enum ServiceStatus {
 // A resident runs until stopped. Each run is stopped and cleaned up before the
 // next restart or before the instance stops.
 pub trait Resident<A: Application>: Send + 'static {
-    type Error: fmt::Debug + fmt::Display + Send + Sync + 'static;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn run(&mut self, context: ServiceContext<A>) -> impl Future<Output = std::result::Result<(), Self::Error>> + Send;
 
@@ -430,7 +425,7 @@ where
     A: Application,
     F: FnMut(ServiceContext<A>) -> Fut + Send + 'static,
     Fut: Future<Output = std::result::Result<(), E>> + Send + 'static,
-    E: fmt::Debug + fmt::Display + Send + Sync + 'static,
+    E: std::error::Error + Send + Sync + 'static,
 {
     type Error = E;
 
@@ -544,7 +539,7 @@ mod tests {
         };
         let batch = harmos_sdk::RegistrationBatch::new(dependencies).service::<Worker>("worker", policy);
         runtime.register(batch.defaults()).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
+        executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);
 
