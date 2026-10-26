@@ -23,7 +23,7 @@ use std::sync::{
 
 // Local Imports
 use super::{
-    OperationGeneration, OperationInstance, OperationInstanceId, OperationManager, OperationStatus, StreamInput, StreamItem, StreamOutput,
+    OperationGeneration, OperationInstanceId, OperationManager, OperationStatus, Running, StreamInput, StreamItem, StreamOutput,
     StreamSettings, stream,
 };
 use crate::operations::OperationDeclaration;
@@ -68,7 +68,7 @@ pub struct SessionOutput<T> {
 
 #[must_use = "join completion or explicitly cancel and settle"]
 pub struct Completion<O: OperationDeclaration> {
-    instance: OperationInstance<O>,
+    instance: Running<O>,
     ends: Arc<Ends>,
     delivered: bool,
 }
@@ -260,32 +260,36 @@ impl<O: OperationDeclaration> Drop for Completion<O> {
 }
 
 impl OperationManager {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::OperationDeclaration>(
+        &self, request: O::Request, settings: StreamSettings,
+    ) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self, request: O, input: StreamSettings, output: StreamSettings,
+        &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
 }
 
 impl super::Context<'_> {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::OperationDeclaration>(
+        &self, request: O::Request, settings: StreamSettings,
+    ) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self, request: O, input: StreamSettings, output: StreamSettings,
+        &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
@@ -293,16 +297,18 @@ impl super::Context<'_> {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl super::Caller {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(&self, request: O, settings: StreamSettings) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::OperationDeclaration>(
+        &self, request: O::Request, settings: StreamSettings,
+    ) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
     pub fn exchange<O: crate::operations::OperationDeclaration>(
-        &self, request: O, input: StreamSettings, output: StreamSettings,
+        &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
     }
@@ -313,11 +319,11 @@ impl super::Caller {
 /* === Private Functions === */
 
 fn upload<O: crate::operations::OperationDeclaration>(
-    request: O, settings: StreamSettings,
+    request: O::Request, settings: StreamSettings,
     submit: impl FnOnce(
-        O,
+        O::Request,
         StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-    ) -> Result<OperationInstance<O>>,
+    ) -> Result<Running<O>>,
 ) -> Result<Upload<O>> {
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
@@ -329,11 +335,11 @@ fn upload<O: crate::operations::OperationDeclaration>(
     })
 }
 fn download<O: crate::operations::OperationDeclaration>(
-    request: O, settings: StreamSettings,
+    request: O::Request, settings: StreamSettings,
     submit: impl FnOnce(
-        O,
+        O::Request,
         StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
-    ) -> Result<OperationInstance<O>>,
+    ) -> Result<Running<O>>,
 ) -> Result<Download<O>> {
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
@@ -345,14 +351,14 @@ fn download<O: crate::operations::OperationDeclaration>(
     })
 }
 fn exchange<O: crate::operations::OperationDeclaration>(
-    request: O, input: StreamSettings, output: StreamSettings,
+    request: O::Request, input: StreamSettings, output: StreamSettings,
     submit: impl FnOnce(
-        O,
+        O::Request,
         (
             StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
             StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
         ),
-    ) -> Result<OperationInstance<O>>,
+    ) -> Result<Running<O>>,
 ) -> Result<Exchange<O>> {
     let (sender, input) = stream(input)?;
     let (output, receiver) = stream(output)?;

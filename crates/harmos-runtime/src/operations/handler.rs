@@ -52,7 +52,7 @@ pub struct OperationGeneration(u64);
 // (an observer or service activation) holds one lease on its shared instance:
 // dropping it releases that lease and the last release stops the instance.
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
-pub struct OperationInstance<O: OperationDeclaration> {
+pub struct Running<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
     pub(crate) outcome: Outcome<O::Response>,
@@ -85,6 +85,19 @@ pub struct Context<'a> {
     pub(super) retirement: bool,
 }
 
+#[derive(Clone)]
+pub struct HostContext {
+    scope: super::scope::ScopeCore,
+    id: OperationInstanceId,
+    attempt: usize,
+    operations: OperationManager,
+    admission: Admission,
+    source: Source,
+    origin: Origin,
+    #[cfg(feature = "plugin-sidecar")]
+    retirement: bool,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -104,7 +117,7 @@ impl OperationGeneration {
     }
 }
 
-impl<O: OperationDeclaration> OperationInstance<O> {
+impl<O: OperationDeclaration> Running<O> {
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
@@ -201,7 +214,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     }
 }
 
-impl<O: OperationDeclaration> OperationInstance<O> {
+impl<O: OperationDeclaration> Running<O> {
     // Encoded invocations keep their own contract: dropping one never
     // cancels, so the typed instance they await must not cancel either.
     pub(super) fn unguarded(mut self) -> Self {
@@ -210,7 +223,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     }
 }
 
-impl<O: OperationDeclaration> Future for OperationInstance<O> {
+impl<O: OperationDeclaration> Future for Running<O> {
     type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         let instance = self.get_mut();
@@ -230,7 +243,7 @@ impl<O: OperationDeclaration> Future for OperationInstance<O> {
     }
 }
 
-impl<O: OperationDeclaration> Drop for OperationInstance<O> {
+impl<O: OperationDeclaration> Drop for Running<O> {
     fn drop(&mut self) {
         // A resident lease releases itself when dropped.
         if matches!(self.outcome, Outcome::Request(_)) && !self.released && !self.control.is_settled() {
@@ -239,7 +252,7 @@ impl<O: OperationDeclaration> Drop for OperationInstance<O> {
     }
 }
 
-impl<O> harmos_sdk::operations::Instance<O> for OperationInstance<O>
+impl<O> harmos_sdk::operations::Instance<O> for Running<O>
 where
     O: OperationDeclaration,
 {
@@ -254,7 +267,7 @@ where
     }
 
     fn cancel(&self) -> impl Future<Output = Result<()>> + Send {
-        OperationInstance::cancel(self);
+        Running::cancel(self);
         std::future::ready(Ok(()))
     }
 
@@ -263,11 +276,25 @@ where
     }
 
     fn detach(self) -> OperationInstanceId {
-        OperationInstance::detach(self)
+        Running::detach(self)
     }
 }
 
 impl Context<'_> {
+    pub(crate) fn owned(&self) -> HostContext {
+        HostContext {
+            scope: self.scope.owned(),
+            id: self.id,
+            attempt: self.attempt,
+            operations: self.operations.clone(),
+            admission: self.admission.clone(),
+            source: self.source.clone(),
+            origin: self.origin.clone(),
+            #[cfg(feature = "plugin-sidecar")]
+            retirement: self.retirement,
+        }
+    }
+
     pub fn context(&self) -> &super::CallContext {
         self.operations.call_context()
     }
@@ -334,21 +361,21 @@ impl Context<'_> {
         })
     }
 
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O) -> Result<OperationInstance<O>> {
+    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), Some(&self.scope), self.admission.held(), &self.source, None)
     }
 
-    pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
+    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O, endpoints: P) -> Result<OperationInstance<O>> {
+    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: super::StreamItem<O>, endpoints: P,
-    ) -> Result<OperationInstance<O>> {
+        &self, request: super::StreamItem<O::Request>, endpoints: P,
+    ) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             &self.scope,
@@ -358,22 +385,62 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_caused<O: OperationDeclaration>(&self, request: O, cause: Position) -> Result<OperationInstance<O>> {
+    pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
     pub async fn call_caused<O: OperationDeclaration>(
-        &self, request: O, cause: Position,
+        &self, request: O::Request, cause: Position,
     ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
-    pub async fn call<O: OperationDeclaration>(&self, request: O) -> Result<crate::operations::Response<O::Response>> {
-        self.submit(request)?.await
+    pub async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<crate::operations::Response<O::Response>> {
+        self.submit::<O>(request)?.await
     }
 }
 
 /* === Public Functions === */
+
+impl HostContext {
+    pub(crate) fn borrow(&self) -> Context<'_> {
+        Context {
+            scope: Scope::over(&self.scope),
+            id: self.id,
+            attempt: self.attempt,
+            operations: self.operations.clone(),
+            admission: self.admission.clone(),
+            source: self.source.clone(),
+            origin: self.origin.clone(),
+            #[cfg(feature = "plugin-sidecar")]
+            retirement: self.retirement,
+        }
+    }
+}
+
+impl harmos_sdk::operations::Host for HostContext {
+    type Error = Error;
+    type Instance<O: OperationDeclaration> = Running<O>;
+
+    fn context(&self) -> &super::CallContext {
+        self.operations.call_context()
+    }
+
+    fn with_value<T: super::ContextValue>(&self, value: T) -> std::result::Result<Self, super::ContextError> {
+        let context = self.operations.call_context().with_value(value)?;
+        let mut child = self.clone();
+        child.operations = child.operations.with_context(context);
+        Ok(child)
+    }
+
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+        self.borrow().submit::<O>(request)
+    }
+
+    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<super::Response<O::Response>> {
+        self.borrow().submit::<O>(request)?.await
+    }
+}
 
 pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
     NEXT_INSTANCE

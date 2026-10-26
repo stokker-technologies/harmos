@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation};
+use crate::operations::Operation;
 
 use crate::storage::StorageCursor;
 use crate::storage::StorageManager;
@@ -49,17 +49,17 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = WriteSchema;
-    type Resources = StorageManager<C>;
+    type Request = <WriteSchema as harmos_domain::OperationDeclaration>::Request;
+    type Response = <WriteSchema as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut WriteSchema, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
             self.storage

@@ -28,7 +28,7 @@ use super::manager::{Entry, Submission};
 use super::{OperationInstanceId, OperationManager};
 use crate::operations::OperationDeclaration;
 use crate::supervision::executor;
-use crate::{Error, Message, Refusal, Result, operations::Scope};
+use crate::{Error, Refusal, Result, operations::Scope};
 
 /* === Constants === */
 
@@ -40,6 +40,8 @@ type Outcome = Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>>;
 pub(super) type Dispatch = fn(&OperationManager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
 
 /* === Structs === */
+
+struct Encoded;
 
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
@@ -78,6 +80,19 @@ pub struct EncodedInvocation {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl OperationDeclaration for Encoded {
+    type Request = Vec<u8>;
+    type Response = Vec<u8>;
+    type Input = super::NoStream;
+    type Output = super::NoStream;
+    const ID: &'static str = "encoded";
+    const POLICY: super::OperationPolicy = super::OperationPolicy {
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        retries: super::RetryPolicy::Never,
+    };
+}
 
 impl EncodedInvocation {
     pub fn id(&self) -> OperationInstanceId {
@@ -313,27 +328,24 @@ impl super::Context<'_> {
 
 /* === Public Functions === */
 
-pub(super) fn dispatch<O>(
+pub(super) fn dispatch_native(
     operations: &OperationManager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
-) -> Result<EncodedInvocation>
-where
-    O: OperationDeclaration,
-{
+) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(timeout, submitted)?;
-    if operations.preparation.is_none() {
-        return Err(Error::InvalidInput {
-            field: "operation preparation bytes",
-            reason: "encoded preparation requires an explicit preparation budget",
-        });
-    }
+    let factory = submission
+        .entry
+        .binding
+        .downcast_ref::<harmos_sdk::operations::OperationFactory>()
+        .ok_or(Error::InvalidInput { field: "native operation", reason: "entry does not own a native factory" })?;
+    let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
         None => std::num::NonZeroUsize::new(input.payload.capacity()).map(|bytes| operations.claim_preparation(bytes)).transpose()?,
     };
-    let decoding_bytes = codec::<O, _>(|| <O as crate::Message>::decoding_memory(&input.payload))?
-        .map_err(|source| Error::OperationPayload { operation: O::ID.to_owned(), source })?;
+    let decoding_bytes =
+        factory.decoding_memory(&input.payload).map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
         if let Some(original) = &mut submission.preparation {
@@ -342,13 +354,23 @@ where
             submission.preparation = Some(decoded);
         }
     }
-    budget(timeout, submitted)?;
-    let request = codec::<O, _>(|| <O as crate::Message>::decode(&input.payload))?
-        .map_err(|source| Error::OperationPayload { operation: O::ID.to_owned(), source })?;
+    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(&input.payload)))
+        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+        .map_err(|source| Error::OperationFailed { operation: name, source: Arc::new(source) })?;
+    let harmos_sdk::operations::registration::PreparedNative { instance, grant, key } = prepared;
+    drop(input.payload);
+    let instance = std::sync::Mutex::new(Some(instance));
+    let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
+        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
+    });
+    let mut request = super::binding::Request::from(Vec::new());
+    request.binding = Some(Arc::new(binding));
+    request.grant = grant;
+    request.key = key;
     let target = Arc::downgrade(&submission.entry);
     budget(timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
-    let invocation = operations.admit_entry::<O, ()>((request.into(), ()), scope, ancestors, &source, submission)?;
+    let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
@@ -357,13 +379,8 @@ where
         let response = invocation.await?;
         available(&target, &source)?;
         budget(timeout, submitted)?;
-        let payload = codec::<O, _>(|| response.encode_to_vec())?;
-        available(&target, &source)?;
-        budget(timeout, submitted)?;
-
-        Ok(payload)
+        Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
-
     Ok(EncodedInvocation { id, generation, outcome, control })
 }
 
@@ -380,9 +397,5 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
 }
 
 /* === Private Functions === */
-
-fn codec<O: OperationDeclaration, T>(run: impl FnOnce() -> T) -> Result<T> {
-    catch_unwind(AssertUnwindSafe(run)).map_err(|_| Error::OperationPanicked { operation: O::ID.to_owned() })
-}
 
 /* === Tests === */

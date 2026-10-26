@@ -14,6 +14,7 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 mod catalog;
 pub(crate) mod context;
 mod surface;
@@ -54,30 +55,31 @@ mod wire;
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use caller::Caller;
-pub use catalog::{Binding, Implementations, WireImplementations};
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+pub use catalog::Binding;
 pub use context::ContextMut;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
 pub use harmos_sdk::operations::{
-    AuthoredContracts, AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Codec, ContextError, ContextValue,
-    Contract, ContractError, Contracts, Declarations, Declares, Definition, Direction, Entry, FailureKind, Grpc, Jitter,
-    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES, PolicyError,
-    ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer, WireBinding, WireChild,
-    WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints, WireStreamLimits,
-    WireStreams, WireTable, item_types,
+    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
+    Declarations, Declares, Direction, Entry, FailureKind, Grpc, Jitter, MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration,
+    OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy,
+    ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
+    WireCommand, WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, WireTable, item_types,
 };
 pub use harmos_sdk::operations::{CallContext, Host, Instance, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
+pub use surface::Invocation;
 
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
-pub use handler::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
+pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_domain::observers;
 pub use harmos_sdk::operations::{EndpointSet, InputEndpoint, OutputEndpoint, host, lifecycle, streams};
 pub use manager::OperationManager;
@@ -89,8 +91,10 @@ pub(crate) use manager::Registry;
 
 #[cfg(feature = "plugin-sidecar")]
 pub use native::{Native, NativeBindings, NativeError, NativeOperation};
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::Bindings;
 pub(crate) use registration::CatalogBinding;
+pub use registration::{Registration, RegistrationExt};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub use registration::PluginRegistration;

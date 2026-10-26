@@ -23,11 +23,11 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, OperationManager};
-use crate::operations::lifecycle::{Action, Initialize};
+use crate::operations::lifecycle::{Action, InitializeRequest};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
@@ -58,11 +58,12 @@ pub struct PluginSdkRegistration {
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl crate::Message for Encoded {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+    fn encode(&self) -> Vec<u8> {
         self.0.clone()
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.0.len()
     }
 
@@ -96,16 +97,15 @@ impl crate::MemorySize for Encoded {
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl OperationDeclaration for Encoded {
+    type Request = Self;
     type Response = Vec<u8>;
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
-    const VERSION: u32 = 1;
-    const ID: &'static str = "";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: std::time::Duration::ZERO,
-        attempt_timeout: std::time::Duration::ZERO,
+    const ID: &'static str = "harmos.encoded";
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 }
 
@@ -150,13 +150,13 @@ impl PluginSdkRegistration {
             let peak = config_json
                 .len()
                 .checked_mul(2)
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Initialize>() + 64 + 20))
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<InitializeRequest>() + 64 + 20))
                 .ok_or(Error::ResourceExhausted { resource: "SDK encoding memory" })?;
             if peak > allowance {
                 return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
             }
-            let request = Initialize { config_json: config_json.to_vec(), generation_context: generation_context.to_vec() };
-            Ok(request.encode_to_vec())
+            let request = InitializeRequest { config_json: config_json.to_vec(), generation_context: generation_context.to_vec() };
+            Ok(request.encode())
         })
     }
 

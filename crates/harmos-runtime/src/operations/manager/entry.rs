@@ -39,7 +39,7 @@ impl Entry {
     #[cfg(feature = "plugin-sidecar")]
     pub(in crate::operations) fn resident(&mut self) {
         self.lane = crate::operations::lane::RESIDENT;
-        self.bounded = false;
+
         self.resident = true;
     }
 
@@ -53,7 +53,7 @@ impl Entry {
         false
     }
 
-    pub(in crate::operations) fn declared(&self) -> &Definition {
+    pub(in crate::operations) fn declared(&self) -> &OperationDefinition {
         &self.definition
     }
 

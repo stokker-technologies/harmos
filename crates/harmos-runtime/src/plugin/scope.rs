@@ -41,7 +41,7 @@ pub struct PluginScope {
     phase: Arc<watch::Sender<Phase>>,
     operation_registry: Arc<OnceLock<Weak<crate::operations::Registry>>>,
     dependencies: Arc<BTreeSet<String>>,
-    operations: Arc<BTreeMap<crate::Identifier, crate::operations::Definition>>,
+    operations: Arc<BTreeMap<crate::Identifier, crate::operations::OperationDefinition>>,
     wire_contracts: Arc<BTreeMap<crate::Identifier, crate::operations::Contract>>,
     required_contracts: Arc<Option<Vec<harmos_domain::inventory::contracts::Required>>>,
     required_providers: Arc<BTreeMap<String, String>>,
@@ -166,7 +166,7 @@ impl PluginScope {
         self.lifecycle.as_ref().as_ref()
     }
 
-    pub(super) fn with_operations(mut self, operations: &[crate::operations::Definition]) -> Self {
+    pub(super) fn with_operations(mut self, operations: &[crate::operations::OperationDefinition]) -> Self {
         self.operations = Arc::new(operations.iter().map(|operation| (operation.id.clone(), operation.clone())).collect());
         self.phase.send_if_modified(|phase| {
             let Phase::Staged { operations_bound, .. } = phase else {
@@ -466,7 +466,9 @@ impl PluginScope {
         !matches!(*self.phase.borrow(), Phase::Staged { streams_bound: false, .. })
     }
 
-    pub(crate) fn validate_operations<'a>(&self, operations: impl IntoIterator<Item = &'a crate::operations::Definition>) -> Result<()> {
+    pub(crate) fn validate_operations<'a>(
+        &self, operations: impl IntoIterator<Item = &'a crate::operations::OperationDefinition>,
+    ) -> Result<()> {
         // The built-in observe control is served beside the admitted inventory, never inside it.
         let observe = self.observe_contract.as_ref().as_ref().map(|contract| contract.operation());
         let actual: BTreeMap<_, _> =

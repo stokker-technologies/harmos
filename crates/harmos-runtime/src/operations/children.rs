@@ -85,7 +85,7 @@ impl Children {
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
-            return Ok(id.value().encode_to_vec());
+            return Ok(id.value().encode());
         }
         drained(invocation, cancelled).await
     }
@@ -103,7 +103,7 @@ impl Children {
                     invocation.cancel();
                 }
                 let state = harmos_domain::operations::lifecycle::InstanceState::from(invocation.control.status().portable());
-                Ok(state.encode_to_vec())
+                Ok(state.encode())
             }
             WireChildAction::Release => {
                 drop(take()?);

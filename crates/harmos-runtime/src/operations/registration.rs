@@ -18,18 +18,27 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+use super::Binding;
+use super::OperationManager;
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use super::manager::Entry;
-use super::{Binding, Implementations, WireImplementations};
-use super::{Context, OperationManager};
-use crate::catalog::{Catalog, Projection, Visitor};
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+use crate::catalog::Projection;
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+use crate::catalog::{Catalog, Visitor};
 
 #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::Declarations;
-use crate::operations::{AuthoredDeclarations, Definition, OperationDeclaration, WireDeclaration};
+use crate::operations::OperationDeclaration;
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+use crate::operations::OperationDefinition;
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
-use crate::schema::Described;
-use crate::{Error, Message, Result, operations::Lane};
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+use crate::Error;
+use crate::{Result, operations::Lane};
 
 /* === Constants === */
 
@@ -41,13 +50,11 @@ type BindCatalog = dyn Fn(&OperationManager) -> Result<()> + Send + Sync;
 
 /* === Structs === */
 
-pub(super) struct WireProjection {
-    declaration: std::any::TypeId,
-    contract: crate::operations::Contract,
-    dispatch: Option<super::wire::Dispatch>,
-
-    #[cfg(feature = "grpc")]
-    grpc: Option<crate::grpc::routing::Handler>,
+#[derive(Clone)]
+pub struct Registration<L: Lane> {
+    pub(crate) batch: harmos_sdk::RegistrationBatch,
+    pub(crate) lane: Option<L>,
+    pub(crate) defaults: std::collections::BTreeMap<&'static str, L>,
 }
 
 #[derive(Clone)]
@@ -55,6 +62,7 @@ pub(crate) struct CatalogBinding {
     bind: Arc<BindCatalog>,
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 pub struct Bindings<'a> {
     pub(super) operations: &'a OperationManager,
     owner: &'a str,
@@ -77,82 +85,43 @@ pub struct PluginRegistration {
 
 /* === Traits === */
 
+pub trait RegistrationExt {
+    fn lane<L: Lane>(self, lane: L) -> Registration<L>;
+    fn defaults<L: Lane>(self) -> Registration<L>;
+}
+
 /* === Implementations === */
 
+impl RegistrationExt for harmos_sdk::RegistrationBatch {
+    fn lane<L: Lane>(self, lane: L) -> Registration<L> {
+        Registration { batch: self, lane: Some(lane), defaults: std::collections::BTreeMap::new() }
+    }
+
+    fn defaults<L: Lane>(self) -> Registration<L> {
+        Registration { batch: self, lane: None, defaults: std::collections::BTreeMap::new() }
+    }
+}
+
+impl<L: Lane> Registration<L> {
+    pub fn default_lane_for<O: OperationDeclaration>(mut self, lane: L) -> Self {
+        self.defaults.insert(O::ID, lane);
+        self
+    }
+}
+
 impl CatalogBinding {
-    pub(crate) fn operation<T>(owner: String, lane: impl Lane, resources: Arc<T::Resources>) -> Self
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        let lane = lane.name();
-        Self { bind: Arc::new(move |operations| operations.register_operation_at::<T>(owner.clone(), lane, resources.clone())) }
+    pub(crate) fn new<L: Lane>(registration: Registration<L>) -> Self {
+        Self { bind: Arc::new(move |operations| operations.register_native(registration.clone())) }
     }
-
-    pub(crate) fn local<C, R>(owner: String, lane: impl Lane, resources: Arc<R>) -> Self
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let lane = lane.name();
-        Self {
-            bind: Arc::new(move |operations| {
-                operations.register_with(owner.clone(), |bindings| {
-                    bindings.project_owned_at::<C, Implementations<R>, R>(lane, Arc::clone(&resources))
-                })
-            }),
-        }
-    }
-
-    pub(crate) fn wire<C, R>(owner: String, lane: impl Lane, resources: Arc<R>) -> Self
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<WireImplementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let lane = lane.name();
-        Self {
-            bind: Arc::new(move |operations| {
-                operations.register_with(owner.clone(), |bindings| {
-                    bindings.project_owned_at::<C, WireImplementations<R>, R>(lane, Arc::clone(&resources))
-                })
-            }),
-        }
-    }
-
     pub(crate) fn bind(&self, operations: &OperationManager) -> Result<()> {
         (self.bind)(operations)
     }
 }
 
 impl OperationManager {
-    pub fn register_operations<C, R>(&self, owner: impl Into<String>, lane: impl Lane, resources: Arc<R>) -> Result<()>
-    where
-        R: Send + Sync + 'static,
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_operations::<C, R>(lane, resources))
+    pub async fn register<L: Lane>(&self, registration: Registration<L>) -> Result<()> {
+        self.register_native(registration)
     }
-
-    pub fn register_wire_operations<C, R>(&self, owner: impl Into<String>, lane: impl Lane, resources: Arc<R>) -> Result<()>
-    where
-        R: Send + Sync + 'static,
-        C: Catalog<AuthoredDeclarations> + Catalog<WireImplementations<R>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_wire_operations::<C, R>(lane, resources))
-    }
-
-    pub(super) fn register_with(&self, owner: impl Into<String>, configure: impl FnOnce(&mut Bindings<'_>) -> Result<()>) -> Result<()> {
-        let owner = owner.into();
-        let mut bindings = Bindings {
-            operations: self,
-            owner: &owner,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            scope: None,
-            entries: Vec::new(),
-        };
-        configure(&mut bindings)?;
-        self.reserve(&bindings.entries)
-    }
-
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn stage_plugin(&self, scope: &PluginScope, configure: impl FnOnce(&mut Bindings<'_>) -> Result<()>) -> Result<PluginRegistration> {
         if scope.is_closed() {
@@ -192,185 +161,39 @@ impl OperationManager {
     }
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Bindings<'_> {
-    pub fn register_operations<C, R>(&mut self, lane: impl Lane, resources: Arc<R>) -> Result<()>
-    where
-        R: Send + Sync + 'static,
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-    {
-        self.project_owned_at::<C, Implementations<R>, R>(lane.name(), resources)
-    }
-
-    pub fn register_wire_operations<C, R>(&mut self, lane: impl Lane, resources: Arc<R>) -> Result<()>
-    where
-        R: Send + Sync + 'static,
-        C: Catalog<AuthoredDeclarations> + Catalog<WireImplementations<R>>,
-    {
-        self.project_owned_at::<C, WireImplementations<R>, R>(lane.name(), resources)
-    }
-
-    pub fn register_operation<T>(&mut self, lane: impl Lane, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_owned_at::<T>(lane.name(), resources)
-    }
-
-    pub(super) fn register_owned_at<T>(&mut self, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_operation_id_at::<T>(T::Declaration::ID, lane, resources)
-    }
-
-    pub fn register_operation_id<T>(&mut self, id: impl Into<String>, lane: impl Lane, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_operation_id_at::<T>(id, lane.name(), resources)
-    }
-
-    fn register_operation_id_at<T>(&mut self, id: impl Into<String>, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        let mut definition = Definition::of::<T::Declaration>().map_err(|source| Error::OperationDeclaration { source })?;
-        definition.id = crate::Identifier::new(id.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
-        let id = definition.id.as_str();
-        if self.entries.iter().any(|entry| entry.id() == id) {
-            return Err(Error::AlreadyRegistered { domain: "operation", name: id.to_owned() });
-        }
-        let mut projected = project::<T::Declaration>()?;
-        if projected.declaration != std::any::TypeId::of::<T::Declaration>() {
-            return Err(Error::InvalidInput {
-                field: "operation wire declaration",
-                reason: "wire projection must match the original typed declaration",
-            });
-        }
-        // An id override keeps the declared contract under the new identity; a gRPC method keeps its declared identity.
-        if projected.contract.operation() != &definition {
-            let original = &projected.contract;
-            if original.grpc().is_some() {
-                return Err(Error::InvalidInput {
-                    field: "operation wire declaration",
-                    reason: "an operation that binds a gRPC method keeps its declared identity",
-                });
-            }
-            projected.contract =
-                crate::operations::Contract::new(definition.clone(), original.version(), original.codec(), original.schema().clone())
-                    .map_err(|source| Error::OperationFailed { operation: definition.id.to_string(), source: Arc::new(source) })?;
-        }
-        let projected = Some(projected);
-        let mut entry = self.operations.binding_owned_definition::<T>(
-            self.owner,
-            lane,
-            resources,
-            definition,
-            projected.as_ref().and_then(|wire| wire.dispatch),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            self.scope.cloned(),
-        )?;
-        if let Some(projected) = projected {
-            let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-            original.contract = Some(projected.contract);
-            #[cfg(feature = "grpc")]
-            {
-                original.grpc = projected.grpc;
-            }
-        }
-        self.entries.push(entry);
+    pub fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
+        let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
+        self.entries.extend(entries);
         Ok(())
     }
 
-    pub fn register_wire_operation<T>(&mut self, lane: impl Lane, resources: Arc<T::Resources>) -> Result<()>
+    pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::Dependencies) -> Result<()>
     where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::OperationDeclaration,
-        T::Declaration: Message + Described,
+        D: OperationDeclaration,
+        O: harmos_sdk::Operation<Request = D::Request, Response = D::Response>,
     {
-        self.register_owned_wire_at::<T>(lane.name(), resources)
-    }
-
-    pub(super) fn register_owned_wire_at<T>(&mut self, lane: &'static str, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::OperationDeclaration,
-        T::Declaration: Message + Described,
-    {
-        let contract = WireDeclaration::of::<T::Declaration>()
+        let contract = harmos_sdk::operations::WireDeclaration::of::<D>()
             .contract()
-            .map_err(|source| Error::OperationFailed { operation: T::Declaration::ID.to_owned(), source: Arc::new(source) })?;
-        self.register_wire_contract_at::<T>(&contract, lane, resources)
-    }
-
-    pub fn register_wire_contract<T>(
-        &mut self, contract: &crate::operations::Contract, lane: impl Lane, resources: Arc<T::Resources>,
-    ) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::OperationDeclaration,
-        T::Declaration: Message + Described,
-    {
-        self.register_wire_contract_at::<T>(contract, lane.name(), resources)
-    }
-
-    fn register_wire_contract_at<T>(
-        &mut self, contract: &crate::operations::Contract, lane: &'static str, resources: Arc<T::Resources>,
-    ) -> Result<()>
-    where
-        T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::OperationDeclaration,
-        T::Declaration: Message + Described,
-    {
-        let projected = project::<T::Declaration>()?;
-        let declared = &projected.contract;
-        let mut definition = declared.operation().clone();
-        definition.id = contract.operation().id.clone();
-        if definition != *contract.operation()
-            || declared.version() != contract.version()
-            || declared.codec() != contract.codec()
-            || ![
-                (Some(declared.request()), Some(contract.request())),
-                (Some(declared.response()), Some(contract.response())),
-                (declared.input(), contract.input()),
-                (declared.output(), contract.output()),
-            ]
-            .into_iter()
-            .all(|(left, right)| match (left, right) {
-                (None, None) => true,
-                (Some(left), Some(right)) => left
-                    .schema()
-                    .equivalent(left.index(), right.schema(), right.index(), &harmos_domain::config::SchemaSettings::default())
-                    .unwrap_or(false),
-                _ => false,
-            })
-            || declared.grpc() != contract.grpc()
-        {
-            return Err(Error::InvalidInput { field: "operation contract", reason: "runtime binding may override identity only" });
-        }
-        let id = contract.operation().id.as_str();
-        if self.entries.iter().any(|entry| entry.id() == id) {
-            return Err(Error::AlreadyRegistered { domain: "operation", name: id.to_owned() });
-        }
-        let mut entry = self.operations.binding_owned_definition::<T>(
-            self.owner,
-            lane,
-            resources,
-            contract.operation().clone(),
-            projected.dispatch,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            self.scope.cloned(),
-        )?;
-        let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-        original.contract = Some(contract.clone());
+            .map_err(|source| Error::OperationFailed { operation: D::ID.to_owned(), source: Arc::new(source) })?;
+        let wire = (contract.input().is_none() && contract.output().is_none())
+            .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
+        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<D, O>();
+        let factory = batch.operations.pop().expect("one native implementation");
+        let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
         #[cfg(feature = "grpc")]
-        {
-            original.grpc = projected.grpc;
+        if contract.grpc().is_some() {
+            Arc::get_mut(&mut entry).expect("new native entry").grpc = Some(crate::grpc::routing::handler::<D>());
         }
+        Arc::get_mut(&mut entry).expect("new native entry").contract = Some(contract);
         self.entries.push(entry);
         Ok(())
     }
+}
 
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+impl Bindings<'_> {
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(super) fn project<C, V, H>(&mut self, lane: impl Lane, handler: Arc<H>) -> Result<()>
     where
@@ -392,18 +215,8 @@ impl Bindings<'_> {
         self.apply_projection(lane, handler, &definitions, &<C as Catalog<V>>::ENTRIES)
     }
 
-    fn project_owned_at<C, V, R>(&mut self, lane: &'static str, resources: Arc<R>) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<V>,
-        V: Visitor<Entry = Binding<R>>,
-        R: Send + Sync + 'static,
-    {
-        let definitions = AuthoredDeclarations::of::<C>().map_err(|source| Error::OperationDeclaration { source })?;
-        self.apply_projection(lane, resources, &definitions, &<C as Catalog<V>>::ENTRIES)
-    }
-
     fn apply_projection<H: Send + Sync + 'static>(
-        &mut self, lane: &'static str, handler: Arc<H>, definitions: &[Definition], entries: &impl Projection<Binding<H>>,
+        &mut self, lane: &'static str, handler: Arc<H>, definitions: &[OperationDefinition], entries: &impl Projection<Binding<H>>,
     ) -> Result<()> {
         let previous = self.entries.len();
         if let Err(error) = entries.try_for_each(|entry| entry.apply(self, lane, Arc::clone(&handler))) {
@@ -443,24 +256,6 @@ impl Drop for PluginRegistration {
 }
 
 /* === Public Functions === */
-
-// The manager's one projection of a declaration: its wire contract, its
-// unary dispatch and, when it binds a method, its gRPC handler.
-pub(super) fn project<O: crate::operations::OperationDeclaration>() -> Result<WireProjection> {
-    let contract = WireDeclaration::of::<O>()
-        .contract()
-        .map_err(|source| Error::OperationFailed { operation: O::ID.to_owned(), source: Arc::new(source) })?;
-    let streaming = contract.input().is_some() || contract.output().is_some();
-    #[cfg(feature = "grpc")]
-    let grpc = contract.grpc().map(|_| crate::grpc::routing::handler::<O>());
-    Ok(WireProjection {
-        declaration: std::any::TypeId::of::<O>(),
-        contract,
-        dispatch: if streaming { None } else { Some(super::wire::dispatch::<O>) },
-        #[cfg(feature = "grpc")]
-        grpc,
-    })
-}
 
 /* === Private Functions === */
 

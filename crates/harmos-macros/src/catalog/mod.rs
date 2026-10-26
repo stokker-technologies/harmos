@@ -129,8 +129,8 @@ fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<Token
     };
     let behavior = state.map(|state| behavior(&name, &visibility, &members, state, closing.error.as_ref(), harmos)).unwrap_or_default();
 
+    let catalog = crate::catalog::typed::projection(quote!(harmos_path = #harmos), quote!(#catalog))?;
     Ok(quote! {
-        #[#harmos::catalog(harmos_path = #harmos)]
         #catalog
         #(#conversions)*
         #registration

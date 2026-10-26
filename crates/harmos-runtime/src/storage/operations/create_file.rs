@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation};
+use crate::operations::Operation;
 use crate::storage::FileProducer;
 
 use crate::storage::StorageManager;
@@ -49,18 +49,18 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = CreateFile;
-    type Resources = StorageManager<C>;
+    type Request = <CreateFile as harmos_domain::OperationDeclaration>::Request;
+    type Response = <CreateFile as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.operation.create_file", level = "trace", skip_all)]
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut CreateFile, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProducer>> {
         let result: ::core::result::Result<FileProducer, Self::Error> =
             async move { self.storage.create_file_once(&request.mutation, &request.metadata).await.map_err(Into::into) }.await;

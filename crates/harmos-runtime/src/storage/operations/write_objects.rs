@@ -18,7 +18,7 @@ use harmos_domain::operations::storage::WriteObjects;
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use crate::operations::{Context, Operation, OperationDeclaration, StreamInput, StreamOutput};
+use crate::operations::{Operation, OperationDeclaration, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::writes::{DataBatch, WriteCompletion, WriteKind, WriteReceipt, exchange};
 use crate::{Error, Result};
@@ -42,19 +42,21 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = WriteObjects;
-    type Resources = StorageManager<C>;
+    type Request = <WriteObjects as harmos_domain::OperationDeclaration>::Request;
+    type Response = <WriteObjects as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = (StreamInput<DataBatch>, StreamOutput<WriteReceipt>);
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'a>(
-        &mut self, ctx: Self::Context<'a>, request: &mut WriteObjects, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<WriteCompletion>> {
+        let host = ctx.dependency::<crate::operations::HostContext>()?;
+        let ctx = host.borrow();
         let completion = exchange(&self.storage, &ctx, request.scope.as_ref(), endpoints, WriteKind::Objects, WriteObjects::ID).await?;
         Ok(completion.into())
     }

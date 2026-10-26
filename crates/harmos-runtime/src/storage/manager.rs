@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 // Local Imports
 use super::{StorageBackends, StorageSettings};
 use crate::operations::{OperationManager, resident::Lease};
-use crate::services::{Fault, Once, Resident, Service, ServiceDefinition};
+use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Result};
 
@@ -117,9 +117,9 @@ impl<A: Application> Resident<A> for Worker {
     async fn cleanup(&mut self) -> Result<()> {
         self.0.cleanup().await.map_err(Into::into)
     }
-    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: ServiceContext<A>) -> std::result::Result<(), Error> {
         context.ready();
-        context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| Fault::Environmental(error.into()))
+        context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| error.into())
     }
 }
 

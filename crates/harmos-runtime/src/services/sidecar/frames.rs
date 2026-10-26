@@ -37,7 +37,7 @@ use super::*;
 impl<A, H> Exchange<'_, A, H>
 where
     A: Application,
-    H: Fn(&Service<A>, Notice) + Send + Sync,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync,
 {
     pub(super) async fn absorb_frame(&mut self, arrival: Arrival) -> Absorbed {
         match arrival {
@@ -208,7 +208,7 @@ where
                 {
                     let _ = cancel.send(());
                 }
-                // Keep The Slot Until Its Original OperationInstance Physically Settles
+                // Keep The Slot Until Its Original Running Physically Settles
                 Absorbed::Carried
             }
             Arrival::Reply(frame, token) => {

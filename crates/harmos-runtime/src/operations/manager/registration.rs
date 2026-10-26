@@ -35,87 +35,81 @@ use super::*;
 /* === Implementations === */
 
 impl OperationManager {
-    pub fn register_operation<T>(&self, owner: impl Into<String>, lane: impl Lane, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_operation_at::<T>(owner, lane.name(), resources)
+    pub(crate) fn register_native<L: Lane>(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+        let entries = self.native_entries(
+            registration,
+            "host",
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            None,
+        )?;
+        self.reserve(&entries)
     }
 
-    pub fn register_operation_id<T>(
-        &self, owner: impl Into<String>, id: impl Into<String>, lane: impl Lane, resources: Arc<T::Resources>,
-    ) -> Result<()>
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_operation_id::<T>(id, lane, resources))
+    pub(in crate::operations) fn native_entries<L: Lane>(
+        &self, registration: crate::operations::Registration<L>, owner: &str,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+    ) -> Result<Vec<Arc<Entry>>> {
+        let crate::operations::Registration { batch, lane, defaults } = registration;
+        if !batch.services.is_empty() {
+            return Err(Error::InvalidInput { field: "operation registration", reason: "services belong to the service manager" });
+        }
+        let mut entries = Vec::with_capacity(batch.operations.len());
+        for factory in batch.operations {
+            factory
+                .validate()
+                .map_err(|source| Error::OperationFailed { operation: factory.definition.id.to_string(), source: Arc::new(source) })?;
+            let contract = match factory.contract() {
+                Ok(contract) => Some(contract),
+                Err(crate::operations::ContractError::Codec { .. }) => None,
+                Err(source) => {
+                    return Err(Error::OperationFailed { operation: factory.definition.id.to_string(), source: Arc::new(source) });
+                }
+            };
+            let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(L::default_lane);
+            let definition = factory.definition.clone();
+            definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
+            let wire: Option<crate::operations::wire::Dispatch> =
+                if contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
+                    Some(crate::operations::wire::dispatch_native)
+                } else {
+                    None
+                };
+            let mut entry = self.binding_erased(
+                owner,
+                selected.name(),
+                Arc::new(factory),
+                definition,
+                wire,
+                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                scope.cloned(),
+            )?;
+            Arc::get_mut(&mut entry).expect("unpublished entry has one owner").contract = contract;
+            entries.push(entry);
+        }
+        Ok(entries)
     }
-
-    pub(in crate::operations) fn register_operation_at<T>(
-        &self, owner: impl Into<String>, lane: &'static str, resources: Arc<T::Resources>,
-    ) -> Result<()>
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_owned_at::<T>(lane, resources))
-    }
-
-    pub fn register_wire_operation<T>(&self, owner: impl Into<String>, lane: impl Lane, resources: Arc<T::Resources>) -> Result<()>
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_wire_operation::<T>(lane, resources))
-    }
-
-    pub fn register_wire_contract<T>(
-        &self, owner: impl Into<String>, contract: &crate::operations::Contract, lane: impl Lane, resources: Arc<T::Resources>,
-    ) -> Result<()>
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
-    {
-        self.register_with(owner, |bindings| bindings.register_wire_contract::<T>(contract, lane, resources))
-    }
-
-    pub(in crate::operations) fn binding_owned_definition<T>(
-        &self, owner: impl Into<String>, lane: &'static str, resources: Arc<T::Resources>, definition: Definition,
-        wire: Option<crate::operations::wire::Dispatch>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(in crate::operations) fn bind_native<D, O>(
+        &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::Dependencies, definition: OperationDefinition,
+        wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
+        D: OperationDeclaration,
+        O: harmos_sdk::Operation<Request = D::Request, Response = D::Response>,
     {
-        // Only the scope's built-in observe control may carry a reserved id.
-        #[cfg(feature = "plugin-sidecar")]
-        let built_in = plugin.as_ref().and_then(PluginScope::observe_contract).is_some_and(|contract| *contract.operation() == definition);
-        #[cfg(not(feature = "plugin-sidecar"))]
-        let built_in = false;
-        if built_in { definition.policy.validate().map_err(harmos_domain::Error::from) } else { definition.validate() }
-            .map_err(|source| Error::OperationDeclaration { source })?;
-        if <T::Endpoints as crate::operations::EndpointSet>::item_types() != crate::operations::item_types::<T::Declaration>() {
-            return Err(Error::InvalidInput {
-                field: "operation endpoint types",
-                reason: "authored endpoints do not match declared stream item types",
-            });
-        }
-        let binding = crate::operations::authored::factory::<T>(self, resources);
-        self.binding_typed(
-            owner,
-            lane,
-            binding,
-            definition,
-            wire,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            plugin,
-        )
+        let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<D, O>();
+        let factory = batch.operations.pop().expect("one native implementation");
+        let binding = crate::operations::authored::factory::<D, O::Endpoints>(self, factory);
+        self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)
     }
 
-    pub(super) fn binding_typed<O: OperationDeclaration, P: Send + 'static>(
-        &self, owner: impl Into<String>, lane: &'static str, binding: Typed<O, P>, definition: Definition,
+    pub(in crate::operations) fn binding_erased(
+        &self, owner: impl Into<String>, lane: &'static str, binding: Arc<dyn Any + Send + Sync>, definition: OperationDefinition,
         wire: Option<crate::operations::wire::Dispatch>,
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
-        let bounded =
+        let _bounded =
             self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered { domain: "operation lane", name: lane.to_owned() })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
@@ -126,13 +120,12 @@ impl OperationManager {
             grpc: None,
             generation,
             lane,
-            bounded,
             #[cfg(feature = "plugin-sidecar")]
             resident: false,
             active: AtomicBool::new(true),
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
-            binding: Arc::new(binding),
+            binding,
             #[cfg(feature = "plugin-sidecar")]
             native_binding: None,
             wire,

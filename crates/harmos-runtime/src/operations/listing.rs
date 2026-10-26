@@ -24,8 +24,8 @@ use std::sync::Arc;
 use serde::Serialize;
 
 // Local Imports
-use super::host::{Catalog, CatalogKind, CatalogPage};
-use super::{Context, Lane, Operation, OperationManager};
+use super::Operation;
+use super::host::{Catalog, CatalogKind, CatalogPage, CatalogRequest};
 use crate::storage::query::SchemaSelection;
 use crate::storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity};
 use crate::{Error, Result};
@@ -49,19 +49,21 @@ pub struct Listing<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Listing<C> {
-    type Declaration = Catalog;
-    type Resources = Option<Arc<StorageManager<C>>>;
+    type Request = CatalogRequest;
+    type Response = CatalogPage;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(storage: Arc<Self::Resources>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<Option<Arc<StorageManager<C>>>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Catalog, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut CatalogRequest, _: &mut Self::Endpoints,
     ) -> Result<super::Response<CatalogPage>> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let page = match request.kind {
             CatalogKind::Operations => context.operations.discover(&context.source, request)?,
             CatalogKind::Schemas => {
@@ -91,19 +93,18 @@ impl<C> Listing<C> {
 
 /* === Public Functions === */
 
-pub fn register<C: 'static>(
-    operations: &OperationManager, owner: impl Into<String>, lane: impl Lane, storage: Option<Arc<StorageManager<C>>>,
-) -> Result<()> {
-    operations.register_wire_operation::<Listing<C>>(owner.into(), lane, Arc::new(storage))
+pub fn registration<C: 'static>(storage: Option<Arc<StorageManager<C>>>) -> Result<harmos_sdk::RegistrationBatch> {
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies.insert(Arc::new(storage))?;
+    Ok(harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Catalog, Listing<C>>())
 }
-
 /* === Private Functions === */
 
 // One Page Of Durable Entries After The Request's Storage Position. Pages Order
 // By Storage Position, So A Nonempty Page Always Continues And An Empty Page
 // Ends The Catalog.
 async fn stored<C, T>(
-    storage: &StorageManager<C>, selection: &T::Selection, request: &Catalog, keep: impl Fn(&T) -> bool,
+    storage: &StorageManager<C>, selection: &T::Selection, request: &CatalogRequest, keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogPage>
 where
     T: crate::storage::follow::Entry,

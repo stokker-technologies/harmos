@@ -35,8 +35,9 @@ use super::*;
 /* === Implementations === */
 
 impl OperationManager {
-    pub async fn unregister(&self, id: &str) -> Result<()> {
-        self.unregister_selected(id, None).await
+    pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
+        let (owner, local) = id.as_str().split_once('.').expect("qualified identity has two validated segments");
+        self.unregister_selected(local, Some(owner)).await
     }
 
     pub async fn unregister_from(&self, owner: &str, id: &str) -> Result<()> {
@@ -61,6 +62,9 @@ impl OperationManager {
             let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
             entry.retirement.store(Retirement::Explicit as u8, Ordering::Release);
             entry.active.store(false, Ordering::Release);
+            for control in _pending.values() {
+                control.cancel();
+            }
             let retired = state.remove_cache(|cached| !cached.target.upgrade().is_some_and(|target| !Arc::ptr_eq(&target, &entry)));
             drop(_pending);
             retired

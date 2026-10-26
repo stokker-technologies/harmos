@@ -41,7 +41,7 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, BufReader};
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
-use super::{Fault, Resident, Service};
+use super::{Resident, ServiceContext};
 use crate::operations::children::{CHILD_REQUESTS, Children};
 use crate::streams::{Demand, StreamManager};
 use crate::supervision::executor;
@@ -60,7 +60,7 @@ const ARRIVALS: usize = 64;
 
 /* === Type Aliases === */
 
-type Ingest<A> = Arc<dyn Fn(&Service<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
+type Ingest<A> = Arc<dyn Fn(&ServiceContext<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
 
 type Delivery = Pin<Box<dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>> + Send>>;
 
@@ -138,7 +138,7 @@ struct Settling<'a> {
     expected: Option<&'a [Registration]>,
     publications: &'a [harmos_sidecar::StreamDeclaration],
     observers: &'a [harmos_sidecar::inventory::observers::Declaration],
-    operations: &'a [crate::operations::Definition],
+    operations: &'a [crate::operations::OperationDefinition],
     contracts: &'a [crate::operations::Contract],
 }
 
@@ -162,7 +162,7 @@ struct Cleanup {
     child_scopes: BTreeMap<u64, Children>,
     endpoint: Option<Arc<Endpoint>>,
     logical_failure: Option<String>,
-    disposition: Option<Result<(), Fault<String>>>,
+    disposition: Option<Result<(), String>>,
     ended: Option<tokio::sync::watch::Sender<bool>>,
     failure: Option<String>,
 }
@@ -170,7 +170,7 @@ struct Cleanup {
 struct Exchange<'a, A: Application, H> {
     outgoing: CarrierSender,
     inbound: mpsc::Receiver<Arrival>,
-    context: &'a mut Service<A>,
+    context: &'a mut ServiceContext<A>,
     notice: &'a H,
     ingress: &'a Inbound<A>,
     demand: tokio::sync::watch::Sender<BTreeMap<String, bool>>,
@@ -186,7 +186,7 @@ struct Exchange<'a, A: Application, H> {
     expected: Option<&'a [Registration]>,
     publications: &'a [harmos_sidecar::StreamDeclaration],
     observers: &'a [harmos_sidecar::inventory::observers::Declaration],
-    operations: &'a [crate::operations::Definition],
+    operations: &'a [crate::operations::OperationDefinition],
     caller: Option<crate::operations::Caller>,
     plugin: Option<crate::plugin::PluginScope>,
     returns: mpsc::Sender<(Frame, Arc<()>)>,
@@ -287,12 +287,12 @@ fn normalized_observers(
 }
 
 async fn converse<A, H>(
-    attached: Attached, context: &mut Service<A>, notice: &H, ingress: &Inbound<A>, settling: Settling<'_>, calls: &Calls,
+    attached: Attached, context: &mut ServiceContext<A>, notice: &H, ingress: &Inbound<A>, settling: Settling<'_>, calls: &Calls,
     cleanup: &mut Cleanup,
-) -> Result<(), Fault<String>>
+) -> Result<(), String>
 where
     A: Application,
-    H: Fn(&Service<A>, Notice) + Send + Sync,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync,
 {
     let Settling { admitted, .. } = settling;
     let (write, read, control, diagnostics, end) = attached.into_parts();
@@ -304,10 +304,10 @@ where
     let remote = observers::Remote::new(arrivals.clone(), Some(context.provider.clone()));
     cleanup.session = Some(observers::Session::new(remote.clone(), operations.clone(), end));
     cleanup.ended = Some(ended);
-    cleanup.session.as_mut().expect("the attempt owns its session").bind().map_err(Fault::Application)?;
+    cleanup.session.as_mut().expect("the attempt owns its session").bind()?;
     let plugin = cleanup.instance.as_ref().and_then(|endpoint| endpoint.scope()).cloned();
     let candidate = observers::stage(&operations, &remote, plugin.as_ref(), settling.observers, settling.publications)
-        .map_err(|error| Fault::Application(error.to_string()))?;
+        .map_err(|error| error.to_string())?;
     let (demand, changes) = tokio::sync::watch::channel(BTreeMap::new());
 
     let connected = executor::timeout(settling.handshake, connecting.connect())
@@ -317,7 +317,7 @@ where
     let peer = match connected {
         Ok(peer) => peer,
         Err(error) => {
-            return Err(Fault::Environmental(error));
+            return Err(error);
         }
     };
     let (outgoing, incoming) = peer;
@@ -348,9 +348,9 @@ where
         .as_ref()
         .map(|instance| context.operations.caller(&instance.caller()))
         .transpose()
-        .map_err(|error| Fault::Application(error.to_string()))?;
+        .map_err(|error| error.to_string())?;
     if let (Some(plugin), Some(_)) = (&plugin, &caller) {
-        remote.configure(context.operations.clone(), plugin.clone()).map_err(|error| Fault::Application(error.to_string()))?;
+        remote.configure(context.operations.clone(), plugin.clone()).map_err(|error| error.to_string())?;
     }
     let (returns, returned) = mpsc::channel(CHILD_REQUESTS);
     let observing = Arc::clone(&remote);
@@ -435,9 +435,9 @@ where
     match (stopped, settled, failure, announced) {
         (true, _, _, _) => Ok(()),
         (false, Err(fault), _, _) => Err(fault),
-        (false, Ok(()), Some(failure), _) => Err(Fault::Environmental(failure)),
-        (false, Ok(()), None, Some(reason)) => Err(Fault::Application(reason)),
-        (false, Ok(()), None, None) => Err(Fault::Environmental("the sidecar exited without announcing it".to_owned())),
+        (false, Ok(()), Some(failure), _) => Err(failure),
+        (false, Ok(()), None, Some(reason)) => Err(reason),
+        (false, Ok(()), None, None) => Err("the sidecar exited without announcing it".to_owned()),
     }
 }
 

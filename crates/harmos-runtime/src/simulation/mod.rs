@@ -30,7 +30,7 @@ use tokio::sync::broadcast;
 // Local Imports
 use crate::{
     Application, Builder, DefinitionId, Error, Identified, Runtime, evidence::Vault, runtime::Catalog, runtime::Incompatible,
-    runtime::Registration, services::Fault, services::Resident, services::Service, state::At, state::Entry, state::Envelope, state::Focus,
+    runtime::Registration, services::Resident, services::ServiceContext, state::At, state::Entry, state::Envelope, state::Focus,
     state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded, state::Transaction, storage::Cursor,
     storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Stream,
 };
@@ -89,7 +89,7 @@ struct Assembly<A: Application> {
 }
 
 struct ServiceControl {
-    faults: broadcast::Sender<Fault<String>>,
+    faults: broadcast::Sender<String>,
     attempts: AtomicUsize,
     exits: Mutex<Vec<String>>,
 }
@@ -210,7 +210,7 @@ impl<A: Application> Configuration<A> {
         self.service_with(name, crate::services::POLICY, resident);
     }
 
-    pub(crate) fn service_with<R>(&mut self, name: impl Into<String>, policy: crate::operations::OperationPolicy, resident: R)
+    pub(crate) fn service_with<R>(&mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R)
     where
         R: Resident<A> + Clone,
     {
@@ -299,8 +299,8 @@ where
     }
 
     pub fn submit<O: crate::operations::OperationDeclaration>(
-        &mut self, request: O,
-    ) -> crate::Result<crate::operations::OperationInstance<O>> {
+        &mut self, request: O::Request,
+    ) -> crate::Result<crate::operations::Running<O>> {
         let runtime = self.runtime.as_ref().ok_or(Error::Closing { domain: "simulated runtime" })?;
         let operations = runtime.operations.clone();
         let handle = self.executor.block_on(async move { operations.submit(request) });
@@ -309,7 +309,7 @@ where
     }
 
     pub fn settle<O: crate::operations::OperationDeclaration>(
-        &mut self, invocation: crate::operations::OperationInstance<O>,
+        &mut self, invocation: crate::operations::Running<O>,
     ) -> crate::Result<crate::operations::Response<O::Response>> {
         self.executor.block_on(invocation)
     }
@@ -318,13 +318,10 @@ where
         self.executor.advance_ms(milliseconds);
     }
 
-    pub fn fault<E: fmt::Display>(&mut self, name: impl AsRef<str>, fault: Fault<E>) -> Result<(), SimError> {
+    pub fn fault<E: fmt::Display>(&mut self, name: impl AsRef<str>, fault: E) -> Result<(), SimError> {
         let name = name.as_ref();
         let control = self.services.get(name).ok_or_else(|| SimError::UnknownService(name.to_owned()))?;
-        let fault = match fault {
-            Fault::Environmental(error) => Fault::Environmental(error.to_string()),
-            Fault::Application(error) => Fault::Application(error.to_string()),
-        };
+        let fault = fault.to_string();
         control.faults.send(fault).map_err(|_| SimError::ServiceStopped(name.to_owned()))?;
         self.executor.drive();
         Ok(())
@@ -490,22 +487,18 @@ where
 {
     type Error = String;
 
-    async fn run(&mut self, context: Service<A>) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, context: ServiceContext<A>) -> Result<(), Self::Error> {
         self.control.attempts.fetch_add(1, Ordering::AcqRel);
         let mut faults = self.control.faults.subscribe();
         let answer = tokio::select! {
-            answer = self.resident.run(context) => answer.map_err(|fault| match fault {
-                Fault::Environmental(error) => Fault::Environmental(error.to_string()),
-                Fault::Application(error) => Fault::Application(error.to_string()),
-            }),
+            answer = self.resident.run(context) => answer.map_err(|error| error.to_string()),
             delivered = faults.recv() => Err(delivered.unwrap_or_else(|_| {
-                Fault::Application("simulation fault channel closed".to_owned())
+                "simulation fault channel closed".to_owned()
             })),
         };
         self.control.exited(match &answer {
             Ok(()) => "stopped".to_owned(),
-            Err(Fault::Environmental(error)) => format!("environmental:{error}"),
-            Err(Fault::Application(error)) => format!("application:{error}"),
+            Err(error) => format!("application:{error}"),
         });
         answer
     }

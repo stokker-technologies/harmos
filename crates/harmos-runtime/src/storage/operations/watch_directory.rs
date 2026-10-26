@@ -19,7 +19,7 @@
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use crate::operations::{Context, Operation, Response, StreamOutput};
+use crate::operations::{Operation, Response, StreamOutput};
 use crate::storage::StorageManager;
 use crate::{Error, Result};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEvent};
@@ -44,19 +44,19 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = WatchDirectory;
-    type Resources = StorageManager<C>;
+    type Request = <WatchDirectory as harmos_domain::OperationDeclaration>::Request;
+    type Response = <WatchDirectory as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<DirectoryEvent>;
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.operation.watch_directory", level = "trace", skip_all)]
-    async fn run<'a>(
-        &mut self, _ctx: Self::Context<'a>, request: &mut WatchDirectory, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<Response<DirectoryCompletion>> {
         let mut reader = self.storage.watch_directory(request.selection.clone(), request.include_existing).await?;
         let mut entries = 0_u64;

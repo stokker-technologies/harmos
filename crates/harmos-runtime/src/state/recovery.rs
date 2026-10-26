@@ -254,7 +254,14 @@ mod tests {
 
     struct Model;
 
+    #[crate::lanes]
+    enum Lanes {
+        #[default]
+        Default,
+    }
+
     impl Application for Model {
+        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();

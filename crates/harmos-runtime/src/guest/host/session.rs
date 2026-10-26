@@ -32,7 +32,7 @@ use wasmtime::AsContextMut;
 use super::{Active, Error};
 use crate::Application;
 use crate::operations::children::Children;
-use crate::operations::{Definition, WireAnswer, WireChildCall, WireCommand};
+use crate::operations::{OperationDefinition, WireAnswer, WireChildCall, WireCommand};
 use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
 use crate::supervision::executor::InContext;
@@ -62,7 +62,7 @@ struct Loan {
 }
 
 pub(crate) struct Endpoint {
-    definitions: Vec<Definition>,
+    definitions: Vec<OperationDefinition>,
     scope: Option<crate::plugin::PluginScope>,
     accepting: AtomicBool,
     requests: mpsc::Sender<Request>,
@@ -137,7 +137,7 @@ impl Endpoint {
         self.scope.as_ref()
     }
 
-    pub(crate) fn definitions(&self) -> &[Definition] {
+    pub(crate) fn definitions(&self) -> &[OperationDefinition] {
         &self.definitions
     }
 
@@ -347,7 +347,7 @@ impl<A: Application> Owned<A> {
                         if request.answer.is_closed() { continue; }
                         let background_debts = loans.lock().expect("guest invocation loan lock").values().filter(|loan| loan.background.is_some()).count();
                         let finite = pending.iter().filter(|call| call.admission).count();
-                        // Finalization Borrows An Already Admitted OperationInstance's Receipt.
+                        // Finalization Borrows An Already Admitted Running's Receipt.
                         // It Must Progress Even When Retained Background Debts Fill Admission.
                         let finalization = matches!(&request.call, Command::Operation(WireCommand::Finalize { .. }));
                         if !finalization && finite + background_debts >= CALLS {
@@ -419,6 +419,7 @@ impl<A: Application> Owned<A> {
                             Command::Operation(WireCommand::Finalize { invocation }) => Some(*invocation),
                             _ => None,
                         };
+                        let owner = scope.as_ref().map(|scope| scope.owner().to_owned());
                         let future = async move {
                             let called = async {
                                 if refill {
@@ -428,7 +429,8 @@ impl<A: Application> Owned<A> {
                                     Command::Operation(command) => {
                                         let function = operate;
                                         let payload = command.encode().map_err(|source| Error::Malformed { method: "operate".to_owned(), message: source.to_string() })?;
-                                        let (reply,) = function.call_concurrent(context, (payload,)).await.map_err(|source| Error::Execution { source: Arc::new(source) })?;
+                                        let owner = owner.clone().ok_or_else(|| Error::Malformed { method: "operate".to_owned(), message: "operation has no assigned owner".to_owned() })?;
+                                        let (reply,) = function.call_concurrent(context, (owner, payload)).await.map_err(|source| Error::Execution { source: Arc::new(source) })?;
                                         let reply = reply.map_err(|refusal| Error::Operation { refusal: super::refused(refusal) })?;
                                         let answer = WireAnswer::decode(&reply).map_err(|source| Error::Malformed { method: "operate".to_owned(), message: source.to_string() })?;
                                         Ok(Reply::Operation(answer))

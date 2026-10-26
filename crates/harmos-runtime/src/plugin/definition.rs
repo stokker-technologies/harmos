@@ -46,7 +46,7 @@ pub struct PluginDefinition {
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct PluginContributions {
     pub lifecycle: Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>,
-    pub operations: Vec<harmos_domain::operations::Definition>,
+    pub operations: Vec<harmos_domain::operations::OperationDefinition>,
     pub wire_contracts: Vec<harmos_domain::operations::Contract>,
     pub required_contracts: Option<Vec<harmos_domain::inventory::contracts::Required>>,
     pub observers: Vec<harmos_domain::inventory::observers::Declaration>,

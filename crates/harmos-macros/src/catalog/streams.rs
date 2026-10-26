@@ -90,9 +90,8 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         }
     });
 
+    let catalog = crate::catalog::typed::projection(quote!(harmos_path = #harmos), quote!(#[allow(dead_code)] #catalog))?;
     Ok(quote! {
-        #[allow(dead_code)]
-        #[#harmos::catalog(harmos_path = #harmos)]
         #catalog
 
         #(#memberships)*

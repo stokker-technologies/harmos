@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use super::IO_TIMEOUT;
-use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
+use crate::operations::{Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::{Error, Result};
 use harmos_domain::model::storage::files::{FileBatch, FileCompletion};
@@ -43,20 +43,22 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = ReadFile;
-    type Resources = StorageManager<C>;
+    type Request = <ReadFile as harmos_domain::OperationDeclaration>::Request;
+    type Response = <ReadFile as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<FileBatch>;
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.operation.read_file", level = "trace", skip_all)]
-    async fn run<'a>(
-        &mut self, ctx: Self::Context<'a>, request: &mut ReadFile, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
+        let host = ctx.dependency::<crate::operations::HostContext>()?;
+        let ctx = host.borrow();
         let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(ReadFile::ID, scope));
         if let Some(grant) = &grant {
             ctx.admit_stream_grant(grant)?;

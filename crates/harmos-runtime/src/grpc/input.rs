@@ -23,7 +23,7 @@ use futures_util::StreamExt;
 // Local Imports
 use super::{InputEnvelope, Opening, Pending};
 use crate::Error;
-use crate::operations::{OperationInstance, StreamItem, StreamOutput};
+use crate::operations::{Running, StreamItem, StreamOutput};
 
 /* === Constants === */
 
@@ -91,7 +91,7 @@ where
 }
 
 pub fn input<O, S>(
-    instance: OperationInstance<O>, output: StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
+    instance: Running<O>, output: StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
 ) -> impl Future<Output = Result<crate::operations::Response<O::Response>, InputError>> + Send
 where
     O: crate::operations::OperationDeclaration,

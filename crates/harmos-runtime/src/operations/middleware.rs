@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 // Local Imports
 use super::{CallContext, OperationGeneration, OperationInstanceId, OperationOutcome};
-use crate::operations::Definition;
+use crate::operations::OperationDefinition;
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -36,7 +36,7 @@ pub type Enter<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 /* === Structs === */
 
 pub struct Invocation {
-    operation: Definition,
+    operation: OperationDefinition,
     id: OperationInstanceId,
     generation: OperationGeneration,
     context: CallContext,
@@ -92,7 +92,7 @@ impl Invocation {
         self.origin.scope.as_ref()
     }
 
-    pub fn operation(&self) -> &Definition {
+    pub fn operation(&self) -> &OperationDefinition {
         &self.operation
     }
 
@@ -151,7 +151,7 @@ impl Configuration {
 
 impl Session {
     pub(super) fn new(
-        entries: Vec<Arc<dyn Middleware>>, operation: Definition, id: OperationInstanceId, generation: OperationGeneration,
+        entries: Vec<Arc<dyn Middleware>>, operation: OperationDefinition, id: OperationInstanceId, generation: OperationGeneration,
         inherited: CallContext, context: Arc<OnceLock<CallContext>>, origin: super::caller::Origin,
     ) -> Self {
         Self { call: Invocation { operation, id, generation, context: inherited, origin }, entries, entered: 0, observed: false, context }

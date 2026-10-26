@@ -24,7 +24,7 @@ use serde::Serialize;
 use super::{Entry, OperationManager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::operations::host::{Catalog, CatalogPage};
+use crate::operations::host::{CatalogPage, CatalogRequest};
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 
@@ -78,7 +78,7 @@ impl Write for Bounded {
 }
 
 impl OperationManager {
-    pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
+    pub(in crate::operations) fn discover(&self, source: &Source, request: &CatalogRequest) -> Result<CatalogPage> {
         let origin = source.check()?;
         let (rows, bytes) = limits(request)?;
         let after: Option<(String, String)> = request
@@ -212,8 +212,8 @@ impl OperationManager {
 
 /* === Public Functions === */
 
-// The Row And Byte Bounds Of One Catalog Page, Shared By Every Kind.
-pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)> {
+// The Row And Byte Bounds Of One CatalogRequest Page, Shared By Every Kind.
+pub(in crate::operations) fn limits(request: &CatalogRequest) -> Result<(usize, usize)> {
     let rows = request.rows.unwrap_or(64);
     let bytes = request.bytes.unwrap_or(64 * 1024);
     if rows == 0 || rows > MAX_ROWS || !(2..=MAX_BYTES).contains(&bytes) {

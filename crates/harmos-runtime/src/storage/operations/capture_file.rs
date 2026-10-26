@@ -21,7 +21,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{Context, Operation};
+use crate::operations::Operation;
 use crate::storage::StorageManager;
 use crate::{Error, Result};
 use harmos_domain::model::storage::files::FileReference;
@@ -46,19 +46,19 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = CaptureFile;
-    type Resources = StorageManager<C>;
+    type Request = <CaptureFile as harmos_domain::OperationDeclaration>::Request;
+    type Response = <CaptureFile as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.operation.capture_file", level = "trace", skip_all)]
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut CaptureFile, _: &mut (),
+    async fn run(
+        &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut (),
     ) -> Result<crate::operations::Response<FileReference>> {
         Ok(self.storage.capture_file(request.clone()).await?.into())
     }

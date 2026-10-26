@@ -38,7 +38,7 @@ impl<A, S, H> crate::operations::Declares for Publish<A, S, H>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
     type Declaration = crate::operations::streams::Publish;
 }
@@ -47,15 +47,15 @@ impl<A, S, H> crate::operations::Operation for Publish<A, S, H>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
-    type Declaration = crate::operations::streams::Publish;
-    type Resources = Supervised<A, S, H>;
+    type Request = <crate::operations::streams::Publish as crate::operations::OperationDeclaration>::Request;
+    type Response = <crate::operations::streams::Publish as crate::operations::OperationDeclaration>::Response;
     type Error = crate::Error;
     type Endpoints = ();
-    type Context<'a> = crate::operations::Context<'a>;
 
-    async fn initialize<'ctx>(resources: Arc<Self::Resources>, _: Self::Context<'ctx>) -> crate::Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> crate::Result<Self> {
+        let resources = context.dependency::<Supervised<A, S, H>>()?;
         let endpoint = resources
             .calls
             .current()
@@ -63,9 +63,11 @@ where
         Ok(Self { _resources: resources, endpoint })
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut crate::operations::streams::Publish, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Self::Request, _endpoints: &mut Self::Endpoints,
     ) -> crate::Result<crate::operations::Response<()>> {
+        let host = context.dependency::<crate::operations::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             let scope = context
                 .caller_scope()
@@ -83,19 +85,20 @@ impl crate::operations::Declares for HostPublish {
 
 // The host-wide `host.publish` provider: each call reaches the caller generation's live native endpoint.
 impl crate::operations::Operation for HostPublish {
-    type Declaration = crate::operations::streams::Publish;
-    type Resources = ();
+    type Request = <crate::operations::streams::Publish as crate::operations::OperationDeclaration>::Request;
+    type Response = <crate::operations::streams::Publish as crate::operations::OperationDeclaration>::Response;
     type Error = crate::Error;
     type Endpoints = ();
-    type Context<'a> = crate::operations::Context<'a>;
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> crate::Result<Self> {
+    async fn initialize(_: harmos_sdk::OperationContext) -> crate::Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut crate::operations::streams::Publish, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Self::Request, _endpoints: &mut Self::Endpoints,
     ) -> crate::Result<crate::operations::Response<()>> {
+        let host = context.dependency::<crate::operations::HostContext>()?;
+        let context = host.borrow();
         let scope = context
             .caller_scope()
             .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the original plugin caller is required" })?;

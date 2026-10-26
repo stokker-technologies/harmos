@@ -353,7 +353,13 @@ impl Table {
 }
 
 impl Message for Payload<'_> {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+
+    fn decoding_memory(_: &[u8]) -> std::result::Result<usize, MessageError> {
+        Err(MessageError::borrowed("borrowed source payload is never decoded"))
+    }
+
+    fn encode(&self) -> Vec<u8> {
         self.0.to_vec()
     }
 
@@ -361,7 +367,7 @@ impl Message for Payload<'_> {
         bytes.extend_from_slice(self.0);
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.0.len()
     }
 

@@ -18,7 +18,7 @@ use harmos_domain::operations::storage::WriteFile;
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use crate::operations::{Context, Operation, OperationDeclaration, StreamInput};
+use crate::operations::{Operation, OperationDeclaration, StreamInput};
 use crate::storage::{FileReference, StorageManager};
 use crate::{Error, Result};
 use harmos_domain::model::storage::files::FileBatch;
@@ -42,19 +42,21 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = WriteFile;
-    type Resources = StorageManager<C>;
+    type Request = <WriteFile as harmos_domain::OperationDeclaration>::Request;
+    type Response = <WriteFile as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamInput<FileBatch>;
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'a>(
-        &mut self, ctx: Self::Context<'a>, request: &mut WriteFile, input: &mut Self::Endpoints,
+    async fn run(
+        &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, input: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileReference>> {
+        let host = ctx.dependency::<crate::operations::HostContext>()?;
+        let ctx = host.borrow();
         let grant = harmos_domain::plugin::Grant::of(WriteFile::ID, request.metadata.id.as_str().to_owned());
         ctx.admit_stream_grant(&grant)?;
         self.storage.retry_transient_persistence();

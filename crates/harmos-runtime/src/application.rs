@@ -32,6 +32,8 @@
 /* === Traits === */
 
 pub trait Application: Send + Sync + 'static {
+    type Lanes: crate::operations::Lane;
+
     type State: Send + Sync + 'static;
 
     type Transaction: crate::state::Transaction<Self::State, Error: Send + Sync + 'static>

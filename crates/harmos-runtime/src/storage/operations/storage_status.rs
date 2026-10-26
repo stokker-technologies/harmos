@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation};
+use crate::operations::Operation;
 use crate::storage::StorageInfo;
 
 use crate::storage::StorageManager;
@@ -49,17 +49,17 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = StorageStatus;
-    type Resources = StorageManager<C>;
+    type Request = <StorageStatus as harmos_domain::OperationDeclaration>::Request;
+    type Response = <StorageStatus as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _request: &mut StorageStatus, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_sdk::OperationContext, _request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageInfo>> {
         let result: ::core::result::Result<StorageInfo, Self::Error> = async move { self.storage.info().map_err(Into::into) }.await;
         result.map(::core::convert::Into::into)

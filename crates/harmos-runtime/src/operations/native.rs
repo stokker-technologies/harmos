@@ -20,16 +20,13 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 // Local Imports
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Operation, OperationManager};
 use crate::catalog::{Catalog, Member, Visitor};
-use crate::operations::{
-    Definition, FailureKind, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireAnswer, WireCommand,
-};
+use crate::operations::{FailureKind, OperationDeclaration, OperationDefinition, OperationPolicy, RetryPolicy, WireAnswer, WireCommand};
 use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
 
@@ -112,12 +109,15 @@ enum Phase {
 enum Selection {
     Provided(usize),
     // The built-in observe control, served outside the plugin's operation inventory.
-    Observe(Definition),
-    Sdk(Definition),
+    Observe(OperationDefinition),
+    Sdk(OperationDefinition),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum NativeError {
+    #[error(transparent)]
+    Dependency(#[from] harmos_sdk::DependencyError),
+
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
 
@@ -199,11 +199,12 @@ impl super::StreamPeer for Native {
 }
 
 impl<E> Message for Encoded<E> {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+    fn encode(&self) -> Vec<u8> {
         self.payload.clone()
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.payload.len()
     }
 
@@ -239,7 +240,8 @@ impl<E> crate::MemorySize for Encoded<E> {
 }
 
 impl Message for Opaque {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+    fn encode(&self) -> Vec<u8> {
         self.0.clone()
     }
 
@@ -247,7 +249,7 @@ impl Message for Opaque {
         bytes.extend_from_slice(&self.0);
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.0.len()
     }
 
@@ -340,10 +342,14 @@ impl Native {
                 let mut definition = descriptor.contract().operation().clone();
                 definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
                     .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
-                let mut entry = operations.binding_owned_definition::<EncodedOperation>(
+                let mut entry = operations.bind_native::<Encoded<()>, EncodedOperation>(
                     scope.owner(),
                     lane.name(),
-                    Arc::clone(&handler),
+                    {
+                        let mut dependencies = harmos_sdk::Dependencies::new();
+                        dependencies.insert(Arc::clone(&handler))?;
+                        dependencies
+                    },
                     definition,
                     Some(dispatch),
                     Some(scope.clone()),
@@ -365,29 +371,31 @@ where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Declaration = O;
-    type Resources = Native;
+    type Request = <O as OperationDeclaration>::Request;
+    type Response = <O as OperationDeclaration>::Response;
     type Error = NativeError;
     type Endpoints = E;
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(native: Arc<Native>, _: Self::Context<'ctx>) -> std::result::Result<Self, NativeError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
+        let native = context.dependency::<Native>()?;
         Ok(Self { native, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
                 let native = &self.native;
 
-                let definition = Definition::of::<O>()?;
+                let definition = OperationDefinition::of::<O>()?;
                 native.validate_definition(&definition)?;
                 let capacity = native.endpoint.reserve_capacity().ok_or(NativeError::Capacity)?;
-                let payload = crate::Message::encode_to_vec(request);
+                let payload = crate::Message::encode(request);
                 let state = native.prepare_encoded(&definition, payload, Some(capacity))?;
 
                 self.state = Some(state);
@@ -452,7 +460,7 @@ where
 
 impl Native {
     fn prepare_encoded(
-        &self, definition: &Definition, payload: Vec<u8>, capacity: Option<OwnedSemaphorePermit>,
+        &self, definition: &OperationDefinition, payload: Vec<u8>, capacity: Option<OwnedSemaphorePermit>,
     ) -> std::result::Result<NativeState, NativeError> {
         self.validate_definition(definition)?;
         if payload.capacity() > harmos_sidecar::Frame::LIMIT {
@@ -472,7 +480,7 @@ impl Native {
         Ok(state)
     }
 
-    fn validate_definition(&self, definition: &Definition) -> std::result::Result<(), NativeError> {
+    fn validate_definition(&self, definition: &OperationDefinition) -> std::result::Result<(), NativeError> {
         if !self.endpoint.accepts() {
             return Err(NativeError::Unavailable);
         }
@@ -590,16 +598,15 @@ impl Native {
 
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 impl<E: super::StreamEndpoints + Shape> OperationDeclaration for Encoded<E> {
+    type Request = Self;
     type Response = Opaque;
     type Input = E::Input;
     type Output = E::Output;
-    const ID: &'static str = "";
-    const VERSION: u32 = 1;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::ZERO,
-        attempt_timeout: Duration::ZERO,
+    const ID: &'static str = "harmos.encoded";
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 }
 
@@ -624,21 +631,23 @@ impl Shape for (super::StreamInput<Opaque>, super::StreamOutput<Opaque>) {
 }
 
 impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
-    type Declaration = Encoded<E>;
-    type Resources = Binding;
+    type Request = <Encoded<E> as OperationDeclaration>::Request;
+    type Response = <Encoded<E> as OperationDeclaration>::Response;
     type Error = NativeError;
     type Endpoints = E;
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(binding: Arc<Binding>, _: Self::Context<'ctx>) -> std::result::Result<Self, NativeError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
+        let binding = context.dependency::<Binding>()?;
         Ok(Self { binding, state: None, epoch: 0, transferred: AtomicBool::new(false), endpoints: PhantomData })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Encoded<E>, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Encoded<E>, endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<Opaque, Self::Error> = async {
             if self.state.is_none() {
                 let binding = &self.binding;
@@ -811,7 +820,11 @@ impl super::Bindings<'_> {
                 Arc::new(Binding { native: Arc::clone(&native), selection: Selection::Provided(index), capacity: Arc::clone(&capacity) });
             let entry = Arc::get_mut(entry).expect("new typed native entry has one owner");
             if entry.contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
-                let encoded = super::authored::factory::<EncodedOperation>(self.operations, Arc::clone(&handler));
+                let mut dependencies = harmos_sdk::Dependencies::new();
+                dependencies.insert(Arc::clone(&handler))?;
+                let mut batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Encoded<()>, EncodedOperation>();
+                let factory = batch.operations.pop().expect("one encoded implementation");
+                let encoded = super::authored::factory::<Encoded<()>, ()>(self.operations, factory);
                 entry.native_binding = Some(Arc::new(encoded));
                 entry.wire = Some(dispatch);
             } else {
@@ -877,7 +890,7 @@ fn observe_entry(
 }
 
 fn native_entry(
-    operations: &super::OperationManager, lane: &'static str, handler: Arc<Binding>, definition: &Definition,
+    operations: &super::OperationManager, lane: &'static str, handler: Arc<Binding>, definition: &OperationDefinition,
     exact_contract: Option<crate::operations::Contract>, scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
     let shape = exact_contract.as_ref().map_or((false, false), |contract| (contract.input().is_some(), contract.output().is_some()));
@@ -957,12 +970,17 @@ pub(super) fn dispatch(
 /* === Private Functions === */
 
 fn encoded_binding<E: super::StreamEndpoints + Shape>(
-    operations: &OperationManager, lane: &'static str, handler: &Arc<Binding>, definition: &Definition, scope: &crate::plugin::PluginScope,
+    operations: &OperationManager, lane: &'static str, handler: &Arc<Binding>, definition: &OperationDefinition,
+    scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
-    operations.binding_owned_definition::<EncodedOperation<E>>(
+    operations.bind_native::<Encoded<E>, EncodedOperation<E>>(
         scope.owner(),
         lane,
-        Arc::clone(handler),
+        {
+            let mut dependencies = harmos_sdk::Dependencies::new();
+            dependencies.insert(Arc::clone(handler))?;
+            dependencies
+        },
         definition.clone(),
         (E::item_types() == (None, None)).then_some(dispatch),
         Some(scope.clone()),
@@ -976,11 +994,13 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies.insert(native)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => bindings.register_owned_wire_at::<NativeOperation<O, ()>>(lane, native),
-        (true, false) => bindings.register_owned_wire_at::<NativeOperation<O, In<O>>>(lane, native),
-        (false, true) => bindings.register_owned_wire_at::<NativeOperation<O, Out<O>>>(lane, native),
-        (true, true) => bindings.register_owned_wire_at::<NativeOperation<O, (In<O>, Out<O>)>>(lane, native),
+        (false, false) => bindings.stage_implementation::<O, NativeOperation<O, ()>>(lane, dependencies),
+        (true, false) => bindings.stage_implementation::<O, NativeOperation<O, In<O>>>(lane, dependencies),
+        (false, true) => bindings.stage_implementation::<O, NativeOperation<O, Out<O>>>(lane, dependencies),
+        (true, true) => bindings.stage_implementation::<O, NativeOperation<O, (In<O>, Out<O>)>>(lane, dependencies),
     }
 }
 

@@ -13,9 +13,13 @@
 
 /* === Re-Exports === */
 
-pub use crate::operations::{OperationDeclaration, OperationPolicy};
 pub use crate::state::{Invert, Transaction};
 pub use crate::{Application, Builder, Error, Identifier, Message, Result, Runtime};
+pub use crate::{
+    Backoff, Dependencies, EndpointSet, Invocation, Jitter, Lane, Operation, OperationContext, OperationDeclaration, OperationDefinition,
+    OperationPolicy, Portable, QualifiedId, Registration, RegistrationExt, RequestFor, Response, RestartPolicy, RetryPolicy, Running,
+    Service, ServiceContext, ServicePolicy,
+};
 pub use crate::{catalog, message, operation, record, stream, transaction};
 
 /* === Imports === */

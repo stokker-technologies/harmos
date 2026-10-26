@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
+use crate::operations::{Operation, OperationDeclaration, StreamOutput};
 use harmos_domain::model::storage::files::{FileCompletion, FileEvent};
 
 use crate::storage::StorageManager;
@@ -50,19 +50,21 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = FollowFile;
-    type Resources = StorageManager<C>;
+    type Request = <FollowFile as harmos_domain::OperationDeclaration>::Request;
+    type Response = <FollowFile as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<FileEvent>;
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_file", level = "trace", skip_all)]
-    async fn run<'a>(
-        &mut self, ctx: Self::Context<'a>, request: &mut FollowFile, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
+        let host = ctx.dependency::<crate::operations::HostContext>()?;
+        let ctx = host.borrow();
         let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(FollowFile::ID, scope));
         if let Some(grant) = &grant {
             ctx.admit_stream_grant(grant)?;

@@ -41,7 +41,7 @@ use crate::path::{self, HarmosPath};
 /* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match expand(attribute, item) {
+    match expand(attribute, item, true) {
         Ok(expanded) => expanded,
         Err(error) => error.to_compile_error(),
     }
@@ -49,7 +49,11 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 
 /* === Private Functions === */
 
-fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+pub(super) fn projection(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+    expand(attribute, item, false)
+}
+
+fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result<TokenStream, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut explicit = None;
     for argument in arguments {
@@ -251,6 +255,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         };
     };
 
+    let methods = operations.then_some(methods);
     let contains = direct.map(|member| {
         quote! {
             #(#gates)*

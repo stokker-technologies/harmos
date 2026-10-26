@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use super::IO_TIMEOUT;
-use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
+use crate::operations::{Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::query::{QueryCompletion, QueryOutput};
 use crate::{Error, Result};
@@ -49,17 +49,19 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = Query;
-    type Resources = StorageManager<C>;
+    type Request = <Query as harmos_domain::OperationDeclaration>::Request;
+    type Response = <Query as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<QueryOutput>;
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
-    async fn run<'a>(
-        &mut self, ctx: Self::Context<'a>, request: &mut Query, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<QueryCompletion>> {
+        let host = ctx.dependency::<crate::operations::HostContext>()?;
+        let ctx = host.borrow();
         let grant = Grant::of(Query::ID, request.source.grant_scope());
         ctx.admit_stream_grant(&grant)?;
         let mut reader = self.storage.query(request.clone()).await?;

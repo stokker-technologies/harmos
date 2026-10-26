@@ -50,6 +50,12 @@ impl OperationManager {
     }
 
     pub(in crate::operations) fn reserve(&self, entries: &[Arc<Entry>]) -> Result<()> {
+        let mut identities = std::collections::BTreeSet::new();
+        for entry in entries {
+            if !identities.insert((entry.id(), entry.owner.as_str())) {
+                return Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() });
+            }
+        }
         #[cfg(feature = "grpc")]
         for entry in entries {
             let Some(contract) = &entry.contract else {

@@ -21,7 +21,7 @@ use std::sync::Arc;
 // Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
-use super::{CallContext, OperationInstance, OperationManager, StreamItem};
+use super::{CallContext, OperationManager, Running, StreamItem};
 use crate::Result;
 use crate::operations::OperationDeclaration;
 
@@ -62,8 +62,8 @@ impl GrpcBinding {
     }
 
     pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: StreamItem<O>, endpoints: P,
-    ) -> Result<OperationInstance<O>> {
+        &self, request: StreamItem<O::Request>, endpoints: P,
+    ) -> Result<Running<O>> {
         self.operations.admit_entry::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             None,

@@ -23,7 +23,7 @@ use std::sync::{Arc, Weak};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 // Local Imports
 use super::{Arrival, Children, Request, SidecarError};
-use crate::operations::{Contract, Definition, WIRE_METHOD, WireAnswer, WireCommand};
+use crate::operations::{Contract, OperationDefinition, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::Frame;
 
 /* === Constants === */
@@ -41,7 +41,7 @@ pub(crate) struct Endpoint {
     sequences: Mutex<BTreeMap<String, u64>>,
     turns: Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
     capacity: Mutex<Option<(NonZeroUsize, Arc<Semaphore>)>>,
-    operations: Vec<Definition>,
+    operations: Vec<OperationDefinition>,
     contracts: Vec<Contract>,
     plugin: Option<crate::plugin::PluginScope>,
     observers: Option<Weak<super::observers::Remote>>,
@@ -59,8 +59,8 @@ pub(crate) struct Endpoint {
 
 impl Endpoint {
     pub(super) fn new(
-        requests: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[Definition], contracts: &[Contract],
-        ended: watch::Receiver<bool>, plugin: Option<crate::plugin::PluginScope>,
+        requests: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[OperationDefinition],
+        contracts: &[Contract], ended: watch::Receiver<bool>, plugin: Option<crate::plugin::PluginScope>,
     ) -> Self {
         Self {
             provider: None,
@@ -146,7 +146,7 @@ impl Endpoint {
         semaphore.try_acquire_owned().ok()
     }
 
-    pub(crate) fn definitions(&self) -> &[Definition] {
+    pub(crate) fn definitions(&self) -> &[OperationDefinition] {
         &self.operations
     }
 
@@ -159,7 +159,7 @@ impl Endpoint {
     }
 
     pub(super) async fn publish(
-        &self, scope: &crate::plugin::PluginScope, request: &mut crate::operations::streams::Publish,
+        &self, scope: &crate::plugin::PluginScope, request: &mut crate::operations::streams::PublishRequest,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
         // Calls On One Stream Stage In Arrival Order

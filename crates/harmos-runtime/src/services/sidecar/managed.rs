@@ -33,7 +33,7 @@ use crate::plugin::{
     PluginTransition, Router,
 };
 use crate::services::Resident;
-use crate::{Application, Error, Result, operations::Lane, operations::OperationManager, services::Fault, services::Service};
+use crate::{Application, Error, Result, operations::Lane, operations::OperationManager, services::ServiceContext};
 use harmos_sidecar::{Attach, Executable};
 
 /* === Constants === */
@@ -44,7 +44,7 @@ use harmos_sidecar::{Attach, Executable};
 
 type NativeCatalog<L> = fn(&mut crate::operations::Bindings<'_>, L, std::sync::Arc<crate::operations::Native>, NonZeroUsize) -> Result<()>;
 
-type Diagnostics<A> = fn(&Service<A>, Notice);
+type Diagnostics<A> = fn(&ServiceContext<A>, Notice);
 
 type StreamListeners<A> = fn(&PluginDefinition, &mut crate::streams::PluginListenerBindings<'_, A>) -> Result<()>;
 
@@ -70,7 +70,7 @@ pub struct Managed<A: Application, S, H, L> {
 struct Backend<A: Application, S, H> {
     progress: Option<crate::plugin::Lease>,
     polling: Vec<(String, Polling<A, S, H>)>,
-    exit: Option<std::result::Result<(), Fault<String>>>,
+    exit: Option<std::result::Result<(), String>>,
     grace: std::time::Duration,
     dependencies: BTreeSet<String>,
     physical: Option<Physical<A, S, H>>,
@@ -96,7 +96,7 @@ struct Host<A: Application, S, H, L> {
     catalog: NativeCatalog<L>,
     stream_listeners: StreamListeners<A>,
     verify_artifact: fn(&S, &PluginDefinition) -> Result<()>,
-    exit: Option<std::result::Result<(), Fault<String>>>,
+    exit: Option<std::result::Result<(), String>>,
 }
 
 /* === Enums === */
@@ -158,7 +158,9 @@ where
     ) -> Result<()> {
         if let Err(error) = self.host.start(definition, router, authority, &mut self.backend).await {
             return match self.host.exit.take() {
-                Some(Err(source)) => Err(Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) }),
+                Some(Err(source)) => {
+                    Err(Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(std::io::Error::other(source)) })
+                }
                 Some(Ok(())) => Err(Error::NotReady { domain: "native startup exited" }),
                 None => Err(error),
             };
@@ -178,7 +180,7 @@ where
         physical.poll(context).map(|outcome| {
             outcome.map_err(|source| Error::OperationFailed {
                 operation: self.host.residents.keys().next().expect("native driver owns one plugin").clone(),
-                source: Arc::new(source),
+                source: Arc::new(std::io::Error::other(source)),
             })
         })
     }
@@ -188,7 +190,7 @@ impl<A, S, H, L> Managed<A, S, H, L>
 where
     A: Application,
     S: Attach + Clone,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
     L: Lane + Clone,
 {
     pub fn new(
@@ -254,7 +256,7 @@ where
 impl<A, H, L> Managed<A, Executable, H, L>
 where
     A: Application,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
     L: Lane + Clone,
 {
     pub fn new_executable(
@@ -297,19 +299,19 @@ impl<A, S, H, L> Resident<A> for Managed<A, S, H, L>
 where
     A: Application,
     S: Attach + Clone,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
     L: Lane + Clone,
 {
     type Error = ManagedError;
-    async fn run(&mut self, context: Service<A>) -> std::result::Result<(), Fault<ManagedError>> {
+    async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), ManagedError> {
         if context.is_stopping() {
             return Ok(());
         }
         if self.manager.statuses().any(|status| status.generation.is_some()) {
-            return Err(Fault::Application(ManagedError::Lifecycle(Error::InvalidInput {
+            return Err(ManagedError::Lifecycle(Error::InvalidInput {
                 field: "managed native attempt",
                 reason: "original generation retirement is still pending",
-            })));
+            }));
         }
         // Borrow Only The Original Manager's Resolved Dependency Facts.
         let mut dependencies = BTreeMap::new();
@@ -343,19 +345,19 @@ where
         let host = self.host.as_mut().expect("original service context retained");
         if let Err(error) = self.manager.initialize(host).await {
             return match host.exit.take() {
-                Some(Err(fault)) => Err(map_fault(fault)),
-                _ => Err(Fault::Application(ManagedError::Lifecycle(error))),
+                Some(Err(fault)) => Err(ManagedError::Physical(fault)),
+                _ => Err(ManagedError::Lifecycle(error)),
             };
         }
-        let mut stopping = context.shared_attempt();
+        let mut stopping = context.clone();
         let readiness = async {
             for resident in host.residents.values() {
                 let mut ready = resident.ready();
                 while !*ready.borrow_and_update() {
-                    ready.changed().await.map_err(|_| Fault::Application("native readiness channel closed".to_owned()))?;
+                    ready.changed().await.map_err(|_| "native readiness channel closed".to_owned())?;
                 }
             }
-            Ok::<_, Fault<String>>(())
+            Ok::<_, String>(())
         };
         let mut readiness = std::pin::pin!(readiness);
         let mut ready = false;
@@ -374,7 +376,7 @@ where
             }
             Poll::Pending
         });
-        stopping.until_stopping(running).await.unwrap_or(Ok(())).map_err(map_fault)
+        stopping.until_stopping(running).await.unwrap_or(Ok(())).map_err(ManagedError::Physical)
     }
 
     async fn stop(&mut self) -> std::result::Result<(), ManagedError> {
@@ -394,7 +396,7 @@ impl<A, S, H, L> PluginLifecycle for Host<A, S, H, L>
 where
     A: Application,
     S: Attach + Clone,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
     L: Lane + Clone,
 {
     type Guest = ();
@@ -447,8 +449,12 @@ where
         self.polling.push((definition.id.clone(), physical.polling()));
         backend.polling = self.polling.iter().filter(|(owner, _)| backend.dependencies.contains(owner)).cloned().collect();
         let staging = original.staged_operations();
-        let staged =
-            async { staging.await.map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) }) };
+        let staged = async {
+            staging.await.map_err(|source| Error::OperationFailed {
+                operation: definition.id.clone(),
+                source: Arc::new(std::io::Error::other(source)),
+            })
+        };
         let native = Arc::new(drive(physical, &self.polling, &backend.dependencies, &mut self.exit, staged, Progress::Admission).await?);
         backend.registration = Some(self.operations.stage_plugin(native.scope().expect("original native scope"), |bindings| {
             (self.catalog)(bindings, self.lane.clone(), native.clone(), self.capacity)
@@ -574,7 +580,7 @@ fn verify_executable_inputs(executable: &Executable, definition: &PluginDefiniti
 fn verify_executable_artifact(executable: &Executable, definition: &PluginDefinition) -> Result<()> {
     verify_executable_inputs(executable, definition)?;
     let PluginArtifact::Sidecar { sha256, .. } = &definition.artifact else { unreachable!() };
-    let io_error = |source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) };
+    let io_error = |source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(std::io::Error::other(source)) };
     let mut file = std::fs::File::open(executable.path()).map_err(io_error)?;
     let mut digest = Sha256::new();
     let mut buffer = [0u8; 8192];
@@ -592,25 +598,18 @@ fn verify_executable_artifact(executable: &Executable, definition: &PluginDefini
     Ok(())
 }
 
-fn map_fault(fault: Fault<String>) -> Fault<ManagedError> {
-    match fault {
-        Fault::Environmental(message) => Fault::Environmental(ManagedError::Physical(message)),
-        Fault::Application(message) => Fault::Application(ManagedError::Physical(message)),
-    }
-}
-
 fn physical_cleanup(message: String) -> Error {
     Error::TaskFailed { domain: "native physical cleanup", source: Arc::new(ManagedError::Physical(message)) }
 }
 
 async fn drive<A, S, H, T>(
     physical: &mut Physical<A, S, H>, polling: &[(String, Polling<A, S, H>)], dependencies: &BTreeSet<String>,
-    exit: &mut Option<std::result::Result<(), Fault<String>>>, future: impl Future<Output = Result<T>>, progress: Progress,
+    exit: &mut Option<std::result::Result<(), String>>, future: impl Future<Output = Result<T>>, progress: Progress,
 ) -> Result<T>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
     if matches!(progress, Progress::Admission) && !physical.is_running() {
         return Err(Error::Closing { domain: "native physical attempt" });

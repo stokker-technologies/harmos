@@ -39,7 +39,7 @@ use tracing::Instrument;
 impl<A, H> Exchange<'_, A, H>
 where
     A: Application,
-    H: Fn(&Service<A>, Notice) + Send + Sync,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync,
 {
     pub(super) async fn arrival(&mut self) -> Option<Arrival> {
         tokio::select! {
@@ -50,7 +50,7 @@ where
 
     pub(super) async fn serve(
         &mut self, requests: &mut mpsc::UnboundedReceiver<Request>, mut initialized: tokio::sync::watch::Receiver<bool>,
-        on_ready: impl FnOnce(&mut Service<A>) -> Result<(), String>,
+        on_ready: impl FnOnce(&mut ServiceContext<A>) -> Result<(), String>,
     ) -> bool {
         let plugin = self.plugin.clone().expect("canonical native execution retains its original scope");
         let activation = plugin.ready();
@@ -77,7 +77,7 @@ where
                     result = &mut activation, if activation_pending => {
                         activation_pending = false;
                         // The Lifecycle Owner May Already Be Shutting Down.
-                        // Its Retained Service Lease Still Owns SDK Cleanup.
+                        // Its Retained ServiceContext Lease Still Owns SDK Cleanup.
                         committed = result.is_ok();
                         continue;
                     }

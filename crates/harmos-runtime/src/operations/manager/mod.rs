@@ -44,10 +44,10 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
 use super::caller::{Identity, Origin, Source};
-use super::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
+use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
-use crate::operations::{CacheKey, Definition, OperationDeclaration};
+use crate::operations::{CacheKey, OperationDeclaration, OperationDefinition};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
 use crate::supervision::executor;
@@ -73,7 +73,7 @@ pub struct OperationManager {
     pub(super) lanes: Arc<Lanes>,
     pub(super) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
-    pub(super) resident: super::resident::Registry,
+    pub(crate) resident: super::resident::Registry,
 }
 
 pub(crate) struct Registry {
@@ -105,7 +105,7 @@ struct State {
 
 pub(super) struct Entry {
     owner: Identifier,
-    definition: Definition,
+    definition: OperationDefinition,
     pub(super) contract: Option<crate::operations::Contract>,
 
     #[cfg(feature = "grpc")]
@@ -113,7 +113,6 @@ pub(super) struct Entry {
 
     generation: OperationGeneration,
     lane: &'static str,
-    bounded: bool,
 
     // A resident control runs until cancelled, even while its plugin retires.
     #[cfg(feature = "plugin-sidecar")]
@@ -122,7 +121,7 @@ pub(super) struct Entry {
     active: AtomicBool,
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
-    binding: Arc<dyn Any + Send + Sync>,
+    pub(in crate::operations) binding: Arc<dyn Any + Send + Sync>,
 
     #[cfg(feature = "plugin-sidecar")]
     pub(super) native_binding: Option<Arc<dyn Any + Send + Sync>>,

@@ -118,9 +118,9 @@ impl Calls {
     }
 
     pub(super) fn open(
-        &self, live: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[crate::operations::Definition],
-        contracts: &[crate::operations::Contract], ended: tokio::sync::watch::Receiver<bool>,
-        plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
+        &self, live: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>,
+        operations: &[crate::operations::OperationDefinition], contracts: &[crate::operations::Contract],
+        ended: tokio::sync::watch::Receiver<bool>, plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
     ) -> Arc<Endpoint> {
         let scope = plugin.as_ref().map(|(scope, _)| scope.clone());
         let endpoint = Endpoint::new(live, arrivals, operations, contracts, ended, scope);

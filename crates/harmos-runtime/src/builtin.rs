@@ -20,13 +20,12 @@ pub use harmos_domain::operations::lifecycle::{Cancel, InstanceState, Status, Wa
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use crate::MemorySize;
-use crate::operations::{Context, Lane, Operation, OperationInstanceId, OperationManager, Response, StreamOutput};
+use crate::operations::{Operation, OperationInstanceId, Response, StreamOutput};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -59,28 +58,28 @@ pub struct Watching;
 /* === Implementations === */
 
 impl Catalog {
-    pub fn register(operations: &OperationManager, owner: impl Into<String>, lane: impl Lane + Copy) -> Result<()> {
-        let owner = owner.into();
-        operations.register_wire_operation::<Reporting>(owner.clone(), lane, Arc::new(()))?;
-        operations.register_wire_operation::<Cancelling>(owner.clone(), lane, Arc::new(()))?;
-        operations.register_wire_operation::<Watching>(owner, lane, Arc::new(()))
+    pub fn registration() -> harmos_sdk::RegistrationBatch {
+        harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new())
+            .implementation::<Status, Reporting>()
+            .implementation::<Cancel, Cancelling>()
+            .implementation::<Watch, Watching>()
     }
 }
-
 impl Operation for Reporting {
-    type Declaration = Status;
-    type Resources = ();
+    type Request = <Status as harmos_domain::OperationDeclaration>::Request;
+    type Response = <Status as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(_: harmos_sdk::OperationContext) -> Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Status, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
+        let host = context.dependency::<crate::operations::HostContext>()?;
+        let context = host.borrow();
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
         let state = InstanceState::from(instance.status().portable());
@@ -89,19 +88,20 @@ impl Operation for Reporting {
 }
 
 impl Operation for Cancelling {
-    type Declaration = Cancel;
-    type Resources = ();
+    type Request = <Cancel as harmos_domain::OperationDeclaration>::Request;
+    type Response = <Cancel as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(_: harmos_sdk::OperationContext) -> Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Cancel, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
+        let host = context.dependency::<crate::operations::HostContext>()?;
+        let context = host.borrow();
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
         instance.cancel();
@@ -111,19 +111,20 @@ impl Operation for Cancelling {
 }
 
 impl Operation for Watching {
-    type Declaration = Watch;
-    type Resources = ();
+    type Request = <Watch as harmos_domain::OperationDeclaration>::Request;
+    type Response = <Watch as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<InstanceState>;
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(_: harmos_sdk::OperationContext) -> Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Watch, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<Response<InstanceState>> {
+        let host = context.dependency::<crate::operations::HostContext>()?;
+        let context = host.borrow();
         let id = OperationInstanceId::new(request.instance);
         let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
         // Subscribe before reading so no change between them is lost.

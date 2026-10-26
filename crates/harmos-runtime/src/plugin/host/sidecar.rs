@@ -27,7 +27,7 @@ use crate::catalog::Catalog;
 use crate::config::PluginSidecarSettings;
 use crate::operations::{Declarations, Lane, NativeBindings};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
-use crate::services::{RuntimeDriver, Service};
+use crate::services::{RuntimeDriver, ServiceContext};
 use crate::sidecar::{Executable, Notice, Supervised};
 use crate::{Application, Error, Result};
 
@@ -90,7 +90,7 @@ impl<A: Application> PluginHost<A> {
         let driving = self.shared.driving.clone();
         let frozen = definition.clone();
         let factory: Factory = Arc::new(move || {
-            let resident = Supervised::new(executable.clone(), diagnostics::<A> as fn(&Service<A>, Notice))
+            let resident = Supervised::new(executable.clone(), diagnostics::<A> as fn(&ServiceContext<A>, Notice))
                 .handshake(settings.plugin.initialization_timeout)
                 .grace(settings.plugin.shutdown_timeout);
             let driver = RuntimeDriver::new::<C>(
@@ -120,9 +120,11 @@ impl<A: Application> PluginHost<A> {
             return Ok(());
         }
         match self.shared.operations.definition(publish.operation().id.as_str()) {
-            Err(Error::NotRegistered { .. }) => {
-                self.shared.operations.register_wire_operation::<crate::services::HostPublish>("harmos", lane, Arc::new(()))
-            }
+            Err(Error::NotRegistered { .. }) => self.shared.operations.register_native(crate::operations::RegistrationExt::lane(
+                harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new())
+                    .implementation::<crate::operations::streams::Publish, crate::services::HostPublish>(),
+                lane,
+            )),
             _ => Ok(()),
         }
     }
@@ -152,7 +154,7 @@ where
 
 /* === Private Functions === */
 
-fn diagnostics<A: Application>(_: &Service<A>, notice: Notice) {
+fn diagnostics<A: Application>(_: &ServiceContext<A>, notice: Notice) {
     if let Notice::Logged { line } = notice {
         tracing::debug!(target: "harmos::plugin::sidecar", %line, "native plugin output");
     }

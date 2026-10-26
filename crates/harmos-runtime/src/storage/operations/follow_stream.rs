@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation, StreamOutput};
+use crate::operations::{Operation, StreamOutput};
 use crate::storage::{StorageCursor, StoredRow};
 
 use crate::storage::StorageManager;
@@ -49,18 +49,18 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = FollowStream;
-    type Resources = StorageManager<C>;
+    type Request = <FollowStream as harmos_domain::OperationDeclaration>::Request;
+    type Response = <FollowStream as harmos_domain::OperationDeclaration>::Response;
     type Error = Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<StoredRow>;
 
-    async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        let storage = context.dependency::<StorageManager<C>>()?;
         Ok(Self { storage })
     }
 
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut FollowStream, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         crate::storage::query::Source::Stream(request.selection.clone()).validate()?;
         let mut follower = self.storage.follow::<StoredRow>(request.after.as_ref(), request.selection.clone()).await?;

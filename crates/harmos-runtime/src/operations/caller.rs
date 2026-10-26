@@ -23,7 +23,7 @@ use std::sync::{Arc, Weak};
 use super::manager::Entry;
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-use super::{OperationInstance, OperationManager};
+use super::{OperationManager, Running};
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::Error;
@@ -134,14 +134,14 @@ impl OperationManager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Caller {
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O) -> Result<super::OperationInstance<O>> {
+    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<super::Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Plugin(self.source.clone()), None)
     }
 
     #[cfg(feature = "grpc")]
     pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: super::StreamItem<O>, endpoints: P,
-    ) -> Result<super::OperationInstance<O>> {
+        &self, request: super::StreamItem<O::Request>, endpoints: P,
+    ) -> Result<super::Running<O>> {
         self.operations
             .submit_by::<O, P>((super::binding::Request::charged(request)?, endpoints), &Source::Plugin(self.source.clone()).external()?)
     }
@@ -163,22 +163,22 @@ impl Caller {
         self.submit_encoded(operation, payload)?.await
     }
 
-    pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
+    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
         self.operations.submit_by::<O, ()>((request.into(), ()), &Source::Plugin(self.source.clone()))
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O, endpoints: P) -> Result<OperationInstance<O>> {
+    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_by::<O, P>((request.into(), endpoints), &Source::Plugin(self.source.clone()))
     }
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: super::StreamItem<O>, endpoints: P,
-    ) -> Result<OperationInstance<O>> {
+        &self, request: super::StreamItem<O::Request>, endpoints: P,
+    ) -> Result<Running<O>> {
         self.operations.submit_by::<O, P>((super::binding::Request::charged(request)?, endpoints), &Source::Plugin(self.source.clone()))
     }
 
-    pub async fn call<O: OperationDeclaration>(&self, request: O) -> Result<crate::operations::Response<O::Response>> {
-        self.submit(request)?.await
+    pub async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<crate::operations::Response<O::Response>> {
+        self.submit::<O>(request)?.await
     }
 }
 

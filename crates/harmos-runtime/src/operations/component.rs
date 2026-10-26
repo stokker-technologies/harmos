@@ -27,7 +27,7 @@ use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
-use crate::operations::{Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand};
+use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
 
 /* === Constants === */
@@ -66,7 +66,7 @@ struct SdkOperation {
 
 struct SdkBinding {
     component: Arc<Component>,
-    definition: Definition,
+    definition: OperationDefinition,
 }
 
 /* === Enums === */
@@ -79,6 +79,9 @@ enum Phase {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentError {
+    #[error(transparent)]
+    Dependency(#[from] harmos_sdk::DependencyError),
+
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
 
@@ -158,21 +161,23 @@ where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Declaration = O;
-    type Resources = Component;
+    type Request = <O as OperationDeclaration>::Request;
+    type Response = <O as OperationDeclaration>::Response;
     type Error = ComponentError;
     type Endpoints = E;
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(component: Arc<Component>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+        let component = context.dependency::<Component>()?;
         Ok(Self { component, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
                 let component = &self.component;
@@ -180,13 +185,13 @@ where
                 if !component.endpoint.accepts() {
                     return Err(ComponentError::Unavailable);
                 }
-                let definition = Definition::of::<O>()?;
+                let definition = OperationDefinition::of::<O>()?;
                 if !component.endpoint.definitions().contains(&definition) {
                     return Err(ComponentError::Catalog { operation: O::ID });
                 }
                 let state = ComponentState {
                     initialized: false,
-                    payload: Some(crate::Message::encode_to_vec(request)),
+                    payload: Some(crate::Message::encode(request)),
                     invocation: None,
                     operation: definition.id,
                 };
@@ -379,10 +384,14 @@ impl Component {
                 };
                 definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
                     .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
-                let mut entry = operations.binding_owned_definition::<SdkOperation>(
+                let mut entry = operations.bind_native::<super::sdk::Encoded, SdkOperation>(
                     scope.owner(),
                     lane.name(),
-                    handler,
+                    {
+                        let mut dependencies = harmos_sdk::Dependencies::new();
+                        dependencies.insert(handler)?;
+                        dependencies
+                    },
                     definition,
                     Some(sdk_dispatch),
                     Some(scope.clone()),
@@ -398,21 +407,23 @@ impl Component {
 }
 
 impl Operation for SdkOperation {
-    type Declaration = super::sdk::Encoded;
-    type Resources = SdkBinding;
+    type Request = <super::sdk::Encoded as OperationDeclaration>::Request;
+    type Response = <super::sdk::Encoded as OperationDeclaration>::Response;
     type Error = ComponentError;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(binding: Arc<SdkBinding>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+        let binding = context.dependency::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
             if self.state.is_none() {
                 let binding = &self.binding;
@@ -476,11 +487,13 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies.insert(component)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => bindings.register_owned_wire_at::<ComponentOperation<O, ()>>(lane, component),
-        (true, false) => bindings.register_owned_wire_at::<ComponentOperation<O, In<O>>>(lane, component),
-        (false, true) => bindings.register_owned_wire_at::<ComponentOperation<O, Out<O>>>(lane, component),
-        (true, true) => bindings.register_owned_wire_at::<ComponentOperation<O, (In<O>, Out<O>)>>(lane, component),
+        (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),
+        (true, false) => bindings.stage_implementation::<O, ComponentOperation<O, In<O>>>(lane, dependencies),
+        (false, true) => bindings.stage_implementation::<O, ComponentOperation<O, Out<O>>>(lane, dependencies),
+        (true, true) => bindings.stage_implementation::<O, ComponentOperation<O, (In<O>, Out<O>)>>(lane, dependencies),
     }
 }
 

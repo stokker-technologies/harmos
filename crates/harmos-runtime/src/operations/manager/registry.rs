@@ -126,7 +126,7 @@ impl State {
         names.into_iter().filter_map(|(id, owner)| self.remove_owned(&id, &owner)).collect()
     }
 
-    pub(super) fn definitions(&self) -> Vec<Definition> {
+    pub(super) fn definitions(&self) -> Vec<OperationDefinition> {
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         let mut ready = BTreeMap::new();
         self.entries

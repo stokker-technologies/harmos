@@ -20,7 +20,7 @@ pub use harmos_domain::inventory::contracts::Required;
 // Third Party Imports
 
 // Local Imports
-use super::{CallContext, Contract, Definition, OperationGeneration};
+use super::{CallContext, Contract, OperationDefinition, OperationGeneration};
 use crate::{Identifier, Result};
 
 /* === Constants === */
@@ -36,7 +36,7 @@ pub struct Provider<'a> {
     pub owner: &'a Identifier,
     pub plugin: bool,
     pub generation: OperationGeneration,
-    pub definition: &'a Definition,
+    pub definition: &'a OperationDefinition,
     pub contract: &'a Contract,
 }
 

@@ -38,13 +38,21 @@ pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingErr
 type Install = fn(&mut WireTable, Dependencies, Contract) -> Result<(), ServingError>;
 type InitializeService = fn(OperationContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
 type PrepareNative = fn(Dependencies, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
+type PrepareEncoded = fn(Dependencies, &[u8]) -> Result<PreparedNative, ServingError>;
 
 /* === Structs === */
 
+#[derive(Clone)]
 pub struct RegistrationBatch {
     pub dependencies: Dependencies,
     pub operations: Vec<OperationFactory>,
     pub services: Vec<ServiceFactory>,
+}
+
+pub struct PreparedNative {
+    pub instance: Box<dyn NativeInstance>,
+    pub grant: Option<crate::plugin::Grant>,
+    pub key: Option<super::CacheKey>,
 }
 
 #[derive(Clone)]
@@ -54,6 +62,9 @@ pub struct OperationFactory {
     contract: fn() -> Result<Contract, super::ContractError>,
     install: Install,
     native: PrepareNative,
+    endpoints_valid: fn() -> bool,
+    encoded: PrepareEncoded,
+    decoding_memory: fn(&[u8]) -> Result<usize, crate::MessageError>,
 }
 
 #[derive(Clone)]
@@ -75,6 +86,7 @@ struct NativeOperation<O: Operation> {
     request: O::Request,
     endpoints: O::Endpoints,
     stopped: bool,
+    encoded: bool,
 }
 
 /* === Enums === */
@@ -118,8 +130,17 @@ impl RegistrationBatch {
         self.operations.push(OperationFactory {
             definition: D::definition(),
             dependencies: self.dependencies.clone(),
-            contract: || WireDeclaration::of::<D>().contract(),
+            contract: || {
+                if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
+                    return crate::observers::contract();
+                }
+                WireDeclaration::of::<D>().contract()
+            },
             install: WireTable::install::<D, O>,
+            endpoints_valid: || {
+                use super::EndpointSet;
+                O::Endpoints::item_types() == super::item_types::<D>()
+            },
             native: |dependencies, request, endpoints| {
                 use super::EndpointSet;
                 if O::Endpoints::item_types() != super::item_types::<D>() {
@@ -133,8 +154,20 @@ impl RegistrationBatch {
                     request: *request,
                     endpoints: *endpoints,
                     stopped: false,
+                    encoded: false,
                 }))
             },
+            encoded: |dependencies, payload| {
+                use super::EndpointSet;
+                use crate::Message;
+                let endpoints = O::Endpoints::empty().ok_or(ServingError::StreamUnsupported)?;
+                let request = O::Request::decode(payload).map_err(ServingError::Codec)?;
+                let grant = D::grant(&request);
+                let key = D::key(&request);
+                let instance = NativeOperation::<O> { dependencies, operation: None, request, endpoints, stopped: false, encoded: true };
+                Ok(PreparedNative { instance: Box::new(instance), grant, key })
+            },
+            decoding_memory: <D::Request as crate::Message>::decoding_memory,
         });
         self
     }
@@ -157,6 +190,22 @@ impl RegistrationBatch {
 }
 
 impl OperationFactory {
+    pub fn validate(&self) -> Result<(), ServingError> {
+        self.definition.validate().map_err(ServingError::from)?;
+        if !(self.endpoints_valid)() {
+            return Err(ServingError::Catalog);
+        }
+        Ok(())
+    }
+
+    pub fn decoding_memory(&self, payload: &[u8]) -> Result<usize, crate::MessageError> {
+        (self.decoding_memory)(payload)
+    }
+
+    pub fn prepare_encoded(&self, payload: &[u8]) -> Result<PreparedNative, ServingError> {
+        (self.encoded)(self.dependencies.clone(), payload)
+    }
+
     pub fn prepare_native(
         &self, request: Box<dyn Any + Send>, endpoints: Box<dyn Any + Send>,
     ) -> Result<Box<dyn NativeInstance>, ServingError> {
@@ -168,6 +217,7 @@ impl OperationFactory {
     }
 
     pub fn install(self, table: &mut WireTable) -> Result<(), ServingError> {
+        self.validate()?;
         let contract = self.contract()?;
         (self.install)(table, self.dependencies, contract)
     }
@@ -189,6 +239,10 @@ impl<O: Operation> NativeInstance for NativeOperation<O> {
             let operation = self.operation.as_mut().ok_or(ServingError::Uninitialized)?;
             let context = context.for_registration(self.dependencies.clone());
             let response = operation.run(context, &mut self.request, &mut self.endpoints).await.map_err(operation_error::<O>)?;
+            if self.encoded {
+                use crate::Message;
+                return Ok(super::Response::new(response.encode()).into_erased());
+            }
             Ok(response.into_erased())
         })
     }
@@ -282,6 +336,10 @@ mod tests {
             attempt_timeout: std::time::Duration::from_secs(1),
             retries: crate::RetryPolicy::Never,
         };
+
+        fn key(_: &()) -> Option<super::super::CacheKey> {
+            Some(super::super::CacheKey::new(vec![42]).unwrap())
+        }
     }
 
     impl Operation for Read {
@@ -335,6 +393,23 @@ mod tests {
         drop(first);
         drop(second);
         assert!(retained.upgrade().is_none());
+    }
+
+    #[test]
+    fn encoded_factory_preserves_request_cache_key_and_response() {
+        use crate::Message;
+
+        let mut dependencies = Dependencies::new();
+        dependencies.insert(Arc::new(42u64)).unwrap();
+        let batch = RegistrationBatch::new(dependencies).operation::<Read>();
+        let mut prepared = batch.operations[0].prepare_encoded(&().encode()).unwrap();
+        assert_eq!(prepared.key, Read::key(&()));
+        let context = OperationContext::new(Dependencies::new(), super::super::CallContext::default());
+        ready(prepared.instance.initialize(context.clone()));
+        let response = ready(prepared.instance.run(context)).restore::<Vec<u8>>().unwrap();
+        assert_eq!(u64::decode(&response).unwrap(), 42);
+        ready(prepared.instance.stop());
+        ready(prepared.instance.cleanup());
     }
 
     impl Service for Worker {

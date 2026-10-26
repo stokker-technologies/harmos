@@ -129,7 +129,7 @@ impl Remote {
 
     // Submit the observe control for one activation, owned by its children.
     fn observe(
-        &self, children: &ChildSettlement, control: &harmos_domain::observers::Control,
+        &self, children: &ChildSettlement, control: &harmos_domain::observers::ControlRequest,
     ) -> crate::Result<crate::operations::EncodedInvocation> {
         let original = self.control.get().ok_or(crate::Error::NotReady { domain: "observer control" })?;
         original.scope.observe_contract().ok_or(crate::Error::NotReady { domain: "observer control" })?;
@@ -142,7 +142,7 @@ impl Remote {
             .and_then(|bytes| bytes.checked_add(64))
             .and_then(std::num::NonZeroUsize::new)
             .ok_or(crate::Error::ResourceExhausted { resource: "observer control encoding" })?;
-        children.submit(false, || binding.submit_with(bytes, |_| Ok(harmos_domain::Message::encode_to_vec(control))))
+        children.submit(false, || binding.submit_with(bytes, |_| Ok(harmos_domain::Message::encode(control))))
     }
 
     async fn fence(&self) {
@@ -173,7 +173,8 @@ impl ObserverBackend for Backend {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control = harmos_domain::observers::Control { observer: self.definition.id.clone(), generation: activation.id().value() };
+        let control =
+            harmos_domain::observers::ControlRequest { observer: self.definition.id.clone(), generation: activation.id().value() };
         let children = activation.child_settlement();
         let mut invocation = match remote.observe(&children, &control) {
             Ok(invocation) => invocation,

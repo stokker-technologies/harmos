@@ -27,7 +27,7 @@ use super::caller::Source;
 use super::execution::{Attempt, Body};
 use super::finalization::{Finalize, Finalizer};
 use super::manager::Entry;
-use super::{Context, Operation, OperationInstanceId, OperationManager};
+use super::{Context, OperationInstanceId, OperationManager};
 use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Result, operations::Scope};
@@ -38,22 +38,17 @@ use crate::{Error, Result, operations::Scope};
 
 /* === Type Aliases === */
 
-type Payload<T> = <<T as Operation>::Declaration as OperationDeclaration>::Response;
+type Payload<D> = <D as OperationDeclaration>::Response;
 
 /* === Structs === */
 
-struct Physical<T: Operation> {
-    resources: Arc<T::Resources>,
-    operation: Option<T>,
-    request: T::Declaration,
-    endpoints: T::Endpoints,
+struct Physical {
+    instance: Box<dyn harmos_sdk::operations::NativeInstance>,
     _request: Option<super::streaming::RequestClaims>,
-    stopped: bool,
 }
-
-struct Bound<T: Operation> {
-    physical: Physical<T>,
-    cached: Option<super::Response<Payload<T>>>,
+struct Bound<D: OperationDeclaration> {
+    physical: Physical,
+    cached: Option<super::Response<Payload<D>>>,
     entry: Arc<Entry>,
     operations: OperationManager,
     id: OperationInstanceId,
@@ -66,8 +61,8 @@ struct Bound<T: Operation> {
     preparation: Option<OwnedSemaphorePermit>,
 }
 
-struct Owned<T: Operation> {
-    physical: Physical<T>,
+struct Owned {
+    physical: Physical,
     control: Weak<Instance>,
     operation: String,
     outcome: Option<Arc<Error>>,
@@ -81,27 +76,19 @@ struct Owned<T: Operation> {
 
 /* === Implementations === */
 
-impl<T: Operation> Physical<T> {
+impl Physical {
     async fn finish(&mut self, name: &str, control: &Weak<Instance>) -> Result<()> {
-        // An Operation That Never Initialized Owns Nothing To Stop
-        let Some(operation) = self.operation.as_mut() else {
-            return Ok(());
-        };
-        if !self.stopped {
-            if let Some(control) = control.upgrade() {
-                control.transition(Phase::Stopping);
-            }
-            guarded(name, async { operation.stop().await }).await?;
-            self.stopped = true;
+        if let Some(control) = control.upgrade() {
+            control.transition(Phase::Stopping);
         }
+        guarded(name, self.instance.stop()).await?;
         if let Some(control) = control.upgrade() {
             control.transition(Phase::Finalizing);
         }
-        guarded(name, async { operation.cleanup().await }).await
+        guarded(name, self.instance.cleanup()).await
     }
 }
-
-impl<T: Operation> Bound<T> {
+impl<D: OperationDeclaration> Bound<D> {
     fn context<'s>(&self, scope: Scope<'s>, attempt: usize) -> Result<Context<'s>> {
         let mut origin = self.source.check()?;
         self.entry.available_to(&origin)?;
@@ -120,9 +107,9 @@ impl<T: Operation> Bound<T> {
     }
 }
 
-impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response<Payload<T>>> for Bound<T> {
+impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
     fn transferred(&self) -> bool {
-        self.physical.operation.as_ref().is_some_and(Operation::transferred) || super::EndpointSet::transferred(&self.physical.endpoints)
+        self.physical.instance.transferred()
     }
 
     fn initialize<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, ()> {
@@ -131,32 +118,24 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
             if self.cached.is_some() {
                 return Ok(());
             }
-            if self.physical.operation.is_some() {
-                return Ok(());
-            }
-            let resources = Arc::clone(&self.physical.resources);
-            let operation = guarded(self.entry.id(), async { T::initialize(resources, context).await }).await?;
-            self.physical.operation = Some(operation);
+            let context = execution_context(context)?;
+            guarded(self.entry.id(), self.physical.instance.initialize(context)).await?;
             Ok(())
         })
     }
 
-    fn run<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, super::Response<Payload<T>>> {
+    fn run<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, super::Response<Payload<D>>> {
         Box::pin(async move {
             let context = self.context(scope, self.attempt)?;
             if let Some(response) = &self.cached {
                 return Ok(response.clone());
             }
             self.attempt = self.attempt.saturating_add(1);
-            guarded(self.entry.id(), async {
-                self.physical
-                    .operation
-                    .as_mut()
-                    .expect("initialized operation")
-                    .run(context, &mut self.physical.request, &mut self.physical.endpoints)
-                    .await
-            })
-            .await
+            let context = execution_context(context)?;
+            let response = guarded(self.entry.id(), self.physical.instance.run(context)).await?;
+            response
+                .restore::<D::Response>()
+                .ok_or(Error::InvalidInput { field: "operation response", reason: "native response differs from its declaration" })
         })
     }
 
@@ -165,7 +144,10 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
     }
 
     fn classify(&self, error: &Error) -> crate::operations::FailureKind {
-        super::binding::classify(error, T::classify)
+        super::binding::classify(error, |error: &harmos_sdk::ServingError| match error {
+            harmos_sdk::ServingError::Handler(failure) => failure.code(),
+            _ => crate::operations::FailureKind::Permanent,
+        })
     }
 
     fn finalize(&mut self) -> Finalize<'_> {
@@ -183,7 +165,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
     }
 }
 
-impl<T: Operation> Finalizer for Owned<T> {
+impl Finalizer for Owned {
     fn finalize(&mut self) -> Finalize<'_> {
         Box::pin(self.physical.finish(&self.operation, &self.control))
     }
@@ -195,9 +177,19 @@ impl<T: Operation> Finalizer for Owned<T> {
 
 /* === Public Functions === */
 
-pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
-    operations: &OperationManager, resources: Arc<T::Resources>,
-) -> Typed<T::Declaration, T::Endpoints> {
+pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
+    operations: &OperationManager, factory: harmos_sdk::operations::OperationFactory,
+) -> Typed<D, P> {
+    factory_with(operations, move |request, endpoints| factory.prepare_native(Box::new(request), Box::new(endpoints)))
+}
+
+pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
+    operations: &OperationManager,
+    prepare: impl Fn(D::Request, P) -> std::result::Result<Box<dyn harmos_sdk::operations::NativeInstance>, harmos_sdk::ServingError>
+    + Send
+    + Sync
+    + 'static,
+) -> Typed<D, P> {
     let registry = Arc::downgrade(&operations.registry);
     let instances = operations.instances.clone();
     let lanes = operations.lanes.clone();
@@ -205,7 +197,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
     let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
-            let super::binding::Request { value: request, retention, context } = request;
+            let super::binding::Request { value: request, retention, context, key, .. } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
             let operations = OperationManager {
                 registry,
@@ -216,24 +208,21 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
                 resident: resident.clone(),
             };
             let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if operations.context.get().is_some_and(|context| context.is_empty()) { T::Declaration::key(&request) } else { None }
+                if operations.context.get().is_some_and(|context| context.is_empty()) { key.or_else(|| D::key(&request)) } else { None }
             }))
             .map_err(|_| Error::OperationPanicked { operation: entry.id().to_owned() })?;
-            if key.is_some() && std::any::TypeId::of::<T::Endpoints>() != std::any::TypeId::of::<()>() {
+            if key.is_some() && std::any::TypeId::of::<P>() != std::any::TypeId::of::<()>() {
                 return Err(Error::InvalidInput {
                     field: "operation stream cache",
                     reason: "endpoint execution cannot reuse a response without executing its streams",
                 });
             }
-            let cached = key.as_ref().and_then(|key| operations.lookup::<T::Declaration>(&entry, key, &origin.identity));
-            let bound = Bound::<T> {
+            let cached = key.as_ref().and_then(|key| operations.lookup::<D>(&entry, key, &origin.identity));
+            let bound = Bound::<D> {
                 physical: Physical {
-                    resources: resources.clone(),
-                    operation: None,
-                    request,
-                    endpoints,
+                    instance: prepare(request, endpoints)
+                        .map_err(|source| Error::OperationFailed { operation: entry.id().to_owned(), source: Arc::new(source) })?,
                     _request: retention,
-                    stopped: false,
                 },
                 cached,
                 entry: entry.clone(),
@@ -253,7 +242,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
                 if source.check().is_ok()
                     && let Some(registry) = registry.upgrade()
                 {
-                    registry.insert::<T::Declaration>(&entry, key.clone(), origin.identity.clone(), response.clone());
+                    registry.insert::<D>(&entry, key.clone(), origin.identity.clone(), response.clone());
                 }
             }));
             Ok(prepared)
@@ -263,6 +252,13 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
 
 /* === Private Functions === */
 
+fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContext> {
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies
+        .insert(Arc::new(context.owned()))
+        .map_err(|source| Error::OperationFailed { operation: "host context".to_owned(), source: Arc::new(source) })?;
+    Ok(harmos_sdk::OperationContext::new(dependencies, context.context().clone()))
+}
 async fn guarded<O, E>(operation: &str, future: impl Future<Output = std::result::Result<O, E>>) -> Result<O>
 where
     E: std::error::Error + Send + Sync + 'static,
