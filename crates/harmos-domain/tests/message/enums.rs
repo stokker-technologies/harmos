@@ -149,7 +149,7 @@ fn known_mode_defaults() {
     let run = read::<known::Run>(&bare);
     assert_eq!(run.mode, known::Mode::Automatic);
     assert_eq!(*read::<known::Boxed>(&bare).mode, run.mode);
-    grpc::decoding_memory::<known::Run>(DecodeInput::new(&bare)).unwrap();
+    grpc::prepare::<known::Run>(DecodeInput::new(&bare)).map(|prepared| prepared.memory()).unwrap();
 
     // Explicit Known Modes Survive Nested, Boxed And Wrapped Fields.
     let manual = wire(&newer::Mode::Manual);
@@ -177,7 +177,7 @@ fn read<T: harmos_domain::Message + harmos_domain::schema::Described>(bytes: &[u
 fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>(bytes: &[u8]) {
     let error = grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
     assert!(error.to_string().contains("unknown protobuf enum variant"), "{error}");
-    assert!(grpc::decoding_memory::<T>(DecodeInput::new(bytes)).is_err());
+    assert!(grpc::prepare::<T>(DecodeInput::new(bytes)).map(|prepared| prepared.memory()).is_err());
 }
 
 /* === Tests === */

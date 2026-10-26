@@ -47,6 +47,12 @@ struct Output(Arc<Mutex<Vec<u8>>>);
 
 struct Unwritable;
 
+#[cfg(feature = "grpc")]
+#[harmos_runtime::message]
+struct CodecTrace {
+    bytes: Vec<u8>,
+}
+
 // Projections Of The Public Perfetto Wire Schema; Unknown Fields Are Skipped.
 #[derive(Clone, PartialEq, Message)]
 struct Trace {
@@ -143,6 +149,40 @@ impl Write for Unwritable {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(feature = "grpc")]
+#[test]
+fn codec_stage_lifetimes() {
+    let output = Output::default();
+    let (layer, guard) = PerfettoLayer::builder(output.clone()).with_debug_annotations().build();
+    let layer = layer.with_filter(filter_fn(capture::instrumented));
+    let dispatch = tracing::Dispatch::new(tracing_subscriber::registry().with(layer));
+    let secret = b"codec-payload-sentinel";
+    tracing::dispatcher::with_default(&dispatch, || {
+        let value = CodecTrace { bytes: secret.to_vec() };
+        let mut bytes = Vec::new();
+        harmos_sdk::grpc::encode(&value, &mut bytes).unwrap();
+        let input = harmos_sdk::grpc::DecodeInput::new(&bytes);
+        let prepared = harmos_sdk::grpc::prepare::<CodecTrace>(input).unwrap();
+        assert_eq!(prepared.decode().unwrap().bytes, secret);
+    });
+
+    guard.flush().unwrap();
+    let bytes = output.0.lock().unwrap().clone();
+    assert!(!bytes.windows(secret.len()).any(|window| window == secret));
+    let trace = Trace::decode(bytes.as_slice()).unwrap();
+    let descriptors = trace.packets.iter().filter_map(|packet| packet.descriptor.as_ref());
+    let descriptors: Vec<_> = descriptors.collect();
+    for name in ["grpc.protobuf.encode", "grpc.prepare", "grpc.postcard.decode"] {
+        let stage = descriptors.iter().find(|descriptor| descriptor.name == name).unwrap();
+        let events = trace.packets.iter().filter_map(|packet| packet.event.as_ref());
+        let events: Vec<_> = events.filter(|event| event.track == stage.uuid).collect();
+        let beginnings = events.iter().filter(|event| event.kind == 1).count();
+        let endings = events.iter().filter(|event| event.kind == 2).count();
+        assert!(beginnings > 0);
+        assert_eq!(beginnings, endings);
+    }
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_causal_lifetimes() {

@@ -122,17 +122,21 @@ fn dynamic_stream_interop() {
     let request = operation.request(json).unwrap();
     let InputEnvelope::<Exchange, Value>::Request(value) = <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<
         InputEnvelope<Exchange, Value>,
-    >>::decode(DecodeInput::new(request.as_bytes()))
-    .unwrap() else {
+    >>::decode_admitted(DecodeInput::new(request.as_bytes()), |_| Ok(()))
+    .unwrap()
+    .0
+    else {
         panic!("request tag one");
     };
     assert_eq!(value.small, 7);
     let input = operation.input(json).unwrap();
     assert!(matches!(
-        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<InputEnvelope<Exchange, Value>>>::decode(DecodeInput::new(
-            input.as_bytes()
-        ))
-        .unwrap(),
+        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<InputEnvelope<Exchange, Value>>>::decode_admitted(
+            DecodeInput::new(input.as_bytes()),
+            |_| Ok(())
+        )
+        .unwrap()
+        .0,
         InputEnvelope::Item(_)
     ));
     let item = {

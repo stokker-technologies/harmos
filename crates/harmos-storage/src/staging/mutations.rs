@@ -116,7 +116,7 @@ impl<C> StorageManager<C> {
                             .values_mut()
                             .find(|file| file.mutation.as_ref().is_some_and(|held| held.id == *mutation))
                             .ok_or_else(|| invalid("pending receipt lost its file owner"))?;
-                        let retrying = file.retrying;
+                        let retrying = file.retrying || file.in_flight;
                         let failure = file.progress.lock().unwrap().failure.clone();
                         let progress = file.progress.clone();
                         if !retrying {

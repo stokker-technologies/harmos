@@ -44,8 +44,8 @@ pub struct DecodedBatch {
 /* === Implementations === */
 
 impl DecodedBatch {
-    pub fn of(batch: &DataBatch) -> Result<Self> {
-        Ok(Self { data: ArrowBatch::from_ipc(batch.data.bytes())?, destination: batch.destination.clone(), schema: batch.schema.clone() })
+    pub fn of(batch: DataBatch) -> Result<Self> {
+        Ok(Self { data: ArrowBatch::from_ipc(batch.data.into_bytes())?, destination: batch.destination, schema: batch.schema })
     }
 }
 

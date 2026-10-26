@@ -160,7 +160,9 @@ impl<C> StorageManager<C> {
 
     #[tracing::instrument(name = "storage.manager.lifecycle.status", level = "trace", skip_all)]
     pub fn status(&self) -> StorageMetrics {
-        self.inner.state.lock().unwrap().status.clone()
+        let mut state = self.inner.state.lock().unwrap();
+        state.collect();
+        state.status.clone()
     }
 }
 

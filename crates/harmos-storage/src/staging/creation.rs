@@ -117,7 +117,7 @@ impl<C> StorageManager<C> {
     }
 
     #[tracing::instrument(name = "storage.staging.creation.write_file", level = "debug", skip_all)]
-    pub async fn write_file(&self, metadata: FileMetadata, bytes: &[u8]) -> Result<FileReference> {
+    pub async fn write_file(&self, metadata: FileMetadata, bytes: Vec<u8>) -> Result<FileReference> {
         let mut file = self.create_file(metadata).await?;
         file.write_all(bytes).await?;
         file.finish().await

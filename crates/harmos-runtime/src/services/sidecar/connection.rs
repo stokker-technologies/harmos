@@ -295,7 +295,7 @@ impl Endpoint {
             }
             error => SidecarError::Malformed(error.to_string()),
         })?;
-        let frame = Frame::Call { id: u64::MAX, method: WIRE_METHOD.to_owned(), params };
+        let frame = Frame::Call { id: u64::MAX, method: WIRE_METHOD.to_owned(), params: params.into() };
         if !frame.fits() {
             return Err(SidecarError::refused(Frame::OVERSIZED, "operation control exceeds the native frame limit"));
         }

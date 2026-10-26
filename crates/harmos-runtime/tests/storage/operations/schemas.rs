@@ -55,7 +55,7 @@ fn schema(name: &str) -> SchemaInput {
             id: Identifier::new(name).unwrap(),
             version: NonZeroU32::MIN,
         },
-        &Schema {
+        Schema {
             root: 0,
             definitions: vec![
                 vec![Field {
@@ -121,7 +121,7 @@ async fn schema_registry_roundtrip() {
     let mut announced = false;
     let mut rows = 0;
     while let Some(output) = response.next().await.unwrap() {
-        match &QueryArrow::try_from(&*output).unwrap() {
+        match &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
             QueryArrow::Schema(_) => {
                 assert!(!announced);
                 announced = true;
@@ -137,7 +137,7 @@ async fn schema_registry_roundtrip() {
     assert_eq!(completed.rows, 1);
     assert_eq!(rows, 1);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();
-    assert_eq!(persisted.schema, *request.schema.graph());
+    assert_eq!(*persisted.schema, *request.schema.graph());
     let encoded = serde_json::to_value(&persisted).unwrap();
     let decoded: harmos_runtime::storage::StorageSchema = serde_json::from_value(encoded).unwrap();
     assert_eq!(decoded, persisted);

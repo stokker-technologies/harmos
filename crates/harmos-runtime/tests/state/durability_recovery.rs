@@ -101,6 +101,7 @@ async fn crash_loses_unsynced() {
 async fn redelivery_forwards_stored() {
     let copy = Store::default();
     let mirror = Store::default();
+    let second_mirror = Store::default();
 
     // One entry as a version-1 build stored it, written valid but
     // non-canonical — a member order and spacing no serializer of this build
@@ -117,8 +118,10 @@ async fn redelivery_forwards_stored() {
 
     // A fresh mirror lags behind everything, so boot redelivers it the whole
     // recovered history.
-    let recovered =
-        booted(Ledger::default(), |builder| builder.recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror))).await;
+    let recovered = booted(Ledger::default(), |builder| {
+        builder.recover(Journal::<Bank>::open(&copy)).attach(Journal::<Bank>::open(&mirror)).attach(Journal::<Bank>::open(&second_mirror))
+    })
+    .await;
 
     assert_eq!(ledger(&recovered).await.balance, 16, "the version-1 bonus still applies through its own version");
     assert_eq!(recovered.state.applied(), Position(10), "the unknown record was skipped, and its position was taken all the same");
@@ -134,6 +137,18 @@ async fn redelivery_forwards_stored() {
     );
     assert!(written.iter().any(|line| line == historical), "the historical entry arrived verbatim, spacing and member order intact");
     assert!(written.contains(&unreadable), "a record this build cannot decode is still forwarded, not silently dropped");
+
+    let source_allocations = copy.shared_lines();
+    let first_allocations = mirror.shared_lines();
+    let second_allocations = second_mirror.shared_lines();
+    assert_eq!(source_allocations.len(), first_allocations.len());
+    assert_eq!(source_allocations.len(), second_allocations.len());
+    for ((source, first), second) in source_allocations.iter().zip(&first_allocations).zip(&second_allocations) {
+        assert!(Arc::ptr_eq(source, first));
+        assert!(Arc::ptr_eq(source, second));
+    }
+    drop((copy, mirror, recovered, source_allocations, first_allocations, second_allocations));
+    assert_eq!(second_mirror.lines(), written);
 }
 
 #[tokio::test]

@@ -19,7 +19,7 @@ use super::IO_TIMEOUT;
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::query::{QueryCompletion, QueryOutput};
-use crate::{Error, MemorySize, Result};
+use crate::{Error, Result};
 use harmos_domain::operations::storage::Query;
 use harmos_domain::plugin::Grant;
 use std::sync::Arc;
@@ -65,8 +65,8 @@ impl<C: 'static> Operation for Handler<C> {
         let mut reader = self.storage.query(request.clone()).await?;
         while let Some(item) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
-            let item = item.output();
-            tokio::time::timeout(IO_TIMEOUT, output.send_with(item.memory_size(), || Ok(item)))
+            let bytes = item.output_memory_size();
+            tokio::time::timeout(IO_TIMEOUT, output.send_with(bytes, || Ok(item.output())))
                 .await
                 .map_err(|_| super::output_timeout())??;
         }

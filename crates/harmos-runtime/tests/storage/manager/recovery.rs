@@ -95,16 +95,16 @@ async fn restart_resumes_prefix() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("durable-prefix")).await.unwrap();
     let prefix = vec![42; 137];
-    producer.write_all(&prefix).await.unwrap();
+    producer.write_all((prefix).to_vec()).await.unwrap();
     let token = producer.session().unwrap().clone();
     f.storage.flush().await.unwrap();
-    producer.write_all(b"unsaved tail").await.unwrap();
+    producer.write_all((b"unsaved tail").to_vec()).await.unwrap();
     let recovered = restart(&f).await;
     let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
-    assert!(recovered.storage.follow_file(&identity, 138).await.is_err());
+    assert!(recovered.storage.follow_production(&identity, 138).await.is_err());
     let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
     assert_eq!(resumed.length(), 137);
-    resumed.write_all(b"new suffix").await.unwrap();
+    resumed.write_all((b"new suffix").to_vec()).await.unwrap();
     let reference = resumed.finish().await.unwrap();
     let mut expected = prefix;
     expected.extend_from_slice(b"new suffix");
@@ -117,11 +117,11 @@ async fn restart_resumes_prefix() {
 async fn fences_survive_restart() {
     let f = Fixture::new(config()).await;
     let mut original = f.storage.produce_file(metadata("durable-fence")).await.unwrap();
-    original.write_all(b"saved").await.unwrap();
+    original.write_all((b"saved").to_vec()).await.unwrap();
     let first = original.session().unwrap().clone();
     f.storage.flush().await.unwrap();
     let mut current = f.storage.resume_file(&first).await.unwrap();
-    current.write_all(b"volatile").await.unwrap();
+    current.write_all((b"volatile").to_vec()).await.unwrap();
     let token = current.session().unwrap().clone();
     assert_eq!(token.generation, 2);
     let recovered = restart(&f).await;
@@ -145,7 +145,7 @@ async fn recovery_renews_deadline() {
     let recovered = restart(&f).await;
     tokio::time::advance(Duration::from_secs(59)).await;
     let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
-    resumed.write_all(b"after recovery").await.unwrap();
+    resumed.write_all((b"after recovery").to_vec()).await.unwrap();
     resumed.abort().await.unwrap();
     recovered.finish().await;
     f.finish().await;
@@ -155,7 +155,7 @@ async fn recovery_renews_deadline() {
 async fn checkpoint_fixes_length() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("fixed-cut")).await.unwrap();
-    producer.write_all(b"saved").await.unwrap();
+    producer.write_all((b"saved").to_vec()).await.unwrap();
     f.data.control.block_checkpoint.store(true, Ordering::SeqCst);
     {
         let save = f.storage.flush();
@@ -165,7 +165,7 @@ async fn checkpoint_fixes_length() {
             _ = &mut save => panic!("checkpoint must block"),
             _ = f.data.control.checkpoint_entered.notified() => {}
         }
-        producer.write_all(b"later").await.unwrap();
+        producer.write_all((b"later").to_vec()).await.unwrap();
         f.data.control.block_checkpoint.store(false, Ordering::SeqCst);
         f.data.control.checkpoint_release.notify_one();
         save.await.unwrap();
@@ -182,7 +182,7 @@ async fn checkpoint_fixes_length() {
 async fn close_retains_production() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("close-restart")).await.unwrap();
-    producer.write_all(b"retained on close").await.unwrap();
+    producer.write_all((b"retained on close").to_vec()).await.unwrap();
     let token = producer.session().unwrap().clone();
     f.storage.close().await.unwrap();
     assert!(!f.data.abandoned_files.lock().unwrap().contains("close-restart"));
@@ -200,13 +200,13 @@ async fn close_retains_production() {
 async fn fence_retries_transient() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("fence-retry")).await.unwrap();
-    producer.write_all(b"prefix").await.unwrap();
+    producer.write_all((b"prefix").to_vec()).await.unwrap();
     let token = producer.session().unwrap().clone();
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
     let mut resumed = f.storage.resume_file(&token).await.unwrap();
     assert_eq!(resumed.session().unwrap().generation, 2);
     assert_eq!(resumed.length(), 6);
-    assert!(producer.write_all(b"stale").await.is_err());
+    assert!(producer.write_all((b"stale").to_vec()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
     resumed.abort().await.unwrap();
     f.finish().await;
@@ -251,16 +251,16 @@ async fn receipts_replay_restart() {
     let schema = super::super::schema();
     let item = Identifier::new("record").unwrap();
     let values = [super::super::record(&schema, &item, b"saved")];
-    let original = f.storage.write_records_once(&first, &values).await.unwrap();
-    f.storage.write_records_once(&second, &values).await.unwrap();
+    let original = f.storage.write_records_once(&first, (values).to_vec()).await.unwrap();
+    f.storage.write_records_once(&second, (values).to_vec()).await.unwrap();
     f.storage.flush_until(&original).await.unwrap();
     assert!(f.data.mutation_receipts.lock().unwrap().contains_key(&first));
     assert!(!f.data.mutation_receipts.lock().unwrap().contains_key(&second));
     let restored = restart(&f).await;
     let before = restored.storage.cursor_accepted();
-    assert_eq!(restored.storage.write_records_once(&first, &values).await.unwrap(), original);
+    assert_eq!(restored.storage.write_records_once(&first, (values).to_vec()).await.unwrap(), original);
     assert_eq!(restored.storage.cursor_accepted(), before);
-    assert!(restored.storage.write_records_once(&second, &values).await.is_err());
+    assert!(restored.storage.write_records_once(&second, (values).to_vec()).await.is_err());
     assert!(!restored.data.records.lock().unwrap().is_empty());
     restored.finish().await;
     f.finish().await;
@@ -270,7 +270,7 @@ async fn receipts_replay_restart() {
 async fn deletion_survives_restart() {
     let f = Fixture::new(config()).await;
     let metadata = metadata("deleted-restart");
-    let reference = f.storage.write_file(metadata.clone(), b"retained").await.unwrap();
+    let reference = f.storage.write_file(metadata.clone(), (b"retained").to_vec()).await.unwrap();
     let file = StagedFile { history: reference.position.history, id: metadata.id.clone() };
     let mutation = harmos_runtime::storage::MutationId {
         window: f.storage.mutation_window().unwrap().id,
@@ -279,7 +279,7 @@ async fn deletion_survives_restart() {
     f.storage.delete_file_once(&mutation, &file).await.unwrap();
     let recovered = restart(&f).await;
     assert_eq!(recovered.storage.delete_file_once(&mutation, &file).await.unwrap(), file);
-    assert!(recovered.storage.follow_file(&file, 0).await.is_err());
+    assert!(recovered.storage.follow_production(&file, 0).await.is_err());
     assert!(recovered.storage.produce_file(metadata).await.is_err());
     recovered.finish().await;
     f.finish().await;

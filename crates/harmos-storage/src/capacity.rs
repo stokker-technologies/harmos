@@ -44,6 +44,7 @@ pub(super) struct Reservation {
     pool: Pool,
     bytes: usize,
     held: Held,
+    lifecycle: bool,
 }
 
 #[derive(Default)]
@@ -176,13 +177,19 @@ impl From<Refusal> for Error {
 
 impl Reservation {
     pub(super) fn empty(inner: &Arc<Inner>, pool: Pool, held: &Held) -> Self {
-        Self { inner: Arc::clone(inner), pool, bytes: 0, held: held.clone() }
+        Self { inner: Arc::clone(inner), pool, bytes: 0, held: held.clone(), lifecycle: false }
     }
 
     pub(super) fn charged(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Self { inner: Arc::clone(inner), pool, bytes, held }
+        Self { inner: Arc::clone(inner), pool, bytes, held, lifecycle: false }
+    }
+
+    pub(super) fn charged_lifecycle(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
+        let mut reservation = Self::charged(inner, pool, bytes);
+        reservation.lifecycle = true;
+        reservation
     }
 
     pub(super) fn lifecycle(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Result<Self> {
@@ -193,7 +200,7 @@ impl Reservation {
         drop(state);
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Ok(Self { inner: Arc::clone(inner), pool, bytes, held })
+        Ok(Self { inner: Arc::clone(inner), pool, bytes, held, lifecycle: true })
     }
 
     pub(super) fn try_new(inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize) -> std::result::Result<Self, Refusal> {
@@ -208,6 +215,13 @@ impl Reservation {
     ) -> std::result::Result<Self, Refusal> {
         let mut reservation = Self::empty(inner, pool, held);
         reservation.grow(bytes, deadline).await?;
+        Ok(reservation)
+    }
+
+    pub(super) async fn wait_lifecycle(inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize) -> std::result::Result<Self, Refusal> {
+        let mut reservation = Self::empty(inner, pool, held);
+        reservation.lifecycle = true;
+        reservation.grow(bytes, None).await?;
         Ok(reservation)
     }
 
@@ -240,6 +254,31 @@ impl Reservation {
         result
     }
 
+    pub(super) async fn grow_shared(owner: &Arc<Mutex<Self>>, bytes: usize) -> std::result::Result<(), Refusal> {
+        let inner = Arc::clone(&owner.lock().unwrap().inner);
+        let mut changed = inner.changed.subscribe();
+        let mut waiting = None;
+        loop {
+            let result = {
+                let mut reservation = owner.lock().unwrap();
+                let additional = bytes.saturating_sub(reservation.bytes);
+                if additional == 0 {
+                    Attempt::Ready(())
+                } else {
+                    let mut state = inner.state.lock().unwrap();
+                    reservation.grow_step(&mut state, additional, &mut waiting)
+                }
+            };
+            match result {
+                Attempt::Ready(()) => return Ok(()),
+                Attempt::Refuse(refusal) => return Err(refusal),
+                Attempt::Wait => {
+                    changed.changed().await.map_err(|_| Refusal::Failed(Error::Closing { domain: "storage read memory" }))?;
+                }
+            }
+        }
+    }
+
     pub(super) fn shrink_to(&mut self, bytes: usize) {
         if bytes >= self.bytes {
             return;
@@ -262,7 +301,7 @@ impl Reservation {
     pub(super) fn split(&mut self, bytes: usize) -> Self {
         assert!(bytes <= self.bytes, "split exceeds reservation");
         self.bytes -= bytes;
-        Self { inner: Arc::clone(&self.inner), pool: self.pool, bytes, held: self.held.clone() }
+        Self { inner: Arc::clone(&self.inner), pool: self.pool, bytes, held: self.held.clone(), lifecycle: self.lifecycle }
     }
 
     pub(super) fn retain(self) -> RetainedMemory {
@@ -293,7 +332,11 @@ impl Reservation {
     }
 
     fn attempt(&mut self, state: &mut State, additional: usize) -> Attempt<()> {
-        if let Err(error) = admitting(state, self.pool) {
+        if self.lifecycle {
+            if state.status.closing || state.status.closed {
+                return Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "storage" }));
+            }
+        } else if let Err(error) = admitting(state, self.pool) {
             return Attempt::Refuse(Refusal::Failed(error));
         }
         let owned = self.held.bytes();

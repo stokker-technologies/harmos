@@ -18,6 +18,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use tokio::sync::watch;
 // Local Imports
 use crate::state::{Inverting, Undos, dispatch::Dispatch, replay};
@@ -52,9 +53,37 @@ pub(crate) struct Recovered<A: Application> {
 
 /* === Enums === */
 
+enum RecoveryJson<'a> {
+    Value(serde_json::Value),
+    Raw(&'a RawValue),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
+
+impl RecoveryJson<'_> {
+    fn transaction<T>(&self, decode: impl FnOnce(&[u8]) -> T) -> std::result::Result<T, serde_json::Error> {
+        match self {
+            Self::Raw(raw) => Ok(decode(raw.get().as_bytes())),
+            Self::Value(value) => serde_json::to_vec(value).map(|bytes| decode(&bytes)),
+        }
+    }
+
+    fn system(&self, id: &crate::state::DefinitionId, version: u32) -> std::result::Result<Option<SystemFact>, serde_json::Error> {
+        match self {
+            Self::Value(value) => SystemFact::restore(id, version, value),
+            Self::Raw(raw) => SystemFact::restore(id, version, &mut serde_json::Deserializer::from_str(raw.get())),
+        }
+    }
+
+    fn value(self) -> std::result::Result<serde_json::Value, serde_json::Error> {
+        match self {
+            Self::Value(value) => Ok(value),
+            Self::Raw(raw) => serde_json::from_str(raw.get()),
+        }
+    }
+}
 
 impl<P> Group<P> {
     pub(crate) fn new(entries: Vec<Envelope<P>>) -> Self {
@@ -91,7 +120,7 @@ impl<A: Application> StateManager<A> {
             {
                 return Err(Incompatible::unreadable("invalid snapshot logical frontier"));
             }
-            after = snapshot.through;
+            after = snapshot.through.clone();
             state = restored.state;
             undos = restored.undos;
             receipts = restored.receipts;
@@ -100,8 +129,8 @@ impl<A: Application> StateManager<A> {
         }
         while after.sequence < through.sequence {
             let page = reader.page(&after).await.map_err(Incompatible::unreadable)?;
-            for entry in page.entries {
-                let group: Group<serde_json::Value> = serde_json::from_slice(&entry.payload).map_err(Incompatible::unreadable)?;
+            for entry in &page.entries {
+                let group: Group<&RawValue> = serde_json::from_slice(&entry.payload).map_err(Incompatible::unreadable)?;
                 group.check(state.position)?;
                 let frontier = group.entries.last().expect("validated group").position;
                 let first = group.entries.first().expect("validated group");
@@ -113,7 +142,7 @@ impl<A: Application> StateManager<A> {
                 }
                 let mut decoded = Vec::new();
                 for envelope in group.entries {
-                    if let Some(envelope) = decode::<A>(envelope, catalog)? {
+                    if let Some(envelope) = decode_payload::<A>(envelope, catalog)? {
                         decoded.push(envelope);
                     }
                 }
@@ -128,14 +157,14 @@ impl<A: Application> StateManager<A> {
                     }
                     retained.extend(recovered);
                 }
-                after = entry.position;
+                after = entry.position.clone();
             }
         }
         let durable = reader.finish(state.position);
         Ok(Recovered { state, undos, tail: retained.into(), durable, receipts })
     }
 }
-impl Group<serde_json::Value> {
+impl<P> Group<P> {
     fn check(&self, before: Position) -> std::result::Result<(), Incompatible> {
         let invalid = || Incompatible::unreadable("invalid managed recovery group");
         let first = self.entries.first().ok_or_else(invalid)?;
@@ -169,20 +198,39 @@ pub(super) fn decode<A: Application>(
     envelope: Envelope<serde_json::Value>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
     let Envelope { position, kind, id, version, metadata, payload } = envelope;
-    let value = match kind {
+    decode_json(Envelope { position, kind, id, version, metadata, payload: RecoveryJson::Value(payload) }, catalog)
+}
+
+/* === Private Functions === */
+
+fn decode_payload<A: Application>(
+    envelope: Envelope<&RawValue>, catalog: &Dispatch<A, Payload<A>>,
+) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
+    let Envelope { position, kind, id, version, metadata, payload } = envelope;
+    decode_json(Envelope { position, kind, id, version, metadata, payload: RecoveryJson::Raw(payload) }, catalog)
+}
+
+fn decode_json<A: Application>(
+    envelope: Envelope<RecoveryJson<'_>>, catalog: &Dispatch<A, Payload<A>>,
+) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
+    let Envelope { position, kind, id, version, metadata, payload } = envelope;
+    let (value, payload) = match kind {
         Kind::Transaction => {
-            let bytes = serde_json::to_vec(&payload).map_err(Incompatible::unreadable)?;
-            let transaction = catalog.decode_transaction(&id, version, &bytes).map_err(Incompatible::unreadable)?;
-            Recorded::Transaction(Arc::new(transaction))
+            let transaction = payload
+                .transaction(|bytes| catalog.decode_transaction(&id, version, bytes))
+                .map_err(Incompatible::unreadable)?
+                .map_err(Incompatible::unreadable)?;
+            (Recorded::Transaction(Arc::new(transaction)), payload.value().map_err(Incompatible::unreadable)?)
         }
         Kind::Record => {
-            if let Some(system) = SystemFact::restore(&id, version, &payload).map_err(Incompatible::unreadable)? {
-                Recorded::System(system)
+            if let Some(system) = payload.system(&id, version).map_err(Incompatible::unreadable)? {
+                (Recorded::System(system), payload.value().map_err(Incompatible::unreadable)?)
             } else if catalog.has_record(&id, version).map_err(Incompatible::unreadable)? {
+                let payload = payload.value().map_err(Incompatible::unreadable)?;
                 let record = A::Record::restore(&id, version, &payload)
                     .map_err(Incompatible::unreadable)?
                     .ok_or_else(|| Incompatible::unreadable("declared record could not be restored"))?;
-                Recorded::Record(record)
+                (Recorded::Record(record), payload)
             } else {
                 return Ok(None);
             }
@@ -199,6 +247,58 @@ pub(super) fn decode<A: Application>(
     }))
 }
 
-/* === Private Functions === */
-
 /* === Tests === */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Model;
+
+    impl Application for Model {
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+        type Streams = ();
+        type Resources = ();
+    }
+
+    #[test]
+    fn raw_transaction_borrows() {
+        let bytes = br#"{ "z": [3, 2, 1], "a": null }"#;
+        let raw: &RawValue = serde_json::from_slice(bytes).unwrap();
+        let result = RecoveryJson::Raw(raw)
+            .transaction(|received| {
+                assert_eq!(received.as_ptr(), raw.get().as_ptr());
+                assert_eq!(received, bytes);
+                received.len()
+            })
+            .unwrap();
+        assert_eq!(result, bytes.len());
+    }
+
+    #[test]
+    fn unknown_payload_skipped() {
+        let raw: &RawValue = serde_json::from_str(r#"{"unknown":[[],{"nested":null}]}"#).unwrap();
+        let envelope = Envelope {
+            position: Position(1),
+            kind: Kind::Record,
+            id: crate::state::DefinitionId::new("unknown.record"),
+            version: 1,
+            metadata: crate::state::Metadata {
+                commit: None,
+                principal: None,
+                correlation: crate::state::CorrelationId(Position(1)),
+                causation: None,
+                request: None,
+                link: None,
+                at: std::time::UNIX_EPOCH,
+            },
+            payload: raw,
+        };
+        let bytes = serde_json::to_vec(&Group::new(vec![envelope])).unwrap();
+        let group: Group<&RawValue> = serde_json::from_slice(&bytes).unwrap();
+        group.check(Position::ORIGIN).unwrap();
+        let catalog = Dispatch::<Model, Payload<Model>>::default();
+        assert!(decode_payload::<Model>(group.entries.into_iter().next().unwrap(), &catalog).unwrap().is_none());
+    }
+}

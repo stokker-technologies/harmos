@@ -133,7 +133,7 @@ impl<C> StorageManager<C> {
             tracing::debug_span!("storage.admission.validate")
                 .in_scope(|| operation.check_entry_bytes(self.inner.settings.max_batch_bytes()))?;
             if let Operation::Snapshot(snapshot) = &operation
-                && snapshot.through.sequence > sequence
+                && (snapshot.len() != 1 || snapshot.as_slice()[0].through.sequence > sequence)
             {
                 return Err(Error::InvalidInput { field: "recovery snapshot", reason: "snapshot is ahead of admitted transitions" });
             }
@@ -143,14 +143,7 @@ impl<C> StorageManager<C> {
             };
             tracing::Span::current().record("sequence", last);
             tracing::Span::current().record("index", index);
-            let pending = Arc::new(Pending {
-                context: crate::execution::Context::current(),
-                queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.queue"))),
-                journal: None,
-                index,
-                bytes,
-                operation,
-            });
+            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, operation));
             {
                 let _publication = tracing::debug_span!("storage.admission.publish").entered();
                 let mut state = self.inner.state.lock().unwrap();

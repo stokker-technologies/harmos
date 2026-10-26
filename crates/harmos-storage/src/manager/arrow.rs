@@ -38,7 +38,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.manager.arrow.lookup_schema", level = "debug", skip_all)]
     pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<(StorageSchema, RetainedMemory)> {
         let held = Held::default();
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
         crate::query::schema_at(&self.inner, &held, &snapshot, key).await
     }
 
@@ -56,7 +56,7 @@ impl<C> StorageManager<C> {
             }
             record.source = Some(batch.destination.clone());
         }
-        let result = self.admit_records(records.iter().map(crate::RecordInput::borrowed), None).await;
+        let result = self.admit_records(records, None).await;
         drop(scratch);
         result
     }
@@ -66,7 +66,7 @@ impl<C> StorageManager<C> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
         let rows = crate::writes::convert::streams(scope, batch, &schema.schema)?;
-        let result = self.admit_stream(rows.iter().map(crate::StreamInput::borrowed), None).await;
+        let result = self.admit_stream(rows, None).await;
         drop(scratch);
         result
     }
@@ -103,7 +103,7 @@ impl<C> StorageManager<C> {
         self.check_object_preconditions(batch, &values).await?;
         let receipts = self
             .admit_object_group_locked(allowance, count, None, |group| {
-                for value in &values {
+                for value in values {
                     group.write_value(value)?;
                 }
                 Ok(())
@@ -136,8 +136,8 @@ impl<C> StorageManager<C> {
             .as_any()
             .downcast_ref::<arrow_array::UInt64Array>()
             .ok_or(Error::InvalidInput { field: "object revision", reason: "expected_revision must be nullable UInt64" })?;
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
         let held = Held::default();
+        let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
         let page_bytes = self.inner.settings.scan_bytes();
         let store = metadata.column_by_name("store").and_then(|array| array.as_any().downcast_ref::<arrow_array::StringArray>());
         let epoch = metadata.column_by_name("epoch").and_then(|array| array.as_any().downcast_ref::<arrow_array::StringArray>());
@@ -160,10 +160,11 @@ impl<C> StorageManager<C> {
                 versions: crate::query::ObjectVersions::Latest,
             };
             let page = crate::ScanPage { after: 0, rows: std::num::NonZeroUsize::MIN, bytes: page_bytes };
-            let _page = Reservation::wait(&self.inner, Pool::Read, &held, page_bytes.get().saturating_add(ENTRY_OVERHEAD), None)
+            let page_memory = Reservation::wait(&self.inner, Pool::Read, &held, page_bytes.get().saturating_add(ENTRY_OVERHEAD), None)
                 .await
-                .map_err(Refusal::into_error)?;
-            let (latest, _) = snapshot.scan::<crate::ObjectEntry>(&selection, page).await?;
+                .map_err(Refusal::into_error)?
+                .retain();
+            let (latest, _) = snapshot.scan::<crate::ObjectEntry>(&selection, page, page_memory.clone()).await?;
             let revision = latest.first().map_or(0, |entry| entry.version.revision().get());
             if revision != expected.value(row) {
                 return Err(Error::InvalidInput { field: "object revision", reason: "atomic batch revision precondition failed" });

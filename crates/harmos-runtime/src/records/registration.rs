@@ -41,7 +41,7 @@ type Key = (String, u32);
 pub struct Definition {
     owner: String,
     schema: SchemaKey,
-    graph: Schema,
+    graph: Arc<Schema>,
     validation: Validator,
 }
 
@@ -98,6 +98,10 @@ impl Definition {
         &self.graph
     }
 
+    pub(crate) fn graph_owner(&self) -> Arc<Schema> {
+        Arc::clone(&self.graph)
+    }
+
     pub fn validate(&self, payload: &[u8]) -> Result<()> {
         self.validation.validate(payload).map_err(|source| Error::RecordPayload { source })
     }
@@ -113,20 +117,20 @@ impl Registry {
         }
     }
 
-    pub(super) fn reserve(self: &Arc<Self>, owner: &str, schema: &SchemaKey, graph: &Schema) -> Result<Pending> {
+    pub(super) fn reserve(self: &Arc<Self>, owner: &str, schema: SchemaKey, graph: Arc<Schema>) -> Result<Pending> {
         schema.require_postcard()?;
         if !harmos_domain::artifact_subset(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
             return Err(Error::InvalidInput { field: "record schema", reason: "invalid or oversized identity" });
         }
         let settings = harmos_domain::config::SchemaSettings::default();
         graph.preparation(&settings).map_err(|_| limit())?;
-        let fields_bytes = graph.clone_memory_bytes().map_err(|_| limit())?.checked_sub(std::mem::size_of::<Schema>()).ok_or_else(limit)?;
+        let fields_bytes = graph.memory_size().checked_add(2 * std::mem::size_of::<usize>()).ok_or_else(limit)?;
         {
             let state = self.state.lock().expect("record schema registry poisoned");
             if let Some((key, entry)) =
                 state.definitions.iter().find(|((id, version), _)| id == schema.id.as_str() && *version == schema.version.get())
             {
-                if entry.ready && entry.definition.owner == owner && entry.definition.graph == *graph {
+                if entry.ready && entry.definition.owner == owner && entry.definition.graph == graph {
                     return Ok(Pending {
                         registry: Arc::clone(self),
                         key: key.clone(),
@@ -152,19 +156,19 @@ impl Registry {
         .into_iter()
         .try_fold(0usize, usize::checked_add)
         .ok_or_else(limit)?;
-        let compilation = Validator::construction_memory_bytes(graph, &settings)
+        let compilation = Validator::construction_memory_bytes(&graph, &settings)
             .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
         let construction_bytes = destination.checked_add(compilation).ok_or_else(limit)?;
         let mut construction = Construction::new(self, construction_bytes)?;
         // Compile Outside The Registry Lock Under The Original Shared Budget
-        let validation = Validator::from_schema(graph, &settings)
+        let validation = Validator::from_schema(&graph, &settings)
             .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
         let bytes = destination.checked_add(validation.memory_size()).ok_or_else(limit)?;
         if bytes > construction_bytes {
             return Err(limit());
         }
         let key = (schema.id.as_str().to_owned(), schema.version.get());
-        let definition = Arc::new(Definition { owner: owner.to_owned(), schema: schema.clone(), graph: graph.clone(), validation });
+        let definition = Arc::new(Definition { owner: owner.to_owned(), schema: schema.clone(), graph, validation });
         let mut state = self.state.lock().expect("record schema registry poisoned");
         if state.definitions.contains_key(&key) {
             return Err(Error::AlreadyRegistered { domain: "record schema", name: key.0 });

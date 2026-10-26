@@ -66,6 +66,7 @@ impl Credit {
         Arc::new(Self { permits: Arc::new(Semaphore::new(window)), ledger: Mutex::new(Ledger::default()) })
     }
 
+    #[tracing::instrument(target = "harmos::carrier", name = "sidecar.credit.reserve", level = "trace", skip_all)]
     pub async fn reserve(self: &Arc<Self>, packet: &Packet) -> io::Result<Reservation> {
         let charge = Self::charge(packet)?;
         let permit = self

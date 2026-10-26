@@ -19,7 +19,6 @@ use std::time::{Duration, Instant};
 use criterion::{BenchmarkId, Criterion};
 use harmos_runtime::storage::operations::Query;
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
-use harmos_runtime::storage::*;
 
 // Local Imports
 use super::{fixture::Fixture, waveforms};
@@ -42,7 +41,9 @@ use super::{fixture::Fixture, waveforms};
 
 pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/contention");
-    let samples = waveforms::samples(16);
+    group.sample_size(10);
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    let samples = waveforms::samples(2);
     let inputs = waveforms::inputs(&samples);
     for concurrency in [1, 2, 4] {
         group.bench_function(BenchmarkId::new("mixed-slow-consumer", concurrency), |bencher| {
@@ -52,11 +53,11 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                     let mut resources = super::metrics::Observed::default();
                     let mut configuration = None;
                     for _ in 0..iterations {
-                        let fixture = Fixture::new(concurrency).await;
-                        fixture.storage.write_schema(&waveforms::schema(), &waveforms::definition()).await.unwrap();
+                        let fixture = Fixture::new().await;
+                        fixture.storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
                         for inputs in inputs.chunks(192) {
-                            let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-                            fixture.storage.write_stream(&batch).await.unwrap();
+                            let batch = inputs.to_vec();
+                            fixture.storage.write_stream(batch).await.unwrap();
                         }
                         configuration = Some(fixture.settings.clone());
                         let at = fixture.storage.flush().await.unwrap();
@@ -92,8 +93,8 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                         });
                         let writer = async {
                             for inputs in inputs.chunks(192) {
-                                let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-                                fixture.storage.write_stream(&batch).await.unwrap();
+                                let batch = inputs.to_vec();
+                                fixture.storage.write_stream(batch).await.unwrap();
                             }
                             fixture.storage.flush().await.unwrap()
                         };

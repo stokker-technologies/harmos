@@ -58,6 +58,7 @@ fn retired_header(history: &StoreHistory) -> Vec<u8> {
 
 #[tokio::test]
 async fn checkpoint_survives_reopen() {
+    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -68,11 +69,11 @@ async fn checkpoint_survives_reopen() {
     let entries = (1..=3)
         .map(|sequence| RecoveryEntry { position: at(sequence), required_data: required_data.clone(), payload: vec![sequence as u8] })
         .collect::<Vec<_>>();
-    backend.write_entries(&entries).await.unwrap();
+    backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
     assert_eq!(backend.flush(&at(3)).await.unwrap(), at(3));
-    backend.write_entries(&entries).await.unwrap();
+    backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
     let snapshot = RecoverySnapshot { through: at(2), required_data, payload: b"checkpoint".to_vec() };
-    backend.write_snapshot(&snapshot).await.unwrap();
+    backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot.clone()])).await.unwrap();
     backend.close().await.unwrap();
 
     let mut file = OpenOptions::new().append(true).open(root.path().join("state.jsonl")).unwrap();
@@ -82,13 +83,17 @@ async fn checkpoint_survives_reopen() {
 
     let reopened = FileBackend::new(root.path().to_owned(), history, settings);
     assert_eq!(reopened.open().await.unwrap().sequence, 3);
-    assert_eq!(reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap()).await.unwrap(), Some(snapshot.clone()));
+    assert_eq!(
+        reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap(), memory.clone()).await.unwrap(),
+        Some(snapshot.clone())
+    );
     let through = RecoveryPosition { history: snapshot.through.history.clone(), sequence: 3 };
     let page = reopened
         .read_entries(
             &snapshot.through,
             &through,
             ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
+            memory.clone(),
         )
         .await
         .unwrap();
@@ -110,7 +115,7 @@ async fn corruption_refused_preserved() {
         required_data: StorageCursor { history: history.clone(), sequence: 0 },
         payload: b"saved state".to_vec(),
     };
-    backend.write_entries(&[entry]).await.unwrap();
+    backend.write_entries(harmos_storage::StorageBatch::new(vec![entry.clone()])).await.unwrap();
     backend.flush(&position).await.unwrap();
     backend.close().await.unwrap();
 
@@ -130,6 +135,7 @@ async fn corruption_refused_preserved() {
 
 #[tokio::test]
 async fn state_root_exclusive() {
+    let memory = super::super::memory::read().await;
     let root = tempfile::tempdir().unwrap();
     let history = crate::storage::history();
     let settings = crate::storage::state_settings();
@@ -143,7 +149,7 @@ async fn state_root_exclusive() {
         required_data: StorageCursor { history: history.clone(), sequence: 0 },
         payload: b"exclusive writer".to_vec(),
     };
-    first.write_entries(std::slice::from_ref(&entry)).await.unwrap();
+    first.write_entries(harmos_storage::StorageBatch::new(vec![entry.clone()])).await.unwrap();
     first.flush(&position).await.unwrap();
     first.close().await.unwrap();
 
@@ -155,6 +161,7 @@ async fn state_root_exclusive() {
             &after,
             &position,
             ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
+            memory.clone(),
         )
         .await
         .unwrap();
@@ -168,6 +175,7 @@ async fn state_root_exclusive() {
 
 #[tokio::test]
 async fn limits_bound_records() {
+    let memory = super::super::memory::read().await;
     let history = crate::storage::history();
     let at = |sequence| RecoveryPosition { history: history.clone(), sequence };
     let entry = |sequence, bytes: usize| RecoveryEntry {
@@ -187,10 +195,10 @@ async fn limits_bound_records() {
     let backend = FileBackend::new(measured.path().to_owned(), history.clone(), crate::storage::state_settings());
     backend.open().await.unwrap();
     let header = std::fs::metadata(&journal).unwrap().len();
-    backend.write_entries(&[entry(1, 3000)]).await.unwrap();
+    backend.write_entries(harmos_storage::StorageBatch::new(vec![entry(1, 3000)])).await.unwrap();
     // Measure Before The Checkpoint Compacts The Journal Back To Its Header.
     let entry_bytes = std::fs::metadata(&journal).unwrap().len() - header;
-    backend.write_snapshot(&snapshot(3000)).await.unwrap();
+    backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot(3000)])).await.unwrap();
     backend.close().await.unwrap();
     let checkpoint_bytes = std::fs::metadata(measured.path().join("state.json")).unwrap().len();
     // Base64 Text Plus Envelope, Far Below The Former Decimal Number Arrays.
@@ -204,18 +212,21 @@ async fn limits_bound_records() {
     };
     let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     backend.open().await.unwrap();
-    backend.write_entries(&[entry(1, 3000)]).await.unwrap();
-    assert!(backend.write_entries(&[entry(2, 3001)]).await.is_err());
-    assert!(backend.write_snapshot(&snapshot(3001)).await.is_err());
-    backend.write_snapshot(&snapshot(3000)).await.unwrap();
+    backend.write_entries(harmos_storage::StorageBatch::new(vec![entry(1, 3000)])).await.unwrap();
+    assert!(backend.write_entries(harmos_storage::StorageBatch::new(vec![entry(2, 3001)])).await.is_err());
+    assert!(backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot(3001)])).await.is_err());
+    backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot(3000)])).await.unwrap();
     backend.close().await.unwrap();
 
     let reopened = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     assert_eq!(reopened.open().await.unwrap(), at(1));
-    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap()).await.unwrap(), Some(snapshot(3000)));
+    assert_eq!(
+        reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap(), memory.clone()).await.unwrap(),
+        Some(snapshot(3000))
+    );
     // A Caller Bound Covers The Snapshot Value, Not The Integrity Envelope.
     let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
-    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap()).await.unwrap(), Some(snapshot(3000)));
+    assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap(), memory.clone()).await.unwrap(), Some(snapshot(3000)));
     reopened.close().await.unwrap();
 }
 

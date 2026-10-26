@@ -309,8 +309,9 @@ impl<C> StorageManager<C> {
         }
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
         let bytes = limits.bytes.get();
-        let _reservation = super::capacity::Reservation::lifecycle(&self.inner, super::capacity::Pool::Read, bytes)?;
-        let receipts = self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits)).await?;
+        let memory = super::capacity::Reservation::lifecycle(&self.inner, super::capacity::Pool::Read, bytes)?.retain();
+        let receipts =
+            self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits, memory.clone())).await?;
         if receipts.len() > limits.rows.get() || receipts.memory_size() > bytes {
             return Err(Error::InvalidInput { field: "mutation recovery", reason: "backend exceeded recovery bounds" });
         }

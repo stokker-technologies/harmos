@@ -23,12 +23,13 @@ use std::sync::Arc;
 
 // Local Imports
 
-use crate::operations::{Context, Operation, StreamOutput};
-use crate::storage::{FileBatch, FileProgress};
+use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
+use harmos_domain::model::storage::files::{FileCompletion, FileEvent};
 
 use crate::storage::StorageManager;
 
-use crate::{Error, MemorySize, Result};
+use super::IO_TIMEOUT;
+use crate::{Error, Result};
 
 /* === Constants === */
 
@@ -53,20 +54,32 @@ impl<C: 'static> Operation for Handler<C> {
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
-    type Endpoints = StreamOutput<FileBatch>;
+    type Endpoints = StreamOutput<FileEvent>;
     async fn initialize<'ctx>(storage: Arc<StorageManager<C>>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self { storage })
     }
 
+    #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_file", level = "trace", skip_all)]
     async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut FollowFile, output: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<FileProgress>> {
-        let mut follower = self.storage.follow_file(&request.file, request.offset).await?;
-        let batch_bytes = self.storage.settings().response.batch_bytes;
-        while let Some(batch) = follower.next_batch(batch_bytes).await? {
-            output.send_with(batch.memory_size(), || Ok(batch)).await?;
+        &mut self, ctx: Self::Context<'a>, request: &mut FollowFile, output: &mut Self::Endpoints,
+    ) -> Result<crate::operations::Response<FileCompletion>> {
+        let grant = request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(FollowFile::ID, scope));
+        if let Some(grant) = &grant {
+            ctx.admit_stream_grant(grant)?;
         }
-        Ok(follower.progress().into())
+        let mut follower = self.storage.follow_file(request.clone()).await?;
+        while let Some(event) = follower.next().await? {
+            if let Some(grant) = &grant {
+                ctx.admit_stream_grant(grant)?;
+            }
+            let response = crate::operations::Response::from_owner(event.owner());
+            tokio::time::timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| super::output_timeout())??;
+        }
+        Ok(follower.completion()?.into())
+    }
+
+    fn classify(error: &Error) -> crate::operations::FailureKind {
+        super::classify(error)
     }
 }
 

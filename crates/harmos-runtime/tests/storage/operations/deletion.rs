@@ -65,17 +65,17 @@ fn request(f: &Fixture, id: &str) -> DeleteFile {
 async fn delete_removes_file() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("terminal")).await.unwrap();
-    producer.write_all(b"abcdef").await.unwrap();
+    producer.write_all((b"abcdef").to_vec()).await.unwrap();
     let request = request(&f, "terminal");
     assert!(f.storage.delete_file_once(&request.mutation, &request.file).await.is_err());
     producer.finish().await.unwrap();
-    let mut reader = f.storage.follow_file(&request.file, 0).await.unwrap();
+    let mut reader = f.storage.follow_production(&request.file, 0).await.unwrap();
     let accepted = reader.next_batch(NonZeroUsize::new(2).unwrap()).await.unwrap().unwrap();
     let deleted = f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
     assert_eq!(deleted, request.file);
-    assert_eq!(accepted.bytes, b"ab");
+    assert_eq!(accepted.bytes(), b"ab");
     assert!(reader.next_batch(NonZeroUsize::MIN).await.is_err());
-    assert!(f.storage.follow_file(&request.file, 0).await.is_err());
+    assert!(f.storage.follow_production(&request.file, 0).await.is_err());
     assert_eq!(f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap(), deleted);
     let mut query = f
         .storage
@@ -107,7 +107,7 @@ async fn delete_removes_file() {
 async fn delete_abandoned_missing() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("partial")).await.unwrap();
-    producer.write_all(b"partial").await.unwrap();
+    producer.write_all((b"partial").to_vec()).await.unwrap();
     producer.abort().await.unwrap();
     let mut request = request(&f, "partial");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
@@ -122,7 +122,7 @@ async fn delete_abandoned_missing() {
 #[tokio::test]
 async fn cancelled_delete_settles() {
     let f = Fixture::new(config()).await;
-    f.storage.write_file(metadata("cancelled"), b"bytes").await.unwrap();
+    f.storage.write_file(metadata("cancelled"), (b"bytes").to_vec()).await.unwrap();
     let request = request(&f, "cancelled");
     f.data.control.block_delete.store(true, Ordering::SeqCst);
     let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));
@@ -143,11 +143,11 @@ async fn cancelled_delete_settles() {
 #[tokio::test]
 async fn deletion_preserves_other() {
     let f = Fixture::new(config()).await;
-    let kept = f.storage.write_file(metadata("kept-first"), b"kept").await.unwrap();
-    let removed = f.storage.write_file(metadata("removed-last"), b"gone").await.unwrap();
+    let kept = f.storage.write_file(metadata("kept-first"), (b"kept").to_vec()).await.unwrap();
+    let removed = f.storage.write_file(metadata("removed-last"), (b"gone").to_vec()).await.unwrap();
     f.storage.flush().await.unwrap();
     let whole = |file: &harmos_runtime::storage::FileReference| harmos_runtime::storage::operations::ReadFile {
-        file: file.clone(),
+        source: harmos_runtime::storage::FileSource::Stored(file.clone()),
         range: harmos_runtime::storage::ByteRange { offset: 0, limit: None },
     };
     let mut pinned = f.storage.read_file(whole(&removed)).await.unwrap();
@@ -156,7 +156,7 @@ async fn deletion_preserves_other() {
     assert!(pinned.next().await.is_err());
     assert!(f.storage.read_file(whole(&removed)).await.is_err());
     let mut reader = f.storage.read_file(whole(&kept)).await.unwrap();
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes, b"kept");
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"kept");
     drop((pinned, reader));
     f.finish().await;
 }
@@ -165,13 +165,13 @@ async fn deletion_preserves_other() {
 async fn deleted_checkpoint_refused() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("checkpoint")).await.unwrap();
-    producer.write_all(b"partial").await.unwrap();
+    producer.write_all((b"partial").to_vec()).await.unwrap();
     f.storage.flush().await.unwrap();
     let checkpoint = f.data.saved_productions.lock().unwrap()["checkpoint"].0.clone();
     producer.abort().await.unwrap();
     let request = request(&f, "checkpoint");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    f.data.save_production(&checkpoint).await.unwrap();
+    f.data.save_production(harmos_runtime::storage::StorageBatch::new(vec![checkpoint])).await.unwrap();
     assert!(f.data.saved_productions.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
     f.finish().await;
@@ -180,7 +180,7 @@ async fn deleted_checkpoint_refused() {
 #[tokio::test]
 async fn close_settles_deletion() {
     let f = Fixture::new(config()).await;
-    f.storage.write_file(metadata("close"), b"bytes").await.unwrap();
+    f.storage.write_file(metadata("close"), (b"bytes").to_vec()).await.unwrap();
     let request = request(&f, "close");
     f.data.control.block_delete.store(true, Ordering::SeqCst);
     let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));

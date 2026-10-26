@@ -134,8 +134,8 @@ async fn unrelated_backlog_skipped() {
         _ = f.data.control.view_entered.notified() => {}
     }
     write(&f.storage, "unrelated-measurement").await;
-    let first = f.storage.write_recovery(&[b"state-one"]).await.unwrap();
-    let second = f.storage.write_recovery(&[b"state-two"]).await.unwrap();
+    let first = f.storage.write_recovery(vec![b"state-one".to_vec()]).await.unwrap();
+    let second = f.storage.write_recovery(vec![b"state-two".to_vec()]).await.unwrap();
     let mut flushing = Box::pin(f.storage.flush_recovery());
     assert_pending(flushing.as_mut()).await;
     f.data.control.block_write.store(true, Ordering::SeqCst);
@@ -182,12 +182,17 @@ async fn journal_awaits_data() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Transactions::catalog())
         .register(Records::catalog())
-        .managed_state(ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() })
-        .store_records(ReadLimits { rows: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(16 * 1024).unwrap() }, Projection)
+        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() },
+            capture: ReadLimits { rows: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(16 * 1024).unwrap() },
+            snapshots: None,
+            journal_tail: 1024,
+        })
+        .store_records(Projection)
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    storage.write_schema(&waveforms::schema(), &waveforms::definition()).await.unwrap();
+    storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     let before = storage.flush().await.unwrap();
 
     // Keep Both Transactions In The Queue Until The Recovery Barrier Exists.

@@ -53,6 +53,15 @@ impl RecordWriteBytes for RecordWrite<'_> {
     }
 }
 
+impl RecordWriteBytes for RecordInput {
+    fn resident_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
+        let metadata = self.borrowed().resident_bytes(history)?;
+        metadata
+            .checked_add(self.payload.capacity() - self.payload.len())
+            .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+    }
+}
+
 impl Drop for WriteWaiter {
     fn drop(&mut self) {
         let counter = if self.measurement { &self.inner.measurement_waiting } else { &self.inner.control_waiting };

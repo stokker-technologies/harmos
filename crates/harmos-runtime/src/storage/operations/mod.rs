@@ -11,17 +11,22 @@
 
 mod abandon_file;
 mod append_file;
+mod capture_file;
 mod create_file;
 mod delete_file;
 mod finish_file;
 mod follow_file;
 mod follow_objects;
+mod follow_production;
 mod follow_records;
 mod follow_stream;
+mod hash_file;
+mod list_directory;
 mod query;
 mod read_file;
 mod resume_file;
 mod storage_status;
+mod watch_directory;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -67,8 +72,13 @@ macro_rules! provider {
 }
 
 provider! {
+    list_directory,
+    watch_directory,
     query,
     read_file,
+    hash_file,
+    capture_file,
+    follow_production,
     follow_records,
     follow_stream,
     follow_file,

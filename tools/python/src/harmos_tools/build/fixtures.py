@@ -82,13 +82,13 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
             stderr=sys.stderr,
         )
     messages = destination / "messages.json"
-    arguments = ["--locked", "--profile", profile, *extra]
-    cargo.clippy(ROOT, ["--manifest-path", str(directory / "Cargo.toml"), *arguments])
+    arguments = ["--manifest-path", str(directory / "Cargo.toml"), "--locked", "--profile", profile, *extra]
+    cargo.clippy(ROOT, arguments)
     command = ["cargo", "build", *arguments, "--message-format=json"]
     with messages.open("w", encoding="utf-8") as output:
         completed = subprocess.run(
             command,
-            cwd=directory,
+            cwd=ROOT,
             stdout=output,
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),

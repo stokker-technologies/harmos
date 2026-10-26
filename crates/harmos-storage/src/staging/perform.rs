@@ -58,7 +58,7 @@ pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) 
             Ok(FileCompleted::Resumed(*next))
         }
         FileAction::Write { staging, offset, bytes, .. } => {
-            inner.bounded("primary.write_file", inner.primary.write_file(staging, *offset, bytes)).await?;
+            inner.bounded("primary.write_file", inner.primary.write_file(staging, *offset, bytes.clone())).await?;
             Ok(FileCompleted::Written)
         }
         FileAction::Finish { staging, metadata, target, length, sha256, .. } => {

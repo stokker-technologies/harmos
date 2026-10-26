@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 pub(super) const FLUSH_INTERVAL: Duration = Duration::from_millis(100);
 pub(super) const MAX_BATCH_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const TARGET_BATCH_BYTES: usize = 128 * 1024;
-pub(super) const WRITE_BATCH_ENTRIES: NonZeroUsize = NonZeroUsize::new(4096).unwrap();
 pub(super) const OBJECT_PRUNE_ENTRIES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 pub(super) const SNAPSHOT_BYTES: usize = 1024 * 1024;
 
@@ -64,6 +63,15 @@ pub struct StorageSettings {
     pub budget: StorageBudget,
     pub request: StorageRequestSettings,
     pub response: StorageResponseSettings,
+    pub filesystem: StorageFilesystemSettings,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageFilesystemSettings {
+    pub poll_interval: Duration,
+    pub max_entries: NonZeroUsize,
+    pub event_capacity: NonZeroUsize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -78,6 +86,7 @@ pub struct StorageRequestSettings {
     pub max_pending_queries: NonZeroUsize,
     pub max_active_queries: NonZeroUsize,
     pub max_pending_write_batches: NonZeroUsize,
+    pub max_active_file_operations: NonZeroUsize,
     pub max_pending_write_bytes: NonZeroUsize,
 }
 
@@ -96,6 +105,13 @@ pub struct StorageResponseSettings {
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
+        if self.filesystem.poll_interval.is_zero() || self.filesystem.event_capacity.get() > tokio::sync::Semaphore::MAX_PERMITS {
+            return Err(crate::Error::InvalidInput {
+                field: "storage filesystem",
+                reason: "poll interval must be positive and event capacity bounded",
+            });
+        }
+
         if self.request.max_active_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.request.max_pending_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
         {
@@ -144,11 +160,17 @@ mod tests {
 
     fn settings() -> StorageSettings {
         StorageSettings {
+            filesystem: crate::config::StorageFilesystemSettings {
+                poll_interval: std::time::Duration::from_millis(100),
+                max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
+                event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
+            },
             budget: StorageBudget { read_memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
             request: StorageRequestSettings {
                 max_pending_queries: NonZeroUsize::new(64).unwrap(),
                 max_active_queries: NonZeroUsize::new(4).unwrap(),
                 max_pending_write_batches: NonZeroUsize::new(256).unwrap(),
+                max_active_file_operations: NonZeroUsize::MIN,
                 max_pending_write_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
             },
             response: StorageResponseSettings {

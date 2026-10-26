@@ -132,10 +132,6 @@ run = [{ task = "format:rust --check" }, "cargo-machete --skip-target-dir"]
 
 # === Build === #
 
-[tasks."build:rust:focused"]
-description = "Compile An Explicit Local Rust Selection"
-run = "uv run --locked --project tools/python python -m harmos_tools.build.cargo focused"
-
 [tasks.build]
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
@@ -146,7 +142,7 @@ run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.
 description = "Build Benchmark Executables"
 usage = 'flag "--extended"'
 depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.bench{% if usage.extended %} -- --all-features{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.benchmark_fixtures{% if usage.extended %} -- --all-features{% endif %}"
 
 [tasks."build:rust:compatibility"]
 description = "Check Optional Local Compatibility Configurations"
@@ -160,6 +156,11 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --workspace --examples --benches --all-features",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
+
+[tasks."build:rust:focused"]
+description = "Compile And Run A Focused Rust Selection"
+depends = ["prepare:tools"]
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo focused"
 
 [tasks."build:rust:tests"]
 description = "Build The Shared Test Archive And Fixtures"
@@ -276,7 +277,7 @@ flag "--refresh-baseline"
 flag "--extended"
 '''
 depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:rust:integration"]
 description = "Bench Integration Rust"
@@ -285,7 +286,7 @@ flag "--refresh-baseline"
 flag "--extended"
 '''
 depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:rust:system"]
 description = "Bench System Rust"
@@ -294,7 +295,7 @@ flag "--refresh-baseline"
 flag "--extended"
 '''
 depends = ["prepare:tools"]
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 # === Docs === #
 

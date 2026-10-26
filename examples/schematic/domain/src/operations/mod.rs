@@ -15,6 +15,7 @@
 mod common;
 pub mod directories;
 pub mod schematic;
+pub mod transfer;
 
 /* === Re-Exports === */
 

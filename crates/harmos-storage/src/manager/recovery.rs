@@ -36,7 +36,7 @@ use super::*;
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.manager.recovery.write_recovery", level = "debug", skip_all)]
-    pub async fn write_recovery(&self, payloads: &[&[u8]]) -> Result<RecoveryPosition> {
+    pub async fn write_recovery(&self, payloads: Vec<Vec<u8>>) -> Result<RecoveryPosition> {
         self.check_raw_recovery()?;
         if payloads.is_empty() {
             return Ok(self.status().recovery_accepted);
@@ -44,34 +44,34 @@ impl<C> StorageManager<C> {
         let required_data = self.cursor_saved();
         let bytes = payloads.iter().try_fold(0usize, |bytes, payload| {
             bytes
-                .checked_add(recovery_resident_bytes(payload.len(), self.inner.recovery.history(), self.inner.primary.history())?)
+                .checked_add(recovery_resident_bytes(payload.capacity(), self.inner.recovery.history(), self.inner.primary.history())?)
                 .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
         })?;
         let sequence = self
             .admit(Domain::Recovery, bytes, payloads.len(), |first| {
-                Ok(Operation::Recovery(
+                Ok(Operation::Recovery(crate::StorageBatch::new(
                     payloads
-                        .iter()
+                        .into_iter()
                         .enumerate()
                         .map(|(index, payload)| RecoveryEntry {
                             required_data: required_data.clone(),
                             position: self.recovery_position(first + index as u64),
-                            payload: payload.to_vec(),
+                            payload,
                         })
                         .collect(),
-                ))
+                )))
             })
             .await?;
         Ok(self.recovery_position(sequence))
     }
 
     #[tracing::instrument(name = "storage.manager.recovery.write_snapshot", level = "debug", skip_all)]
-    pub async fn write_snapshot(&self, snapshot: &RecoverySnapshot) -> Result<()> {
+    pub async fn write_snapshot(&self, snapshot: RecoverySnapshot) -> Result<()> {
         self.check_raw_recovery()?;
         self.inner.recovery.history().check(&snapshot.through.history)?;
         self.check_state_dependency(&snapshot.required_data)?;
-        let bytes = recovery_resident_bytes(snapshot.payload.len(), &snapshot.through.history, &snapshot.required_data.history)?;
-        self.admit(Domain::Recovery, bytes, 0, |_| Ok(Operation::Snapshot(snapshot.clone()))).await?;
+        let bytes = recovery_resident_bytes(snapshot.payload.capacity(), &snapshot.through.history, &snapshot.required_data.history)?;
+        self.admit(Domain::Recovery, bytes, 0, |_| Ok(Operation::Snapshot(StorageBatch::new(vec![snapshot])))).await?;
         Ok(())
     }
 
@@ -107,28 +107,36 @@ impl<C> StorageManager<C> {
     }
 
     #[tracing::instrument(name = "storage.manager.recovery.read_recovery", level = "debug", skip_all)]
-    pub async fn read_recovery(&self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits) -> Result<RecoveryPage> {
+    pub async fn read_recovery(
+        &self, after: &RecoveryPosition, through: &RecoveryPosition, limits: ReadLimits,
+    ) -> Result<crate::ReadBatch<RecoveryPage>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let charge = limits.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(limits.bytes.get());
-        let _reservation = Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?;
+        let reservation =
+            Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?.retain();
         let status = self.status();
         if !status.recovery_saved.covers(through)? {
             return Err(Error::InvalidInput { field: "recovery range", reason: "frontier is not durable" });
         }
-        let page = self.inner.bounded("recovery.read_entries", self.inner.recovery.read_entries(after, through, limits)).await?;
+        let page = self
+            .inner
+            .bounded("recovery.read_entries", self.inner.recovery.read_entries(after, through, limits, reservation.clone()))
+            .await?;
         page.check(after, through, limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
         for entry in &page.entries {
             self.check_state_dependency(&entry.required_data)?;
         }
-        Ok(page)
+        Ok(crate::ReadBatch::retained(page, reservation))
     }
 
     #[tracing::instrument(name = "storage.manager.recovery.read_snapshot", level = "debug", skip_all)]
-    pub async fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<RecoverySnapshot>> {
+    pub async fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let charge = max_bytes.get().saturating_add(ENTRY_OVERHEAD);
-        let _reservation = Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?;
-        let snapshot = self.inner.bounded("recovery.read_snapshot", self.inner.recovery.read_snapshot(max_bytes)).await?;
+        let reservation =
+            Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?.retain();
+        let snapshot =
+            self.inner.bounded("recovery.read_snapshot", self.inner.recovery.read_snapshot(max_bytes, reservation.clone())).await?;
         if let Some(snapshot) = &snapshot
             && (!self.status().recovery_saved.covers(&snapshot.through)?
                 || !self.status().saved.covers(&snapshot.required_data)?
@@ -136,7 +144,7 @@ impl<C> StorageManager<C> {
         {
             return Err(Error::InvalidInput { field: "recovery snapshot", reason: "invalid saved boundary or byte size" });
         }
-        Ok(snapshot)
+        Ok(snapshot.map(|snapshot| crate::ReadBatch::retained(snapshot, reservation)))
     }
 }
 

@@ -48,7 +48,7 @@ pub use kit::{
 };
 
 #[cfg(feature = "transport")]
-pub use wire::{Frame, PluginCatalog, Publication};
+pub use wire::{Frame, FramePayload, PluginCatalog, Publication};
 
 #[cfg(feature = "derive")]
 pub use harmos_domain::observer;

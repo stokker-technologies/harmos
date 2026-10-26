@@ -318,11 +318,11 @@ impl<T: Message + MemorySize + Send + 'static> Input for Sending<T> {
             let input = input.as_ref().ok_or(ServingError::StreamPhase)?;
             #[cfg(feature = "grpc")]
             if let Some(codec) = codec {
-                let bytes = (codec.memory)(payload).map_err(ServingError::Codec)?;
+                let (postcard, bytes) = (codec.prepare)(payload).map_err(ServingError::Codec)?;
                 return input
                     .send_with(bytes, || {
                         let mut item = None::<T>;
-                        (codec.decode)(payload, &mut item).map_err(streaming::Error::Codec)?;
+                        (codec.decode)(&postcard, &mut item).map_err(streaming::Error::Codec)?;
                         item.ok_or_else(|| streaming::Error::Codec(crate::MessageError::borrowed("protobuf stream item projection failed")))
                     })
                     .await
@@ -404,11 +404,11 @@ fn encode<T: Message + 'static>(
 ) -> Result<Vec<u8>, ServingError> {
     #[cfg(feature = "grpc")]
     if let Some(codec) = codec {
-        let bytes = (codec.length)(item).map_err(ServingError::Codec)?;
-        if bytes > super::codec::LIMIT {
+        let bytes = (codec.encode)(item).map_err(ServingError::Codec)?;
+        if bytes.len() > super::codec::LIMIT {
             return Err(ServingError::Stream(streaming::Error::Capacity));
         }
-        return (codec.encode)(item).map_err(ServingError::Codec);
+        return Ok(bytes);
     }
     if item.encoded_len() > super::codec::LIMIT {
         return Err(ServingError::Stream(streaming::Error::Capacity));

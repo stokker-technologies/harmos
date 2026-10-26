@@ -16,6 +16,7 @@
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 // Third Party Imports
 
 // Local Imports
@@ -53,11 +54,65 @@ crate::model::storage::codec::product!(super::FileProgress {
 // Wire Values: Zero Producing, One Finished, Two Abandoned.
 struct Phase;
 
+// Native Paths May Be Non-Unicode; Transport Decoding Requires Portable UTF-8.
+pub struct LocalPath;
+pub struct Digest;
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl crate::model::storage::codec::Value for Digest {
+    const NAME: &'static str = concat!(module_path!(), "::Digest");
+    type Native = [u8; 32];
+    const KIND: Kind = Kind::Bytes;
+    fn postcard_write(value: &[u8; 32], bytes: &mut Vec<u8>) {
+        bytes.push(32);
+        bytes.extend_from_slice(value);
+    }
+    fn postcard_size(_: &[u8; 32]) -> usize {
+        33
+    }
+    fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, MessageError> {
+        Self::postcard_read(input)?;
+        Ok(0)
+    }
+    fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<[u8; 32], MessageError> {
+        if input.value::<usize>()? != 32 {
+            return Err(MessageError::borrowed("SHA-256 requires exactly 32 bytes"));
+        }
+        input.take(32)?.try_into().map_err(|_| MessageError::borrowed("SHA-256 requires exactly 32 bytes"))
+    }
+}
+
+impl crate::model::storage::codec::Value for LocalPath {
+    const NAME: &'static str = concat!(module_path!(), "::LocalPath");
+    type Native = PathBuf;
+    const KIND: Kind = Kind::Bytes;
+
+    fn postcard_write(value: &PathBuf, bytes: &mut Vec<u8>) {
+        let path = value.as_os_str().as_encoded_bytes();
+        crate::__private::PostcardValue::write(&(path.len() as u64), bytes);
+        bytes.extend_from_slice(path);
+    }
+
+    fn postcard_size(value: &PathBuf) -> usize {
+        let length = value.as_os_str().as_encoded_bytes().len();
+        crate::__private::PostcardValue::size(&(length as u64)).saturating_add(length)
+    }
+
+    fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, MessageError> {
+        <crate::model::storage::codec::Bytes as crate::model::storage::codec::Value>::postcard_memory(input)
+    }
+
+    fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<PathBuf, MessageError> {
+        let bytes = <crate::model::storage::codec::Bytes as crate::model::storage::codec::Value>::postcard_read(input)?;
+        let path = String::from_utf8(bytes).map_err(|_| MessageError::borrowed("transported local paths must be UTF-8"))?;
+        Ok(PathBuf::from(path))
+    }
+}
 
 impl crate::model::storage::codec::Value for Phase {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Phase));

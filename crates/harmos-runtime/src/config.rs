@@ -81,6 +81,14 @@ pub struct GrpcSettings {
     pub shutdown_timeout: Duration,
 }
 
+#[derive(Clone, Debug)]
+pub struct ManagedStorageSettings {
+    pub replay: crate::storage::ReadLimits,
+    pub capture: crate::storage::ReadLimits,
+    pub snapshots: Option<crate::state::SnapshotPolicy>,
+    pub journal_tail: usize,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct OperationSettings {
     pub queued: NonZeroUsize,

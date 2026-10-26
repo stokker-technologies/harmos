@@ -168,7 +168,7 @@ fn fields_merge_domain() {
     let mut bytes = Vec::new();
     frame(tag, &crate::encode(&Wire { value: 11, payload: vec![] }), &mut bytes);
     frame(tag, &crate::encode(&Wire { value: 0, payload: vec![3] }), &mut bytes);
-    let budget = grpc::decoding_memory::<Required>(DecodeInput::new(&bytes)).unwrap();
+    let budget = grpc::prepare::<Required>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap();
     let decoded = grpc::decode::<Required>(DecodeInput::new(&bytes)).unwrap();
     assert!(decoded.memory_size() <= budget);
     assert_eq!(decoded.row.value, 11);
@@ -197,7 +197,7 @@ fn debug_preserves_secret() {
     prost::encoding::string::encode(424_980_157, &secret.secrets_json, &mut previous);
     assert_eq!(Secret::FIELDS[0].tag, 424_980_157);
     assert_eq!(crate::encode(&secret), previous);
-    let bound = grpc::decoding_memory::<Secret>(DecodeInput::new(&previous)).unwrap();
+    let bound = grpc::prepare::<Secret>(DecodeInput::new(&previous)).map(|prepared| prepared.memory()).unwrap();
     let decoded = grpc::decode::<Secret>(DecodeInput::new(&previous)).unwrap();
     assert_eq!(decoded, secret);
     assert!(decoded.memory_size() <= bound);
@@ -214,7 +214,7 @@ fn debug_preserves_wire() {
     let redacted_schema = harmos_domain::schema::graph::Schema::from_declaration(RedactedChoice::DEFINITION, &settings).unwrap();
     let original_schema = harmos_domain::schema::graph::Schema::from_declaration(Choice::DEFINITION, &settings).unwrap();
     assert!(redacted_schema.equivalent(redacted_schema.root, &original_schema, original_schema.root, &settings).unwrap());
-    assert!(redacted.memory_size() <= grpc::decoding_memory::<RedactedChoice>(DecodeInput::new(&bytes)).unwrap());
+    assert!(redacted.memory_size() <= grpc::prepare::<RedactedChoice>(DecodeInput::new(&bytes)).map(|prepared| prepared.memory()).unwrap());
 }
 
 #[test]

@@ -95,23 +95,23 @@ impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
         result
     }
 
+    #[tracing::instrument(target = "harmos::grpc", name = "grpc.decode", level = "trace", skip_all, fields(wire_bytes = encoded.len()))]
     fn decode_message(&self, encoded: &[u8]) -> Result<StreamItem<T>, Status> {
         if encoded.len() > self.settings.message_bytes.get() {
             return Err(Status::resource_exhausted("gRPC message exceeds wire ceiling"));
         }
-        let bytes = W::decoding_memory(DecodeInput::new(encoded))
-            .map_err(|error| Status::invalid_argument(error.to_string()))?
-            .max(std::mem::size_of::<T>())
-            .max(1);
-        if bytes > self.settings.retained_bytes.get() {
-            return Err(Status::resource_exhausted("gRPC decoded message exceeds byte ceiling"));
-        }
-        let claim = self
-            .budget
-            .clone()
-            .try_acquire_many_owned(bytes as u32)
-            .map_err(|_| Status::resource_exhausted("gRPC decoded items retain byte capacity"))?;
-        let value = W::decode(DecodeInput::new(encoded)).map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let (value, claim) = W::decode_admitted(DecodeInput::new(encoded), |bytes| {
+            let span = tracing::trace_span!(target: "harmos::grpc", "grpc.decode.admit", decoded_bytes = bytes);
+            let _entered = span.enter();
+            let bytes = bytes.max(std::mem::size_of::<T>()).max(1);
+            if bytes > self.settings.retained_bytes.get() {
+                return Err(Status::resource_exhausted("gRPC decoded message exceeds byte ceiling"));
+            }
+            self.budget
+                .clone()
+                .try_acquire_many_owned(bytes as u32)
+                .map_err(|_| Status::resource_exhausted("gRPC decoded items retain byte capacity"))
+        })?;
         StreamItem::charged(value, claim).map_err(|error| Status::internal(error.to_string()))
     }
 }

@@ -23,7 +23,7 @@ use std::sync::Arc;
 use super::{Fixture, Lanes, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::files::FileBatch as FileBytes;
-use harmos_runtime::storage::operations::{FollowFile, ReadFile};
+use harmos_runtime::storage::operations::{FollowProduction, ReadFile};
 use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Constants === */
@@ -44,7 +44,7 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Private Functions === */
 
-async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, FollowFile) {
+async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, FollowProduction) {
     let fixture = Fixture::new(config()).await;
     harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
         .unwrap();
@@ -59,9 +59,9 @@ async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, FollowFile) 
         })
         .await
         .unwrap();
-    producer.write_all(b"prefix").await.unwrap();
+    producer.write_all((b"prefix").to_vec()).await.unwrap();
     let session = producer.session().unwrap();
-    let request = FollowFile { file: StagedFile { history: session.history.clone(), id: session.id.clone() }, offset: 0 };
+    let request = FollowProduction { file: StagedFile { history: session.history.clone(), id: session.id.clone() }, offset: 0 };
     (fixture, producer, request)
 }
 
@@ -76,7 +76,10 @@ async fn read_file_streams() {
     let (fixture, mut producer, _) = setup().await;
     let finished = producer.finish().await.unwrap();
     fixture.storage.flush().await.unwrap();
-    let request = ReadFile { file: finished, range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None } };
+    let request = ReadFile {
+        source: harmos_domain::model::storage::files::FileSource::Stored(finished),
+        range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None },
+    };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::files::FileBatch>(limits()).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<ReadFile, _>(request, sender).unwrap();
     let first = receiver.recv().await.unwrap();
@@ -99,7 +102,7 @@ async fn read_file_streams() {
 async fn follow_reconnect_resumes() {
     let (fixture, mut producer, mut request) = setup().await;
     let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let instance = fixture.runtime.operations.submit_endpoints::<FollowFile, _>(request.clone(), sender).unwrap();
+    let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request.clone(), sender).unwrap();
     let mut offset = 0;
     while offset < 6 {
         let chunk = receiver.recv().await.unwrap();
@@ -109,10 +112,10 @@ async fn follow_reconnect_resumes() {
     instance.cancel();
     assert!(instance.await.is_err());
     drop(receiver);
-    producer.write_all(b"later").await.unwrap();
+    producer.write_all((b"later").to_vec()).await.unwrap();
     request.offset = offset;
     let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let instance = fixture.runtime.operations.submit_endpoints::<FollowFile, _>(request, sender).unwrap();
+    let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request, sender).unwrap();
     let mut bytes = Vec::new();
     while offset < 11 {
         let chunk = receiver.recv().await.unwrap();
@@ -132,9 +135,9 @@ async fn follow_reconnect_resumes() {
 #[tokio::test]
 async fn future_offset_refused() {
     let (fixture, mut producer, request) = setup().await;
-    let beyond = FollowFile { offset: 7, ..request };
+    let beyond = FollowProduction { offset: 7, ..request };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let result = fixture.runtime.operations.submit_endpoints::<FollowFile, _>(beyond, sender);
+    let result = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(beyond, sender);
     if let Ok(instance) = result {
         assert!(instance.await.is_err());
     }

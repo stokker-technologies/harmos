@@ -70,8 +70,8 @@ impl Store {
         let runtime = builder().runtime_with_storage(&storage).await.unwrap();
         storage
             .write_schema(
-                &schema(),
-                &harmos_runtime::schema::graph::Schema::from_declaration(
+                schema(),
+                harmos_runtime::schema::graph::Schema::from_declaration(
                     <Balance as harmos_runtime::schema::Described>::DEFINITION,
                     &harmos_runtime::config::SchemaSettings::default(),
                 )
@@ -80,7 +80,7 @@ impl Store {
             .await
             .unwrap();
         let payload = harmos_runtime::Message::encode_to_vec(&Balance { value: 8 });
-        storage.write_records(&[record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
+        storage.write_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
         runtime.stop().await.unwrap();
     }
@@ -91,7 +91,12 @@ impl Store {
 /* === Private Functions === */
 
 fn builder() -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits())
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+        replay: limits(),
+        capture: limits(),
+        snapshots: None,
+        journal_tail: 1024,
+    })
 }
 
 fn limits() -> ReadLimits {
@@ -186,7 +191,7 @@ async fn reconciliation_precedes_services() {
     let mark = started.clone();
     let opening = builder()
         .reconcile(|journal, storage| async move {
-            storage.write_records(&[record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
+            storage.write_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
             restore(journal, storage).await
         })
         .service("application", move |_context: Service<Bank>| {

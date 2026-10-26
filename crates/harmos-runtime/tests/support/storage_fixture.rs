@@ -95,8 +95,8 @@ pub(crate) fn schema() -> SchemaKey {
     }
 }
 
-pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordWrite<'a> {
-    RecordWrite { schema, scope: None, item, source: None, source_time: None, payload }
+pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordInput {
+    RecordInput { schema: schema.clone(), scope: None, item: item.clone(), source: None, source_time: None, payload: (payload).to_vec() }
 }
 
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
@@ -137,7 +137,7 @@ pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pi
 }
 
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
-    storage.write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
+    storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
 
 /* === Tests === */

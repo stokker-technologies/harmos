@@ -14,13 +14,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
+use crate::manager::Inner;
+use std::ops::Range;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 // Third Party Imports
-
 // Local Imports
-use super::manager::encoded_size;
-use super::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
-use crate::{Error, Result};
+use crate::MemorySize;
 
 /* === Constants === */
 
@@ -28,177 +30,179 @@ use crate::{Error, Result};
 
 /* === Type Aliases === */
 
+pub type FileChunk = StorageBatch<u8>;
+
 /* === Structs === */
 
-#[derive(Clone, Copy)]
-pub struct StorageBatch<'a> {
-    parts: &'a [StoragePart<'a>],
-    first: &'a StorageCursor,
-    through: &'a StorageCursor,
-    len: usize,
+#[derive(Debug)]
+pub struct StorageBatch<T> {
+    values: Arc<Vec<T>>,
+    range: Range<usize>,
+    charges: Arc<Vec<Arc<WriteCharge>>>,
+    memory: Arc<Vec<crate::arrow::RetainedMemory>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct WriteCharge {
     bytes: usize,
+    retired: AtomicBool,
+    held: Arc<AtomicUsize>,
+    changed: tokio::sync::watch::Sender<u64>,
 }
 
 /* === Enums === */
-
-#[derive(Clone, Copy)]
-pub enum StoragePart<'a> {
-    Schemas(&'a [StorageSchema]),
-    Objects(&'a [ObjectEntry]),
-    Records(&'a [StoredRecord]),
-    Stream(&'a [StoredRow]),
-    Files(&'a [FileReference]),
-}
-
-#[derive(Clone, Copy)]
-pub enum StorageEntry<'a> {
-    Schema(&'a StorageSchema),
-    Object(&'a ObjectEntry),
-    Record(&'a StoredRecord),
-    Row(&'a StoredRow),
-    File(&'a FileReference),
-}
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl<'a> StorageBatch<'a> {
-    pub fn new(parts: &'a [StoragePart<'a>], max_bytes: NonZeroUsize) -> Result<Self> {
-        let mut entries = parts.iter().copied().flat_map(StoragePart::entries);
-        let first = entries.next().ok_or(invalid("batch is empty"))?;
-        let mut through = first.position();
-        if through.sequence == 0 {
-            return Err(invalid("position zero is not a data item"));
+impl<T> StorageBatch<T> {
+    pub fn new(values: Vec<T>) -> Self {
+        let range = 0..values.len();
+        Self { values: Arc::new(values), range, charges: Arc::new(Vec::new()), memory: Arc::new(Vec::new()) }
+    }
+
+    pub(crate) fn retained(mut self, charge: Arc<WriteCharge>) -> Self {
+        let mut charges = self.charges.as_ref().clone();
+        charges.push(charge);
+        self.charges = Arc::new(charges);
+        self
+    }
+
+    pub(crate) fn retain_memory(mut self, memory: crate::arrow::RetainedMemory) -> Self {
+        Arc::make_mut(&mut self.memory).push(memory);
+        self
+    }
+
+    pub(crate) fn charged(&self) -> bool {
+        self.charges.iter().any(|charge| charge.retired.load(Ordering::SeqCst))
+    }
+
+    pub(crate) fn retire(&self) {
+        for charge in self.charges.iter() {
+            charge.retire();
         }
-        let mut bytes = first.encoded_bytes()?;
-        let mut len = 1usize;
-        for entry in entries {
-            through.history.check(&entry.position().history)?;
-            if through.sequence.checked_add(1) != Some(entry.position().sequence) {
-                return Err(invalid("batch positions are not contiguous"));
-            }
-            bytes = bytes.checked_add(entry.encoded_bytes()?).ok_or(invalid("batch byte count overflow"))?;
-            if bytes > max_bytes.get() {
-                return Err(invalid("batch exceeds the encoded byte bound"));
-            }
-            len = len.checked_add(1).ok_or(invalid("batch entry count overflow"))?;
-            through = entry.position();
+    }
+
+    pub(crate) fn merge(batches: &mut [&mut Self]) -> Option<Self> {
+        let first = batches.first()?;
+        let mut range = first.range.clone();
+        let adjoining = batches.iter().skip(1).all(|batch| {
+            let joined = Arc::ptr_eq(&first.values, &batch.values) && range.end == batch.range.start;
+            range.end = batch.range.end;
+            joined
+        });
+        if adjoining {
+            return Some(Self {
+                values: Arc::clone(&first.values),
+                range,
+                charges: Arc::clone(&first.charges),
+                memory: Arc::clone(&first.memory),
+            });
         }
-        if bytes > max_bytes.get() {
-            return Err(invalid("batch exceeds the encoded byte bound"));
+        if batches.iter().any(|batch| Arc::strong_count(&batch.values) != 1 || batch.range != (0..batch.values.len())) {
+            return None;
         }
-        Ok(Self { parts, first: first.position(), through, len, bytes })
-    }
-
-    pub fn parts(&self) -> impl Iterator<Item = StoragePart<'a>> + '_ {
-        self.parts.iter().copied().filter_map(|part| {
-            let start = part.partition(self.first.sequence, false);
-            let end = part.partition(self.through.sequence, true);
-            (end > start).then(|| part.slice(start, end))
-        })
-    }
-
-    pub fn entries(&self) -> impl Iterator<Item = StorageEntry<'a>> + '_ {
-        self.parts().flat_map(StoragePart::entries)
-    }
-
-    pub fn first(&self) -> &'a StorageCursor {
-        self.first
-    }
-
-    pub fn through(&self) -> &'a StorageCursor {
-        self.through
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        false
-    }
-
-    pub fn encoded_bytes(&self) -> usize {
-        self.bytes
-    }
-}
-
-impl<'a> StoragePart<'a> {
-    // Admitted spans are in cursor order. Seek a saved prefix logarithmically;
-    // retrying a large group must not rescan its whole saved prefix each time.
-    fn partition(self, sequence: u64, inclusive: bool) -> usize {
+        let count = batches.iter().map(|batch| batch.len()).sum();
+        let lengths: Vec<_> = batches.iter().map(|batch| batch.len()).collect();
+        let charges = batches.iter().flat_map(|batch| batch.charges.iter().cloned()).collect();
+        let memory = batches.iter().flat_map(|batch| batch.memory.iter().cloned()).collect();
+        let mut values = Vec::with_capacity(count);
+        for batch in batches.iter_mut() {
+            let source = std::mem::take(Arc::get_mut(&mut batch.values).expect("unique queued backing"));
+            values.extend(source);
+        }
+        let merged = Self { values: Arc::new(values), range: 0..count, charges: Arc::new(charges), memory: Arc::new(memory) };
         let mut start = 0;
-        let mut end = self.len();
-        while start < end {
-            let middle = start + (end - start) / 2;
-            let position = self.slice(middle, middle + 1).entries().next().unwrap().position().sequence;
-            if position < sequence || (inclusive && position == sequence) {
-                start = middle + 1;
-            } else {
-                end = middle;
-            }
+        for (batch, length) in batches.iter_mut().zip(lengths) {
+            **batch = merged.slice(start..start + length);
+            start += length;
         }
-        start
+        Some(merged)
     }
 
-    fn slice(self, start: usize, end: usize) -> Self {
-        match self {
-            Self::Schemas(values) => Self::Schemas(&values[start..end]),
-            Self::Objects(values) => Self::Objects(&values[start..end]),
-            Self::Records(values) => Self::Records(&values[start..end]),
-            Self::Stream(values) => Self::Stream(&values[start..end]),
-            Self::Files(values) => Self::Files(&values[start..end]),
-        }
+    pub fn as_slice(&self) -> &[T] {
+        &self.values[self.range.clone()]
+    }
+
+    pub fn slice(&self, range: Range<usize>) -> Self {
+        assert!(range.start <= range.end && range.end <= self.len(), "batch slice is outside its span");
+        let range = self.range.start + range.start..self.range.start + range.end;
+        Self { values: Arc::clone(&self.values), range, charges: Arc::clone(&self.charges), memory: Arc::clone(&self.memory) }
     }
 
     pub fn len(&self) -> usize {
-        match self {
-            Self::Schemas(values) => values.len(),
-            Self::Objects(values) => values.len(),
-            Self::Records(values) => values.len(),
-            Self::Stream(values) => values.len(),
-            Self::Files(values) => values.len(),
-        }
+        self.range.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.range.is_empty()
     }
 
-    pub fn entries(self) -> impl Iterator<Item = StorageEntry<'a>> + 'a {
-        (0..self.len()).map(move |index| match self {
-            Self::Schemas(values) => StorageEntry::Schema(&values[index]),
-            Self::Objects(values) => StorageEntry::Object(&values[index]),
-            Self::Records(values) => StorageEntry::Record(&values[index]),
-            Self::Stream(values) => StorageEntry::Row(&values[index]),
-            Self::Files(values) => StorageEntry::File(&values[index]),
-        })
+    pub fn capacity(&self) -> usize {
+        self.values.capacity()
+    }
+
+    pub fn allocation_bytes(&self) -> usize {
+        self.values.capacity().saturating_mul(std::mem::size_of::<T>())
     }
 }
 
-impl<'a> StorageEntry<'a> {
-    pub fn position(self) -> &'a StorageCursor {
-        match self {
-            Self::Schema(value) => &value.position,
-            Self::Object(value) => &value.position,
-            Self::Record(value) => &value.position,
-            Self::Row(value) => &value.record.position,
-            Self::File(value) => &value.position,
-        }
+impl WriteCharge {
+    pub(crate) fn new(inner: &Arc<Inner>, bytes: usize) -> Arc<Self> {
+        Arc::new(Self {
+            bytes,
+            retired: AtomicBool::new(false),
+            held: Arc::clone(&inner.retained_write_bytes),
+            changed: inner.changed.clone(),
+        })
     }
 
-    pub(super) fn encoded_bytes(self) -> Result<usize> {
-        match self {
-            Self::Schema(value) => value.encoded_bytes(),
-            Self::Object(value) => {
-                value.version.check_position(&value.position)?;
-                encoded_size(value)
-            }
-            Self::Record(value) => encoded_size(value),
-            Self::Row(value) => encoded_size(value),
-            Self::File(value) => encoded_size(value),
+    pub(crate) fn read(inner: &Arc<Inner>, bytes: usize) -> Arc<Self> {
+        Arc::new(Self {
+            bytes,
+            retired: AtomicBool::new(false),
+            held: Arc::clone(&inner.retained_read_bytes),
+            changed: inner.changed.clone(),
+        })
+    }
+
+    pub(crate) fn retire(&self) {
+        if !self.retired.swap(true, Ordering::SeqCst) {
+            self.held.fetch_add(self.bytes, Ordering::SeqCst);
         }
+    }
+}
+
+impl Drop for WriteCharge {
+    fn drop(&mut self) {
+        if self.retired.load(Ordering::SeqCst) {
+            self.held.fetch_sub(self.bytes, Ordering::SeqCst);
+            self.changed.send_modify(|revision| *revision = revision.wrapping_add(1));
+        }
+    }
+}
+
+impl From<Vec<u8>> for StorageBatch<u8> {
+    fn from(values: Vec<u8>) -> Self {
+        Self::new(values)
+    }
+}
+
+impl<T> Clone for StorageBatch<T> {
+    fn clone(&self) -> Self {
+        Self {
+            values: Arc::clone(&self.values),
+            range: self.range.clone(),
+            charges: Arc::clone(&self.charges),
+            memory: Arc::clone(&self.memory),
+        }
+    }
+}
+
+impl<T: MemorySize> MemorySize for StorageBatch<T> {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.values.as_ref().memory_size()).saturating_add(2 * std::mem::size_of::<usize>())
     }
 }
 
@@ -206,8 +210,145 @@ impl<'a> StorageEntry<'a> {
 
 /* === Private Functions === */
 
-fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput { field: "storage batch", reason }
-}
-
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{FileChunk, StorageBatch};
+    use crate::MemorySize;
+
+    #[test]
+    fn chunk_allocation() {
+        let mut bytes = Vec::with_capacity(1024);
+        bytes.extend_from_slice(&[1, 2, 3, 4]);
+        let pointer = bytes.as_ptr();
+        let capacity = bytes.capacity();
+        let batch = FileChunk::from(bytes);
+        assert_eq!(batch.as_slice().as_ptr(), pointer);
+        let retained = batch.slice(1..3);
+        let empty = batch.slice(4..4);
+        assert_eq!(retained.allocation_bytes(), capacity);
+        assert_eq!(empty.memory_size(), batch.memory_size());
+        drop(batch);
+        assert_eq!(retained.as_slice(), &[2, 3]);
+        assert_eq!(retained.as_slice().as_ptr(), pointer.wrapping_add(1));
+    }
+
+    #[test]
+    fn slice_accounting() {
+        let mut payload = Vec::with_capacity(4096);
+        payload.push(7u8);
+        let batch = StorageBatch::new(vec![payload, vec![8u8]]);
+        let slice = batch.slice(1..2);
+        assert_eq!(slice.memory_size(), batch.memory_size());
+        assert!(slice.memory_size() >= 4096);
+    }
+
+    fn storage() -> crate::StorageManager {
+        use crate::test_backend::{Data, Recovery, history, storage_settings};
+        use std::sync::Arc;
+        crate::StorageManager::new(
+            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            storage_settings(),
+        )
+        .unwrap()
+    }
+
+    fn pending(storage: &crate::StorageManager) -> std::sync::Arc<crate::manager::Pending> {
+        use crate::{Identifier, PayloadEncoding, SchemaKey, StoredRecord};
+        let record = StoredRecord {
+            position: storage.position(1),
+            schema: SchemaKey {
+                id: Identifier::new("record").unwrap(),
+                version: std::num::NonZeroU32::MIN,
+                payload_encoding: PayloadEncoding::PostcardV1,
+            },
+            scope: None,
+            item: Identifier::new("item").unwrap(),
+            source: None,
+            source_time: None,
+            payload: vec![7; 32],
+        };
+        std::sync::Arc::new(crate::manager::Pending::new(
+            &storage.inner,
+            None,
+            1,
+            4096,
+            crate::manager::Operation::Records(StorageBatch::new(vec![record])),
+        ))
+    }
+
+    #[test]
+    fn pending_retention() {
+        let storage = storage();
+        let pending = pending(&storage);
+        let crate::manager::Operation::Records(values) = &pending.operation else { unreachable!() };
+        let detached = values.clone();
+        let empty = detached.slice(1..1);
+        {
+            let mut state = storage.inner.state.lock().unwrap();
+            state.queue.push_back(std::sync::Arc::clone(&pending));
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 4096);
+            assert_eq!(state.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst), 0);
+            state.queue.retire_data(1, 1);
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 4096);
+        }
+        drop(pending);
+        drop(detached);
+        assert_eq!(storage.status().pending_bytes, 4096);
+        drop(empty);
+        assert_eq!(storage.status().pending_bytes, 0);
+    }
+
+    #[test]
+    fn failure_retention() {
+        let storage = storage();
+        let pending = pending(&storage);
+        let crate::manager::Operation::Records(values) = &pending.operation else { unreachable!() };
+        let detached = values.clone();
+        {
+            let mut state = storage.inner.state.lock().unwrap();
+            state.queue.push_back(std::sync::Arc::clone(&pending));
+            state.status.failure = Some(std::sync::Arc::new(crate::Error::NotReady { domain: "injected backend" }));
+            state.status.closing = true;
+            state.collect();
+            assert_eq!(state.status.pending_bytes, 4096);
+            assert_eq!(state.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst), 0);
+            state.queue.retire_data(1, 1);
+            state.status.closed = true;
+        }
+        drop(pending);
+        assert_eq!(storage.status().pending_bytes, 4096);
+        drop(detached);
+        assert_eq!(storage.status().pending_bytes, 0);
+    }
+
+    #[test]
+    fn payload_merge() {
+        let left = vec![7u8; 32];
+        let right = vec![8u8; 32];
+        let pointers = [left.as_ptr(), right.as_ptr()];
+        let mut first = StorageBatch::new(vec![left]);
+        let mut second = StorageBatch::new(vec![right]);
+        let merged = StorageBatch::merge(&mut [&mut first, &mut second]).unwrap();
+        assert_eq!(merged.as_slice()[0].as_ptr(), pointers[0]);
+        assert_eq!(merged.as_slice()[1].as_ptr(), pointers[1]);
+        let detached = merged.clone();
+        let retry = StorageBatch::merge(&mut [&mut first, &mut second]).unwrap();
+        assert_eq!(retry.len(), 2);
+        assert_eq!(retry.as_slice()[1].as_ptr(), pointers[1]);
+        drop(detached);
+    }
+
+    #[test]
+    fn shared_merge_refused() {
+        let mut first = StorageBatch::new(vec![vec![7u8; 32]]);
+        let mut second = StorageBatch::new(vec![vec![8u8; 32]]);
+        let detached = first.clone();
+        assert!(StorageBatch::merge(&mut [&mut first, &mut second]).is_none());
+        assert_eq!(first.as_slice(), detached.as_slice());
+        assert_eq!(second.as_slice()[0], vec![8; 32]);
+    }
+}

@@ -97,6 +97,12 @@ fn message(definition: &Definition, input: &mut Reader<'_>, bytes: &mut Vec<u8>)
 // Postcard Holds Fields In Declaration Order; Protobuf Writes Them By Tag.
 fn members(definition: &Definition, input: &mut Reader<'_>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
     let fields = (definition.fields)();
+    if fields.windows(2).all(|pair| pair[0].tag < pair[1].tag) {
+        for field in fields {
+            member(field, input, bytes)?;
+        }
+        return Ok(());
+    }
     let mut chunks = Vec::with_capacity(fields.len());
     for field in fields {
         let mut chunk = Vec::new();

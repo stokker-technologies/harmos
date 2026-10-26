@@ -30,7 +30,7 @@ use tracing_subscriber::{Layer, Registry};
 // Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos_storage::Identifier;
-use harmos_storage::StreamWrite;
+use harmos_storage::StreamInput;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
 use harmos_storage::state::StateBackend;
@@ -44,7 +44,7 @@ use harmos_storage::state::StateBackend;
 /* === Structs === */
 
 #[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Captured>>);
+struct Capture(Arc<Mutex<Captured>>, Arc<tokio::sync::Notify>);
 
 #[derive(Clone, Debug, Default)]
 struct Captured {
@@ -124,6 +124,8 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         if let Some(span) = created.and_then(|created| capture.spans.get_mut(&created)) {
             span.closed = Some(closed);
         }
+        drop(capture);
+        self.1.notify_one();
     }
 }
 
@@ -201,7 +203,7 @@ async fn storage_trace_handoffs() {
     let directory = tempfile::tempdir().unwrap();
     let backend = harmos_storage::state::file::FileBackend::new(directory.path().to_owned(), history, super::fixture::state_settings());
     let position = backend.open().with_subscriber(dispatch.clone()).await.unwrap();
-    backend.read_snapshot(NonZeroUsize::new(4096).unwrap()).with_subscriber(dispatch.clone()).await.unwrap();
+    backend.read_snapshot(NonZeroUsize::new(4096).unwrap(), super::memory::read().await).with_subscriber(dispatch.clone()).await.unwrap();
     backend.flush(&position).with_subscriber(dispatch.clone()).await.unwrap();
     backend.close().with_subscriber(dispatch.clone()).await.unwrap();
 
@@ -243,7 +245,7 @@ async fn storage_trace_handoffs() {
     let direct: Vec<_> = captured.spans.values().filter(|span| span.name == "storage.state.backend").collect();
     assert_eq!(direct.len(), 4);
     assert!(direct.iter().all(|span| span.closed.is_some() && span.fields["outcome"] == "\"completed\""));
-    assert!(captured.spans.values().any(|span| span.name == "storage.state.file.blocking" && span.closed.is_some()));
+    assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.closed.is_some()));
     assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("item")));
     assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
 }
@@ -279,8 +281,8 @@ async fn split_collectors_coalesce() {
     assert_eq!(f.storage.flush().await.unwrap(), accepted);
     assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [2, 2]);
 
-    f.storage.write_recovery(&[b"private-recovery-first"]).with_subscriber(first_dispatch.clone()).await.unwrap();
-    f.storage.write_recovery(&[b"private-recovery-second"]).with_subscriber(second_dispatch.clone()).await.unwrap();
+    f.storage.write_recovery(vec![b"private-recovery-first".to_vec()]).with_subscriber(first_dispatch.clone()).await.unwrap();
+    f.storage.write_recovery(vec![b"private-recovery-second".to_vec()]).with_subscriber(second_dispatch.clone()).await.unwrap();
     assert_eq!(f.storage.flush_recovery().await.unwrap().sequence, 2);
     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), [2]);
 
@@ -345,30 +347,37 @@ async fn split_collectors_coalesce() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn append_kinds_coalesce() {
+async fn typed_prefix_survives() {
     let f = Fixture::new(config()).await;
-    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "one").await;
     write(&f.storage, "two").await;
     for sequence in 1..=2 {
         f.storage
-            .write_stream(&[StreamWrite {
-                stream: &Identifier::new("voltage").unwrap(),
+            .write_stream(vec![StreamInput {
+                stream: Identifier::new("voltage").unwrap().clone(),
                 sequence,
                 record: record(&schema(), &Identifier::new(format!("row-{sequence}")).unwrap(), &[1]),
             }])
             .await
             .unwrap();
     }
-    f.storage.write_schema(&schema(), &harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
     write(&f.storage, "three").await;
     write(&f.storage, "four").await;
-    f.storage.write_recovery(&[b"first"]).await.unwrap();
-    f.storage.write_recovery(&[b"second"]).await.unwrap();
+    f.storage.write_recovery(vec![b"first".to_vec()]).await.unwrap();
+    f.storage.write_recovery(vec![b"second".to_vec()]).await.unwrap();
+    // The First Type Is Durable Even When The Following Typed Call Fails.
+    f.data.control.write_failure_at.store(2, Ordering::SeqCst);
+    assert!(f.storage.flush().await.is_err());
+    assert_eq!(f.storage.cursor_saved().sequence, 1);
+    assert_eq!(f.data.schemas.lock().unwrap().len(), 1);
+    assert!(f.data.records.lock().unwrap().is_empty());
+    assert!(f.data.rows.lock().unwrap().is_empty());
     assert_eq!(f.storage.flush().await.unwrap().sequence, 8);
     f.storage.flush_recovery().await.unwrap();
-    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 4, 1, 2]);
-    assert_eq!(*f.data.control.writes.lock().unwrap(), (1..=8).collect::<Vec<_>>());
+    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), vec![1, 2, 2, 2, 1, 2]);
+    assert_eq!(*f.data.control.writes.lock().unwrap(), [1, 2, 3, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), vec![2]);
 
     let schemas = f.data.schemas.lock().unwrap().clone();
@@ -503,7 +512,7 @@ async fn failure_retains_work() {
     let key = schema();
     let item = Identifier::new("not-admitted").unwrap();
     let inputs = [record(&key, &item, &[1])];
-    let failure = f.storage.write_records(&inputs).await.unwrap_err();
+    let failure = f.storage.write_records((inputs).to_vec()).await.unwrap_err();
     assert!(matches!(failure, harmos_storage::Error::Persistence { .. }));
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
@@ -538,7 +547,7 @@ async fn queued_writes_wait() {
         tokio::task::yield_now().await;
     }
     for entry in [b"first".as_slice(), b"second".as_slice()] {
-        f.storage.write_recovery(&[entry]).await.unwrap();
+        f.storage.write_recovery(vec![entry.to_vec()]).await.unwrap();
         tokio::task::yield_now().await;
     }
     assert!(f.data.control.writes.lock().unwrap().is_empty());
@@ -587,7 +596,7 @@ async fn progress_preserves_cursor() {
         through: f.storage.status().recovery_accepted,
         payload: vec![7],
     };
-    f.storage.write_snapshot(&snapshot).await.unwrap();
+    f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     write(&f.storage, "after").await;
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 2);
@@ -601,7 +610,7 @@ async fn progress_preserves_cursor() {
 }
 
 #[tokio::test]
-async fn atomic_batch_retries() {
+async fn typed_batch_retries() {
     let f = Fixture::new(config()).await;
     let key = schema();
     let item = Identifier::new("group").unwrap();
@@ -609,10 +618,10 @@ async fn atomic_batch_retries() {
     let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.failures.store(1, Ordering::SeqCst);
-    let accepted = f.storage.write_records(&records).await.unwrap();
+    let accepted = f.storage.write_records((records).to_vec()).await.unwrap();
     let admitted = f.storage.status().pending_bytes;
 
-    // A Valid Atomic Batch Retains Its Entire Reservation While The Backend Is Blocked.
+    // A Typed Batch Retains Its Entire Reservation While The Backend Is Blocked.
     let flushing = {
         let storage = f.storage.clone();
         tokio::spawn(async move { storage.flush().await })
@@ -645,7 +654,7 @@ async fn item_refuses_whole() {
     let item = Identifier::new("oversized").unwrap();
     let large = vec![255; 8192];
     let inputs = [record(&key, &item, b"small"), record(&key, &item, &large)];
-    assert!(matches!(f.storage.write_records(&inputs).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
+    assert!(matches!(f.storage.write_records((inputs).to_vec()).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);
     assert!(f.data.control.writes.lock().unwrap().is_empty());
@@ -657,12 +666,12 @@ async fn schema_decoding_bounded() {
     let fields: Vec<_> = (1..=64)
         .map(|tag| Field { name: Cow::Owned(format!("field-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
         .collect();
-    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] };
+    let graph = Arc::new(harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] });
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;
     let key = schema();
-    let position = f.storage.write_schema(&key, &graph).await.unwrap();
+    let position = f.storage.write_schema(key.clone(), graph.clone()).await.unwrap();
     assert_eq!(position.sequence, 1);
     assert!(f.storage.status().pending_bytes < policy.request.max_pending_write_bytes.get());
     f.storage.flush().await.unwrap();
@@ -670,6 +679,7 @@ async fn schema_decoding_bounded() {
         let saved = f.data.schemas.lock().unwrap();
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[&1].schema, graph);
+        assert!(Arc::ptr_eq(&saved[&1].schema, &graph));
         for definitions in [1usize, 32, 256] {
             let mut metadata = saved[&1].clone();
             let fields = (1..definitions)
@@ -680,8 +690,9 @@ async fn schema_decoding_bounded() {
                     kind: Kind::Message { definition },
                 })
                 .collect();
-            metadata.schema.definitions = vec![Vec::new(); definitions];
-            metadata.schema.definitions[0] = fields;
+            let graph = Arc::make_mut(&mut metadata.schema);
+            graph.definitions = vec![Vec::new(); definitions];
+            graph.definitions[0] = fields;
             let encoded = serde_json::to_vec(&metadata).unwrap();
             let admitted = harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
             let decoded: harmos_storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
@@ -691,6 +702,20 @@ async fn schema_decoding_bounded() {
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
         assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
     }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn schema_capacity_charged() {
+    let mut definitions = Vec::with_capacity(4096);
+    definitions.push(Vec::new());
+    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions };
+    let mut policy = config();
+    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+    let f = Fixture::new(policy).await;
+    assert!(matches!(f.storage.write_schema(schema(), graph).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
+    assert_eq!(f.storage.cursor_accepted().sequence, 0);
+    assert!(f.data.schemas.lock().unwrap().is_empty());
     f.finish().await;
 }
 
@@ -708,7 +733,7 @@ async fn schema_validation_reserves() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
     let f = Fixture::new(policy.clone()).await;
     assert!(matches!(
-        f.storage.write_schema(&schema(), &graph).await,
+        f.storage.write_schema(schema(), graph.clone()).await,
         Err(harmos_storage::Error::ResourceExhausted { resource: "storage write memory" })
     ));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
@@ -717,10 +742,290 @@ async fn schema_validation_reserves() {
     f.finish().await;
     policy.request.max_pending_write_bytes = NonZeroUsize::new(64 * 1024).unwrap();
     let f = Fixture::new(policy).await;
-    f.storage.write_schema(&schema(), &graph).await.unwrap();
+    f.storage.write_schema(schema(), graph.clone()).await.unwrap();
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn raw_reads_retained() {
+    let f = Fixture::new(config()).await;
+    let through = f.storage.write_recovery(vec![vec![7; 256]]).await.unwrap();
+    f.storage.flush_recovery().await.unwrap();
+    let after = harmos_storage::RecoveryPosition { history: through.history.clone(), sequence: 0 };
+    let page = f
+        .storage
+        .read_recovery(&after, &through, harmos_storage::ReadLimits { rows: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() })
+        .await
+        .unwrap();
+    let alias = page.clone();
+    let pointer = page.entries[0].payload.as_ptr();
+    let owner = alias.owner();
+    drop(page);
+    drop(alias);
+    assert!(f.storage.status().read_bytes > 0);
+    let retained: &harmos_storage::state::RecoveryPage = std::borrow::Borrow::borrow(owner.as_ref());
+    assert_eq!(retained.entries[0].payload.as_ptr(), pointer);
+    drop(owner);
+    assert_eq!(f.storage.status().read_bytes, 0);
+
+    f.storage
+        .write_snapshot(harmos_storage::state::RecoverySnapshot { required_data: f.storage.cursor_saved(), through, payload: vec![8; 256] })
+        .await
+        .unwrap();
+    f.storage.flush_recovery().await.unwrap();
+    let snapshot = f.storage.read_snapshot(NonZeroUsize::new(4096).unwrap()).await.unwrap().unwrap();
+    let alias = snapshot.clone();
+    drop(snapshot);
+    assert!(f.storage.status().read_bytes > 0);
+    drop(alias);
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn recovery_owner_retained() {
+    let f = Fixture::new(config()).await;
+    let mut payload = Vec::with_capacity(4096);
+    payload.extend_from_slice(b"recovery");
+    let pointer = payload.as_ptr() as usize;
+    f.recovery.control.retain_recovery.store(true, Ordering::SeqCst);
+    f.storage.write_recovery(vec![payload]).await.unwrap();
+    let admitted = f.storage.status().pending_bytes;
+    f.storage.flush_recovery().await.unwrap();
+    assert_eq!(f.storage.status().pending_batches, 0);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    let detached = f.recovery.control.retained_recovery.lock().unwrap().take().unwrap();
+    assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
+    let empty = detached.slice(1..1);
+    drop(detached);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    drop(empty);
+    assert_eq!(f.storage.status().pending_bytes, 0);
+
+    let mut payload = Vec::with_capacity(2048);
+    payload.extend_from_slice(b"snapshot");
+    let pointer = payload.as_ptr() as usize;
+    f.recovery.control.retain_snapshot.store(true, Ordering::SeqCst);
+    let snapshot = harmos_storage::state::RecoverySnapshot {
+        required_data: f.storage.cursor_saved(),
+        through: f.storage.status().recovery_saved,
+        payload,
+    };
+    f.storage.write_snapshot(snapshot).await.unwrap();
+    let admitted = f.storage.status().pending_bytes;
+    f.storage.flush_recovery().await.unwrap();
+    let detached = f.recovery.control.retained_snapshot.lock().unwrap().take().unwrap();
+    assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
+    assert_eq!(f.storage.status().pending_bytes, admitted);
+    drop(detached);
+    assert_eq!(f.storage.status().pending_bytes, 0);
+    f.finish().await;
+}
+
+#[harmos_domain::message]
+struct TracedRow {
+    value: String,
+}
+
+#[tokio::test(start_paused = true)]
+async fn retained_observer_traced() {
+    let f = Fixture::new(config()).await;
+    let capture = Capture::default();
+    let dispatch = tracing::Dispatch::new(Registry::default().with(capture.clone()));
+    async {
+        let request = tracing::debug_span!("retained_request");
+        async {
+            let key = schema();
+            let graph = harmos_storage::schema::graph::Schema::from_declaration(
+                <TracedRow as harmos_storage::schema::Described>::DEFINITION,
+                &harmos_domain::config::SchemaSettings::default(),
+            )
+            .unwrap();
+            f.storage.write_schema(key.clone(), graph).await.unwrap();
+            let value = TracedRow { value: "private-projection".into() };
+            let payload = harmos_storage::Message::encode_to_vec(&value);
+            f.storage.write_records(vec![record(&key, &Identifier::new("trace-row").unwrap(), &payload)]).await.unwrap();
+            let saved = f.storage.flush().await.unwrap();
+            let session = f.storage.read_session();
+            let memory = session.try_memory(NonZeroUsize::new(1024).unwrap()).unwrap();
+            memory.try_grow_by(128).unwrap();
+            assert!(f.storage.object_receipts_memory(NonZeroUsize::MIN).unwrap() > 0);
+            let mut reader = session
+                .read_records::<TracedRow>(harmos_storage::RecordRead {
+                    at: saved.clone(),
+                    selection: harmos_storage::query::RecordSelection {
+                        schema: key,
+                        scope: None,
+                        item: None,
+                        source_start: None,
+                        source_end: None,
+                    },
+                    after: 0,
+                })
+                .await
+                .unwrap();
+            let page = reader.next().await.unwrap().unwrap();
+            let projected = page.try_map(0, |mut rows| Ok::<_, harmos_storage::Error>(rows.pop().unwrap().payload.value)).unwrap();
+            let peer = projected.clone();
+            drop(reader);
+            drop(session);
+            f.data.snapshots_released().await;
+            let mut observer = Box::pin(f.storage.wait_saved_after(&saved));
+            assert!(super::fixture::pending(observer.as_mut()).await);
+            {
+                let captured = capture.0.lock().unwrap();
+                let observer = captured.spans.values().find(|span| span.name == "storage.manager.status.wait_saved_after").unwrap();
+                assert!(observer.closed.is_none());
+                let projection = captured.spans.values().find(|span| span.name == "storage.read_batch.try_map").unwrap();
+                assert!(projection.closed.is_some());
+                assert_eq!(projection.fields["outcome"], "\"completed\"");
+            }
+            drop(observer);
+            let older = harmos_storage::StorageCursor { sequence: 0, ..saved.clone() };
+            assert_eq!(f.storage.wait_saved_after(&older).await.unwrap(), saved);
+            assert_eq!(projected.as_str(), "private-projection");
+            drop(projected);
+            drop(memory);
+            assert!(f.storage.status().read_bytes > 0);
+            drop(peer);
+            assert_eq!(f.storage.status().read_bytes, 0);
+        }
+        .instrument(request)
+        .await;
+    }
+    .with_subscriber(dispatch)
+    .await;
+    f.finish().await;
+    let captured = capture.0.lock().unwrap();
+    let observers: Vec<_> = captured.spans.values().filter(|span| span.name == "storage.manager.status.wait_saved_after").collect();
+    assert_eq!(observers.len(), 2);
+    assert!(observers.iter().any(|span| span.fields["outcome"] == "\"cancelled\""));
+    assert!(observers.iter().any(|span| span.fields["outcome"] == "\"completed\""));
+    assert!(captured.spans.values().all(|span| span.closed.is_some()));
+    for boundary in [
+        "storage.read_session.new",
+        "storage.read_session.try_memory",
+        "storage.read_session.read_records",
+        "storage.arrow.memory.try_grow_by",
+        "storage.objects.object_receipts_memory",
+    ] {
+        assert!(captured.spans.values().any(|span| span.name == boundary && span.parent.is_some()));
+    }
+    assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
+    assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("path")));
+}
+
+#[tokio::test]
+async fn filesystem_trace_lifetimes() {
+    use harmos_domain::model::storage::files::{ByteRange, FileSource};
+    use harmos_domain::model::storage::{DirectoryRule, DirectorySelection};
+    use harmos_domain::operations::storage::{HashFile, ReadFile};
+    use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
+    use std::future::Future;
+    use std::task::Poll;
+
+    let f = Fixture::new(config()).await;
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("private-file.bin");
+    std::fs::write(&path, b"private-payload").unwrap();
+    let capture = Capture::default();
+    let dispatch = tracing::Dispatch::new(Registry::default().with(capture.clone()));
+    let request = tracing::dispatcher::with_default(&dispatch, || tracing::debug_span!("filesystem_request"));
+    let range = ByteRange { offset: 0, limit: None };
+    let mut reader = f
+        .storage
+        .read_file(ReadFile { source: FileSource::Local(path.clone()), range })
+        .instrument(request.clone())
+        .with_subscriber(dispatch.clone())
+        .await
+        .unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"private-payload");
+    assert!(reader.next().await.unwrap().is_none());
+    drop(reader);
+
+    let selection = DirectorySelection {
+        root: root.path().to_owned(),
+        recursive: false,
+        rules: vec![DirectoryRule { pattern: "**".into(), include: true }],
+    };
+    let mut listing =
+        f.storage.list_directory(selection.clone()).instrument(request.clone()).with_subscriber(dispatch.clone()).await.unwrap();
+    assert!(listing.next().await.unwrap().is_some());
+    while listing.next().await.unwrap().is_some() {}
+    drop(listing);
+    let mut watcher =
+        f.storage.watch_directory(selection, false).instrument(request.clone()).with_subscriber(dispatch.clone()).await.unwrap();
+    assert!(watcher.next().await.unwrap().is_some());
+    let mut pending = Box::pin(watcher.next());
+    std::future::poll_fn(|task| {
+        assert!(pending.as_mut().poll(task).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    drop(pending);
+    drop(watcher);
+
+    let digest = f
+        .storage
+        .hash_file(HashFile { source: FileSource::Local(path), range })
+        .instrument(request.clone())
+        .with_subscriber(dispatch.clone())
+        .await
+        .unwrap();
+    assert_eq!(digest.bytes_read, 15);
+    let backend_root = tempfile::tempdir().unwrap();
+    let backend = JsonStorage::new(
+        JsonStorageSettings { root: backend_root.path().to_owned(), max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap() },
+        super::history(),
+    );
+    async {
+        assert!(backend.cursor_saved().await.is_err());
+        backend.open().await.unwrap();
+        backend.cursor_saved().await.unwrap();
+        backend.close().await.unwrap();
+    }
+    .instrument(request.clone())
+    .with_subscriber(dispatch.clone())
+    .await;
+    drop(backend);
+    tracing::dispatcher::with_default(&dispatch, || drop(request));
+    f.finish().await;
+
+    // Native Watcher Drop Signals Shutdown; Its Callback Can Retire On Another Thread.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let changed = capture.1.notified();
+            if capture.0.lock().unwrap().spans.values().all(|span| span.closed.is_some()) {
+                break;
+            }
+            changed.await;
+        }
+    })
+    .await
+    .expect("native watcher and request spans must close after shutdown");
+
+    let captured = capture.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    for name in [
+        "storage.local.open",
+        "storage.local.next",
+        "storage.file.hash_file",
+        "storage.directory.page",
+        "storage.directory.watch.page",
+        "storage.directory.subscription",
+        "storage.backend.blocking",
+        "storage.json.backend",
+    ] {
+        assert!(captured.spans.values().any(|span| span.name == name && span.parent.is_some()), "missing {name}");
+    }
+    assert!(captured.spans.values().all(|span| span.closed.is_some()), "retained spans: {captured:#?}");
+    assert!(captured.spans.values().any(|span| span.name == "storage.directory.watch.page" && span.fields["outcome"] == "\"cancelled\""));
+    assert!(captured.spans.values().any(|span| span.name == "storage.json.backend" && span.fields["outcome"] == "\"failed\""));
+    assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"completed\""));
+    assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.fields["outcome"] == "\"failed\""));
+    assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("path")));
+    assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
+}

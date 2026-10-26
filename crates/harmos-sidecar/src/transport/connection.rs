@@ -24,7 +24,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 // Local Imports
 use super::credit::{MINIMUM, WINDOW};
-use super::{Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read, read_data, write};
+use super::{Consumption, Credit, Packet, ReceiveCredit, Reservation, Role, read, read_data, write, write_with};
 use crate::Frame;
 
 /* === Constants === */
@@ -299,12 +299,15 @@ async fn receive_control(mut reader: IoReader, incoming: mpsc::Sender<Received>,
 }
 
 async fn send_data(mut writer: IoWriter, mut outgoing: mpsc::Receiver<Outgoing>, written: watch::Sender<u64>) -> io::Result<()> {
+    // Wire Credits Bound In-Flight Packets; This Separate Driver-Owned Scratch
+    // Holds At Most One Validated Frame, Released When The Driver Exits.
+    // Scalar Small Frames Reuse It; Large Payloads Remain In Their Own Backing.
     let mut bytes = Vec::new();
     while let Some(Outgoing { packet, reservation }) = outgoing.recv().await {
         reservation.issued()?;
-        packet.encode_into(&mut bytes)?;
-        writer.write_all(&bytes).await?;
-        writer.flush().await?;
+        write_with(&mut writer, &packet, &mut bytes).await?;
+        let span = tracing::trace_span!(target: "harmos::carrier", "sidecar.frame.flush");
+        tracing::Instrument::instrument(writer.flush(), span).await?;
         let next = (*written.borrow()).checked_add(1).ok_or_else(|| super::invalid("written data counter overflow"))?;
         written.send_replace(next);
     }

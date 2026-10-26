@@ -62,7 +62,7 @@ async fn receive(incoming: &mut Receiver) -> Frame {
 }
 
 async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: WireCommand) {
-    outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap() }).await.unwrap();
+    outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap().into() }).await.unwrap();
     let Frame::Answer { id: answered, result } = receive(incoming).await else {
         panic!("the carrier returns one operation phase answer");
     };
@@ -92,7 +92,7 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         phase(outgoing, incoming, id, command).await;
     }
     let attempt = WireCommand::Attempt { invocation: id, context: [1; 32], values: Vec::new() };
-    outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: attempt.encode().unwrap() }).await.unwrap();
+    outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: attempt.encode().unwrap().into() }).await.unwrap();
     // The Producer Publishes Concurrently With The Attempt Answer.
     let mut calls = Vec::new();
     let mut answered = false;
@@ -110,7 +110,7 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         let child = WireChildCall::decode(&params).unwrap();
         assert_eq!(child.generation_context, Some(GENERATION));
         let publication = <Publish as Message>::decode(&child.payload).unwrap();
-        outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode_to_vec(&()) }).await.unwrap();
+        outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode_to_vec(&()).into() }).await.unwrap();
         if publication.stream == Done::ID {
             let finished = Done::decode(&publication.payload).unwrap();
             assert_eq!(finished.accepted, u64::from(samples));
@@ -138,7 +138,7 @@ async fn batches_split_contiguously() {
     let (write, read, control, _, _ending) = native.attach().await.unwrap().into_parts();
     let Connection { sender: outgoing, receiver: mut incoming, mut driver } = Connection::new((read, write), control.unwrap());
     let driving = tokio::spawn(async move { driver.run().await });
-    outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new() }).await.unwrap();
+    outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new().into() }).await.unwrap();
     assert!(matches!(receive(&mut incoming).await, Frame::Answer { id: 1, .. }));
     let initialization = Initialize { config_json: b"null".to_vec(), generation_context: GENERATION.to_vec() };
     invoke(&outgoing, &mut incoming, 2, Initialize::ID, initialization.encode_to_vec()).await;

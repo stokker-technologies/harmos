@@ -21,6 +21,9 @@ version.workspace = true
 
 # === Features === #
 
+[features]
+benchmark = []
+
 # === Dependencies === #
 
 [dependencies]

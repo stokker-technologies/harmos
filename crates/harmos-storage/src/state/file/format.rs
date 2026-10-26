@@ -46,7 +46,12 @@ pub(super) enum Read<T> {
 
 /* === Traits === */
 
+pub(super) trait StateRecord: DeserializeOwned {}
+
 /* === Implementations === */
+
+impl StateRecord for crate::state::RecoveryEntry {}
+impl StateRecord for crate::state::RecoverySnapshot {}
 
 /* === Public Functions === */
 
@@ -92,6 +97,52 @@ pub(super) fn read<T: DeserializeOwned>(reader: &mut impl BufRead, maximum: usiz
             break;
         }
     }
+    decode(&line)
+}
+
+pub(super) fn read_retained<T: StateRecord>(
+    reader: &mut impl BufRead, maximum: usize, memory: &crate::arrow::RetainedMemory, retained: usize,
+) -> Result<Read<T>> {
+    let mut line = Vec::new();
+    loop {
+        let available = reader.fill_buf().map_err(io)?;
+        if available.is_empty() {
+            return Ok(if line.is_empty() { Read::End } else { Read::Incomplete });
+        }
+        let complete = available.iter().position(|byte| *byte == b'\n');
+        let count = complete.map_or(available.len(), |index| index + 1);
+        if count > maximum.saturating_sub(line.len()) {
+            return Err(invalid("state record exceeds configured storage size"));
+        }
+        let length = line.len().checked_add(count).ok_or_else(|| invalid("state size overflow"))?;
+        // Geometric Line Growth Can Own The Old And Replacement Allocations.
+        let growth = length
+            .checked_mul(3)
+            .and_then(|bytes| bytes.checked_add(retained))
+            .and_then(|bytes| bytes.checked_add(8192))
+            .ok_or_else(|| invalid("state read memory overflow"))?;
+        memory.try_grow_to(growth)?;
+        line.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if complete.is_some() {
+            break;
+        }
+    }
+    // State Entries/Checkpoints Have Fixed Metadata And One Base64 Payload.
+    // All Decoded String Capacities Are Bounded By Twice Their Encoded Bytes;
+    // The Decoded Payload Is No Larger Than Its Encoded Representation.
+    let decoding = line
+        .len()
+        .checked_mul(3)
+        .and_then(|bytes| bytes.checked_add(line.capacity()))
+        .and_then(|bytes| bytes.checked_add(retained))
+        .and_then(|bytes| bytes.checked_add(8192 + crate::manager::ENTRY_OVERHEAD))
+        .ok_or_else(|| invalid("state decode memory overflow"))?;
+    memory.try_grow_to(decoding)?;
+    decode(&line)
+}
+
+fn decode<T: DeserializeOwned>(line: &[u8]) -> Result<Read<T>> {
     if line.len() < OVERHEAD || !line.starts_with(PREFIX) || !line.ends_with(END) {
         return Err(corrupt("state record has no integrity envelope"));
     }

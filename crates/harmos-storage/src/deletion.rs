@@ -45,7 +45,7 @@ pub(super) struct DeleteWork {
     pub(super) queued: std::sync::Mutex<Option<tracing::Span>>,
     target: Target,
     pub(super) file: StagedFile,
-    pub(super) receipt: MutationReceipt,
+    receipt: crate::StorageBatch<MutationReceipt>,
 }
 
 /* === Enums === */
@@ -148,7 +148,8 @@ impl<C> StorageManager<C> {
                                         queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.deletion.queue"))),
                                         target,
                                         file: file.clone(),
-                                        receipt,
+                                        receipt: crate::StorageBatch::new(vec![receipt])
+                                            .retained(crate::batch::WriteCharge::read(&self.inner, bytes)),
                                     }),
                                     bytes,
                                     failure: None,
@@ -243,12 +244,22 @@ impl State {
     }
 }
 
+impl Drop for Deletion {
+    fn drop(&mut self) {
+        self.work.receipt.retire();
+    }
+}
+
 impl DeleteWork {
+    pub(super) fn receipt(&self) -> &MutationReceipt {
+        &self.receipt.as_slice()[0]
+    }
+
     #[tracing::instrument(name = "storage.deletion.perform", level = "debug", skip_all)]
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded("primary.delete_file", inner.primary.delete_file(&self.file)).await?;
-        inner.bounded("primary.save_mutations", inner.primary.save_mutations(std::slice::from_ref(&self.receipt))).await?;
-        tracing::info!(file = %self.file.id, mutation = %self.receipt.mutation.key, reason = "explicit deletion", "file deleted");
+        inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipt.clone())).await?;
+        tracing::info!(file = %self.file.id, mutation = %self.receipt.as_slice()[0].mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }
 }

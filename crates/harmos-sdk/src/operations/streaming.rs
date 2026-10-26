@@ -171,6 +171,18 @@ impl<T: MemorySize> StreamItem<T> {
     }
 }
 
+impl<T: Clone + Send + Sync + 'static> StreamItem<T> {
+    // Shared Or Projected Responses Need An Owned Copy; Plain Requests Move.
+    pub fn into_owned_request(self) -> Result<(T, RequestClaims)> {
+        let value = match self.value {
+            Payload::Plain(value) => value,
+            Payload::Owned { response, .. } => response.restore::<T>().ok_or(Error::Ownership)?.into_owned(),
+        };
+        let claims = RequestClaims { _original: self._bytes, _delivery: self.delivery };
+        Ok((value, claims))
+    }
+}
+
 impl<T: MemorySize + Send + Sync + 'static> StreamItem<T> {
     pub fn charged_owned(value: super::Response<T>, bytes: OwnedSemaphorePermit) -> Result<Self> {
         let retained = value.memory_size().checked_add(std::mem::size_of::<Self>()).ok_or(Error::Capacity)?;
@@ -393,3 +405,37 @@ fn decoding(source: crate::MessageError) -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owned_requests() {
+        let budget = Arc::new(Semaphore::new(4096));
+        let plain = String::from("plain payload");
+        let pointer = plain.as_ptr();
+        let claim = budget.clone().try_acquire_many_owned(4096).unwrap();
+        let item = StreamItem::charged(plain, claim).unwrap();
+        let (plain, claims) = item.into_owned_request().unwrap();
+        assert_eq!(plain.as_ptr(), pointer);
+        drop(claims);
+
+        let unique = super::super::Response::new(String::from("unique payload"));
+        let pointer = unique.as_ptr();
+        let claim = budget.clone().try_acquire_many_owned(4096).unwrap();
+        let item = StreamItem::charged_owned(unique, claim).unwrap();
+        let (unique, claims) = item.into_owned_request().unwrap();
+        assert_eq!(unique.as_ptr(), pointer);
+        drop(claims);
+
+        let shared = super::super::Response::new(String::from("shared payload"));
+        let claim = budget.clone().try_acquire_many_owned(4096).unwrap();
+        let item = StreamItem::charged_owned(shared.clone(), claim).unwrap();
+        let (owned, claims) = item.into_owned_request().unwrap();
+        assert_eq!(owned, *shared);
+        assert_ne!(owned.as_ptr(), shared.as_ptr());
+        drop(claims);
+        assert_eq!(budget.available_permits(), 4096);
+    }
+}

@@ -136,8 +136,12 @@ impl Store {
     async fn boot(&self, storage: &StorageManager) -> Runtime<Bank> {
         Runtime::<Bank>::builder(Ledger::default(), ())
             .register(catalog())
-            .tail(2)
-            .managed_state(limits())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 2,
+            })
             .runtime_with_storage(storage)
             .await
             .unwrap()
@@ -224,7 +228,12 @@ async fn oversized_group_refused() {
     tiny.bytes = NonZeroUsize::new(4096).unwrap();
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
-        .managed_state(tiny)
+        .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: tiny,
+            capture: tiny,
+            snapshots: None,
+            journal_tail: 1024,
+        })
         .runtime_with_storage(&storage)
         .await
         .unwrap();
@@ -270,7 +279,12 @@ async fn recovery_history_admission() {
         assert!(
             Runtime::<Bank>::builder(Ledger::default(), ())
                 .register(catalog())
-                .managed_state(limits())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024
+                })
                 .runtime_with_storage(&storage)
                 .await
                 .is_err()
@@ -306,7 +320,12 @@ async fn recovery_history_admission() {
             assert!(
                 Runtime::<Bank>::builder(Ledger::default(), ())
                     .register(catalog())
-                    .managed_state(limits())
+                    .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                        replay: limits(),
+                        capture: limits(),
+                        snapshots: None,
+                        journal_tail: 1024
+                    })
                     .runtime_with_storage(&storage)
                     .await
                     .is_err(),
@@ -341,7 +360,12 @@ async fn recovery_history_admission() {
         assert!(
             Runtime::<Bank>::builder(Ledger::default(), ())
                 .register(catalog())
-                .managed_state(limits())
+                .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                    replay: limits(),
+                    capture: limits(),
+                    snapshots: None,
+                    journal_tail: 1024
+                })
                 .runtime_with_storage(&storage)
                 .await
                 .is_err()
@@ -360,7 +384,19 @@ async fn recovery_history_admission() {
 
 #[tokio::test]
 async fn managed_requires_storage() {
-    assert!(Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits()).runtime().await.is_err());
+    assert!(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024
+            })
+            .runtime()
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -368,10 +404,10 @@ async fn owner_refuses_raw() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
-    assert!(storage.write_recovery(&[b"foreign"]).await.is_err());
+    assert!(storage.write_recovery(vec![b"foreign".to_vec()]).await.is_err());
     assert!(
         storage
-            .write_snapshot(&harmos_runtime::storage::state::RecoverySnapshot {
+            .write_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
                 required_data: storage.cursor_saved(),
                 through: storage.status().recovery_accepted,
                 payload: vec![],
@@ -399,8 +435,11 @@ async fn periodic_save_advances() {
 async fn replay_upcasts_history() {
     let store = Store::new();
     let storage = store.manager(config());
-    let builder =
-        || Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).tail(2).managed_state(limits());
+    let builder = || {
+        Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots: None, journal_tail: 2 },
+        )
+    };
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
     let receipt = runtime.state.commit(Add { amount: 3 }).await.unwrap();
     assert_eq!(receipt.frontier, Position(3));
@@ -443,8 +482,15 @@ async fn cancelled_replay_releases() {
     let storage = store.manager(config());
     let cleanup;
     {
-        let opening =
-            Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits()).runtime_with_storage(&storage);
+        let opening = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots: None,
+                journal_tail: 1024,
+            })
+            .runtime_with_storage(&storage);
         cleanup = opening.cleanup();
         tokio::pin!(opening);
         tokio::select! {
@@ -510,7 +556,7 @@ async fn file_finish_interleaves() {
         })
         .await
         .unwrap();
-    file.write_all(b"abc").await.unwrap();
+    file.write_all((b"abc").to_vec()).await.unwrap();
     let reference = file.finish().await.unwrap();
     mutations.await.unwrap();
     data.await.unwrap();
@@ -554,8 +600,11 @@ async fn keyed_receipt_survives() {
 async fn keyed_group_retained() {
     let store = Store::new();
     let storage = store.manager(config());
-    let builder =
-        || Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_state(limits());
+    let builder = || {
+        Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots: None, journal_tail: 1024 },
+        )
+    };
     let key = RequestKey::new("group");
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
     let receipt = runtime.state.caused_by(Position(41)).commit_keyed(key.clone(), Add { amount: 3 }).await.unwrap();

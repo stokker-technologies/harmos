@@ -21,6 +21,7 @@ pub use timestamp::Time;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 // Third Party Imports
 
@@ -191,6 +192,7 @@ type Result<T, E = MessageError> = std::result::Result<T, E>;
 
 pub struct Repeated<T>(PhantomData<fn() -> T>);
 pub struct Nested<T>(PhantomData<fn() -> T>);
+pub struct Shared<T>(PhantomData<fn() -> T>);
 pub struct Optional<T>(PhantomData<fn() -> T>);
 pub struct Id;
 pub struct Bytes;
@@ -261,6 +263,28 @@ impl<T: Native> Value for Nested<T> {
     postcard_field!();
     type Native = T;
     const KIND: Kind = Kind::Message { definition: T::DEFINITION };
+}
+
+impl<T: Native> Value for Shared<T> {
+    const NAME: &'static str = Nested::<T>::NAME;
+    type Native = Arc<T>;
+    const KIND: Kind = Nested::<T>::KIND;
+
+    fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
+        T::write(value, bytes);
+    }
+
+    fn postcard_size(value: &Self::Native) -> usize {
+        T::size(value)
+    }
+
+    fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize> {
+        crate::__private::decoding_add(T::memory(input)?, 2 * std::mem::size_of::<usize>())
+    }
+
+    fn postcard_read(input: &mut PostcardReader<'_>) -> Result<Self::Native> {
+        T::read(input).map(Arc::new)
+    }
 }
 
 impl<T: Value> Value for Optional<T> {

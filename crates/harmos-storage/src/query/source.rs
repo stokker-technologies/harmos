@@ -185,9 +185,9 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
     )?;
     let mut encoded = Vec::with_capacity(rows.len());
     for row in rows {
-        let size = crate::Message::encoded_len(&row.schema);
+        let size = crate::Message::encoded_len(row.schema.as_ref());
         budget.claim(size.checked_mul(4).ok_or_else(exhausted)?)?;
-        encoded.push(crate::Message::encode_to_vec(&row.schema));
+        encoded.push(crate::Message::encode_to_vec(row.schema.as_ref()));
     }
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([

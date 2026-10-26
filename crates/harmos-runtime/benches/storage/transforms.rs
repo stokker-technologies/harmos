@@ -49,7 +49,9 @@ use super::waveforms;
 
 pub fn run(criterion: &mut Criterion, _: &tokio::runtime::Runtime) {
     let mut group = criterion.benchmark_group("storage/transforms");
-    for periods in [4, 64] {
+    group.sample_size(10);
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    for periods in [1, 6] {
         let samples = waveforms::samples(periods);
         let schema =
             Arc::new(Schema::new(vec![Field::new("phase", DataType::UInt32, false), Field::new("value", DataType::Float64, false)]));

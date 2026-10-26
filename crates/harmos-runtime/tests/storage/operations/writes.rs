@@ -79,7 +79,7 @@ pub(super) async fn seed(f: &Fixture) {
             cardinality: harmos_runtime::schema::Cardinality::Required,
         }]],
     };
-    f.storage.write_schema(&super::super::schema(), &graph).await.unwrap();
+    f.storage.write_schema(super::super::schema(), graph.clone()).await.unwrap();
     f.storage.flush().await.unwrap();
 }
 

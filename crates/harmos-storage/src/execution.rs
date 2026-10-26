@@ -89,13 +89,22 @@ impl Context {
         Scoped { context: self.clone(), future: Some(Box::pin(future)) }.await
     }
 
+    pub(crate) async fn result<T>(&self, span: tracing::Span, future: impl Future<Output = crate::Result<T>>) -> crate::Result<T> {
+        let future = async {
+            let result = future.await;
+            tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+            result
+        };
+        self.scope(tracing::Instrument::instrument(future, span)).await
+    }
+
     pub(crate) fn sync<T>(&self, action: impl FnOnce() -> T) -> T {
         tracing::dispatcher::with_default(&self.dispatch, || self.span.in_scope(action))
     }
 
     pub(crate) fn blocking<T>(&self, action: impl FnOnce() -> crate::Result<T>) -> crate::Result<T> {
         self.sync(|| {
-            let span = tracing::debug_span!("storage.state.file.blocking", outcome = "cancelled");
+            let span = tracing::debug_span!("storage.backend.blocking", outcome = "cancelled");
             span.in_scope(|| {
                 let result = action();
                 span.record("outcome", if result.is_ok() { "completed" } else { "failed" });

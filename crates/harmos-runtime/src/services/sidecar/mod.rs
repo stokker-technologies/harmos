@@ -124,8 +124,8 @@ enum Staging {
 struct Request {
     trace: crate::supervision::executor::SpanContext,
     method: String,
-    params: Vec<u8>,
-    answer: oneshot::Sender<Result<Vec<u8>, SidecarError>>,
+    params: harmos_sidecar::FramePayload,
+    answer: oneshot::Sender<Result<harmos_sidecar::FramePayload, SidecarError>>,
     children: Option<Children>,
 }
 
@@ -177,7 +177,7 @@ struct Exchange<'a, A: Application, H> {
     remote_observers: Arc<observers::Remote>,
     announced: Option<String>,
     failure: Option<String>,
-    pending: BTreeMap<u64, oneshot::Sender<Result<Vec<u8>, SidecarError>>>,
+    pending: BTreeMap<u64, oneshot::Sender<Result<harmos_sidecar::FramePayload, SidecarError>>>,
     deliveries: VecDeque<Delivery>,
     delivery_turn: bool,
     next: u64,

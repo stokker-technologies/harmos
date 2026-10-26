@@ -43,6 +43,41 @@ use super::*;
 /* === Tests === */
 
 #[tokio::test]
+async fn filesystem_hash_roundtrip() {
+    use harmos_runtime::storage::operations::HashFile;
+    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, JsonStorage, JsonStorageSettings, StorageManager};
+    use sha2::{Digest, Sha256};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("input.bin");
+    let bytes = b"host filesystem across grpc";
+    std::fs::write(&path, bytes).unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    let settings = crate::storage::fixture::config();
+    let primary = JsonStorage::new(
+        JsonStorageSettings { root: directory.path().join("storage"), max_entry_bytes: settings.request.max_pending_write_bytes },
+        crate::storage::fixture::history(),
+    );
+    let backends = primary.into_backends(harmos_runtime::storage::state::StorageStateSettings {
+        max_entry_bytes: settings.request.max_pending_write_bytes,
+        max_checkpoint_bytes: settings.budget.read_memory_bytes,
+    });
+    let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
+    storage.start(&runtime).await.unwrap();
+    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
+
+    let attached = runtime.grpc().attach(super::settings()).await.unwrap();
+    let address = format!("http://{}", attached.local_addr());
+    let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
+    let request = HashFile { source: FileSource::Local(path), range: ByteRange { offset: 5, limit: Some(10) } };
+    let answer = builtin_call::<HashFile, FileHash>(channel, "/harmos.storage.v1.Storage/HashFile", request).await.unwrap();
+    assert_eq!(answer.bytes_read, 10);
+    assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
+    drop(attached);
+    storage.close().await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn builtin_grpc_roundtrip() {
     use harmos_runtime::builtin::{Cancel, InstanceState, Status};
     #[harmos_runtime::message]

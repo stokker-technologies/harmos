@@ -56,7 +56,7 @@ pub trait JournalConsumer<A: Application>: Send + 'static {
         async {}
     }
 
-    fn redelivered(&mut self, stored: &[(Position, Vec<u8>)]) {
+    fn redelivered(&mut self, stored: &[(Position, Arc<Vec<u8>>)]) {
         let _ = stored;
     }
 }
@@ -68,7 +68,7 @@ pub(crate) trait Attached<A: Application>: Send {
 
     fn flush(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 
-    fn redelivered(&mut self, stored: &[(Position, Vec<u8>)]);
+    fn redelivered(&mut self, stored: &[(Position, Arc<Vec<u8>>)]);
 }
 
 pub trait StreamConsumer<A: Application>: Send + 'static {
@@ -165,7 +165,7 @@ impl<A: Application, C: JournalConsumer<A>> Attached<A> for C {
         Box::pin(JournalConsumer::flush(self))
     }
 
-    fn redelivered(&mut self, stored: &[(Position, Vec<u8>)]) {
+    fn redelivered(&mut self, stored: &[(Position, Arc<Vec<u8>>)]) {
         JournalConsumer::redelivered(self, stored);
     }
 }
@@ -191,13 +191,22 @@ impl<A: Application> Batch<A> {
         })
     }
 
-    pub fn select<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<S>> + '_ {
+    pub fn select<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<&S>> + '_ {
         self.rows.iter().filter_map(|(_, definition, position, row)| {
             if definition.id() != S::ID || definition.version() != S::VERSION {
                 return None;
             }
 
-            row.downcast_ref::<S>().cloned().map(|value| At { value, position: *position })
+            row.downcast_ref::<S>().map(|value| At { value, position: *position })
+        })
+    }
+
+    pub fn select_shared<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<Arc<S>>> + '_ {
+        self.rows.iter().filter_map(|(_, definition, position, row)| {
+            if definition.id() != S::ID || definition.version() != S::VERSION {
+                return None;
+            }
+            Arc::clone(row).downcast::<S>().ok().map(|value| At { value, position: *position })
         })
     }
 }

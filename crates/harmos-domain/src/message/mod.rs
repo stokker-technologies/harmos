@@ -34,6 +34,8 @@ use std::collections::BTreeMap;
 macro_rules! inline_memory {
     ($($ty:ty),* $(,)?) => {$ (
         impl MemorySize for $ty {
+            const INLINE_ONLY: bool = true;
+
             fn memory_size(&self) -> usize {
                 std::mem::size_of::<Self>()
             }
@@ -99,6 +101,10 @@ pub trait Message: Sized + Send + Sync {
 }
 
 pub trait MemorySize: Sized {
+    /// True only when every value occupies exactly `size_of::<Self>()` bytes,
+    /// with no separately owned allocations or additional accounting charge.
+    const INLINE_ONLY: bool = false;
+
     fn memory_size(&self) -> usize;
 }
 
@@ -154,6 +160,9 @@ impl MemorySize for String {
 impl<T: MemorySize> MemorySize for Vec<T> {
     fn memory_size(&self) -> usize {
         let mut bytes = std::mem::size_of::<Self>().saturating_add(self.capacity().saturating_mul(std::mem::size_of::<T>()));
+        if T::INLINE_ONLY {
+            return bytes;
+        }
 
         for value in self {
             let owned = value.memory_size();
@@ -167,6 +176,8 @@ impl<T: MemorySize> MemorySize for Vec<T> {
 }
 
 impl<T: MemorySize> MemorySize for Option<T> {
+    const INLINE_ONLY: bool = T::INLINE_ONLY;
+
     fn memory_size(&self) -> usize {
         let Some(value) = self else {
             return std::mem::size_of::<Self>();
@@ -239,6 +250,37 @@ pub fn btree_map_memory<K, V>(entries: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::MemorySize;
+
+    #[test]
+    fn vector_allocations() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static VISITS: AtomicUsize = AtomicUsize::new(0);
+        struct Inline(u8);
+        impl MemorySize for Inline {
+            const INLINE_ONLY: bool = true;
+
+            fn memory_size(&self) -> usize {
+                VISITS.fetch_add(1, Ordering::Relaxed);
+                std::mem::size_of_val(&self.0)
+            }
+        }
+
+        let mut values = Vec::with_capacity(128);
+        values.push(Some(Inline(7)));
+        let allocation = values.capacity() * std::mem::size_of::<Option<Inline>>();
+        assert_eq!(values.memory_size(), std::mem::size_of_val(&values) + allocation);
+        assert_eq!(VISITS.load(Ordering::Relaxed), 0);
+
+        let mut text = String::with_capacity(256);
+        text.push_str("nested");
+        let text_allocation = text.capacity();
+        let mut nested = Vec::with_capacity(8);
+        nested.push(Some(text));
+        let allocation = nested.capacity() * std::mem::size_of::<Option<String>>();
+        let expected = std::mem::size_of_val(&nested) + allocation + text_allocation;
+        assert_eq!(nested.memory_size(), expected);
+    }
 
     #[test]
     fn wrappers_saturate() {

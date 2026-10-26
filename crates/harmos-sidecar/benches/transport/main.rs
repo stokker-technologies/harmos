@@ -126,11 +126,10 @@ async fn child_process_capacity() {
 }
 
 async fn child(settings: Option<Settings>) {
-    let executable = Executable::at(
-        std::env::var_os("NEXTEST_BIN_EXE_harmos_sidecar_throughput_fixture")
-            .map_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_harmos-sidecar-throughput-fixture")), std::path::PathBuf::from),
-    )
-    .expect("cargo built the absolute benchmark fixture");
+    let benchmark = std::env::current_exe().unwrap();
+    let name = if cfg!(windows) { "harmos-sidecar-throughput-fixture.exe" } else { "harmos-sidecar-throughput-fixture" };
+    let path = benchmark.parent().unwrap().parent().unwrap().join("bin").join(name);
+    let executable = Executable::at(path).expect("the bench producer stages the absolute benchmark fixture");
     let attached = executable.attach().await.expect("the benchmark child starts");
     let (write, read, control, _diagnostics, ending) = attached.into_parts();
     let control = control.expect("native benchmark requires its independent control channel");
@@ -281,7 +280,7 @@ async fn throughput_case(
     phase(outgoing, incoming, call_id, WireCommand::Initialize { invocation: call_id, context: [0; 32] }).await;
     let command = WireCommand::Attempt { invocation: call_id, context: [0; 32], values: Vec::new() };
     outgoing
-        .send(Frame::Call { id: call_id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap() })
+        .send(Frame::Call { id: call_id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap().into() })
         .await
         .expect("the publication case is requested");
 
@@ -328,7 +327,7 @@ async fn throughput_case(
                 }
                 // This Bench Exercises The Direct Carrier, Not Root Authorization
                 outgoing
-                    .send(Frame::Answer { id, result: <() as Message>::encode_to_vec(&()) })
+                    .send(Frame::Answer { id, result: <() as Message>::encode_to_vec(&()).into() })
                     .await
                     .expect("publication admission acknowledged");
             }
@@ -426,8 +425,8 @@ async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: Wir
     }
 }
 
-async fn call(outgoing: &Sender, incoming: &mut Receiver, id: u64, method: &str, params: Vec<u8>) -> Vec<u8> {
-    outgoing.send(Frame::Call { id, method: method.to_owned(), params }).await.expect("the benchmark call is sent");
+async fn call(outgoing: &Sender, incoming: &mut Receiver, id: u64, method: &str, params: Vec<u8>) -> harmos_sidecar::FramePayload {
+    outgoing.send(Frame::Call { id, method: method.to_owned(), params: params.into() }).await.expect("the benchmark call is sent");
     match receive(incoming).await {
         Frame::Answer { id: answered, result } if answered == id => result,
         other => panic!("the benchmark received an unexpected frame: {other:?}"),

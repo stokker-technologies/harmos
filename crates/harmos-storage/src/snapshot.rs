@@ -23,8 +23,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
 
 // Local Imports
+use super::arrow::RetainedMemory;
 use super::backend::{BackendSnapshot, ScanPage};
-use super::capacity::{Attempt, Refusal};
+use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
 use super::config::SNAPSHOT_BYTES;
 use super::manager::{Inner, State, encoded_size};
 use super::selection::Entry;
@@ -54,13 +55,14 @@ pub(super) struct SnapshotState {
     opened: Option<std::result::Result<BackendSnapshot, Arc<Error>>>,
     opening: bool,
     released: bool,
+    memory: RetainedMemory,
 }
 
 /* === Enums === */
 
 pub(super) enum SnapshotAction {
-    Open(u64, StorageCursor),
-    Release(u64, BackendSnapshot),
+    Open(u64, StorageCursor, RetainedMemory),
+    Release(u64, Option<BackendSnapshot>, RetainedMemory),
 }
 
 /* === Traits === */
@@ -75,9 +77,13 @@ impl Drop for SnapshotState {
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
+    pub(super) async fn snapshot(&self, at: &StorageCursor, held: &Held) -> Result<Snapshot> {
         let result = async {
             self.inner.primary.history().check(&at.history)?;
+            let memory = Reservation::wait(&self.inner, Pool::Read, held, super::manager::ENTRY_OVERHEAD, None)
+                .await
+                .map_err(Refusal::into_error)?
+                .retain();
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
             {
                 let mut state = self.inner.state.lock().unwrap();
@@ -94,6 +100,7 @@ impl<C> StorageManager<C> {
                         opened: None,
                         opening: false,
                         released: false,
+                        memory,
                     },
                 );
             }
@@ -148,10 +155,10 @@ impl<C> StorageManager<C> {
 
 impl Snapshot {
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
-    pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
+    pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage, memory: RetainedMemory) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let entries = self.inner.bounded("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
+        let entries = self.inner.bounded("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page, memory)).await?;
         let mut previous = page.after;
         let mut bytes = 0usize;
         for entry in &entries {
@@ -170,10 +177,10 @@ impl Snapshot {
     }
 
     #[tracing::instrument(name = "storage.snapshot.read_object", level = "trace", skip_all)]
-    pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+    pub(super) async fn read_object(&self, point: &ObjectPoint, memory: RetainedMemory) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point)).await?;
+        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point, memory)).await?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
             if object.position.sequence == 0
@@ -188,10 +195,12 @@ impl Snapshot {
     }
 
     #[tracing::instrument(name = "storage.snapshot.read_file", level = "trace", skip_all)]
-    pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
+    pub(super) async fn read_file(
+        &self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize, memory: RetainedMemory,
+    ) -> Result<Vec<u8>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await
+        self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes, memory)).await
     }
 
     fn check(&self) -> Result<()> {
@@ -207,9 +216,9 @@ impl Drop for Snapshot {
     fn drop(&mut self) {
         let mut state = self.inner.state.lock().unwrap();
         if let Some(held) = state.snapshots.get_mut(&self.id) {
+            held.released = true;
             held.context.sync(|| drop(held.queued.take()));
             held.queued = Some(held.context.sync(|| tracing::debug_span!("storage.snapshot.release.queue", snapshot = self.id)));
-            held.released = true;
         }
         drop(state);
         self.inner.notify();
@@ -222,29 +231,26 @@ impl State {
     }
 
     pub(super) fn snapshot_action(&mut self, allow_release: bool) -> Option<SnapshotAction> {
-        let mut abandoned = Vec::new();
-        let mut action = None;
         for (&id, held) in &mut self.snapshots {
-            if held.released && !held.opening {
-                match &held.opened {
-                    Some(Ok(snapshot)) if allow_release => {
-                        action = Some(SnapshotAction::Release(id, snapshot.clone()));
-                        break;
-                    }
-                    Some(Ok(_)) => {}
-                    // Never Opened Or Failed: Nothing Remains Pinned In The Backend.
-                    _ => abandoned.push(id),
+            if held.opening {
+                continue;
+            }
+            if held.released {
+                if !allow_release {
+                    continue;
                 }
-            } else if !held.released && !held.opening && held.opened.is_none() {
+                let snapshot = match &held.opened {
+                    Some(Ok(snapshot)) => Some(snapshot.clone()),
+                    _ => None,
+                };
+                return Some(SnapshotAction::Release(id, snapshot, held.memory.clone()));
+            }
+            if held.opened.is_none() {
                 held.opening = true;
-                action = Some(SnapshotAction::Open(id, held.at.clone()));
-                break;
+                return Some(SnapshotAction::Open(id, held.at.clone(), held.memory.clone()));
             }
         }
-        for id in abandoned {
-            self.snapshots.remove(&id);
-        }
-        action
+        None
     }
 
     pub(super) fn snapshot_opened(&mut self, id: u64, result: Result<BackendSnapshot>) {

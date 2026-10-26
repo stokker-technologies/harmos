@@ -54,10 +54,12 @@ impl<A: Application> RecordManager<A> {
         Self { state, catalog, preparing, schemas }
     }
 
-    pub async fn register(&self, owner: &str, schema: &SchemaKey, graph: &crate::schema::graph::Schema) -> Result<Arc<Definition>> {
+    pub async fn register(
+        &self, owner: &str, schema: SchemaKey, graph: impl Into<Arc<crate::schema::graph::Schema>>,
+    ) -> Result<Arc<Definition>> {
         let _preparation =
             Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
-        let pending = self.schemas.reserve(owner, schema, graph)?;
+        let pending = self.schemas.reserve(owner, schema.clone(), graph.into())?;
         let id = crate::DefinitionId::new(schema.id.as_str());
         if !matches!(self.catalog.has_record(&id, schema.version.get()), Ok(false)) {
             return Err(Error::AlreadyRegistered { domain: "native record schema", name: schema.id.as_str().to_owned() });
@@ -65,7 +67,7 @@ impl<A: Application> RecordManager<A> {
         if !pending.is_committed()
             && let Some(storage) = &self.schemas.storage
         {
-            storage.write_schema(pending.definition.schema(), pending.definition.graph()).await?;
+            storage.write_schema(pending.definition.schema().clone(), pending.definition.graph_owner()).await?;
         }
         Ok(pending.commit())
     }

@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
+use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
 use harmos_domain::operations::storage::{Query, ReadFile};
@@ -31,7 +31,8 @@ use harmos_storage::query::transform::{
 use harmos_storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_storage::*;
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{history, storage_settings};
+use super::fixture::state_settings;
 use super::waveforms::{self, Sample};
 
 /* === Constants === */
@@ -61,19 +62,21 @@ impl Nominal {
     async fn new() -> Self {
         // Configure And Start A Real Temporary Journal.
         let directory = tempfile::tempdir().unwrap();
-        let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-        let storage: StorageManager =
-            StorageManager::new(StorageBackends { primary: data, state: Arc::new(Recovery::new(history())) }, storage_settings()).unwrap();
+        let data = JsonStorage::new(
+            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            history(),
+        );
+        let storage: StorageManager = StorageManager::new(data.into_backends(state_settings()), storage_settings()).unwrap();
         super::fixture::start(&storage).await;
 
         // Store The Schema And Balanced Three-Phase Samples In Several Batches.
         let schema = waveforms::schema();
-        storage.write_schema(&schema, &waveforms::definition()).await.unwrap();
+        storage.write_schema(schema.clone(), waveforms::definition()).await.unwrap();
         let samples = waveforms::samples(4);
         let inputs = waveforms::inputs(&samples);
         for inputs in inputs.chunks(192) {
-            let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-            storage.write_stream(&batch).await.unwrap();
+            let batch: Vec<_> = inputs.to_vec();
+            storage.write_stream((batch).to_vec()).await.unwrap();
         }
         let durable = storage.flush().await.unwrap();
         Self { _directory: directory, storage, schema, samples, durable }
@@ -142,11 +145,14 @@ async fn positions(storage: &StorageManager, query: Query) -> Vec<(u64, u64)> {
 }
 
 async fn read_range(storage: &StorageManager, file: &FileReference, range: ByteRange) -> Vec<u8> {
-    let mut reader = storage.read_file(ReadFile { file: file.clone(), range }).await.unwrap();
+    let mut reader = storage
+        .read_file(ReadFile { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
+        .await
+        .unwrap();
     let mut bytes = Vec::new();
     while let Some(batch) = reader.next().await.unwrap() {
-        assert_eq!(batch.offset, range.offset + bytes.len() as u64);
-        bytes.extend_from_slice(&batch.bytes);
+        assert_eq!(batch.offset(), range.offset + bytes.len() as u64);
+        bytes.extend_from_slice(batch.bytes());
     }
     assert_eq!(reader.completion().unwrap().bytes, bytes.len() as u64);
     bytes
@@ -274,7 +280,7 @@ async fn file_ranges_read() {
             expected_length: Some(length as u64),
             expected_sha256: None,
         };
-        let reference = n.storage.write_file(metadata, &expected).await.unwrap();
+        let reference = n.storage.write_file(metadata, (expected).to_vec()).await.unwrap();
         let range = |offset, limit| ByteRange { offset, limit };
         assert_eq!(read_range(&n.storage, &reference, range(0, None)).await, expected);
 
@@ -284,7 +290,13 @@ async fn file_ranges_read() {
         assert_eq!(selected, expected[offset as usize..expected.len().min(offset as usize + 7)]);
         let end = read_range(&n.storage, &reference, range(reference.length, None)).await;
         assert!(end.is_empty());
-        let beyond = n.storage.read_file(ReadFile { file: reference.clone(), range: range(reference.length + 1, None) }).await;
+        let beyond = n
+            .storage
+            .read_file(ReadFile {
+                source: harmos_domain::model::storage::files::FileSource::Stored(reference.clone()),
+                range: range(reference.length + 1, None),
+            })
+            .await;
         assert!(beyond.is_err());
     }
     n.finish().await;

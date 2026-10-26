@@ -47,12 +47,12 @@ use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
 use super::worker::Worker;
 use super::{
-    ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageCursor, StorageFuture, StorageSchema, StorageSettings,
-    StoredRecord, StoredRow,
+    ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageBatch, StorageCursor, StorageFuture, StorageSchema,
+    StorageSettings, StoredRecord, StoredRow,
 };
 use crate::execution::Execution;
 use crate::{Error, Identifier, Result};
-use harmos_domain::model::storage::{RecordWrite, StreamWrite};
+use harmos_domain::model::storage::{RecordInput, RecordWrite, StreamInput};
 
 /* === Constants === */
 
@@ -90,6 +90,8 @@ pub struct StorageManager<C = ()> {
 
 pub(super) struct Inner {
     pub(super) execution: Execution,
+    pub(super) retained_write_bytes: Arc<std::sync::atomic::AtomicUsize>,
+    pub(super) retained_read_bytes: Arc<std::sync::atomic::AtomicUsize>,
     pub(super) measurement_admission: tokio::sync::Mutex<()>,
     pub(super) control_admission: tokio::sync::Mutex<()>,
     measurement_waiting: std::sync::atomic::AtomicUsize,
@@ -102,6 +104,7 @@ pub(super) struct Inner {
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
     pub(super) object_definition: fn(&SchemaKey) -> harmos_domain::Result<harmos_domain::model::storage::catalog::ObjectDefinition>,
+    pub(super) object_retention: fn(&SchemaKey) -> harmos_domain::Result<super::ObjectRetention>,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -123,6 +126,8 @@ pub(super) struct Lifecycle {
 
 pub(super) struct State {
     pub(super) execution: Execution,
+    pub(super) retained_write_bytes: Arc<std::sync::atomic::AtomicUsize>,
+    pub(super) retained_read_bytes: Arc<std::sync::atomic::AtomicUsize>,
     prefer_measurement: bool,
     pub(super) journal_required_data: StorageCursor,
     pub(super) reserved: usize,
@@ -173,6 +178,7 @@ pub(super) struct Pending {
     pub(super) index: u64,
     pub(super) bytes: usize,
     pub(super) operation: Operation,
+    charge: Option<Arc<crate::batch::WriteCharge>>,
 }
 
 struct Counter(usize);
@@ -203,13 +209,13 @@ pub(super) enum Domain {
 }
 
 pub(super) enum Operation {
-    Schema(StorageSchema),
-    File(super::FileReference),
-    Records(Vec<StoredRecord>),
-    ObjectGroup { schemas: Vec<StorageSchema>, objects: Vec<super::ObjectEntry>, bytes: usize },
-    Stream(Vec<StoredRow>),
-    Recovery(Vec<RecoveryEntry>),
-    Snapshot(RecoverySnapshot),
+    Schema(StorageBatch<StorageSchema>),
+    File(StorageBatch<super::FileReference>),
+    Records(StorageBatch<StoredRecord>),
+    ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
+    Stream(StorageBatch<StoredRow>),
+    Recovery(StorageBatch<RecoveryEntry>),
+    Snapshot(StorageBatch<RecoverySnapshot>),
 }
 
 /* === Traits === */
@@ -224,8 +230,69 @@ pub trait WorkerOwner: Send + Sync {
 
 /* === Implementations === */
 
+impl Pending {
+    pub(super) fn retire(&self) {
+        if let Some(charge) = &self.charge {
+            charge.retire();
+        }
+    }
+
+    pub(super) fn new(
+        inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, mut operation: Operation,
+    ) -> Self {
+        let charge = match &mut operation {
+            Operation::Schema(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::File(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::Records(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::Stream(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::ObjectGroup { schemas, objects, .. } => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *schemas = schemas.clone().retained(Arc::clone(&charge));
+                *objects = objects.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::Recovery(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+            Operation::Snapshot(values) => Some({
+                let charge = crate::batch::WriteCharge::new(inner, bytes);
+                *values = values.clone().retained(Arc::clone(&charge));
+                charge
+            }),
+        };
+        Self {
+            context: crate::execution::Context::current(),
+            queued: Mutex::new(Some(tracing::debug_span!("storage.queue"))),
+            journal,
+            index,
+            bytes,
+            operation,
+            charge,
+        }
+    }
+}
+
 impl Drop for Pending {
     fn drop(&mut self) {
+        self.retire();
         self.context.sync(|| drop(self.queued.get_mut().unwrap().take()));
     }
 }
@@ -257,10 +324,14 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
         let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, settings.mutation_bytes(), execution)?;
+        let retained_write_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let retained_read_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
                 execution,
+                retained_write_bytes: Arc::clone(&retained_write_bytes),
+                retained_read_bytes: Arc::clone(&retained_read_bytes),
                 measurement_admission: tokio::sync::Mutex::new(()),
                 control_admission: tokio::sync::Mutex::new(()),
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
@@ -273,8 +344,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 recovery: state_backend,
                 has_objects: C::definition_count() != 0,
                 object_definition: harmos_domain::model::storage::catalog::definition::<C>,
+                object_retention: |key| Ok(harmos_domain::model::storage::catalog::definition::<C>(key)?.retention()),
                 state: Mutex::new(State {
                     execution,
+                    retained_write_bytes,
+                    retained_read_bytes,
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
                     reserved: 0,

@@ -20,7 +20,7 @@ use std::time::UNIX_EPOCH;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use super::{RecordWrite, StorageCursor, StorageManager, StreamWrite};
+use super::{RecordInput, RecordWrite, StorageCursor, StorageManager, StreamInput};
 use crate::storage::MutationId;
 use crate::{Error, Identifier, Result};
 
@@ -47,47 +47,43 @@ pub(super) struct Mutation<'a> {
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
     pub async fn write_schema_once(
-        &self, mutation: &MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
+        &self, mutation: &MutationId, key: super::SchemaKey, schema: impl Into<std::sync::Arc<crate::schema::graph::Schema>>,
     ) -> Result<StorageCursor> {
-        self.admit_schema(key, schema, Some(mutation)).await
+        self.admit_schema(key, schema.into(), Some(mutation)).await
     }
 
     #[tracing::instrument(name = "storage.admissions.write_records_once", level = "debug", skip_all)]
-    pub async fn write_records_once(&self, mutation: &MutationId, records: &[RecordWrite<'_>]) -> Result<StorageCursor> {
-        self.admit_record_values(mutation, records.iter().copied()).await
+    pub async fn write_records_once(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
+        self.admit_record_values(mutation, records).await
     }
 
     #[tracing::instrument(name = "storage.admissions.admit_record_values", level = "debug", skip_all)]
-    pub(crate) async fn admit_record_values<'a>(
-        &self, mutation: &MutationId, records: impl ExactSizeIterator<Item = RecordWrite<'a>> + Clone,
-    ) -> Result<StorageCursor> {
+    pub(crate) async fn admit_record_values(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         nonempty(records.len())?;
         let mut hash = Sha256::new();
         part(&mut hash, b"storage.write_records:v1");
         hash.update((records.len() as u64).to_le_bytes());
-        for record in records.clone() {
-            hash_record(&mut hash, &record);
+        for record in &records {
+            hash_record(&mut hash, &record.borrowed());
         }
         self.admit_records(records, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }
 
     #[tracing::instrument(name = "storage.admissions.write_stream_once", level = "debug", skip_all)]
-    pub async fn write_stream_once(&self, mutation: &MutationId, rows: &[StreamWrite<'_>]) -> Result<StorageCursor> {
-        self.admit_stream_values(mutation, rows.iter().copied()).await
+    pub async fn write_stream_once(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
+        self.admit_stream_values(mutation, rows).await
     }
 
     #[tracing::instrument(name = "storage.admissions.admit_stream_values", level = "debug", skip_all)]
-    pub(crate) async fn admit_stream_values<'a>(
-        &self, mutation: &MutationId, rows: impl ExactSizeIterator<Item = StreamWrite<'a>> + Clone,
-    ) -> Result<StorageCursor> {
+    pub(crate) async fn admit_stream_values(&self, mutation: &MutationId, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         nonempty(rows.len())?;
         let mut hash = Sha256::new();
         part(&mut hash, b"storage.write_stream:v1");
         hash.update((rows.len() as u64).to_le_bytes());
-        for row in rows.clone() {
+        for row in &rows {
             part(&mut hash, row.stream.as_str().as_bytes());
             hash.update(row.sequence.to_le_bytes());
-            hash_record(&mut hash, &row.record);
+            hash_record(&mut hash, &row.record.borrowed());
         }
         self.admit_stream(rows, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
     }

@@ -31,11 +31,26 @@ use super::*;
 
 /* === Structs === */
 
+struct Chunk<'a> {
+    control: &'a Control,
+    id: String,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for Chunk<'_> {
+    fn drop(&mut self) {
+        let mut active = self.control.chunk_active.lock().unwrap();
+        *active.get_mut(&self.id).expect("active chunk") -= 1;
+        active.retain(|_, count| *count != 0);
+        drop(active);
+        self.control.chunk_changed.notify_waiters();
+    }
+}
 
 impl<C: ObjectCatalog> Data<C> {
     pub(super) fn fixture_supports_file_sessions(&self) -> bool {
@@ -330,23 +345,39 @@ impl<C: ObjectCatalog> Data<C> {
             if self.control.create_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |value| value.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));
             }
-            if let Some(journal) = &self.journal {
-                journal.stage(&metadata.id, &[])?;
-            }
             Ok(StagedFile { history: self.history.clone(), id: metadata.id.clone() })
         })
     }
 
-    pub(super) fn fixture_write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: &'a [u8]) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.abandoned_files.lock().unwrap().contains(staging.id.as_str()) {
                 return Err(failure(BackendFailure::Conflict));
             }
+            let id = staging.id.to_string();
+            {
+                let mut active = self.control.chunk_active.lock().unwrap();
+                let current = active.entry(id.clone()).or_default();
+                *current += 1;
+                let mut peaks = self.control.chunk_peak_by_file.lock().unwrap();
+                let peak = peaks.entry(id.clone()).or_default();
+                *peak = (*peak).max(*current);
+                self.control.chunk_peak.fetch_max(active.values().sum(), Ordering::SeqCst);
+            }
+            let _active = Chunk { control: &self.control, id: id.clone() };
+            self.control.chunk_pointers.lock().unwrap().push((id, offset, bytes.as_slice().as_ptr() as usize, bytes.allocation_bytes()));
+            self.control.chunk_changed.notify_waiters();
+            let bytes = bytes.as_slice();
             self.control.chunk_sizes.lock().unwrap().push(bytes.len());
             self.control.chunk_offsets.lock().unwrap().push(offset);
-            if self.control.block_chunk.load(Ordering::SeqCst) {
+            let blocked = self.control.block_chunk.load(Ordering::SeqCst)
+                && self.control.block_chunk_file.lock().unwrap().as_ref().is_none_or(|id| id == staging.id.as_str());
+            if blocked {
                 self.control.chunk_entered.notify_one();
                 self.control.chunk_release.notified().await;
+            }
+            if self.control.permanent_chunk_file.lock().unwrap().as_ref().is_some_and(|id| id == staging.id.as_str()) {
+                return Err(failure(BackendFailure::Permanent));
             }
             {
                 let _io = self.file_io.lock().unwrap();
@@ -357,9 +388,6 @@ impl<C: ObjectCatalog> Data<C> {
                     stored.extend_from_slice(bytes);
                 } else if stored.get(offset..offset + bytes.len()) != Some(bytes) {
                     return Err(failure(BackendFailure::Conflict));
-                }
-                if let Some(journal) = &self.journal {
-                    journal.stage(&staging.id, stored)?;
                 }
             }
             if self.control.chunk_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
@@ -395,9 +423,6 @@ impl<C: ObjectCatalog> Data<C> {
             let (_, bytes) = staged.get(staging.id.as_str()).ok_or_else(|| failure(BackendFailure::Permanent))?;
             if bytes.len() as u64 != length || <[u8; 32]>::from(Sha256::digest(bytes)) != sha256 {
                 return Err(failure(BackendFailure::Corrupt));
-            }
-            if let Some(journal) = &self.journal {
-                journal.finish(&staging.id, bytes, &sha256)?;
             }
             // A Failed Integrity Check Must Retain The Last Recoverable Prefix.
             let (metadata, bytes) = staged.remove(staging.id.as_str()).expect("verified staging");

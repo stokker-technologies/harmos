@@ -56,9 +56,14 @@ impl State {
         self.status.mutation_bytes = self.receipts.snapshot_bytes();
         self.status.pending_batches =
             self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
-        self.status.pending_bytes =
-            self.reserved + self.scratch_bytes + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
-        self.status.read_bytes = self.read_bytes + self.deletions.values().map(|deletion| deletion.bytes).sum::<usize>();
+        self.status.pending_bytes = self.reserved
+            + self.scratch_bytes
+            + self.retained_write_bytes.load(std::sync::atomic::Ordering::SeqCst)
+            + self.queue.bytes()
+            + self.files.values().map(|file| file.bytes()).sum::<usize>();
+        self.status.read_bytes = self.read_bytes
+            + self.deletions.values().map(|deletion| deletion.bytes).sum::<usize>()
+            + self.retained_read_bytes.load(std::sync::atomic::Ordering::SeqCst);
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {

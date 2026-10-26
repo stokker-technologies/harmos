@@ -83,7 +83,7 @@ mod sdk {
     use std::num::NonZeroUsize;
 
     async fn phase(outgoing: &Sender, incoming: &mut Receiver, id: u64, command: WireCommand) -> WireAnswer {
-        outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap() }).await.unwrap();
+        outgoing.send(Frame::Call { id, method: WIRE_METHOD.to_owned(), params: command.encode().unwrap().into() }).await.unwrap();
         let received = incoming.receive().await.unwrap().unwrap();
         let Frame::Answer { id: answered, result } = received.frame else {
             panic!("the carrier returns one operation phase answer");
@@ -120,7 +120,7 @@ mod sdk {
         let (write, read, control, _, ending) = native.attach().await.unwrap().into_parts();
         let Connection { sender: outgoing, receiver: mut incoming, mut driver } = Connection::new((read, write), control.unwrap());
         let driving = tokio::spawn(async move { driver.run().await });
-        outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new() }).await.unwrap();
+        outgoing.send(Frame::Call { id: 1, method: Frame::REGISTER.to_owned(), params: Vec::new().into() }).await.unwrap();
         let received = incoming.receive().await.unwrap().unwrap();
         let Frame::Answer { id: 1, result } = received.frame else {
             panic!("registration returns inert catalog");

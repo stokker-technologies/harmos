@@ -9,8 +9,11 @@
 
 /* === Modules === */
 
+mod commands;
+mod fixture;
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
+mod transfers;
 
 /* === Re-Exports === */
 
@@ -46,15 +49,19 @@ criterion::criterion_main!(benches);
 
 fn benchmarks(c: &mut criterion::Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
+    commands::run(c, &runtime);
+    let fixture = runtime.block_on(fixture::Fixture::sidecar());
+    runtime.block_on(fixture.verify_filesystem());
+    transfers::run(&runtime, "sidecar-host", &fixture);
+    runtime.block_on(fixture.finish());
     let mut consumers = c.benchmark_group("streams/native_consumer");
     consumers.sample_size(10);
     for carrier in ["executable"] {
-        for size in [64 * 1024, 1024 * 1024] {
+        for size in [64 * 1024 / 10, 1024 * 1024 / 10] {
             let fixture = if carrier == "executable" {
-                let path = &std::env::var_os("NEXTEST_BIN_EXE_harmos_stream_consumer_fixture").map_or_else(
-                    || std::path::PathBuf::from(env!("CARGO_BIN_EXE_harmos-stream-consumer-fixture")),
-                    std::path::PathBuf::from,
-                );
+                let executable = std::env::current_exe().unwrap();
+                let name = if cfg!(windows) { "harmos-stream-consumer-fixture.exe" } else { "harmos-stream-consumer-fixture" };
+                let path = &executable.parent().unwrap().parent().unwrap().join("bin").join(name);
                 runtime.block_on(native::Fixture::executable(path))
             } else {
                 runtime.block_on(native::Fixture::new())

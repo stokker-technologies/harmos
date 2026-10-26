@@ -95,7 +95,7 @@ struct BatchedRow {
 
 fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
     let encoded = crate::encode(&value);
-    let bound = grpc::decoding_memory::<T>(DecodeInput::new(&encoded)).unwrap();
+    let bound = grpc::prepare::<T>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap();
     let decoded = grpc::decode::<T>(DecodeInput::new(&encoded)).unwrap();
     assert_eq!(decoded, value);
     assert!(decoded.memory_size() <= bound);

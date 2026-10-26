@@ -301,7 +301,7 @@ async fn retired_control_refused() {
 
     // Activation Answers On The Same Exchange
     outgoing
-        .send(harmos_sidecar::Frame::Call { id: 1, method: harmos_sidecar::Frame::REGISTER.to_owned(), params: Vec::new() })
+        .send(harmos_sidecar::Frame::Call { id: 1, method: harmos_sidecar::Frame::REGISTER.to_owned(), params: Vec::new().into() })
         .await
         .expect("the activation is sent");
     let answer = received(incoming.receive().await.expect("the exchange remains valid"));
@@ -309,7 +309,7 @@ async fn retired_control_refused() {
 
     // The Retired Control Method Is Refused As Unknown
     outgoing
-        .send(harmos_sidecar::Frame::Call { id: 2, method: "harmos.initialize".to_owned(), params: b"{}".to_vec() })
+        .send(harmos_sidecar::Frame::Call { id: 2, method: "harmos.initialize".to_owned(), params: b"{}".to_vec().into() })
         .await
         .expect("the retired control request is sent");
     let refusal = received(incoming.receive().await.expect("the transport remains valid"));

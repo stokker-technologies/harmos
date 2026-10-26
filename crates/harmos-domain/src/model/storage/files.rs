@@ -14,7 +14,7 @@ pub mod read;
 
 /* === Re-Exports === */
 
-pub use read::{ByteRange, FileBatch, FileCompletion};
+pub use read::{ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileSource, FollowStart};
 
 /* === Imports === */
 

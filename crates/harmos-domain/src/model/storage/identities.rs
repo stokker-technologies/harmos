@@ -21,7 +21,7 @@
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{ObjectKey, SchemaKey, StorageCursor};
-use crate::Identifier;
+use crate::{Identifier, MemorySize};
 
 /* === Constants === */
 
@@ -56,6 +56,28 @@ pub enum StoredIdentity {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl MemorySize for IdentitySelection {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.schema.as_ref().map_or(0, |schema| schema.memory_size().saturating_sub(std::mem::size_of::<Identifier>())))
+    }
+}
+
+impl MemorySize for StoredIdentity {
+    fn memory_size(&self) -> usize {
+        let base = std::mem::size_of::<Self>()
+            .saturating_add(self.schema().memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
+            .saturating_add(self.first().memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()));
+        match self {
+            Self::Stream { scope, item, stream, .. } => base
+                .saturating_add(scope.as_ref().map_or(0, |scope| scope.memory_size().saturating_sub(std::mem::size_of::<Identifier>())))
+                .saturating_add(item.memory_size().saturating_sub(std::mem::size_of::<Identifier>()))
+                .saturating_add(stream.memory_size().saturating_sub(std::mem::size_of::<Identifier>())),
+            Self::Object { key, .. } => base.saturating_add(key.memory_size().saturating_sub(std::mem::size_of::<ObjectKey>())),
+        }
+    }
+}
 
 impl StoredIdentity {
     pub fn first(&self) -> &StorageCursor {

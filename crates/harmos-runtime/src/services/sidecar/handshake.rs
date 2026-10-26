@@ -61,9 +61,11 @@ where
         Ok(())
     }
 
-    pub(super) async fn open_call(&mut self, method: &str, params: Vec<u8>, within: Duration) -> Result<Vec<u8>, Fault<String>> {
+    pub(super) async fn open_call(
+        &mut self, method: &str, params: Vec<u8>, within: Duration,
+    ) -> Result<harmos_sidecar::FramePayload, Fault<String>> {
         let id = self.mint();
-        if let Err(error) = self.send(Frame::Call { id, method: method.to_owned(), params }).await {
+        if let Err(error) = self.send(Frame::Call { id, method: method.to_owned(), params: params.into() }).await {
             return Err(Fault::Environmental(format!("the sidecar could not answer `{method}`: {error}")));
         }
 

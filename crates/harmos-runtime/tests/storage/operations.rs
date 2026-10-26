@@ -151,7 +151,7 @@ async fn record_follow_resumes() {
 #[tokio::test]
 async fn stream_follow_sequence() {
     use harmos_runtime::storage::operations::FollowStream;
-    use harmos_runtime::storage::{StoredRow, StreamWrite};
+    use harmos_runtime::storage::{StoredRow, StreamInput};
     let fixture = Fixture::new(config()).await;
     harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
         .unwrap();
@@ -175,7 +175,7 @@ async fn stream_follow_sequence() {
     let instance = fixture.runtime.operations.submit_endpoints::<FollowStream, _>(request, sender).unwrap();
     fixture
         .storage
-        .write_stream(&[StreamWrite { stream: &stream, sequence: 17, record: super::record(&key, &item, b"sample") }])
+        .write_stream(vec![StreamInput { stream: stream.clone(), sequence: 17, record: super::record(&key, &item, b"sample") }])
         .await
         .unwrap();
     let row = receiver.recv().await.unwrap();

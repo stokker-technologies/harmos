@@ -201,7 +201,7 @@ pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<
 fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
     let mut rows = Vec::new();
     for row in batch.select::<S>() {
-        let Value::Object(mut members) = serde_json::to_value(&row.value).map_err(json_error)? else {
+        let Value::Object(mut members) = serde_json::to_value(row.value).map_err(json_error)? else {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "a stream row does not serialize as a JSON object"));
         };
         if members.contains_key(POSITION) || members.contains_key(GAP) {

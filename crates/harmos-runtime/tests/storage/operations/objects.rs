@@ -171,11 +171,11 @@ async fn object_batch_atomic() {
     let mut forged = good.clone();
     forged.item = value("different", "value").item;
     for bad in [unknown, malformed, forged] {
-        assert!(storage.write_objects_once(&mutation, &[good.clone(), bad]).await.is_err());
+        assert!(storage.write_objects_once(&mutation, vec![good.clone(), bad]).await.is_err());
         assert_eq!(storage.cursor_accepted().sequence, 0);
     }
-    assert!(storage.write_objects_once(&mutation, &[]).await.is_err());
-    let admitted = storage.write_objects_once(&mutation, &[good]).await.unwrap();
+    assert!(storage.write_objects_once(&mutation, vec![]).await.is_err());
+    let admitted = storage.write_objects_once(&mutation, vec![good]).await.unwrap();
     assert_eq!(admitted[0].position.sequence, 2);
     runtime.stop().await.unwrap();
 }

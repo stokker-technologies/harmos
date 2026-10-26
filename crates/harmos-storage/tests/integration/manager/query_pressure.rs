@@ -69,7 +69,7 @@ async fn pressure_reloads_page() {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     let capacity = settings.budget.read_memory_bytes.get();
-    let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
+    let data = Arc::new(Data::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
@@ -80,11 +80,11 @@ async fn pressure_reloads_page() {
     .unwrap();
     super::fixture::start(&storage).await;
     let schema = waveforms::schema();
-    storage.write_schema(&schema, &waveforms::definition()).await.unwrap();
+    storage.write_schema(schema.clone(), waveforms::definition()).await.unwrap();
     let samples = waveforms::samples(1);
     let inputs = waveforms::inputs(&samples);
-    let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-    storage.write_stream(&borrowed).await.unwrap();
+    let borrowed: Vec<_> = inputs.to_vec();
+    storage.write_stream((borrowed).to_vec()).await.unwrap();
     let at = storage.flush().await.unwrap();
     let baseline = storage.status().read_bytes;
     let query = || Query {
@@ -179,7 +179,10 @@ async fn cancelled_advance_poisons() {
     let capacity = settings.budget.read_memory_bytes.get();
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
-            primary: Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap()),
+            primary: Arc::new(JsonStorage::new(
+                JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+                history(),
+            )),
             state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
         },
         settings,
@@ -238,6 +241,7 @@ async fn captures_refuse_cycles() {
     let outcomes = [outcomes.0, outcomes.1];
     assert_eq!(outcomes.iter().filter(|outcome| matches!(outcome, Ok(count) if *count == batches)).count(), 1, "{outcomes:?}");
     assert!(outcomes.iter().any(|outcome| matches!(outcome, Err(harmos_storage::Error::ResourceExhausted { .. }))), "{outcomes:?}");
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
@@ -253,6 +257,7 @@ async fn fitting_captures_complete() {
     let outcomes = tokio::join!(capture(first, Vec::new()), capture(second, Vec::new()));
     assert_eq!(outcomes.0.unwrap(), batches);
     assert_eq!(outcomes.1.unwrap(), batches);
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
@@ -261,8 +266,8 @@ async fn fitting_captures_complete() {
 async fn settlement_preserves_readers() {
     let (f, query) = loaded(1).await;
     let inputs = waveforms::inputs(&waveforms::samples(1));
-    let records = |range: std::ops::Range<usize>| inputs[range].iter().map(|input| input.record.borrowed()).collect::<Vec<_>>();
-    let saved = f.storage.write_records(&records(0..9)).await.unwrap();
+    let records = |range: std::ops::Range<usize>| inputs[range].iter().map(|input| input.record.clone()).collect::<Vec<_>>();
+    let saved = f.storage.write_records((records(0..9)).to_vec()).await.unwrap();
     f.storage.await_durable(&saved).await.unwrap();
 
     // A Query Holding Its Schema And A Record Reader Holding Its Description
@@ -285,13 +290,14 @@ async fn settlement_preserves_readers() {
     assert!(pending(settlement.as_mut()).await);
 
     // Further Records Settle Durably Meanwhile; Releasing The Pool Lets Both Readers Finish.
-    let later = f.storage.write_records(&records(9..18)).await.unwrap();
+    let later = f.storage.write_records((records(9..18)).to_vec()).await.unwrap();
     f.storage.await_durable(&later).await.unwrap();
     drop(external);
     let (read, settled) = tokio::join!(waiting, settlement);
     assert!(matches!(read.unwrap(), Some(QueryArrow::Batch(_))));
-    assert_eq!(settled.unwrap().len(), 9);
+    assert_eq!(settled.unwrap().iter().map(|page| page.len()).sum::<usize>(), 9);
     drop(reader);
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
@@ -327,6 +333,7 @@ async fn small_readers_progress() {
     for reader in small {
         assert_eq!(reader.await.unwrap(), batches - 1);
     }
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
@@ -338,11 +345,12 @@ async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
     settings.request.max_active_queries = NonZeroUsize::new(CONTENTION_QUERIES).unwrap();
     let f = super::fixture::Fixture::new(settings).await;
     let schema = waveforms::schema();
-    f.storage.write_schema(&schema, &waveforms::definition()).await.unwrap();
+    f.storage.write_schema(schema.clone(), waveforms::definition()).await.unwrap();
     let inputs = waveforms::inputs(&waveforms::samples(periods));
-    let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-    f.storage.write_stream(&borrowed).await.unwrap();
+    let borrowed: Vec<_> = inputs.to_vec();
+    f.storage.write_stream((borrowed).to_vec()).await.unwrap();
     let at = f.storage.flush().await.unwrap();
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     let query = Query {
         at,
@@ -369,9 +377,11 @@ async fn alone(f: &super::fixture::Fixture, query: &Query) -> (usize, usize) {
         kept.push(output);
     }
     drop(reader);
+    f.data.snapshots_released().await;
     let retained = f.storage.status().read_bytes;
     let batches = kept.len();
     drop(kept);
+    f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
     (batches, retained)
 }

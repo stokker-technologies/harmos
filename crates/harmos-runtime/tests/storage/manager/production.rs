@@ -82,8 +82,8 @@ async fn file_receipts_replay() {
     assert_eq!(*f.runtime.operations.call(finish.clone()).await.unwrap(), *reference);
     assert_eq!(*f.runtime.operations.call(create).await.unwrap(), *producer);
     let identity = StagedFile { history: producer.session.history.clone(), id: producer.session.id.clone() };
-    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
-    assert_eq!(reader.next_batch(NonZeroUsize::new(16).unwrap()).await.unwrap().unwrap().bytes, b"onetwo");
+    let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
+    assert_eq!(reader.next_batch(NonZeroUsize::new(16).unwrap()).await.unwrap().unwrap().bytes(), b"onetwo");
     assert!(reader.next_batch(NonZeroUsize::MIN).await.unwrap().is_none());
     drop(reader);
     f.finish().await;
@@ -126,13 +126,13 @@ async fn cancelled_append_replays() {
     let id = key(&f, "append");
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     {
-        let append = f.storage.append_file_once(&id, &producer.session, 0, b"bytes");
+        let append = f.storage.append_file_once(&id, &producer.session, 0, (b"bytes").to_vec());
         tokio::pin!(append);
         tokio::select! { biased; _ = &mut append => panic!("chunk must block"), _ = f.data.control.chunk_entered.notified() => {} }
     }
     f.data.control.block_chunk.store(false, Ordering::SeqCst);
     f.data.control.chunk_release.notify_one();
-    let appended = f.storage.append_file_once(&id, &producer.session, 0, b"bytes").await.unwrap();
+    let appended = f.storage.append_file_once(&id, &producer.session, 0, (b"bytes").to_vec()).await.unwrap();
     assert_eq!(appended.length, 5);
     assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), vec![0]);
     f.finish().await;
@@ -145,8 +145,8 @@ async fn concurrent_appends_exclusive() {
     let first = key(&f, "first");
     let second = key(&f, "second");
     let (first, second) = tokio::join!(
-        f.storage.append_file_once(&first, &producer.session, 0, b"first"),
-        f.storage.append_file_once(&second, &producer.session, 0, b"second")
+        f.storage.append_file_once(&first, &producer.session, 0, (b"first").to_vec()),
+        f.storage.append_file_once(&second, &producer.session, 0, (b"second").to_vec())
     );
     assert_eq!(first.unwrap().length, 5);
     assert!(second.is_err());
@@ -160,7 +160,7 @@ async fn integrity_failure_abandons() {
     let mut metadata = metadata("integrity");
     metadata.expected_length = Some(6);
     let producer = f.storage.create_file_once(&key(&f, "create"), &metadata).await.unwrap();
-    f.storage.append_file_once(&key(&f, "append"), &producer.session, 0, b"bad").await.unwrap();
+    f.storage.append_file_once(&key(&f, "append"), &producer.session, 0, (b"bad").to_vec()).await.unwrap();
     let id = key(&f, "finish");
     assert!(f.storage.finish_file_once(&id, &producer.session).await.is_err());
     assert!(f.storage.finish_file_once(&id, &producer.session).await.is_err());
@@ -188,16 +188,16 @@ async fn receipt_awaits_flush() {
 #[tokio::test]
 async fn unsaved_file_survives() {
     let f = fixture().await;
-    let first = f.storage.write_file(metadata("first-finished"), b"first").await.unwrap();
+    let first = f.storage.write_file(metadata("first-finished"), (b"first").to_vec()).await.unwrap();
     assert_eq!(f.storage.cursor_saved().sequence, 0);
     let recovered = super::recovery::restart(&f).await;
-    let second = recovered.storage.write_file(metadata("second-finished"), b"second").await.unwrap();
+    let second = recovered.storage.write_file(metadata("second-finished"), (b"second").to_vec()).await.unwrap();
     assert_eq!(first.position, second.position);
     for (reference, expected) in [(first, b"first".as_slice()), (second, b"second".as_slice())] {
         let identity = StagedFile { history: reference.position.history, id: reference.metadata.id };
-        let mut reader = recovered.storage.follow_file(&identity, 0).await.unwrap();
+        let mut reader = recovered.storage.follow_production(&identity, 0).await.unwrap();
         let chunk = reader.next_batch(NonZeroUsize::new(32).unwrap()).await.unwrap().unwrap();
-        assert_eq!(chunk.bytes, expected);
+        assert_eq!(chunk.bytes(), expected);
         assert!(reader.next_batch(NonZeroUsize::MIN).await.unwrap().is_none());
     }
     recovered.finish().await;
@@ -208,7 +208,7 @@ async fn unsaved_file_survives() {
 async fn finish_reconciles_lost() {
     let f = fixture().await;
     let producer = f.storage.create_file_once(&key(&f, "create"), &metadata("lost-finish")).await.unwrap();
-    f.storage.append_file_once(&key(&f, "append"), &producer.session, 0, b"finished").await.unwrap();
+    f.storage.append_file_once(&key(&f, "append"), &producer.session, 0, (b"finished").to_vec()).await.unwrap();
     f.data.control.finish_failures.store(1, Ordering::SeqCst);
     let request = FinishFile { mutation: key(&f, "finish"), session: producer.session };
     let result = f.runtime.operations.call(request.clone()).await.unwrap();

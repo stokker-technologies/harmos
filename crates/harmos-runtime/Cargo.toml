@@ -20,6 +20,13 @@ required-features = ["plugin-sidecar"]
 test = false
 bench = false
 
+[[bin]]
+name = "harmos-grpc-benchmark-fixture"
+path = "tests/fixtures/benchmark_grpc.rs"
+required-features = ["grpc"]
+test = false
+bench = false
+
 # === Features === #
 
 # Core Runtime And Authoring Are Always Available
@@ -291,10 +298,22 @@ harness = false
 required-features = ["plugin-sidecar"]
 
 [[bench]]
-name = "system-sidecar"
+name = "system-sidecar-host"
 path = "benches/sidecar/system.rs"
 harness = false
 required-features = ["plugin-sidecar"]
+
+[[bench]]
+name = "system-guest"
+path = "benches/guest/main.rs"
+harness = false
+required-features = ["plugin-guest"]
+
+[[bench]]
+name = "system-grpc"
+path = "benches/grpc/main.rs"
+harness = false
+required-features = ["grpc"]
 
 [[bench]]
 name = "integration-simulation"

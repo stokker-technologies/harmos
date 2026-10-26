@@ -40,48 +40,106 @@ impl StorageFile {
     }
 
     #[tracing::instrument(name = "storage.staging.producer.write_all", level = "debug", skip_all)]
-    pub async fn write_all(&mut self, mut bytes: &[u8]) -> Result<()> {
+    pub async fn write_all(&mut self, bytes: Vec<u8>) -> Result<()> {
+        let mut owned = Some(bytes);
         let mut cancel = CancelProduction {
             manager: self.manager.clone(),
             id: self.id,
             armed: true,
             generation: self.session.as_ref().map(|token| token.generation),
         };
+        // Admit The Whole Allocation Once; Transient Pressure Never Copies A Bounded Input.
+        let source = self
+            .manager
+            .inner
+            .admit_when(|state| {
+                admission(state)?;
+                state.collect();
+                let file = state.files.get(&self.id).ok_or_else(closed)?;
+                file.check_session(self.session.as_ref())?;
+                if file.abandoned || file.command.is_some() {
+                    return Err(closed());
+                }
+                let input = owned.as_ref().expect("unadmitted file input");
+                let total = file.length.checked_add(u64::try_from(input.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
+                if file.metadata.expected_length.is_some_and(|expected| total > expected) {
+                    return Err(Error::InvalidInput { field: "file length", reason: "input exceeds expected length" });
+                }
+                if input.is_empty() {
+                    return Ok(Some(None));
+                }
+                let capacity = self.manager.inner.settings.request.max_pending_write_bytes.get();
+                let fixed = state
+                    .files
+                    .values()
+                    .try_fold(0usize, |bytes, file| {
+                        bytes.checked_add(file.base_bytes)?.checked_add(file.mutation.as_ref().map_or(0, crate::MemorySize::memory_size))
+                    })
+                    .ok_or_else(size_error)?;
+                // Inputs Larger Than The Live File Envelope Can Admit Still Stream In Bounded Copies.
+                if input.capacity() > capacity.saturating_sub(fixed) {
+                    return Ok(Some(None));
+                }
+                let needed = input.capacity();
+                if state.status.pending_bytes <= capacity - needed {
+                    let source = crate::FileChunk::new(owned.take().expect("unadmitted file input"));
+                    let charge = crate::batch::WriteCharge::new(&self.manager.inner, needed);
+                    charge.retire();
+                    let source = source.retained(charge);
+                    state.collect();
+                    return Ok(Some(Some(source)));
+                }
+                self.manager.inner.relieve_pressure(state, needed, 1);
+                Ok(None)
+            })
+            .await?;
+        let mut offset = 0usize;
         loop {
-            let session = self.session.as_ref();
-            let id = self.id;
             let admitted = self
                 .manager
                 .inner
                 .admit_when(|state| {
                     admission(state)?;
                     state.collect();
+                    let bytes = match &source {
+                        Some(source) => &source.as_slice()[offset..],
+                        None => &owned.as_ref().expect("copied file input")[offset..],
+                    };
                     let available =
                         self.manager.inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes);
                     let capacity = state.status.pending_batches < self.manager.inner.settings.request.max_pending_write_batches.get();
-                    let file = state.files.get_mut(&id).ok_or_else(closed)?;
-                    file.check_session(session)?;
+                    let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
+                    file.check_session(self.session.as_ref())?;
                     if file.abandoned || file.command.is_some() {
                         return Err(closed());
                     }
-                    let total = file.length.checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?).ok_or(size_error())?;
+                    let total = file.length.checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
                     if file.metadata.expected_length.is_some_and(|expected| total > expected) {
                         return Err(Error::InvalidInput { field: "file length", reason: "input exceeds expected length" });
                     }
                     if bytes.is_empty() {
                         return Ok(Some(None));
                     }
-                    if available != 0 && capacity {
-                        let count = bytes.len().min(available).min(self.manager.inner.settings.response.batch_bytes.get());
-                        file.ticket = file.ticket.checked_add(1).ok_or(size_error())?;
+                    if capacity && (source.is_some() || available != 0) {
+                        let limit = if source.is_some() { usize::MAX } else { available };
+                        let count = bytes.len().min(limit).min(self.manager.inner.settings.response.batch_bytes.get());
+                        let chunk = match &source {
+                            Some(source) => source.slice(offset..offset + count),
+                            None => {
+                                let chunk = bytes[..count].to_vec();
+                                let charge = crate::batch::WriteCharge::new(&self.manager.inner, chunk.capacity());
+                                crate::FileChunk::new(chunk).retained(charge)
+                            }
+                        };
+                        file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
                         file.context = crate::execution::Context::current();
                         file.queued = Some(tracing::debug_span!("storage.file.queue"));
-                        file.command = Some(Command::Write(Arc::from(&bytes[..count])));
+                        file.command = Some(Command::Write(chunk));
                         let ticket = file.ticket;
                         state.collect();
                         Ok(Some(Some((count, ticket))))
                     } else {
-                        self.manager.inner.relieve_pressure(state, 1, 1);
+                        self.manager.inner.relieve_pressure(state, usize::from(source.is_none()), 1);
                         Ok(None)
                     }
                 })
@@ -92,7 +150,12 @@ impl StorageFile {
             };
             self.manager.inner.notify();
             self.wait(Await::Written(ticket)).await?;
-            bytes = &bytes[count..];
+            offset += count;
+            let length = source.as_ref().map_or_else(|| owned.as_ref().expect("copied file input").len(), crate::FileChunk::len);
+            if offset == length {
+                cancel.armed = false;
+                return Ok(());
+            }
         }
     }
 
@@ -168,6 +231,9 @@ impl StorageFile {
                     session.reason = "producer explicitly abandoned";
                 }
                 if !file.in_flight {
+                    if let Some(Command::Write(bytes)) = &file.command {
+                        bytes.retire();
+                    }
                     file.context = crate::execution::Context::current();
                     file.queued = Some(tracing::debug_span!("storage.file.queue"));
                     file.command = Some(Command::Abort);
@@ -220,7 +286,7 @@ impl StorageFile {
                     return Ok(());
                 }
                 if let Some(source) = &state.status.failure
-                    && !held.is_some_and(|file| file.retrying)
+                    && !held.is_some_and(|file| file.retrying || file.in_flight)
                 {
                     return Err(Error::Persistence { source: source.clone() });
                 }

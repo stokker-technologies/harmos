@@ -62,15 +62,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
         consumers.sample_size(10);
         for carrier in ["in_process"] {
             for size in [64 * 1024, 1024 * 1024] {
-                let fixture = if carrier == "executable" {
-                    let path = &std::env::var_os("NEXTEST_BIN_EXE_harmos_stream_consumer_fixture").map_or_else(
-                        || std::path::PathBuf::from(env!("CARGO_BIN_EXE_harmos-stream-consumer-fixture")),
-                        std::path::PathBuf::from,
-                    );
-                    runtime.block_on(native::Fixture::executable(path))
-                } else {
-                    runtime.block_on(native::Fixture::new())
-                };
+                let fixture = runtime.block_on(native::Fixture::new());
                 let mut sequence = 0;
                 consumers.throughput(criterion::Throughput::Bytes((8 * size) as u64));
                 consumers.bench_with_input(criterion::BenchmarkId::new(carrier, size), &size, |b, &size| {
