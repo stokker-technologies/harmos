@@ -93,6 +93,7 @@ pub struct WireChildControl {
 pub struct WireTable {
     owner: String,
     handlers: BTreeMap<String, Handler>,
+    retired: BTreeMap<String, u64>,
     services: BTreeMap<String, super::registration::ServiceFactory>,
     prepared: BTreeMap<u64, Arc<Slot>>,
     capacity: Option<NonZeroUsize>,
@@ -136,6 +137,7 @@ struct Handler {
     // ordinary invocation capacity.
     resident: bool,
     definition: OperationDefinition,
+    generation: Option<u64>,
     closing: bool,
     contract: Option<Contract>,
     prepare: Prepare,
@@ -165,7 +167,7 @@ pub enum WireChild {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
-    Prepare { invocation: u64, operation: String, payload: Vec<u8> },
+    Prepare { invocation: u64, operation: String, fingerprint: [u8; 32], generation: u64, payload: Vec<u8> },
     Initialize { invocation: u64, context: [u8; 32] },
     Attempt { invocation: u64, context: [u8; 32], values: Vec<super::CallValue> },
     Finalize { invocation: u64 },
@@ -173,7 +175,7 @@ pub enum WireCommand {
     StreamSend { invocation: u64, epoch: u64, payload: Vec<u8> },
     StreamFinish { invocation: u64, epoch: u64 },
     StreamReceive { invocation: u64, epoch: u64 },
-    PrepareGrpc { invocation: u64, operation: String, payload: Vec<u8> },
+    PrepareGrpc { invocation: u64, operation: String, fingerprint: [u8; 32], generation: u64, payload: Vec<u8> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -219,6 +221,9 @@ pub enum ServingError {
 
     #[error("operation `{operation}` requires streaming endpoints unsupported by this carrier binding")]
     Streaming { operation: String },
+
+    #[error("operation `{operation}` has a mismatched fingerprint or stale generation")]
+    Identity { operation: String },
 
     #[error("carrier invocation `{invocation}` is already prepared")]
     Duplicate { invocation: u64 },
@@ -309,6 +314,7 @@ impl WireTable {
             owner: owner.to_owned(),
             services: BTreeMap::new(),
             handlers: BTreeMap::new(),
+            retired: BTreeMap::new(),
             prepared: BTreeMap::new(),
             capacity: None,
             closed: false,
@@ -377,7 +383,11 @@ impl WireTable {
         for (invocation, _) in slots {
             self.prepared.remove(&invocation);
         }
-        self.handlers.remove(key);
+        if let Some(handler) = self.handlers.remove(key)
+            && let Some(generation) = handler.generation
+        {
+            self.retired.insert(key.to_owned(), generation);
+        }
         self.services.remove(key);
         Ok(())
     }
@@ -426,11 +436,15 @@ impl WireTable {
     }
 
     // Answers the request's grant as the Prepare payload.
-    pub fn prepare(&mut self, invocation: u64, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>, ServingError> {
-        self.prepare_codec(invocation, operation, payload, false)
+    pub fn prepare(
+        &mut self, invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>,
+    ) -> Result<Vec<u8>, ServingError> {
+        self.prepare_codec(invocation, operation, fingerprint, generation, payload, false)
     }
 
-    fn prepare_codec(&mut self, invocation: u64, operation: &str, payload: Vec<u8>, grpc: bool) -> Result<Vec<u8>, ServingError> {
+    fn prepare_codec(
+        &mut self, invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, grpc: bool,
+    ) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -438,7 +452,17 @@ impl WireTable {
         if self.prepared.contains_key(&invocation) {
             return Err(ServingError::Duplicate { invocation });
         }
-        let handler = self.handlers.get(operation).ok_or_else(|| ServingError::Unknown { operation: operation.to_owned() })?;
+        let handler = self.handlers.get_mut(operation).ok_or_else(|| ServingError::Unknown { operation: operation.to_owned() })?;
+        if handler.definition.fingerprint.0 != fingerprint
+            || generation == 0
+            || handler.generation.is_some_and(|bound| bound != generation)
+            || self.retired.get(operation).is_some_and(|retired| generation <= *retired)
+        {
+            return Err(ServingError::Identity { operation: operation.to_owned() });
+        }
+        // The authenticated host assigns a generation with its first preparation.
+        // Keep it through withdrawal so delayed preparations cannot bind a replacement.
+        handler.generation = Some(generation);
         if handler.closing || (self.ordinary_closed && !handler.lifecycle) {
             return Err(ServingError::Closing);
         }
@@ -560,12 +584,12 @@ impl WireTable {
             }
         };
         let command = match command {
-            WireCommand::PrepareGrpc { invocation, operation, payload } => {
-                let result = span.in_scope(|| self.prepare_codec(invocation, &operation, payload, true));
+            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                let result = span.in_scope(|| self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
-            WireCommand::Prepare { invocation, operation, payload } => {
-                let result = span.in_scope(|| self.prepare(invocation, &operation, payload));
+            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                let result = span.in_scope(|| self.prepare(invocation, &operation, fingerprint, generation, payload));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
             command => command,
@@ -690,8 +714,12 @@ impl WireTable {
             return wire_answer(slot.attempt(invocation, context, Some(epoch)).await);
         }
         let result = match command {
-            WireCommand::PrepareGrpc { invocation, operation, payload } => self.prepare_codec(invocation, &operation, payload, true),
-            WireCommand::Prepare { invocation, operation, payload } => self.prepare(invocation, &operation, payload),
+            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true)
+            }
+            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                self.prepare(invocation, &operation, fingerprint, generation, payload)
+            }
             WireCommand::Initialize { invocation, .. } => self.initialize(invocation, context).await.map(|()| Vec::new()),
             WireCommand::Attempt { invocation, .. } => self.attempt(invocation, context).await,
             WireCommand::StreamAttempt { .. }

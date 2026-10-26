@@ -428,6 +428,29 @@ mod tests {
     }
 
     #[test]
+    fn wire_identity_fences_replacement_before_decoding() {
+        use crate::operations::{ServingError, WireTable};
+        use crate::{Message, QualifiedId};
+        let mut dependencies = Dependencies::new();
+        dependencies.insert(Arc::new(42u64)).unwrap();
+        let batch = RegistrationBatch::new(dependencies).operation::<Read>();
+        let fingerprint = crate::OperationDefinition::of::<Read>().unwrap().fingerprint.0;
+        let mut table = WireTable::new("fixture").unwrap();
+        table.capacity(std::num::NonZeroUsize::MIN);
+        table.register(batch.clone()).unwrap();
+        assert!(matches!(table.prepare(1, "spoof.read", fingerprint, 1, ().encode()), Err(ServingError::Unknown { .. })));
+        assert!(matches!(table.prepare(1, "fixture.read", [0; 32], 1, vec![255]), Err(ServingError::Identity { .. })));
+        assert!(matches!(table.prepare(1, "fixture.read", fingerprint, 0, vec![255]), Err(ServingError::Identity { .. })));
+        table.prepare(1, "fixture.read", fingerprint, 7, ().encode()).unwrap();
+        ready(Box::pin(table.unregister(&QualifiedId::qualify("fixture", "read").unwrap())));
+        table.register(batch).unwrap();
+        assert!(matches!(table.prepare(2, "fixture.read", fingerprint, 7, vec![255]), Err(ServingError::Identity { .. })));
+        table.prepare(2, "fixture.read", fingerprint, 8, ().encode()).unwrap();
+        assert!(matches!(table.prepare(3, "fixture.read", fingerprint, 9, vec![255]), Err(ServingError::Identity { .. })));
+        ready(Box::pin(table.settle()));
+    }
+
+    #[test]
     fn service_factory_reconstructs_from_its_snapshot() {
         let counter = Arc::new(AtomicUsize::new(0));
         let mut dependencies = Dependencies::new();

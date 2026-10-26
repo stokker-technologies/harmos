@@ -23,7 +23,7 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, Manager};
-use crate::operations::lifecycle::{Action, InitializeRequest};
+use crate::operations::lifecycle::InitializeRequest;
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
@@ -124,11 +124,7 @@ impl PluginSdkRegistration {
             }
             let action = descriptor.action();
             let mut expected = descriptor.contract().operation().clone();
-            let suffix = match action {
-                Action::Initialize => "initialize",
-                Action::Shutdown => "shutdown",
-            };
-            expected.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
+            expected.id = crate::Identifier::new(format!("{}.{}", scope.owner(), expected.id))
                 .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
             if entry.declared() != &expected {
                 return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry is not the exact qualified SDK definition" });

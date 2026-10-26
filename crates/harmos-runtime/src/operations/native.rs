@@ -53,6 +53,7 @@ struct NativeState {
     payload: Option<Vec<u8>>,
     invocation: Option<u64>,
     operation: Identifier,
+    fingerprint: [u8; 32],
     sdk: Option<harmos_domain::operations::lifecycle::Action>,
     acknowledged: bool,
     _capacity: Option<OwnedSemaphorePermit>,
@@ -335,12 +336,8 @@ impl Native {
                     selection: Selection::Sdk(descriptor.contract().operation().clone()),
                     capacity: Arc::clone(&capacity),
                 });
-                let suffix = match descriptor.action() {
-                    harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
-                    harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
-                };
                 let mut definition = descriptor.contract().operation().clone();
-                definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
+                definition.id = crate::Identifier::new(format!("{}.{}", scope.owner(), definition.id))
                     .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
                 let mut entry = operations.bind_native::<Encoded<()>, EncodedOperation>(
                     scope.owner(),
@@ -473,6 +470,7 @@ impl Native {
             payload: Some(payload),
             invocation: None,
             operation: definition.id.clone(),
+            fingerprint: definition.fingerprint.0,
             sdk: None,
             acknowledged: false,
             _capacity: capacity,
@@ -501,10 +499,14 @@ impl Native {
             state.invocation = Some(invocation);
             tracing::Span::current().record("invocation", invocation);
             let payload = state.payload.take().expect("one inert request is owned");
+            let scope = self.scope().ok_or(NativeError::Unavailable)?;
+            let operation = format!("{}.{}", scope.owner(), state.operation);
+            let fingerprint = state.fingerprint;
+            let generation = context.generation.value();
             let command = if state.grpc {
-                WireCommand::PrepareGrpc { invocation, operation: state.operation.to_string(), payload }
+                WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload }
             } else {
-                WireCommand::Prepare { invocation, operation: state.operation.to_string(), payload }
+                WireCommand::Prepare { invocation, operation, fingerprint, generation, payload }
             };
             let answer = self.endpoint.phase(command).await?;
             let answer = match answer {
@@ -691,6 +693,7 @@ impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
                             payload: Some(std::mem::take(&mut request.payload)),
                             invocation: None,
                             operation: definition.id.clone(),
+                            fingerprint: definition.fingerprint.0,
                             sdk: action,
                             acknowledged: false,
                             _capacity: Some(capacity),

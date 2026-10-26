@@ -239,6 +239,7 @@ impl WireTable {
             Ok(Box::new(state))
         });
         let handler = Handler {
+            generation: None,
             lifecycle,
             builtin,
             resident: false,

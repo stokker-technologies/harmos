@@ -96,6 +96,7 @@ impl<D: OperationDeclaration> Bound<D> {
         Ok(Context {
             id: self.id,
             attempt,
+            generation: self.entry.generation,
             scope,
             operations: self.operations.clone(),
             admission: self.admission.clone(),

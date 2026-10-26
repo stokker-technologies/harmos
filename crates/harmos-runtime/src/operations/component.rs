@@ -47,6 +47,7 @@ struct ComponentState {
     payload: Option<Vec<u8>>,
     invocation: Option<u64>,
     operation: Identifier,
+    fingerprint: [u8; 32],
 }
 
 pub struct ComponentOperation<O: OperationDeclaration, E = ()> {
@@ -194,6 +195,7 @@ where
                     payload: Some(crate::Message::encode(request)),
                     invocation: None,
                     operation: definition.id,
+                    fingerprint: definition.fingerprint.0,
                 };
 
                 self.state = Some(state);
@@ -281,7 +283,11 @@ impl Component {
             state.invocation = Some(invocation);
             tracing::Span::current().record("invocation", invocation);
             let payload = state.payload.take().expect("one inert request is owned");
-            let command = WireCommand::Prepare { invocation, operation: state.operation.to_string(), payload };
+            let scope = self.scope().ok_or(ComponentError::Unavailable)?;
+            let operation = format!("{}.{}", scope.owner(), state.operation);
+            let fingerprint = state.fingerprint;
+            let generation = context.generation.value();
+            let command = WireCommand::Prepare { invocation, operation, fingerprint, generation, payload };
             let answer = self.endpoint.phase(command, None).await?;
             let answer = match answer {
                 WireAnswer::Failed { failure } => {
@@ -378,11 +384,7 @@ impl Component {
                 let handler =
                     Arc::new(SdkBinding { component: Arc::clone(&component), definition: descriptor.contract().operation().clone() });
                 let mut definition = descriptor.contract().operation().clone();
-                let suffix = match descriptor.action() {
-                    harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
-                    harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
-                };
-                definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
+                definition.id = crate::Identifier::new(format!("{}.{}", scope.owner(), definition.id))
                     .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
                 let mut entry = operations.bind_native::<super::sdk::Encoded, SdkOperation>(
                     scope.owner(),
@@ -444,6 +446,7 @@ impl Operation for SdkOperation {
                     payload: Some(std::mem::take(&mut payload.0)),
                     invocation: None,
                     operation: binding.definition.id.clone(),
+                    fingerprint: binding.definition.fingerprint.0,
                 };
 
                 self.state = Some(state);

@@ -128,7 +128,7 @@ pub(super) struct Entry {
     #[cfg(feature = "grpc")]
     pub(super) grpc: Option<crate::grpc::routing::Handler>,
 
-    generation: OperationGeneration,
+    pub(super) generation: OperationGeneration,
     lane: &'static str,
 
     // A resident control runs until cancelled, even while its plugin retires.

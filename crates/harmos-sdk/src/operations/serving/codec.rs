@@ -34,7 +34,7 @@ use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildCont
 
 /* === Constants === */
 
-const VERSION: u8 = 6;
+const VERSION: u8 = 7;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -71,13 +71,15 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 6. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 7. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
     Prepare {
         invocation: u64,
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -120,6 +122,8 @@ enum Envelope<'a> {
     PrepareGrpc {
         invocation: u64,
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -171,8 +175,10 @@ enum Envelope<'a> {
 
 impl WireCommand {
     /// Counts the versioned Prepare envelope without encoding or allocating its payload.
-    pub fn prepare_encoded_len(invocation: u64, operation: &str, payload: usize) -> Result<usize, WireCodecError> {
-        payload_size(Envelope::Prepare { invocation, operation, payload: &[] }, payload)
+    pub fn prepare_encoded_len(
+        invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: usize,
+    ) -> Result<usize, WireCodecError> {
+        payload_size(Envelope::Prepare { invocation, operation, fingerprint, generation, payload: &[] }, payload)
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
@@ -181,11 +187,11 @@ impl WireCommand {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::Prepare { invocation, operation, payload } => {
-                Self::Prepare { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            Envelope::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                Self::Prepare { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
             }
-            Envelope::PrepareGrpc { invocation, operation, payload } => {
-                Self::PrepareGrpc { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            Envelope::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                Self::PrepareGrpc { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
             }
             Envelope::Initialize { invocation, context } => Self::Initialize { invocation, context },
             Envelope::Attempt { invocation, context, values } => Self::Attempt { invocation, context, values: owned(values)? },
@@ -202,8 +208,12 @@ impl WireCommand {
 
     fn envelope(&self) -> Envelope<'_> {
         match self {
-            Self::Prepare { invocation, operation, payload } => Envelope::Prepare { invocation: *invocation, operation, payload },
-            Self::PrepareGrpc { invocation, operation, payload } => Envelope::PrepareGrpc { invocation: *invocation, operation, payload },
+            Self::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                Envelope::Prepare { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
+            }
+            Self::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                Envelope::PrepareGrpc { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
+            }
             Self::Initialize { invocation, context } => Envelope::Initialize { invocation: *invocation, context: *context },
             Self::Attempt { invocation, context, values } => {
                 Envelope::Attempt { invocation: *invocation, context: *context, values: borrowed(values) }
@@ -401,14 +411,32 @@ mod tests {
             let operation = "λ".repeat([1, 63, 64, 65][index % 4]);
             let invocation = ids[index % ids.len()];
             let payload = vec![255; size];
-            let expected = WireCommand::prepare_encoded_len(invocation, &operation, size).unwrap();
-            let command = WireCommand::Prepare { invocation, operation, payload: payload.clone() };
+            let expected = WireCommand::prepare_encoded_len(invocation, &operation, [255; 32], invocation, size).unwrap();
+            let command =
+                WireCommand::Prepare { invocation, operation, fingerprint: [255; 32], generation: invocation, payload: payload.clone() };
             assert_eq!(command.encode().unwrap().len(), expected);
             let expected = WireAnswer::ready_encoded_len(size).unwrap();
             assert_eq!(WireAnswer::Ready { payload }.encode().unwrap().len(), expected);
         }
-        assert!(WireCommand::prepare_encoded_len(0, "op", usize::MAX).is_err());
+        assert!(WireCommand::prepare_encoded_len(0, "op", [255; 32], u64::MAX, usize::MAX).is_err());
         assert!(WireAnswer::ready_encoded_len(usize::MAX).is_err());
+    }
+
+    #[test]
+    fn prepare_identity_roundtrips_and_rejects_version_only_peers() {
+        let command = WireCommand::Prepare {
+            invocation: 127,
+            operation: "fixture.read".into(),
+            fingerprint: [173; 32],
+            generation: u64::MAX,
+            payload: vec![1, 2],
+        };
+        let mut bytes = command.encode().unwrap();
+        assert!(matches!(WireCommand::decode(&bytes).unwrap(), WireCommand::Prepare {
+            invocation: 127, operation, fingerprint, generation: u64::MAX, payload
+        } if operation == "fixture.read" && fingerprint == [173; 32] && payload == [1, 2]));
+        bytes[0] = 6;
+        assert!(matches!(WireCommand::decode(&bytes), Err(WireCodecError::Version)));
     }
 
     #[test]
