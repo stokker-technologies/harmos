@@ -38,15 +38,21 @@ use harmos_domain::RequestFor;
 
 #[must_use = "an invocation runs only when start or run is awaited"]
 pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
-    operations: OperationManager,
+    target: Target,
     request: O::Request,
     retry: Option<RetryPolicy>,
     lane: Option<L>,
     endpoints: E,
-    source: Source,
 }
 
 /* === Enums === */
+
+enum Target {
+    Host(OperationManager),
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    Plugin(crate::plugin::PluginScope),
+}
+
 
 /* === Traits === */
 
@@ -54,7 +60,7 @@ pub struct Invocation<O: OperationDeclaration, L: Lane, E: EndpointSet = ()> {
 
 impl<O: OperationDeclaration, L: Lane> Invocation<O, L> {
     pub(crate) fn new(operations: OperationManager, request: O::Request) -> Self {
-        Self { operations, request, retry: None, lane: None, endpoints: (), source: Source::Host }
+        Self { target: Target::Host(operations), request, retry: None, lane: None, endpoints: () }
     }
 }
 
@@ -71,12 +77,11 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 
     pub fn endpoints<F: EndpointSet>(self, endpoints: F) -> Invocation<O, L, F> {
         Invocation {
-            operations: self.operations,
+            target: self.target,
             request: self.request,
             retry: self.retry,
             lane: self.lane,
             endpoints,
-            source: self.source,
         }
     }
 
@@ -87,11 +92,40 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
         let mut request = super::binding::Request::from(self.request);
         request.retry = self.retry;
         request.lane = self.lane.map(|lane| lane.name());
-        self.operations.admit::<O, E>((request, self.endpoints), None, &[], &self.source, None)
+        let (operations, source) = match self.target {
+            Target::Host(operations) => (operations, Source::Host),
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            Target::Plugin(scope) => (scope.operation_manager()?, Source::Scope(scope)),
+        };
+        operations.admit::<O, E>((request, self.endpoints), None, &[], &source, None)
     }
 
     pub async fn run(self) -> Result<Response<O::Response>> {
         self.start().await?.join().await
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl crate::plugin::PluginScope {
+    pub fn operation<R: RequestFor, L: Lane>(&self, request: R) -> Invocation<R::Operation, L> {
+        self.operation_for::<R::Operation, L>(request)
+    }
+
+    pub fn operation_for<O: OperationDeclaration, L: Lane>(&self, request: O::Request) -> Invocation<O, L> {
+        Invocation { target: Target::Plugin(self.clone()), request, retry: None, lane: None, endpoints: () }
+    }
+
+    pub async fn register<L: Lane>(&self, registration: super::Registration<L>) -> Result<()> {
+        if !self.is_ready() { return Err(Error::Closing { domain: "plugin scope" }); }
+        let operations = self.operation_manager()?;
+        let entries = operations.native_entries(registration, self.owner(), Some(self))?;
+        operations.reserve(&entries)
+    }
+
+    pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
+        let (owner, _) = id.as_str().split_once('.').expect("validated qualified identity");
+        if owner != self.owner() { return Err(Error::PermissionDenied); }
+        self.operation_manager()?.unregister(id).await
     }
 }
 

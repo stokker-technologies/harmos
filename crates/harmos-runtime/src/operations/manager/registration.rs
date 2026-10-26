@@ -88,7 +88,7 @@ impl OperationManager {
         }
         Ok(entries)
     }
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(in crate::operations) fn bind_native<D, O>(
         &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::Dependencies, definition: OperationDefinition,
         wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,

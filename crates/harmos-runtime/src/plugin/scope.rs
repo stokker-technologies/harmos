@@ -40,6 +40,7 @@ pub struct PluginScope {
 
     phase: Arc<watch::Sender<Phase>>,
     operation_registry: Arc<OnceLock<Weak<crate::operations::Registry>>>,
+    operation_manager: Arc<OnceLock<crate::operations::WeakOperationManager>>,
     dependencies: Arc<BTreeSet<String>>,
     operations: Arc<BTreeMap<crate::Identifier, crate::operations::OperationDefinition>>,
     wire_contracts: Arc<BTreeMap<crate::Identifier, crate::operations::Contract>>,
@@ -125,6 +126,7 @@ impl PluginScope {
                 .0,
             ),
             operation_registry: Arc::new(OnceLock::new()),
+            operation_manager: Arc::new(OnceLock::new()),
             dependencies: Arc::new(BTreeSet::new()),
             operations: Arc::new(BTreeMap::new()),
             wire_contracts: Arc::new(BTreeMap::new()),
@@ -553,7 +555,8 @@ impl PluginScope {
         matches!(*self.phase.borrow(), Phase::Closed { .. })
     }
 
-    pub(crate) fn bind_operation_registry(&self, registry: &Arc<crate::operations::Registry>) -> Result<()> {
+    pub(crate) fn bind_operation_registry(&self, registry: &Arc<crate::operations::Registry>, manager: crate::operations::WeakOperationManager) -> Result<()> {
+        self.operation_manager.get_or_init(|| manager);
         let original = self.operation_registry.get_or_init(|| Arc::downgrade(registry));
         if !Weak::ptr_eq(original, &Arc::downgrade(registry)) {
             return Err(Error::InvalidInput {
@@ -562,6 +565,11 @@ impl PluginScope {
             });
         }
         Ok(())
+    }
+
+    pub(crate) fn operation_manager(&self) -> Result<crate::operations::OperationManager> {
+        self.operation_manager.get().and_then(|manager| manager.upgrade())
+            .ok_or(Error::Closing { domain: "plugin operation manager" })
     }
 
     pub(super) fn commit(&self) -> bool {
@@ -675,3 +683,82 @@ impl PluginScope {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Application, OperationDeclaration, RegistrationExt};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[crate::lanes]
+    enum Lanes {
+        #[default]
+        Default,
+    }
+
+    struct Model;
+    impl Application for Model {
+        type Lanes = Lanes;
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+        type Streams = ();
+        type Resources = ();
+    }
+
+    struct Read;
+    impl OperationDeclaration for Read {
+        type Request = ();
+        type Response = u64;
+        type Input = crate::operations::NoStream;
+        type Output = crate::operations::NoStream;
+        const ID: &'static str = "read";
+        const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Private;
+        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+            timeout: std::time::Duration::from_secs(1),
+            attempt_timeout: std::time::Duration::from_secs(1),
+            retries: crate::RetryPolicy::Never,
+        };
+    }
+
+    impl harmos_sdk::Operation for Read {
+        type Request = ();
+        type Response = u64;
+        type Error = harmos_sdk::DependencyError;
+        type Endpoints = ();
+
+        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
+            context.dependency::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
+            Ok(Self)
+        }
+
+        async fn run(&mut self, _: harmos_sdk::OperationContext, _: &mut (), _: &mut ()) -> std::result::Result<crate::Response<u64>, Self::Error> {
+            Ok(7.into())
+        }
+    }
+
+    #[tokio::test]
+    async fn dynamic_entries_follow_scope_authority_and_withdrawal() {
+        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+        let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
+        let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
+        assert!(scope.commit());
+        let initialized = Arc::new(AtomicUsize::new(0));
+        let mut dependencies = harmos_sdk::Dependencies::new();
+        dependencies.insert(initialized.clone()).unwrap();
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Read>();
+        let invocation = scope.operation_for::<Read, Lanes>(());
+        scope.register(batch.clone().defaults::<Lanes>()).await.unwrap();
+        assert_eq!(initialized.load(Ordering::SeqCst), 0);
+        assert_eq!(*invocation.run().await.unwrap(), 7);
+        assert_eq!(initialized.load(Ordering::SeqCst), 1);
+        assert!(scope.unregister(&crate::QualifiedId::parse("host.read").unwrap()).await.is_err());
+
+        let stale = scope.operation_for::<Read, Lanes>(());
+        receipt.shutdown().await.unwrap();
+        assert!(stale.start().await.is_err());
+        assert!(scope.register(batch.defaults::<Lanes>()).await.is_err());
+        assert!(runtime.operations.definitions().iter().all(|definition| definition.id.as_str() != "read"));
+        runtime.stop().await.unwrap();
+    }
+}

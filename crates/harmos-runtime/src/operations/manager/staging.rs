@@ -41,7 +41,7 @@ impl OperationManager {
         if state.closing || !self.instances.is_accepting() {
             return Err(Error::Closing { domain: "plugin operation staging" });
         }
-        scope.bind_operation_registry(&self.registry)?;
+        scope.bind_operation_registry(&self.registry, self.downgrade())?;
         state.staging.retain(|scope| scope.strong_count() != 0);
         state.staging.push(Arc::downgrade(scope));
         Ok(())

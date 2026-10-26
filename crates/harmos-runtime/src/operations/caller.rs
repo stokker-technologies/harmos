@@ -94,6 +94,9 @@ pub(super) enum Source {
     Plugin(PluginCaller),
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    Scope(PluginScope),
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     Binding(Weak<Entry>),
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -201,6 +204,10 @@ impl Source {
             Self::Host => None,
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
+            Self::Scope(scope) => {
+                if !scope.is_ready() { return Err(Error::Closing { domain: "plugin scope" }); }
+                Some(scope.clone())
+            }
             Self::Plugin(source) => Some(source.operation_scope().map_err(|source| Error::OperationCaller { source })?),
             Self::Lifecycle { binding, loan } => {
                 if !loan.is_live() {

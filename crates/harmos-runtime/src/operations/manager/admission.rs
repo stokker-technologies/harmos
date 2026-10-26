@@ -79,8 +79,6 @@ impl OperationManager {
                 let gate = entries.iter().find_map(|entry| entry.plugin.as_ref()).map_or(Ok(()), |scope| {
                     if scope.is_closed() {
                         Err(Error::Closing { domain: "plugin scope" })
-                    } else if scope.has_committed() {
-                        Err(Error::InvalidInput { field: "operation catalog", reason: "plugin generation is already committed" })
                     } else {
                         Ok(())
                     }

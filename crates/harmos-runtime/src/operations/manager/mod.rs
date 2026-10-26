@@ -76,6 +76,17 @@ pub struct OperationManager {
     pub(crate) resident: super::resident::Registry,
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[derive(Clone)]
+pub(crate) struct WeakOperationManager {
+    registry: Weak<Registry>,
+    instances: Weak<Instances>,
+    lanes: Weak<Lanes>,
+    preparation: Option<Weak<Semaphore>>,
+    context: Weak<std::sync::OnceLock<super::CallContext>>,
+    resident: super::resident::WeakRegistry,
+}
+
 pub(crate) struct Registry {
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
@@ -181,6 +192,41 @@ enum Retirement {
 /* === Traits === */
 
 /* === Implementations === */
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl std::fmt::Debug for WeakOperationManager {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("WeakOperationManager").finish_non_exhaustive()
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl WeakOperationManager {
+    pub(crate) fn upgrade(&self) -> Option<OperationManager> {
+        Some(OperationManager {
+            registry: self.registry.upgrade()?,
+            instances: self.instances.upgrade()?,
+            lanes: self.lanes.upgrade()?,
+            preparation: match &self.preparation { Some(budget) => Some(budget.upgrade()?), None => None },
+            context: self.context.upgrade()?,
+            resident: self.resident.upgrade()?,
+        })
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl OperationManager {
+    pub(crate) fn downgrade(&self) -> WeakOperationManager {
+        WeakOperationManager {
+            registry: Arc::downgrade(&self.registry),
+            instances: Arc::downgrade(&self.instances),
+            lanes: Arc::downgrade(&self.lanes),
+            preparation: self.preparation.as_ref().map(Arc::downgrade),
+            context: Arc::downgrade(&self.context),
+            resident: self.resident.downgrade(),
+        }
+    }
+}
 
 /* === Public Functions === */
 

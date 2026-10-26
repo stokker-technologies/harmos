@@ -84,6 +84,10 @@ pub(crate) struct Registry {
     shared: Arc<Shared>,
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[derive(Clone)]
+pub(crate) struct WeakRegistry(Weak<Shared>);
+
 pub(crate) struct Shared {
     identity: Arc<()>,
     root_resources: Arc<()>,
@@ -318,7 +322,19 @@ impl Registration {
     }
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl WeakRegistry {
+    pub(crate) fn upgrade(&self) -> Option<Registry> {
+        self.0.upgrade().map(|shared| Registry { shared })
+    }
+}
+
 impl Registry {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) fn downgrade(&self) -> WeakRegistry {
+        WeakRegistry(Arc::downgrade(&self.shared))
+    }
+
     pub(crate) fn new(index: &Arc<Instances>, reserved: BTreeSet<String>, identity: Arc<()>) -> Self {
         let root_resources = Arc::new(());
         let resources: Resources = Arc::clone(&root_resources) as Resources;

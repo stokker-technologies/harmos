@@ -169,6 +169,7 @@ impl Bindings<'_> {
         Ok(())
     }
 
+    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(super) fn stage_implementation<D, O>(&mut self, lane: &'static str, dependencies: harmos_sdk::Dependencies) -> Result<()>
     where
         D: OperationDeclaration,
@@ -235,6 +236,8 @@ impl Bindings<'_> {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl PluginRegistration {
     pub async fn shutdown(&mut self) -> Result<()> {
+        self.scope.close();
+        self.entries = self.operations.scope_entries(&self.scope);
         self.scope.unbind_operations();
         self.operations.fence(&self.entries, false);
         self.operations.settle_entries(&self.entries).await?;
@@ -246,7 +249,8 @@ impl PluginRegistration {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl Drop for PluginRegistration {
     fn drop(&mut self) {
-        self.scope.close_staging();
+        self.scope.close();
+        self.entries = self.operations.scope_entries(&self.scope);
         self.scope.unbind_operations();
         self.operations.fence(&self.entries, true);
         self.operations.remove_settled(&self.entries);
