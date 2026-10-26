@@ -29,47 +29,46 @@ use super::*;
 /* === Structs === */
 
 struct WireClient;
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = WireCall, infer_request,
     harmos_path = harmos_runtime,
-    id = "client.run",
-    version = 1,
+    id = "run",
+
     response = String,
     visibility = Visibility::Shared,
     policy = Run::<1, 100, false>::POLICY,
     grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
 )]
+struct WireCallDeclaration;
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+
 struct WireCall {
     value: String,
 }
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum WireClients {
-    Run(WireClient),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
 
 impl Operation for WireClient {
-    type Declaration = WireCall;
-    type Resources = ();
+    type Request = WireCall;
+    type Response = <WireCallDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut WireCall, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut WireCall, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<String>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let response = context.call(Run::<0, 100, false> { value: request.value.clone() }).await?;
+            let response = context.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: request.value.clone() }).await?;
             Ok(response.as_ref().clone())
         }
         .await;
@@ -86,7 +85,7 @@ impl Operation for WireClient {
 #[tokio::test]
 async fn embedded_wire_contracts() {
     use harmos_domain::inventory::contracts::Required;
-    use harmos_runtime::operations::{AuthoredContracts, Contract};
+    use harmos_runtime::operations::Contracts;
     let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ())
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
@@ -98,21 +97,29 @@ async fn embedded_wire_contracts() {
         .unwrap();
     let mut provider = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     provider.contributions = PluginContributions::default();
-    runtime
-        .plugin
-        .register_embedded_wire::<Operations<0, 100, false>, _>(provider, Default::default(), Lanes::Open, Arc::new(Owner))
-        .await
-        .unwrap();
+    runtime.plugin.register_embedded(provider, Default::default(), registration::<0, 100, false>()).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.attempts, 0);
-    let contracts = AuthoredContracts::of::<Operations<0, 100, false>>().unwrap();
+    let contracts = Contracts::of::<Operations<0, 100, false>>().unwrap();
     assert_eq!(registered.definition.as_ref().unwrap().contributions.wire_contracts, contracts);
     assert!(runtime.operations.call_encoded("provider.run", request_payload()).await.is_err());
 
     let mut client = plan().ordered().iter().find(|definition| definition.id == "client").unwrap().clone();
     client.artifact = PluginArtifact::Embedded { revision: "wire-client".into() };
     client.contributions.required_contracts = Some(vec![Required { contract: contracts[0].clone(), grants: vec![] }]);
-    runtime.plugin.register_embedded_wire::<WireClients, _>(client, Default::default(), Lanes::Open, Arc::new(())).await.unwrap();
+    runtime
+        .plugin
+        .register_embedded(
+            client,
+            Default::default(),
+            harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                    .implementation::<WireCallDeclaration, WireClient>(),
+                Lanes::Open,
+            ),
+        )
+        .await
+        .unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status("provider").unwrap();
     #[cfg(feature = "grpc")]
@@ -147,31 +154,31 @@ async fn embedded_wire_contracts() {
         assert_eq!(response.into_inner().as_str(), "grpc embedded provider");
     }
 
-    let request = harmos_runtime::Message::encode_to_vec(&RunRequest { value: "original provider".into() });
+    let request = harmos_runtime::Message::encode(&RunRequest { value: "original provider".into() });
     let response = runtime.operations.call_encoded("client.run", request).await.unwrap();
     assert_eq!(<String as harmos_runtime::Message>::decode(&response).unwrap(), "original provider");
 
-    // Wire Version Drift Is Rejected Without Replacing The Live Generation
+    // A Changed Response Contract Cannot Replace The Live Generation.
+    struct Incompatible;
+    impl harmos_runtime::OperationDeclaration for Incompatible {
+        type Request = RunRequest;
+        type Response = u64;
+        type Input = harmos_runtime::operations::NoStream;
+        type Output = harmos_runtime::operations::NoStream;
+        const ID: &'static str = "run";
+        const POLICY: harmos_runtime::OperationPolicy = Run::<0, 100, false>::POLICY;
+    }
     let mut replacement = ready.definition.clone().unwrap();
-    let original = &contracts[0];
-    replacement.contributions.wire_contracts =
-        vec![Contract::new(original.operation().clone(), 2, original.codec(), original.schema().clone()).unwrap()];
+    replacement.contributions.wire_contracts = vec![harmos_runtime::operations::WireDeclaration::of::<Incompatible>().contract().unwrap()];
     assert!(matches!(
-        runtime
-            .plugin
-            .reload_embedded_wire::<Operations<0, 100, false>, _>(replacement, Default::default(), Lanes::Open, Arc::new(Owner))
-            .await,
+        runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 100, false>()).await,
         Err(Error::InvalidInput { field: "embedded plugin contracts", .. })
     ));
     assert_eq!(runtime.plugin.status("provider").unwrap(), ready);
 
     let mut replacement = ready.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "wire-provider-v2".into() };
-    runtime
-        .plugin
-        .reload_embedded_wire::<Operations<0, 100, false>, _>(replacement, Default::default(), Lanes::Open, Arc::new(Owner))
-        .await
-        .unwrap();
+    runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 100, false>()).await.unwrap();
     let reloaded = runtime.plugin.status("provider").unwrap();
     assert_ne!(reloaded.generation, ready.generation);
     assert_eq!(reloaded.attempts, 2);
@@ -198,22 +205,26 @@ async fn owned_embedded_plugins() {
     let mut definition = plan().ordered().iter().find(|definition| definition.id == "provider").unwrap().clone();
     definition.artifact = PluginArtifact::Embedded { revision: "runtime-owned".into() };
     definition.contributions = PluginContributions::default();
-    handle
-        .plugin
-        .register_embedded::<Operations<0, 100, false>, _>(definition, Default::default(), Lanes::Open, Arc::new(Owner))
-        .await
-        .unwrap();
+    handle.plugin.register_embedded(definition, Default::default(), registration::<0, 100, false>()).await.unwrap();
     let registered = runtime.plugin.status("provider").unwrap();
     assert_eq!(registered.state, PluginState::Registered);
     assert_eq!(registered.attempts, 0);
-    assert!(matches!(runtime.operations.call(Run::<0, 100, false> { value: "before".into() }).await, Err(Error::NotRegistered { .. })));
+    assert!(matches!(
+        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "before".into() }).await,
+        Err(Error::NotRegistered { .. })
+    ));
     runtime.plugin.initialize().await.unwrap();
     handle.plugin.initialize().await.unwrap();
     let ready = handle.plugin.status("provider").unwrap();
     assert_eq!(ready.state, PluginState::Ready);
     assert_eq!(ready.attempts, 1);
     assert_eq!(
-        runtime.operations.call(Run::<0, 100, false> { value: "shared runtime owner".into() }).await.unwrap().as_str(),
+        runtime
+            .operations
+            .call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "shared runtime owner".into() })
+            .await
+            .unwrap()
+            .as_str(),
         "shared runtime owner"
     );
     let generation = runtime.plugin.status("provider").unwrap().generation.unwrap();
@@ -221,33 +232,29 @@ async fn owned_embedded_plugins() {
     let reloaded = runtime.plugin.status("provider").unwrap();
     assert_ne!(reloaded.generation, Some(generation));
     assert_eq!(reloaded.attempts, 2);
-    assert_eq!(runtime.operations.call(Run::<0, 100, false> { value: "after reload".into() }).await.unwrap().as_str(), "after reload");
+    assert_eq!(
+        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "after reload".into() }).await.unwrap().as_str(),
+        "after reload"
+    );
     let mut replacement = reloaded.definition.clone().unwrap();
     replacement.artifact = PluginArtifact::Embedded { revision: "runtime-owned-v2".into() };
-    handle
-        .plugin
-        .reload_embedded::<Operations<0, 100, false>, _>(replacement.clone(), Default::default(), Lanes::Open, Arc::new(Owner))
-        .await
-        .unwrap();
+    handle.plugin.reload_embedded(replacement.clone(), Default::default(), registration::<0, 100, false>()).await.unwrap();
     let updated = runtime.plugin.status("provider").unwrap();
     assert_eq!(updated.attempts, 3);
     assert_ne!(updated.generation, reloaded.generation);
     assert_eq!(updated.active_definition, Some(replacement.clone()));
-    assert!(
-        runtime
-            .plugin
-            .reload_embedded::<Operations<1, 100, false>, _>(replacement, Default::default(), Lanes::Open, Arc::new(Owner),)
-            .await
-            .is_err()
-    );
+    assert!(runtime.plugin.reload_embedded(replacement, Default::default(), registration::<0, 101, false>()).await.is_err());
     assert_eq!(runtime.plugin.status("provider").unwrap(), updated);
     assert_eq!(
-        runtime.operations.call(Run::<0, 100, false> { value: "after replacement".into() }).await.unwrap().as_str(),
+        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "after replacement".into() }).await.unwrap().as_str(),
         "after replacement"
     );
     runtime.plugin.remove("provider").await.unwrap();
     assert!(runtime.plugin.status("provider").is_none());
-    assert!(matches!(runtime.operations.call(Run::<0, 100, false> { value: "removed".into() }).await, Err(Error::NotRegistered { .. })));
+    assert!(matches!(
+        runtime.operations.call::<Run<0, 100, false>>(Run::<0, 100, false> { value: "removed".into() }).await,
+        Err(Error::NotRegistered { .. })
+    ));
     runtime.stop().await.unwrap();
     assert!(handle.plugin.initialize().await.is_err());
     assert!(matches!(handle.plugin.cleanup().status(), PluginCleanupStatus::Settled));
@@ -262,7 +269,7 @@ async fn inert_preserves_graph() {
     let provider = session.status("provider").unwrap();
     host.control.lock().unwrap().events.clear();
     let mut added = session.definition("other").unwrap().clone();
-    added.id = "registered-later".into();
+    added.id = "registered_later".into();
     added.contributions = PluginContributions::default();
     let definitions: Vec<_> = session.definitions().cloned().chain([added.clone()]).collect();
     let frozen = session.plan_reload(candidate([])).unwrap();

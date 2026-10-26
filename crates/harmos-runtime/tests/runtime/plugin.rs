@@ -65,17 +65,13 @@ fn executable(facility: Facility) -> Executable {
 }
 
 fn fragments(facility: &str, owner: &str) -> Vec<u8> {
-    use harmos_runtime::operations::{
-        OperationPolicy, RestartPolicy, RetryPolicy,
-        lifecycle::{Action, Descriptor},
-    };
-    let policy = OperationPolicy {
+    use harmos_runtime::operations::RetryPolicy;
+    let policy = harmos_runtime::OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(2),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
-    let lifecycle = [Descriptor::new(Action::Initialize, policy).unwrap(), Descriptor::new(Action::Shutdown, policy).unwrap()];
+    let lifecycle = ["initialize", "shutdown"].map(|action| json!({"action":action,"identity":"harmos.operation.v1","policy":policy}));
     let mut fragments = vec![
         json!({"kind":"plugin","facility":facility,"id":owner,"version":"1.0.0","description":"Byte-only fixture","config":"Settings"}),
         json!({"kind":"contracts","facility":facility,"owner":owner,"provides":[],"requires":[],"lifecycle":lifecycle}),

@@ -52,10 +52,6 @@ impl Manager {
         self.unregister_selected(local, Some(owner)).await
     }
 
-    pub async fn unregister_from(&self, owner: &str, id: &str) -> Result<()> {
-        self.unregister_selected(id, Some(owner)).await
-    }
-
     pub(super) async fn unregister_selected(&self, id: &str, owner: Option<&str>) -> Result<()> {
         let entry = {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -116,9 +112,15 @@ impl Manager {
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn remove_settled(&self, entries: &[Arc<Entry>]) {
+        self.release_settled(entries, true);
+    }
+
+    fn release_settled(&self, entries: &[Arc<Entry>], preserve_explicit: bool) {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         for entry in entries {
-            if entry.settled() && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
+            if (!preserve_explicit || entry.retirement.load(Ordering::Acquire) != Retirement::Explicit as u8)
+                && entry.settled()
+                && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
                 state.remove_owned(entry.id(), entry.owner.as_str());
             }
         }
@@ -128,7 +130,7 @@ impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) async fn settle_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         self.settle_owned_entries(entries).await?;
-        self.remove_settled(entries);
+        self.release_settled(entries, false);
         Ok(())
     }
 

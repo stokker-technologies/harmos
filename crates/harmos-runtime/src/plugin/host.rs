@@ -252,7 +252,11 @@ impl<A: Application> PluginHost<A> {
             .batch
             .operations
             .iter()
-            .map(|factory| factory.contract())
+            .filter_map(|factory| match factory.contract() {
+                Ok(contract) => Some(Ok(contract)),
+                Err(crate::operations::ContractError::Codec { .. }) => None,
+                Err(error) => Some(Err(error)),
+            })
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
         let bind: Bind = Arc::new(move |bindings| bindings.register(registration.clone()));
