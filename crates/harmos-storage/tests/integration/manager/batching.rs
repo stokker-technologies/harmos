@@ -44,7 +44,7 @@ use harmos_storage::state::StateBackend;
 /* === Structs === */
 
 #[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Captured>>);
+struct Capture(Arc<Mutex<Captured>>, Arc<tokio::sync::Notify>);
 
 #[derive(Clone, Debug, Default)]
 struct Captured {
@@ -124,6 +124,8 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         if let Some(span) = created.and_then(|created| capture.spans.get_mut(&created)) {
             span.closed = Some(closed);
         }
+        drop(capture);
+        self.1.notify_one();
     }
 }
 
@@ -992,6 +994,19 @@ async fn filesystem_trace_lifetimes() {
     drop(backend);
     tracing::dispatcher::with_default(&dispatch, || drop(request));
     f.finish().await;
+
+    // Native Watcher Drop Signals Shutdown; Its Callback Can Retire On Another Thread.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let changed = capture.1.notified();
+            if capture.0.lock().unwrap().spans.values().all(|span| span.closed.is_some()) {
+                break;
+            }
+            changed.await;
+        }
+    })
+    .await
+    .expect("native watcher and request spans must close after shutdown");
 
     let captured = capture.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     for name in [
