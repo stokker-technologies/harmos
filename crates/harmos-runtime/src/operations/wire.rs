@@ -142,12 +142,13 @@ impl Manager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now())
+        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), None)
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
     fn submit_encoded_at_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
+        expected: Option<([u8; 32], u64)>,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
@@ -161,6 +162,14 @@ impl Manager {
         })?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
+        if expected.is_some_and(|(fingerprint, generation)| {
+            entry.declared().fingerprint.0 != fingerprint || entry.generation.value() != generation
+        }) {
+            return Err(Error::InvalidInput {
+                field: "encoded operation identity",
+                reason: "fingerprint or generation differs from the assigned target",
+            });
+        }
         let dispatch = entry
             .wire
             .ok_or(Error::InvalidInput { field: "encoded operation", reason: "operation has no cross-boundary codec binding" })?;
@@ -299,10 +308,18 @@ impl PluginControl {
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, payload: Vec<u8>, submitted: tokio::time::Instant, values: Vec<super::CallValue>,
+        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
-        self.operations.with_context(context).submit_encoded_at_as(operation, payload, Source::Plugin(self.source.clone()), None, submitted)
+        self.operations.with_context(context).submit_encoded_at_as(
+            operation,
+            payload,
+            Source::Plugin(self.source.clone()),
+            None,
+            submitted,
+            Some((fingerprint, generation)),
+        )
     }
 }
 
@@ -318,7 +335,8 @@ impl super::Context<'_> {
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, payload: Vec<u8>, submitted: tokio::time::Instant, values: Vec<super::CallValue>,
+        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -327,6 +345,7 @@ impl super::Context<'_> {
             self.source.clone(),
             Some(Parent { scope: &self.scope, ancestors: self.admission.held() }),
             submitted,
+            Some((fingerprint, generation)),
         )
     }
 

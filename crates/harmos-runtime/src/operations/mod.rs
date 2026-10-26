@@ -64,7 +64,7 @@ pub use grpc::GrpcBinding;
 pub use grpc::GrpcMethod;
 pub use harmos_sdk::operations::{
     Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
-    Declarations, Declares, Direction, Entry, FailureKind, Grpc, Jitter, MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration,
+    Declarations, Direction, Entry, FailureKind, Grpc, Jitter, MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationDeclaration,
     OperationDefinition, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy,
     ServingError, Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
     WireCommand, WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, WireTable, item_types,

@@ -122,6 +122,12 @@ async fn publish(outgoing: &Sender, incoming: &mut Receiver, id: u64, samples: u
         assert_eq!(method, CHILD_METHOD);
         let child = WireChildCall::decode(&params).unwrap();
         assert_eq!(child.generation_context, Some(GENERATION));
+        assert_eq!(child.operation, "host.host_publish");
+        assert_eq!(child.generation, 1);
+        assert_eq!(
+            child.fingerprint,
+            <harmos_domain::operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition().fingerprint.0
+        );
         let publication = <harmos_domain::operations::streams::PublishRequest as Message>::decode(&child.payload).unwrap();
         outgoing.send(Frame::Answer { id: call, result: <() as Message>::encode(&()).into() }).await.unwrap();
         if publication.stream == Done::ID {
@@ -156,7 +162,18 @@ async fn batches_split_contiguously() {
         .await
         .unwrap();
     assert!(matches!(receive(&mut incoming).await, Frame::Answer { id: 1, .. }));
-    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: GENERATION.to_vec() };
+    let initialization = InitializeRequest {
+        config_json: b"null".to_vec(),
+        generation_context: GENERATION.to_vec(),
+        assignments: harmos_sdk::operations::AssignedOperation::encode(&[harmos_sdk::operations::AssignedOperation {
+            operation: "host.host_publish".into(),
+            fingerprint: <harmos_domain::operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
+                .fingerprint
+                .0,
+            generation: 1,
+        }])
+        .unwrap(),
+    };
     invoke::<Initialize>(&outgoing, &mut incoming, 2, initialization.encode()).await;
 
     // Row By Row, Then Ordered Batches With A Short Tail

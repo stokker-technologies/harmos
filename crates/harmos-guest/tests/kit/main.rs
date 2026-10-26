@@ -79,6 +79,6 @@ fn inventory_owner_isolation() {
     assert!(declared.contracts.requires.is_empty());
     assert_eq!(
         declared.operations.iter().map(|operation| (operation.id.as_str(), operation.policy.timeout.as_millis())).collect::<Vec<_>>(),
-        [("schematic.validate", 10000), ("schematic.route", 10000), ("schematic.analyze", 10000),]
+        [("schematic_validate", 10000), ("schematic_route", 10000), ("schematic_analyze", 10000),]
     );
 }

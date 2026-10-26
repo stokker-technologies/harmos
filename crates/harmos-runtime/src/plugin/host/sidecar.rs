@@ -50,27 +50,21 @@ struct Native<A: Application, L> {
 /* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
-    pub async fn register_sidecar<C>(
-        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync,
-    ) -> Result<()>
+    pub async fn register_sidecar<C>(&self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
     {
         self.sidecar::<C>(executable, settings, lane, false).await
     }
 
-    pub async fn reload_sidecar<C>(
-        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync,
-    ) -> Result<()>
+    pub async fn reload_sidecar<C>(&self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
     {
         self.sidecar::<C>(executable, settings, lane, true).await
     }
 
-    async fn sidecar<C>(
-        &self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane + Clone + Sync, replace: bool,
-    ) -> Result<()>
+    async fn sidecar<C>(&self, executable: Executable, settings: PluginSidecarSettings, lane: impl Lane, replace: bool) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<NativeBindings> + 'static,
     {
@@ -78,7 +72,7 @@ impl<A: Application> PluginHost<A> {
         let mut definition = PluginDefinition::sidecar(&executable, settings.plugin.configuration.clone())
             .map_err(|source| failed(executable.declaration().id.as_str(), source))?;
         definition.requires = settings.plugin.requires.clone();
-        self.serve_publications(&definition, lane.clone())?;
+        self.serve_publications(&definition, lane)?;
         let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
         harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
             Error::InvalidInput { field: "native plugin catalog", reason: "typed catalog differs from the inspected operation inventory" }
@@ -98,7 +92,7 @@ impl<A: Application> PluginHost<A> {
                 &frozen,
                 operations.clone(),
                 handles.streams.clone(),
-                lane.clone(),
+                lane,
                 settings.calls,
                 settings.plugin.encoding_memory_bytes,
                 driving.clone(),
@@ -133,7 +127,7 @@ impl<A: Application> PluginHost<A> {
 impl<A, L> Execution for Native<A, L>
 where
     A: Application,
-    L: Lane + Clone,
+    L: Lane,
 {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,

@@ -115,6 +115,8 @@ pub(super) async fn run<A: Application>(
             #[cfg(feature = "plugin-sidecar")]
             Arc::clone(&cleanup.lifecycle),
         );
+        #[cfg(feature = "plugin-sidecar")]
+        let deactivation = context.deactivation.clone();
         let mut attempt =
             Box::pin(crate::supervision::attempt(async { resident.run(context).await }, stopping.subscribe(), policy.stop_timeout));
 
@@ -151,10 +153,14 @@ pub(super) async fn run<A: Application>(
         });
 
         drop(attempt);
+        #[cfg(feature = "plugin-sidecar")]
+        let restart = if deactivation.load(Ordering::Acquire) { RestartPolicy::Never } else { policy.restart };
+        #[cfg(not(feature = "plugin-sidecar"))]
+        let restart = policy.restart;
         let terminal = match &answer {
             Err(cause) => Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: Arc::new(cause.clone()) }))),
             Ok(Ok(())) => Some(Ok(())),
-            Ok(Err(error)) if health.credit == 0 && !*stopping.borrow() => {
+            Ok(Err(error)) if (health.credit == 0 || matches!(restart, RestartPolicy::Never)) && !*stopping.borrow() => {
                 Some(Err(Arc::new(Error::TaskFailed { domain: "service attempt", source: error.source.clone() })))
             }
             Ok(Err(_)) if *stopping.borrow() => Some(Ok(())),
@@ -176,7 +182,7 @@ pub(super) async fn run<A: Application>(
 
         match answer {
             Ok(answer) => {
-                if let Some(result) = settle(name, answer, &mut health, policy.restart, report, &handles, &stopping).await {
+                if let Some(result) = settle(name, answer, &mut health, restart, report, &handles, &stopping).await {
                     return result;
                 }
             }

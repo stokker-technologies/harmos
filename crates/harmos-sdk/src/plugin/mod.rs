@@ -43,6 +43,7 @@ use crate::operations::{ServingError, WireTable, lifecycle};
 /* === Traits === */
 
 pub trait Context: Clone + Send + Sync + 'static {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError>;
     fn with_generation(&self, token: [u8; 32]) -> Self;
 }
 
@@ -82,6 +83,9 @@ pub trait Attachment<C>: Send + Sync + 'static {
 /* === Implementations === */
 
 impl Context for () {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError> {
+        if bytes.is_empty() { Ok(()) } else { Err(ServingError::Catalog) }
+    }
     fn with_generation(&self, _: [u8; 32]) -> Self {}
 }
 

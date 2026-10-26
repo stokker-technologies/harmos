@@ -164,7 +164,7 @@ mod sdk {
             .await,
             WireAnswer::Failed { .. }
         ));
-        let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+        let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
         invoke::<Initialize>(&outgoing, &mut incoming, 3, initialization.encode()).await;
         let result = invoke::<EchoOperation>(&outgoing, &mut incoming, 4, request.encode()).await;
         assert_eq!(Echo::decode(result.as_slice()).unwrap(), request);

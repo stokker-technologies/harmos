@@ -32,7 +32,7 @@ use super::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Error;
 use schematic::model::Point;
-use schematic::operations::schematic::propose;
+use schematic_operations::schematic::propose;
 use support::Bank;
 use support::fixtures::component as load;
 
@@ -46,11 +46,7 @@ use support::fixtures::component as load;
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-enum GuestLanes {
-    #[default]
-    Open,
-}
+use support::Lanes as GuestLanes;
 
 /* === Traits === */
 
@@ -84,8 +80,8 @@ fn sandbox() -> Vec<u8> {
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
-fn route(x: i32) -> propose::ProposeRoute {
-    propose::ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x, y: 4 } }
+fn route(x: i32) -> propose::ProposeRouteRequest {
+    propose::ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x, y: 4 } }
 }
 
 fn corner(x: i32) -> [Point; 3] {
@@ -117,7 +113,7 @@ async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
         panic!("the failed generation retains its original physical cleanup owner")
     };
     assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].artifact, "sandbox-guest");
+    assert_eq!(failures[0].artifact, "sandbox_guest");
     let harmos_runtime::Error::TaskFailed { domain, source } = &failures[0].error else {
         panic!("the manager preserves its original cleanup failure");
     };

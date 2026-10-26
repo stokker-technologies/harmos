@@ -123,11 +123,8 @@ impl PluginSdkRegistration {
                 });
             }
             let action = descriptor.action();
-            let mut expected = descriptor.contract().operation().clone();
-            expected.id = crate::Identifier::new(format!("{}.{}", scope.owner(), expected.id))
-                .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
-            if entry.declared() != &expected {
-                return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry is not the exact qualified SDK definition" });
+            if entry.declared() != descriptor.contract().operation() {
+                return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry differs from the SDK definition" });
             }
             Arc::get_mut(entry).expect("new SDK entry has one owner").sdk = Some(action);
         }
@@ -146,12 +143,15 @@ impl PluginSdkRegistration {
             let peak = config_json
                 .len()
                 .checked_mul(2)
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<InitializeRequest>() + 64 + 20))
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<InitializeRequest>() + 64 + 30))
                 .ok_or(Error::ResourceExhausted { resource: "SDK encoding memory" })?;
             if peak > allowance {
                 return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
             }
-            let request = InitializeRequest { config_json: config_json.to_vec(), generation_context: generation_context.to_vec() };
+            let scope = self.entries[0].plugin().expect("SDK retains its original scope");
+            let assignments = self.operations.encode_assignments(scope, allowance - peak)?;
+            let request =
+                InitializeRequest { config_json: config_json.to_vec(), generation_context: generation_context.to_vec(), assignments };
             Ok(request.encode())
         })
     }

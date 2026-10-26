@@ -110,7 +110,14 @@ mod sheet {
     #[derive(Clone, Copy, Debug)]
     pub struct Studio;
 
+    #[harmos_runtime::lanes]
+    pub enum StudioLanes {
+        #[default]
+        Open,
+    }
+
     impl harmos_runtime::Application for Studio {
+        type Lanes = StudioLanes;
         type State = Sheet;
         type Transaction = Change;
         type Record = Fact;
@@ -194,7 +201,14 @@ mod counter {
     #[derive(Clone, Copy, Debug)]
     pub struct Counter;
 
+    #[harmos_runtime::lanes]
+    pub enum CounterLanes {
+        #[default]
+        Open,
+    }
+
     impl harmos_runtime::Application for Counter {
+        type Lanes = CounterLanes;
         type State = Tally;
         type Transaction = Step;
         type Record = ();
@@ -209,15 +223,18 @@ mod unified_plugins {
     use std::time::Duration;
 
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+
+    #[harmos_runtime::operation(request = Echo, infer_request, id = "fixture_unified_echo",  response = (), policy = POLICY)]
+    struct EchoDeclaration;
 
     #[harmos_runtime::message]
-    #[harmos_runtime::operation(id = "fixture.unified.echo", version = 3, response = (), policy = POLICY)]
+
     struct Echo {}
 
     #[harmos_runtime::catalog]
     enum Leaves {
-        Echo(Echo),
+        Echo(EchoDeclaration),
     }
     #[harmos_runtime::catalog]
     enum Selected {
@@ -239,11 +256,10 @@ mod unified_plugins {
     }
 
     const PROJECTED: &[PluginInventory::publications::Entry] = &[PluginInventory::publications::Entry::of::<Extra>()];
-    const POLICY: OperationPolicy = OperationPolicy {
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 
     struct Native;
@@ -253,7 +269,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(description = "Native Authored Plugin",
-        id = "unified-native",
+        id = "unified_native",
         provides = Selected,
         requires = Selected,
         streams(Row),
@@ -274,7 +290,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -329,7 +345,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-sdk-projection",
+        id = "unified_sdk_projection",
         description = "Inert Product SDK Declaration",
         provides = ObserverOperations,
         requires(
@@ -377,13 +393,13 @@ mod unified_plugins {
         assert_eq!(
             required[1].grants,
             [
-                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
-                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
+                harmos_domain::plugin::Grant::of("host_operations_status", "reading"),
+                harmos_domain::plugin::Grant::of("host_operations_status", "power"),
             ]
         );
         // A grant names the operation it permits and, for a scoped
         // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
+        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host_operations_status","scope":"reading"}"#);
         assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
         assert_eq!(declaration.config, "SdkInitialization");
         let provides = Contracts::of::<ObserverOperations>().unwrap();
@@ -440,7 +456,6 @@ mod unified_plugins {
             let selected = declaration.listeners;
             assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
             assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-            assert_eq!(selected[0].callback().version(), 1);
             let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
             let guest =
                 harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
@@ -520,7 +535,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-guest",
+        id = "unified_guest",
         description = "Guest Authored Plugin",
         provides = Selected,
         requires = (),
@@ -541,7 +556,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -578,7 +593,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-contributing",
+        id = "unified_contributing",
         provides = (),
         requires = (),
         contributions(Catalog, Panels)
@@ -597,7 +612,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -621,7 +636,7 @@ mod unified_plugins {
     }
     #[harmos_runtime::catalog]
     enum Callbacks {
-        Heard(harmos_runtime::listeners::Delivery<RowListener>),
+        Heard(harmos_runtime::listeners::Callback<RowListener>),
     }
 
     struct Listening;
@@ -629,7 +644,7 @@ mod unified_plugins {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified-listening", provides = Callbacks, requires = (), listeners = Audience)]
+    #[harmos_runtime::plugin(id = "unified_listening", provides = Callbacks, requires = (), listeners = Audience)]
     impl harmos_runtime::Plugin for Listening {
         type Config = ();
         type Error = Infallible;
@@ -644,7 +659,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -660,7 +675,7 @@ mod unified_plugins {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified-listening-guest", provides = Callbacks, requires = (), listeners = Audience)]
+    #[harmos_runtime::plugin(id = "unified_listening_guest", provides = Callbacks, requires = (), listeners = Audience)]
     impl harmos_runtime::Plugin for ListeningGuest {
         type Config = ();
         type Error = Infallible;
@@ -675,7 +690,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {

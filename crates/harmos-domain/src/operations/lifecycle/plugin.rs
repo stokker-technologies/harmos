@@ -78,6 +78,7 @@ impl crate::operations::RequestFor for ShutdownRequest {
 pub struct InitializeRequest {
     pub config_json: Vec<u8>,
     pub generation_context: Vec<u8>,
+    pub assignments: Vec<u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -135,7 +136,7 @@ pub trait SdkOperation: OperationDeclaration + sealed::Leaf {
 
 /* === Implementations === */
 
-crate::message::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8> });
+crate::message::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
 crate::message::postcard_product!(ShutdownRequest {});
 impl SdkOperation for Initialize {
     const ACTION: Action = Action::Initialize;
@@ -150,6 +151,7 @@ impl Described for InitializeRequest {
     const FIELDS: &'static [Field] = &[
         Field { name: Cow::Borrowed("config_json"), tag: 1, kind: Kind::Bytes, cardinality: Cardinality::Required },
         Field { name: Cow::Borrowed("generation_context"), tag: 2, kind: Kind::Bytes, cardinality: Cardinality::Required },
+        Field { name: Cow::Borrowed("assignments"), tag: 3, kind: Kind::Bytes, cardinality: Cardinality::Required },
     ];
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
@@ -166,7 +168,10 @@ impl Described for ShutdownRequest {
 
 impl MemorySize for InitializeRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.config_json.capacity()).saturating_add(self.generation_context.capacity())
+        std::mem::size_of::<Self>()
+            .saturating_add(self.config_json.capacity())
+            .saturating_add(self.generation_context.capacity())
+            .saturating_add(self.assignments.capacity())
     }
 }
 

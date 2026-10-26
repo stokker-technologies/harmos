@@ -23,7 +23,7 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
+use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -36,7 +36,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> = Mutex::new
 /* === Type Aliases === */
 
 // The Callback Operation Is The Delivery Of Its Listener.
-type Observe = Delivery<Observed>;
+type Observe = harmos_runtime::listeners::Callback<Observed>;
 
 /* === Structs === */
 
@@ -100,11 +100,10 @@ impl Drop for InFlight<'_> {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for Receiver {
-    const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
+    const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -130,8 +129,15 @@ impl harmos_runtime::Plugin for Receiver {
     fn resources(&self) -> Arc<Probe> {
         self.probe.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Observing>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<Observe, Observing>(),
+        )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
@@ -145,12 +151,11 @@ impl harmos_runtime::Plugin for Receiver {
 
 impl Listener for Observed {
     type Row = Observation;
-    const CALLBACK: &'static str = "probe.observe";
-    const POLICY: OperationPolicy = OperationPolicy {
+    const CALLBACK: &'static str = "observe";
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 }
 
@@ -159,16 +164,17 @@ struct Observing {
 }
 
 impl Operation for Observing {
-    type Declaration = Observe;
-    type Resources = Probe;
+    type Request = <Observe as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <Observe as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(resources: Arc<Probe>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Probe>().expect("fixture dependency");
         Ok(Self { resources })
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut Observe, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             assert_eq!(request.context(), DeliveryContext::Record { position: harmos_runtime::state::Position(1) });
@@ -193,7 +199,7 @@ impl Operation for Observing {
 
 /* === Private Functions === */
 
-fn delivered(value: u32) -> Observe {
+fn delivered(value: u32) -> Delivery<Observed> {
     Delivery::new(DeliveryContext::Record { position: harmos_runtime::state::Position(1) }, Observation { value }).unwrap()
 }
 
@@ -204,40 +210,40 @@ async fn callback_outcomes_cleanup() {
     let capacity = std::num::NonZeroUsize::new(4).unwrap();
     let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
     let mut fixture =
-        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
+        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
     assert!(
-        fixture.runtime.operations.submit_encoded(Observe::ID, delivered(7).encode_to_vec()).is_err(),
+        fixture.runtime.operations.submit_encoded(&format!("listener.{}", Observe::ID), delivered(7).encode()).is_err(),
         "an unstaged callback is unavailable"
     );
     fixture.initialize().await.unwrap();
     super::publications::ready(fixture.ready().clone()).await;
     let operations = fixture.runtime.operations.clone();
-    fixture.call(delivered(7)).await.unwrap();
+    fixture.call::<Observe>(delivered(7)).await.unwrap();
     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
 
     for name in ["unknown", "harmos.record"] {
-        assert!(
-            operations.submit_encoded(name, delivered(1).encode_to_vec()).is_err(),
-            "unknown and retired dispatch cannot reach a callback"
-        );
+        assert!(operations.submit_encoded(name, delivered(1).encode()).is_err(), "unknown and retired dispatch cannot reach a callback");
     }
-    for payload in [vec![0xff], delivered(99).encode_to_vec()] {
-        let error = operations.submit_encoded(Observe::ID, payload).unwrap().await.unwrap_err();
+    for payload in [vec![0xff], delivered(99).encode()] {
+        let error = operations.submit_encoded(&format!("listener.{}", Observe::ID), payload).unwrap().await.unwrap_err();
         assert!(
             matches!(error, harmos_runtime::Error::OperationFailed { .. }),
             "malformed and refused callbacks retain operation failures: {error}"
         );
     }
     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
-    assert!(matches!(fixture.call(delivered(0)).await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
-    fixture.call(delivered(3)).await.unwrap();
+    assert!(matches!(
+        fixture.call::<Observe>(delivered(0)).await,
+        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+    ));
+    fixture.call::<Observe>(delivered(3)).await.unwrap();
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
     assert_eq!(probe.total.load(Ordering::SeqCst), 10);
 
     let stalled = tokio::spawn({
         let operations = operations.clone();
         async move {
-            let invocation = operations.submit_encoded(Observe::ID, delivered(0).encode_to_vec()).unwrap();
+            let invocation = operations.submit_encoded(&format!("listener.{}", Observe::ID), delivered(0).encode()).unwrap();
             Calling(invocation).await
         }
     });
@@ -246,7 +252,7 @@ async fn callback_outcomes_cleanup() {
     }
     stalled.abort();
     let _ = stalled.await;
-    fixture.call(delivered(2)).await.unwrap();
+    fixture.call::<Observe>(delivered(2)).await.unwrap();
     assert_eq!(probe.total.load(Ordering::SeqCst), 12);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();

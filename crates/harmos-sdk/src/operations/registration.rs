@@ -61,6 +61,7 @@ pub struct PreparedNative {
 pub struct OperationFactory {
     pub definition: OperationDefinition,
     declared: fn() -> OperationDefinition,
+    builtin: bool,
     pub dependencies: Dependencies,
     contract: fn() -> Result<Contract, super::ContractError>,
     install: Install,
@@ -145,6 +146,7 @@ impl RegistrationBatch {
         self.operations.push(OperationFactory {
             definition: D::definition(),
             declared: D::definition,
+            builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>(),
             dependencies: self.dependencies.clone(),
             contract: || {
                 if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
@@ -269,7 +271,9 @@ impl OperationFactory {
     }
 
     pub fn validate(&self) -> Result<(), ServingError> {
-        self.definition.validate().map_err(ServingError::from)?;
+        if !self.builtin {
+            self.definition.validate().map_err(ServingError::from)?;
+        }
         if self.definition != (self.declared)() {
             return Err(ServingError::Catalog);
         }
@@ -395,9 +399,7 @@ impl ServiceFactory {
 
 impl<S: Service> ServiceInstance for InitializedService<S> {
     fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, ()> {
-        Box::pin(
-            async move { self.service.run(OperationContext::new(self.dependencies.clone(), context.call)).await.map_err(service_error) },
-        )
+        Box::pin(async move { self.service.run(context.for_registration(self.dependencies.clone())).await.map_err(service_error) })
     }
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async move { self.service.stop().await.map_err(service_error) })
@@ -476,6 +478,29 @@ mod tests {
             std::task::Poll::Ready(Ok(value)) => value,
             _ => panic!("synchronous fixture must complete successfully"),
         }
+    }
+
+    #[test]
+    fn carrier_assignments_are_immutable() {
+        use crate::operations::{AssignedOperation, OperationAssignments};
+        let first =
+            AssignedOperation { operation: format!("fixture.{}", Read::ID), fingerprint: Read::definition().fingerprint.0, generation: 1 };
+        let assignments = OperationAssignments::default();
+        let bytes = AssignedOperation::encode(std::slice::from_ref(&first)).unwrap();
+        assignments.install(&bytes).unwrap();
+        assignments.clone().install(&bytes).unwrap();
+        assert_eq!(assignments.resolve::<Read>().unwrap(), &first);
+        let mut replacement = first.clone();
+        replacement.generation = 2;
+        assert!(assignments.install(&AssignedOperation::encode(&[replacement]).unwrap()).is_err());
+        assert_eq!(assignments.resolve::<Read>().unwrap().generation, 1);
+        let mut wrong = first.clone();
+        wrong.fingerprint[0] ^= 1;
+        let incompatible = OperationAssignments::default();
+        incompatible.install(&AssignedOperation::encode(&[wrong]).unwrap()).unwrap();
+        assert!(incompatible.resolve::<Read>().is_err());
+        let duplicate = AssignedOperation { operation: format!("other.{}", Read::ID), ..first.clone() };
+        assert!(OperationAssignments::default().install(&AssignedOperation::encode(&[first, duplicate]).unwrap()).is_err());
     }
 
     #[test]

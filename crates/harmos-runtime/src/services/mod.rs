@@ -128,6 +128,8 @@ pub struct ServiceContext<A: Application> {
 
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) provider: Arc<crate::supervision::instance::Instance>,
+    #[cfg(feature = "plugin-sidecar")]
+    deactivation: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /* === Enums === */
@@ -302,6 +304,8 @@ impl<A: Application> Handles<A> {
             ready,
             #[cfg(feature = "plugin-sidecar")]
             provider,
+            #[cfg(feature = "plugin-sidecar")]
+            deactivation: Arc::default(),
         }
     }
 }
@@ -416,6 +420,8 @@ impl<A: Application> Clone for ServiceContext<A> {
             ready: self.ready.clone(),
             #[cfg(feature = "plugin-sidecar")]
             provider: self.provider.clone(),
+            #[cfg(feature = "plugin-sidecar")]
+            deactivation: self.deactivation.clone(),
         }
     }
 }

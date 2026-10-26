@@ -24,7 +24,7 @@ mod surface;
 /* === Re-Exports === */
 
 pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
-pub use dependencies::{Dependencies, DependencyError, OperationContext};
+pub use dependencies::{AssignedOperation, Dependencies, DependencyError, OperationAssignments, OperationContext};
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use registration::{NativeInstance, OperationFactory, RegistrationBatch, ServiceFactory, ServiceInstance};

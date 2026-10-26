@@ -336,9 +336,7 @@ impl Native {
                     selection: Selection::Sdk(descriptor.contract().operation().clone()),
                     capacity: Arc::clone(&capacity),
                 });
-                let mut definition = descriptor.contract().operation().clone();
-                definition.id = crate::Identifier::new(format!("{}.{}", scope.owner(), definition.id))
-                    .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
+                let definition = descriptor.contract().operation().clone();
                 let mut entry = operations.bind_native::<Encoded<()>, EncodedOperation>(
                     scope.owner(),
                     lane.name(),
@@ -551,7 +549,7 @@ impl Native {
                 answer = &mut running => break answer?,
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, request.payload, request.submitted, request.values);
+                    let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.cancel(); }
                 }

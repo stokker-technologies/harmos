@@ -163,7 +163,12 @@ async fn sdk_lifecycle_retained() {
                         .unwrap()
                         .0,
                     generation: 1,
-                    payload: InitializeRequest { config_json: br#""unexpected""#.to_vec(), generation_context: Vec::new() }.encode(),
+                    payload: InitializeRequest {
+                        config_json: br#""unexpected""#.to_vec(),
+                        generation_context: Vec::new(),
+                        assignments: Vec::new()
+                    }
+                    .encode(),
                 })
                 .await,
             WireAnswer::Ready { .. }
@@ -202,7 +207,7 @@ async fn sdk_lifecycle_retained() {
         ),
         "metadata collection does not initialize resources or ordinary handlers"
     );
-    let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+    let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
     assert!(session.call::<harmos_domain::operations::lifecycle::Initialize>(2, request.encode()).await.is_empty());
     let routed = session.call::<schematic_operations::schematic::ProposeRoute>(3, route()).await;
     assert_eq!(Response::decode(&routed).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);

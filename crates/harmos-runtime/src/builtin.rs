@@ -15,7 +15,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::operations::lifecycle::{Cancel, InstanceState, Status, Watch};
+pub use harmos_domain::operations::lifecycle::{Cancel, CancelRequest, InstanceState, Status, StatusRequest, Watch, WatchRequest};
 
 /* === Imports === */
 

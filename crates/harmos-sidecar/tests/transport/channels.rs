@@ -253,7 +253,7 @@ async fn binary_sdk_lifecycle() {
     let registration = receiver.receive().await.unwrap().unwrap();
     assert!(matches!(registration.frame, Frame::Answer { id: 0, .. }));
     registration.consumption.unwrap().consumed().unwrap();
-    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
     binary_invoke::<Initialize>(&sender, &mut receiver, 1, initialization.encode()).await;
     let request = Echo { nonce: 7, payload: vec![42; 65536] };
     let result = binary_invoke::<EchoOperation>(&sender, &mut receiver, 2, request.encode()).await;

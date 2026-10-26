@@ -77,6 +77,7 @@ struct Instance {
     assigned_owner: String,
     capacity: NonZeroUsize,
     table: Table,
+    assignments: harmos_sdk::operations::OperationAssignments,
 }
 
 /* === Enums === */
@@ -113,12 +114,12 @@ where
     super::context::retain();
     // Decode Before Allocating An Instance Or Preparing Authored State
     let command: WireCommand = WireCommand::decode(&command).map_err(refusal)?;
-    let table = TABLE.with_borrow_mut(|active| {
+    let (table, assignments) = TABLE.with_borrow_mut(|active| {
         if let Some(instance) = active {
             if instance.owner != TypeId::of::<P>() || instance.capacity != capacity || instance.assigned_owner != assigned_owner {
                 return Err(refusal("one component instance has one plugin and capacity"));
             }
-            return Ok(Arc::clone(&instance.table));
+            return Ok((Arc::clone(&instance.table), instance.assignments.clone()));
         }
         let markers = P::markers().map_err(refusal)?;
         std::hint::black_box(&markers);
@@ -144,9 +145,15 @@ where
             return Err(refusal("contribution sections differ from authored selection"));
         }
         let (_, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
-        *active =
-            Some(Instance { owner: TypeId::of::<P>(), assigned_owner: assigned_owner.to_owned(), capacity, table: Arc::clone(&table) });
-        Ok(table)
+        let assignments = harmos_sdk::operations::OperationAssignments::default();
+        *active = Some(Instance {
+            owner: TypeId::of::<P>(),
+            assigned_owner: assigned_owner.to_owned(),
+            capacity,
+            table: Arc::clone(&table),
+            assignments: assignments.clone(),
+        });
+        Ok((table, assignments))
     })?;
     let token = match &command {
         WireCommand::Initialize { context, .. } | WireCommand::Attempt { context, .. } | WireCommand::StreamAttempt { context, .. } => {
@@ -159,7 +166,7 @@ where
         _ => Vec::new(),
     };
     let call = crate::operations::CallContext::from_portable(values).map_err(refusal)?;
-    let context = Arc::new(Context { context: token, generation_context: None, call: Arc::new(call) });
+    let context = Arc::new(Context { context: token, generation_context: None, assignments, call: Arc::new(call) });
     let call = context.context().clone();
     let mut dependencies = crate::Dependencies::new();
     dependencies.insert(context).map_err(refusal)?;

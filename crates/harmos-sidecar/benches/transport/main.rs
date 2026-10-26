@@ -416,7 +416,7 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
 
 async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bool) {
     let (operation, fingerprint, payload) = if initialize {
-        let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: vec![2; 32] };
+        let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: vec![2; 32], assignments: Vec::new() };
         (Initialize::ID, (harmos_domain::operations::Entry::of::<Initialize>().fingerprint)().unwrap().0, request.encode())
     } else {
         (Shutdown::ID, (harmos_domain::operations::Entry::of::<Shutdown>().fingerprint)().unwrap().0, Vec::new())

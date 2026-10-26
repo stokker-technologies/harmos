@@ -44,11 +44,10 @@ static GATE_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Gate>
 static NEXT_OBSERVER_SEED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 static OBSERVER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<ObserverCounts>>> =
     Mutex::new(std::collections::BTreeMap::new());
-const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
+const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
     retries: harmos_runtime::operations::RetryPolicy::Never,
-    restart: harmos_runtime::operations::RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -231,7 +230,7 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
         self.observers.clone()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::OperationDefinition>> {
         self.inner.operations()
     }
     fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_runtime::operations::Contract>>> {
@@ -319,9 +318,7 @@ impl harmos_runtime::Plugin for Ticking {
     fn resources(&self) -> Arc<Gate> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
@@ -347,11 +344,10 @@ impl Producer {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for Twins {
-    const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
+    const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
         retries: harmos_runtime::operations::RetryPolicy::Never,
-        restart: harmos_runtime::operations::RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -383,9 +379,7 @@ impl harmos_runtime::Plugin for Twins {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, _: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -452,13 +446,13 @@ impl harmos_runtime::Plugin for Batches {
         publisher.publish_batch_on::<ClockedRows>(&clocked).await.map_err(harmos_sidecar::Refusal::from)?;
         // A Refused Row Ends Its Batch; The Rows Before It Stay Published.
         let raw = |stream: &str, sequence: u64, published_unix_micros: Option<i64>, following: Vec<(Vec<u8>, Option<i64>)>| {
-            harmos_runtime::operations::streams::Publish {
+            harmos_runtime::operations::streams::PublishRequest {
                 stream: stream.to_owned(),
                 schema: 1,
                 sequence: Some(sequence),
                 published_unix_micros,
                 context: None,
-                payload: harmos_runtime::Message::encode_to_vec(&support::pulse(sequence)),
+                payload: harmos_runtime::Message::encode(&support::pulse(sequence)),
                 following: following
                     .into_iter()
                     .map(|(payload, published_delta_micros)| harmos_runtime::operations::streams::FollowingRow {
@@ -468,8 +462,8 @@ impl harmos_runtime::Plugin for Batches {
                     .collect(),
             }
         };
-        let pulse = |sample: u64| harmos_runtime::Message::encode_to_vec(&support::pulse(sample));
-        let publish = |request| harmos_runtime::operations::Host::call(context, request);
+        let pulse = |sample: u64| harmos_runtime::Message::encode(&support::pulse(sample));
+        let publish = |request| harmos_runtime::operations::Host::call::<harmos_runtime::operations::streams::Publish>(context, request);
         let raw_id = <RawRows as harmos_runtime::StreamSpec>::ID;
         let refused = publish(raw(raw_id, 1, None, vec![(pulse(2), None), (vec![0xff; 3], None), (pulse(4), None)])).await;
         if refused.is_ok() {
@@ -498,9 +492,7 @@ impl harmos_runtime::Plugin for Batches {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, _: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -554,7 +546,7 @@ impl harmos_runtime::operations::lifecycle::Policy for SampledTwins {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = (), requires(harmos_runtime::operations::streams::Publish),
+#[harmos_runtime::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin_observers", provides = (), requires(harmos_runtime::operations::streams::Publish),
     observers = TwinObservers, streams(Left, Right))]
 impl harmos_runtime::Plugin for SampledTwins {
     type Config = usize;
@@ -583,9 +575,7 @@ impl harmos_runtime::Plugin for SampledTwins {
     fn resources(&self) -> Arc<ObserverResources> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
@@ -675,7 +665,7 @@ impl harmos_runtime::operations::lifecycle::Policy for MultiStream {
     const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = (), requires(harmos_runtime::operations::streams::Publish),
+#[harmos_runtime::plugin(description = "One Observer Publishing Two Rows.", id = "multi_stream", provides = (), requires(harmos_runtime::operations::streams::Publish),
     observers = MultiObservers, streams(Left, Right))]
 impl harmos_runtime::Plugin for MultiStream {
     type Config = ();
@@ -693,9 +683,7 @@ impl harmos_runtime::Plugin for MultiStream {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
@@ -757,9 +745,7 @@ impl harmos_runtime::Plugin for Flood {
     fn resources(&self) -> Arc<super::witness::Witness> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {

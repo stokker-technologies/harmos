@@ -36,9 +36,11 @@ static PROVIDER_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<P
 /* === Macros === */
 
 macro_rules! forward {
-    ($name:ident, $id:literal) => {
+    ($name:ident, $declaration:ident, $id:literal) => {
+        #[harmos_runtime::operation(request = $name, infer_request, id = $id, policy = AmplifyDeclaration::POLICY, response = Amplified)]
+        struct $declaration;
+
         #[harmos_runtime::message]
-        #[harmos_runtime::operation(id = $id, version = 1, policy = Amplify::POLICY, response = Amplified)]
         #[derive(Clone, PartialEq)]
         struct $name {
             value: i64,
@@ -52,13 +54,13 @@ macro_rules! forward {
     };
 }
 
-forward!(Forward, "caller.forward");
+forward!(Forward, ForwardDeclaration, "caller_forward");
 
-forward!(UnauthorizedForward, "unauthorized.forward");
+forward!(UnauthorizedForward, UnauthorizedForwardDeclaration, "unauthorized_forward");
 
 /* === Type Aliases === */
 
-type NoticeHandler = Box<dyn Fn(&Service<Bank>, Notice) + Send + Sync>;
+type NoticeHandler = Box<dyn Fn(&ServiceContext<Bank>, Notice) + Send + Sync>;
 type Resident = Supervised<Bank, Attachment, NoticeHandler>;
 type Backends = PluginBackend<(), Resources, ()>;
 
@@ -110,10 +112,9 @@ struct UnauthorizedEndpoint {
 
 struct Forwarder;
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "provider.retry",
-    version = 1,
+#[harmos_runtime::operation(request = Retry, infer_request,
+    id = "retry",
+
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
@@ -124,10 +125,12 @@ struct Forwarder;
                 jitter: harmos_runtime::operations::Jitter::None,
             },
         },
-        restart: RestartPolicy::Never,
     },
     response = Amplified,
 )]
+struct RetryDeclaration;
+
+#[harmos_runtime::message]
 #[derive(Clone, PartialEq)]
 struct Retry {
     value: i64,
@@ -143,9 +146,9 @@ struct Attachment {
 
 #[derive(Default)]
 struct Resources {
-    services: Option<harmos_runtime::operations::OperationManager>,
+    services: Option<harmos_runtime::operations::OperationManager<super::support::Lanes>>,
     resident: Option<Resident>,
-    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
+    lease: Option<harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>>,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
     initializing: Option<harmos_runtime::operations::EncodedInvocation>,
@@ -162,7 +165,7 @@ struct NoticeLog {
 }
 
 struct Host {
-    operations: harmos_runtime::operations::OperationManager,
+    operations: harmos_runtime::operations::OperationManager<super::support::Lanes>,
     streams: harmos_runtime::streams::StreamManager<Bank>,
     // Keeps The Original Resources Alive For The Weak Configuration Seed.
     _provider: Arc<Provider>,
@@ -201,34 +204,34 @@ enum PublicationStart {
 
 #[harmos_runtime::catalog]
 enum PublishingOperations {
-    Publish(PublishPulse),
+    Publish(PublishPulseDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum DependentRequirements {
-    Amplify(Amplify),
+    Amplify(AmplifyDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum ProviderOperations {
-    Amplify(Amplify),
-    Retry(Retry),
+    Amplify(AmplifyDeclaration),
+    Retry(RetryDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum CallerOperations {
-    Forward(Forward),
+    Forward(ForwardDeclaration),
 }
 
 #[harmos_runtime::catalog]
 enum UnauthorizedOperations {
-    Forward(UnauthorizedForward),
+    Forward(UnauthorizedForwardDeclaration),
 }
 
 /* === Traits === */
 
 // The Two Forwarding Operations Share One Handler Body.
-trait Forwarded: OperationDeclaration<Response = Amplified> {
+trait Forwarded: harmos_runtime::Portable + Send + Sync + 'static {
     fn value(&self) -> i64;
 }
 
@@ -266,9 +269,23 @@ impl harmos_runtime::Plugin for ProviderEndpoint {
     fn resources(&self) -> Arc<Provider> {
         self.resources.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Amplifying>(self.resources.clone())?;
-        table.bind_operation::<Retrying>(self.resources.clone())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<AmplifyDeclaration, Amplifying>(),
+        )?;
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<RetryDeclaration, Retrying>(),
+        )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -298,8 +315,15 @@ impl harmos_runtime::Plugin for CallerEndpoint {
     fn resources(&self) -> Arc<Forwarder> {
         self.resources.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Forwarding<Forward>>(self.resources.clone())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<ForwardDeclaration, Forwarding<Forward>>(),
+        )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -329,8 +353,15 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
     fn resources(&self) -> Arc<Forwarder> {
         self.resources.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Forwarding<UnauthorizedForward>>(self.resources.clone())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<UnauthorizedForwardDeclaration, Forwarding<UnauthorizedForward>>(),
+        )
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -341,27 +372,28 @@ impl harmos_runtime::Plugin for UnauthorizedEndpoint {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for Publishing {
-    const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
+    const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 impl harmos_runtime::operations::Operation for PublishingCall {
-    type Declaration = PublishPulse;
-    type Resources = ();
+    type Request = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <PublishPulseDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<()>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
-    async fn run<'ctx>(
-        &mut self, host: Self::Context<'ctx>, request: &mut PublishPulse, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, host: harmos_runtime::OperationContext, request: &mut PublishPulse, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
+        let host = host.dependency::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> = async move {
             host.publisher::<Publishing>().publish_on::<MeterPulse>(&support::pulse(request.sample)).await.map_err(Refusal::from)
         }
@@ -392,8 +424,15 @@ impl harmos_runtime::Plugin for Publishing {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<PublishingCall>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<PublishPulseDeclaration, PublishingCall>(),
+        )
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         if self.publish_on_cleanup {
@@ -411,11 +450,10 @@ impl harmos_runtime::Plugin for Publishing {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for Dependent {
-    const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
+    const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -430,20 +468,23 @@ impl harmos_runtime::Plugin for Dependent {
         Ok(Self { resources: Arc::new(()), notify })
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context.call(Amplify { value: 11 }).await.map_err(Refusal::from)?;
+        context.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 11 }).await.map_err(Refusal::from)?;
         if self.notify {
-            context.call(Sample { value: 99 }).await.map_err(Refusal::from)?;
+            context.call::<<Sample as harmos_runtime::RequestFor>::Operation>(Sample { value: 99 }).await.map_err(Refusal::from)?;
         }
         Ok(())
     }
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
-        context.call(Amplify { value: 22 }).await.expect("provider remains available through cleanup");
+        context
+            .call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 22 })
+            .await
+            .expect("provider remains available through cleanup");
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -458,16 +499,17 @@ impl Drop for DroppedHandler {
 }
 
 impl harmos_runtime::operations::Operation for Amplifying {
-    type Declaration = Amplify;
-    type Resources = Provider;
+    type Request = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <AmplifyDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(resources: Arc<Provider>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Provider>().expect("fixture dependency");
         Ok(Self { resources })
     }
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Amplify, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Amplify, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value == 0 {
@@ -484,17 +526,18 @@ impl harmos_runtime::operations::Operation for Amplifying {
 }
 
 impl harmos_runtime::operations::Operation for Retrying {
-    type Declaration = Retry;
-    type Resources = Provider;
+    type Request = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(resources: Arc<Provider>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Provider>().expect("fixture dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Retry, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Retry, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             self.resources.attempts.fetch_add(1, Ordering::SeqCst);
@@ -520,24 +563,27 @@ impl harmos_runtime::operations::Operation for Retrying {
 }
 
 impl<F: Forwarded> harmos_runtime::operations::Operation for Forwarding<F> {
-    type Declaration = F;
-    type Resources = Forwarder;
+    type Request = F;
+    type Response = Amplified;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(resources: Arc<Forwarder>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Forwarder>().expect("fixture dependency");
         Ok(Self { _resources: resources, forwarded: std::marker::PhantomData })
     }
-    async fn run<'ctx>(
-        &mut self, host: Self::Context<'ctx>, request: &mut F, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, host: harmos_runtime::OperationContext, request: &mut F, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
+        let host = host.dependency::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            host.call(Amplify { value: request.value() }).await.map(harmos_runtime::operations::Response::into_owned).map_err(|error| {
-                match error {
+            host.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: request.value() })
+                .await
+                .map(harmos_runtime::operations::Response::into_owned)
+                .map_err(|error| match error {
                     harmos_sidecar::CallError::Refused { code, failure } => Refusal::failed(code, failure),
                     error => Refusal::of(error),
-                }
-            })
+                })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -562,7 +608,7 @@ impl Attach for Attachment {
         };
         Ok(Some(contracts))
     }
-    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::OperationDefinition>> {
         match self.id.as_str() {
             "provider" => Declarations::of::<ProviderOperations>(),
             "caller" if self.publishing => Declarations::of::<PublishingOperations>(),
@@ -635,11 +681,8 @@ impl Attach for Attachment {
     }
 }
 
-impl PluginLifecycle for Host {
-    type Guest = ();
-    type Sidecar = Resources;
-    type Embedded = ();
-    fn preflight(&mut self, candidate: &PluginDefinitions) -> harmos_runtime::Result<()> {
+impl Host {
+    async fn prepare_publication(&mut self) -> harmos_runtime::Result<()> {
         if self.publication_start.is_some() && self.publication_resident.is_none() {
             let notices = self.notices.clone();
             let handler: NoticeHandler = Box::new(move |_, notice| {
@@ -655,13 +698,23 @@ impl PluginLifecycle for Host {
             if self.project_publications {
                 resident = resident.ingest::<MeterPulse>();
             }
-            self.operations.register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-                "routing-publication-core",
-                HostLanes::Open,
-                Arc::new(resident.clone()),
-            )?;
+            self.operations
+                .register(harmos_runtime::RegistrationExt::lane(
+                    crate::sidecar::publication_registration(Arc::new(resident.clone())),
+                    HostLanes::Open,
+                ))
+                .await?;
             self.publication_resident = Some(resident);
         }
+        Ok(())
+    }
+}
+
+impl PluginLifecycle for Host {
+    type Guest = ();
+    type Sidecar = Resources;
+    type Embedded = ();
+    fn preflight(&mut self, candidate: &PluginDefinitions) -> harmos_runtime::Result<()> {
         self.operations.validate_requirements(candidate)
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos_runtime::Result<Backends> {
@@ -741,7 +794,7 @@ impl PluginLifecycle for Host {
             resources.initializing = Some(resources.sdk.as_ref().unwrap().submit_initialize(
                 authority,
                 &definition.configuration,
-                NonZeroUsize::new(192).unwrap(),
+                NonZeroUsize::new(192 + 3072).unwrap(),
             )?);
             let result = resources.initializing.as_mut().unwrap().await;
             resources.initializing.take();

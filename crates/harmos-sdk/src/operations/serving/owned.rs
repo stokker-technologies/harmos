@@ -275,7 +275,6 @@ impl<T: Operation> Prepared for State<T> {
             }
             let physical = self.physical.as_mut().expect("original operation before cleanup");
             let context = context.for_registration(physical.dependencies.clone());
-            physical.dependencies = context.dependencies().clone();
             let operation = guarded(async { T::initialize(context).await.map_err(operation_error::<T>) }).await?;
             physical.operation = Some(operation);
             self.initialization = Initialization::Ready;
@@ -295,11 +294,7 @@ impl<T: Operation> Prepared for State<T> {
             guarded(async {
                 let operation = physical.operation.as_mut().expect("initialized operation");
                 let response = operation
-                    .run(
-                        OperationContext::new(physical.dependencies.clone(), context.call.clone()),
-                        &mut physical.request,
-                        &mut physical.endpoints,
-                    )
+                    .run(context.for_registration(physical.dependencies.clone()), &mut physical.request, &mut physical.endpoints)
                     .await
                     .map_err(operation_error::<T>)?;
                 #[cfg(feature = "grpc")]

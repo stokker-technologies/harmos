@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 // Third Party Imports
-use contract::{POLICY, Probe, Step};
+use contract::{POLICY, Step};
 use tokio::io::{AsyncRead, ReadBuf};
 use tokio::sync::Notify;
 // Local Imports
@@ -41,7 +41,7 @@ use crate::sidecar::witness::Witness;
 use harmos_runtime::operations::OperationDeclaration;
 use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
-use harmos_runtime::{Message, Runtime, services::Service, services::ServiceStatus};
+use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
 use harmos_sidecar::attach::{End, Ending};
 
 /* === Constants === */
@@ -103,7 +103,7 @@ struct Independent {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
     marks: BTreeMap<&'static str, Arc<Witness>>,
     client: Arc<Gate>,
     provider: Arc<Gate>,
@@ -128,7 +128,7 @@ impl harmos_runtime::operations::lifecycle::Policy for Independent {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process-independent", provides = (), requires = ())]
+#[harmos_runtime::plugin(id = "process_independent", provides = (), requires = ())]
 impl harmos_runtime::Plugin for Independent {
     type Context = Supervisor;
     type Config = String;
@@ -144,9 +144,7 @@ impl harmos_runtime::Plugin for Independent {
     fn resources(&self) -> Arc<Witness> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, _: &mut harmos_runtime::operations::WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -204,7 +202,7 @@ impl Attach for Joined {
     fn owner(&self) -> &str {
         forwarded!(self, owner)
     }
-    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::OperationDefinition>> {
         forwarded!(self, operations)
     }
     fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_runtime::operations::Contract>>> {
@@ -268,9 +266,9 @@ impl Fixture {
     // Submit The Graph Without Awaiting Admission; `held` Holds The Client's Initialization.
     async fn start(held: bool) -> Self {
         let marks: BTreeMap<_, _> =
-            ["process-provider", "process-client", "process-independent"].into_iter().map(|owner| (owner, Witness::open())).collect();
+            ["process_provider", "process_client", "process_independent"].into_iter().map(|owner| (owner, Witness::open())).collect();
         if held {
-            marks["process-client"].mark("hold-initialization");
+            marks["process_client"].mark("hold-initialization");
         }
         let capacity = NonZeroUsize::new(2).unwrap();
         let provider = Arc::new(Gate::default());
@@ -289,11 +287,13 @@ impl Fixture {
             })
             .collect::<Vec<_>>();
         let encoding_bytes = definitions.iter().map(|definition| definition.configuration.len() * 2).max().unwrap()
-            + std::mem::size_of::<harmos_runtime::operations::lifecycle::Initialize>()
-            + 84;
+            + std::mem::size_of::<harmos_runtime::operations::lifecycle::InitializeRequest>()
+            + 94;
         assert!(encoding_bytes <= 512);
+        let encoding_bytes = encoding_bytes + 3072;
+        assert!(encoding_bytes <= 4096);
         let definitions = harmos_runtime::plugin::PluginDefinitions::new(definitions, []).unwrap();
-        let residents = sources.map(|source| Supervised::new(source, notices as fn(&Service<Bank>, Notice)));
+        let residents = sources.map(|source| Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)));
         let runtime = assembly()
             .operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -307,7 +307,7 @@ impl Fixture {
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "local-graph".into(),
-                    policy: harmos_runtime::operations::OperationPolicy {
+                    policy: harmos_runtime::ServicePolicy {
                         restart: harmos_runtime::operations::RestartPolicy::Never,
                         ..harmos_runtime::services::POLICY
                     },
@@ -336,11 +336,11 @@ impl Fixture {
             assert_eq!(gate.starts.load(Ordering::SeqCst), 1);
             assert!(gate.joined.load(Ordering::SeqCst));
         }
-        for owner in ["process-provider", "process-client", "process-independent"] {
+        for owner in ["process_provider", "process_client", "process_independent"] {
             assert_eq!(self.marks(owner).count("shutdown"), 1);
             assert_eq!(self.marks(owner).count("cleaned"), 1);
         }
-        assert_eq!(self.marks("process-provider").count("read-finalized-2"), 1);
+        assert_eq!(self.marks("process_provider").count("read-finalized-2"), 1);
     }
 }
 
@@ -348,7 +348,7 @@ impl Fixture {
 
 /* === Private Functions === */
 
-fn notices(_: &Service<Bank>, _: Notice) {}
+fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
 #[tokio::test]
 async fn cancelled_stop_retains() {
@@ -368,8 +368,8 @@ async fn cancelled_stop_retains() {
     assert!(fixture.independent.joined.load(Ordering::SeqCst));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-    assert!(!fixture.marks("process-provider").seen("shutdown"));
-    assert_eq!(fixture.marks("process-provider").count("read-finalized-2"), 1);
+    assert!(!fixture.marks("process_provider").seen("shutdown"));
+    assert_eq!(fixture.marks("process_provider").count("read-finalized-2"), 1);
     fixture.client.release.notify_one();
     fixture.runtime.stop().await.unwrap();
     fixture.settled();
@@ -383,17 +383,17 @@ async fn failed_ending_retires() {
     assert!(matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-    assert!(!fixture.marks("process-provider").seen("shutdown"));
+    assert!(!fixture.marks("process_provider").seen("shutdown"));
     assert!(fixture.independent.joined.load(Ordering::SeqCst));
-    assert_eq!(fixture.marks("process-independent").count("cleaned"), 1);
+    assert_eq!(fixture.marks("process_independent").count("cleaned"), 1);
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     assert!(failures > 0);
     let result = fixture.runtime.stop().await;
     assert!(matches!(result, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     assert!(fixture.client.failures.load(Ordering::SeqCst) > failures);
     assert_eq!(fixture.client.starts.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.marks("process-independent").count("cleaned"), 1);
-    assert!(!fixture.marks("process-provider").seen("shutdown"));
+    assert_eq!(fixture.marks("process_independent").count("cleaned"), 1);
+    assert!(!fixture.marks("process_provider").seen("shutdown"));
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     fixture.client.fail.store(false, Ordering::SeqCst);
     fixture.runtime.stop().await.unwrap();
@@ -410,8 +410,8 @@ async fn unrelated_failure_retires() {
     assert!(!fixture.independent.joined.load(Ordering::SeqCst));
     assert!(fixture.client.joined.load(Ordering::SeqCst));
     assert!(fixture.provider.joined.load(Ordering::SeqCst));
-    assert_eq!(fixture.marks("process-provider").count("read-finalized-2"), 1);
-    for owner in ["process-client", "process-provider"] {
+    assert_eq!(fixture.marks("process_provider").count("read-finalized-2"), 1);
+    for owner in ["process_client", "process_provider"] {
         assert_eq!(fixture.marks(owner).count("shutdown"), 1);
         assert_eq!(fixture.marks(owner).count("cleaned"), 1);
     }
@@ -423,7 +423,7 @@ async fn unrelated_failure_retires() {
 #[tokio::test]
 async fn eof_retains_child() {
     let fixture = Fixture::new().await;
-    let provider = fixture.marks("process-provider");
+    let provider = fixture.marks("process_provider");
     provider.mark("hold-read-2");
     fixture.provider.hold.store(true, Ordering::SeqCst);
     {
@@ -440,7 +440,7 @@ async fn eof_retains_child() {
         }
         assert!(!fixture.provider.joined.load(Ordering::SeqCst));
         assert!(!fixture.client.joined.load(Ordering::SeqCst));
-        assert!(!fixture.marks("process-client").seen("dependency-shutdown"));
+        assert!(!fixture.marks("process_client").seen("dependency-shutdown"));
         // Cancel Only The Wait; The Same Original Child And Ending Remain Owned.
     }
     fixture.provider.fail.store(true, Ordering::SeqCst);
@@ -466,7 +466,7 @@ async fn eof_retains_child() {
     assert_eq!(provider.count("read-prepared-2"), 1);
     assert_eq!(provider.count("read-started-2"), 1);
     assert_eq!(provider.count("read-finalized-2"), 1);
-    for owner in ["process-provider", "process-client", "process-independent"] {
+    for owner in ["process_provider", "process_client", "process_independent"] {
         assert_eq!(fixture.marks(owner).count("cleaned"), 1);
     }
 }
@@ -474,8 +474,8 @@ async fn eof_retains_child() {
 #[tokio::test]
 async fn dependency_precedes_admission() {
     let fixture = Fixture::start(true).await;
-    let client = fixture.marks("process-client");
-    let provider = fixture.marks("process-provider");
+    let client = fixture.marks("process_client");
+    let provider = fixture.marks("process_provider");
 
     // The Lifecycle Loan Reaches Its Provider Before Ordinary Admission
     client.marked("dependency-initialized").await;
@@ -484,7 +484,10 @@ async fn dependency_precedes_admission() {
     let status = service_status(fixture.runtime.operations.watch_residents(), "local-graph", |_| true).await;
     assert_eq!(status, ServiceStatus::Starting);
     assert!(matches!(
-        fixture.runtime.operations.submit_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec()),
+        fixture
+            .runtime
+            .operations
+            .submit_encoded(&format!("process_client.{}", contract::ProbeDeclaration::ID), Step { phase: 3 }.encode()),
         Err(harmos_runtime::Error::NotReady { domain: "operation plugin" }),
     ));
     assert!(!client.seen("probe-initialized"));
@@ -493,7 +496,12 @@ async fn dependency_precedes_admission() {
     client.mark("release-initialization");
     service_status(fixture.runtime.operations.watch_residents(), "local-graph", |status| matches!(status, ServiceStatus::Running { .. }))
         .await;
-    let response = fixture.runtime.operations.call_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec()).await.unwrap();
+    let response = fixture
+        .runtime
+        .operations
+        .call_encoded(&format!("process_client.{}", contract::ProbeDeclaration::ID), Step { phase: 3 }.encode())
+        .await
+        .unwrap();
     assert_eq!(Step::decode(&response).unwrap().phase, 3);
     assert_eq!(client.count("probe-initialized"), 1);
     assert_eq!(client.count("probe-finalized"), 1);

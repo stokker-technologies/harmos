@@ -126,7 +126,10 @@ impl Manager {
         let binding = selected.downcast::<Typed<O, P>>();
         #[cfg(feature = "plugin-sidecar")]
         let binding = binding.or_else(|original| {
-            entry.native_binding.as_ref().map_or(Err(original), |encoded| Arc::clone(encoded).downcast::<Typed<O, P>>())
+            match entry.native_binding.as_ref().and_then(|encoded| Arc::clone(encoded).downcast::<Typed<O, P>>().ok()) {
+                Some(binding) => Ok(binding),
+                None => Err(original),
+            }
         });
         let binding = binding.or_else(|original| {
             let Some(factory) = original.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {

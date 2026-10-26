@@ -61,6 +61,7 @@ pub struct Supervisor {
     pending: Arc<PendingCalls>,
     operation_context: Option<[u8; 32]>,
     generation_context: Option<[u8; 32]>,
+    assignments: harmos_sdk::operations::OperationAssignments,
     call: Arc<harmos_domain::operations::CallContext>,
     clock: fn() -> Option<i64>,
 }
@@ -77,6 +78,9 @@ pub(crate) enum Outgoing {
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CallError {
+    #[error("caller may not invoke operation `{operation}` without a matching host assignment")]
+    Unassigned { operation: &'static str },
+
     // The host's refusal carries the failure unchanged; this layer names only
     // the operation the host attributed it to.
     #[error("{}", refused_line(*.code, .failure))]
@@ -128,6 +132,10 @@ impl From<CallError> for harmos_domain::Refusal {
 }
 
 impl harmos_sdk::plugin::Context for Supervisor {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
+        self.assignments.install(bytes)
+    }
+
     fn with_generation(&self, token: [u8; 32]) -> Self {
         let mut host = self.clone();
         host.generation_context = Some(token);
@@ -193,6 +201,7 @@ impl Supervisor {
             pending: Arc::new(PendingCalls::new()),
             operation_context: None,
             generation_context: None,
+            assignments: Default::default(),
             call: Arc::default(),
             clock,
         }
@@ -298,8 +307,15 @@ impl Supervisor {
         &self, request: &O::Request, submit: bool, values: Vec<harmos_domain::operations::CallValue>,
     ) -> Result<Vec<u8>, CallError> {
         let context = self.operation_context.unwrap_or([0; 32]);
+        let target = self.assignments.resolve::<O>().map_err(|_| CallError::Unassigned { operation: O::ID })?;
         let payload_bytes = harmos_domain::Message::encoded_size(request);
-        let encoded = Frame::child_payload_encoded_len(O::ID, payload_bytes, self.generation_context.is_some(), &values);
+        let encoded = Frame::child_payload_encoded_len(
+            &target.operation,
+            target.generation,
+            payload_bytes,
+            self.generation_context.is_some(),
+            &values,
+        );
         if encoded > Frame::LIMIT {
             return Err(CallError::Oversized { method: O::ID, encoded, limit: Frame::LIMIT });
         }
@@ -308,7 +324,9 @@ impl Supervisor {
             context,
             generation_context: self.generation_context,
             values,
-            operation: O::ID.to_owned(),
+            operation: target.operation.clone(),
+            fingerprint: target.fingerprint,
+            generation: target.generation,
             payload,
             submit,
         };
@@ -388,6 +406,10 @@ impl Supervisor {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable.into());
         }
+        let target = self
+            .assignments
+            .resolve::<harmos_domain::operations::streams::Publish>()
+            .map_err(|_| CallError::Unassigned { operation: harmos_domain::operations::streams::Publish::ID })?;
         let mut rest = (rows, stamps);
         while !rest.0.is_empty() {
             let mut sent = 0;
@@ -395,7 +417,8 @@ impl Supervisor {
                 .exchange_with(|id, call| {
                     let values = self.call.portable();
                     let envelope = harmos_sdk::operations::WireChildCall::payload_encoded_len(
-                        harmos_domain::operations::streams::Publish::ID,
+                        &target.operation,
+                        target.generation,
                         0,
                         self.generation_context.is_some(),
                         &values,
@@ -541,7 +564,17 @@ mod tests {
 
     fn host(values: Vec<CallValue>) -> Supervisor {
         let (outgoing, _) = mpsc::channel(1);
-        Supervisor::new(outgoing, || None).for_attempt([7; 32], values).unwrap()
+        let host = Supervisor::new(outgoing, || None).for_attempt([7; 32], values).unwrap();
+        let assignments = [ReadFile::definition(), Publish::definition()]
+            .into_iter()
+            .map(|definition| harmos_sdk::operations::AssignedOperation {
+                operation: format!("host.{}", definition.id),
+                fingerprint: definition.fingerprint.0,
+                generation: u64::MAX,
+            })
+            .collect::<Vec<_>>();
+        host.assignments.install(&harmos_sdk::operations::AssignedOperation::encode(&assignments).unwrap()).unwrap();
+        host
     }
 
     #[test]
@@ -563,7 +596,7 @@ mod tests {
     fn publication_context_boundary() {
         let values = vec![CallValue { key: "context".into(), payload: vec![3; 65536 - 7] }];
         let host = host(values.clone());
-        let empty = WireChildCall::payload_encoded_len(Publish::ID, 0, false, &values).unwrap();
+        let empty = WireChildCall::payload_encoded_len(&format!("host.{}", Publish::ID), u64::MAX, 0, false, &values).unwrap();
         let fits = |bytes: usize| {
             let row = FileBatch { offset: 0, bytes: vec![0; bytes] };
             let body = crate::wire::publication_encoded_len("context.samples", 1, 1, row.encoded_size(), None, None) + 1;

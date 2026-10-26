@@ -213,6 +213,11 @@ impl PluginScope {
         self
     }
 
+    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    pub(crate) fn wire_contracts(&self) -> impl Iterator<Item = &crate::operations::Contract> {
+        self.wire_contracts.values()
+    }
+
     pub(crate) fn required_contracts(&self) -> Option<&[harmos_domain::inventory::contracts::Required]> {
         self.required_contracts.as_ref().as_deref()
     }

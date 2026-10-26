@@ -334,7 +334,7 @@ where
             polling: Vec::with_capacity(self.residents.len()),
             dependencies,
             operations,
-            lane: self.lane.clone(),
+            lane: self.lane,
             capacity: self.capacity,
             encoding_memory_bytes: self.encoding_memory_bytes,
             catalog: self.catalog,
@@ -344,6 +344,9 @@ where
         });
         let host = self.host.as_mut().expect("original service context retained");
         if let Err(error) = self.manager.initialize(host).await {
+            if host.residents.values().any(|resident| resident.calls.announced_exit.load(std::sync::atomic::Ordering::Acquire)) {
+                context.deactivation.store(true, std::sync::atomic::Ordering::Release);
+            }
             return match host.exit.take() {
                 Some(Err(fault)) => Err(ManagedError::Physical(fault)),
                 _ => Err(ManagedError::Lifecycle(error)),
@@ -376,7 +379,11 @@ where
             }
             Poll::Pending
         });
-        stopping.until_stopping(running).await.unwrap_or(Ok(())).map_err(ManagedError::Physical)
+        let outcome = stopping.until_stopping(running).await.unwrap_or(Ok(()));
+        if host.residents.values().any(|resident| resident.calls.announced_exit.load(std::sync::atomic::Ordering::Acquire)) {
+            context.deactivation.store(true, std::sync::atomic::Ordering::Release);
+        }
+        outcome.map_err(ManagedError::Physical)
     }
 
     async fn stop(&mut self) -> std::result::Result<(), ManagedError> {
@@ -457,14 +464,14 @@ where
         };
         let native = Arc::new(drive(physical, &self.polling, &backend.dependencies, &mut self.exit, staged, Progress::Admission).await?);
         backend.registration = Some(self.operations.stage_plugin(native.scope().expect("original native scope"), |bindings| {
-            (self.catalog)(bindings, self.lane.clone(), native.clone(), self.capacity)
+            (self.catalog)(bindings, self.lane, native.clone(), self.capacity)
         })?);
         backend.stream_listeners =
             Some(self.streams.stage_listeners(native.scope().expect("original native scope"), &self.operations, |bindings| {
                 (self.stream_listeners)(definition, bindings)
             })?);
         backend.initialized = Some(native.initialization());
-        backend.sdk = Some(native.stage_sdk(&self.operations, self.lane.clone())?);
+        backend.sdk = Some(native.stage_sdk(&self.operations, self.lane)?);
         backend.initializing =
             Some(backend.sdk.as_ref().unwrap().submit_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?);
         let initializing = backend.initializing.as_mut().unwrap();

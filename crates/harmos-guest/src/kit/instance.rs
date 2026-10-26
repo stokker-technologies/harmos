@@ -70,11 +70,14 @@ impl Context {
 
     async fn child_call<O: OperationDeclaration>(&self, request: &O::Request, submit: bool) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
+        let target = self.assignments.resolve::<O>().map_err(OperationRefusal::of)?;
         let call = WireChildCall {
             context,
             generation_context: self.generation_context,
             values: self.call.portable(),
-            operation: O::ID.to_owned(),
+            operation: target.operation.clone(),
+            fingerprint: target.fingerprint,
+            generation: target.generation,
             payload: harmos_domain::Message::encode(request),
             submit,
         };

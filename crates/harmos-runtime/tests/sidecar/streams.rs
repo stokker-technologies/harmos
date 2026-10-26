@@ -22,7 +22,7 @@ use std::{
 };
 // Third Party Imports
 // Local Imports
-use super::{Counts, Read};
+use super::{Counts, ReadDeclaration};
 #[cfg(feature = "grpc")]
 use super::{Lanes, Managed, source};
 #[cfg(feature = "grpc")]
@@ -37,18 +37,19 @@ macro_rules! serving {
     ($owner:ident, $declaration:ident, $endpoints:ty, $request:ident, $ports:ident, $run:block) => {
         struct $owner(Arc<Counts>);
         impl Operation for $owner {
-            type Declaration = $declaration;
-            type Resources = Counts;
+            type Request = <$declaration as harmos_runtime::OperationDeclaration>::Request;
+            type Response = <$declaration as harmos_runtime::OperationDeclaration>::Response;
+
             type Error = harmos_runtime::Error;
             type Endpoints = $endpoints;
-            type Context<'a> = &'a harmos_runtime::sidecar::Supervisor;
-            async fn initialize<'a>(counts: Arc<Counts>, _: Self::Context<'a>) -> Result<Self, Self::Error> {
+            async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+                let counts = context.dependency::<Counts>().expect("fixture dependency");
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
                 counts.operation_initialized.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
             }
-            async fn run<'a>(
-                &mut self, _: Self::Context<'a>, $request: &mut $declaration, $ports: &mut Self::Endpoints,
+            async fn run(
+                &mut self, _: harmos_runtime::OperationContext, $request: &mut Self::Request, $ports: &mut Self::Endpoints,
             ) -> Result<harmos_runtime::operations::Response<u32>, Self::Error> {
                 let result: ::core::result::Result<u32, Self::Error> = async move {
                     self.0.runs.fetch_add(1, Ordering::SeqCst);
@@ -75,26 +76,32 @@ macro_rules! serving {
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    version = 1,
-    policy = Read::POLICY,
+#[harmos_runtime::operation(request = Upload, infer_request, id = "upload",
+
+    policy = ReadDeclaration::POLICY,
     response = u32,
     input = u32,
     grpc(package = "fixture.v1", service = "Native", method = "Upload"),
 )]
+pub(super) struct UploadDeclaration;
+
+#[harmos_runtime::message]
+
 pub(super) struct Upload {
     pub(super) value: u32,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    version = 1,
-    policy = Read::POLICY,
+#[harmos_runtime::operation(request = Download, infer_request, id = "download",
+
+    policy = ReadDeclaration::POLICY,
     response = u32,
     output = u32,
     grpc(package = "fixture.v1", service = "Native", method = "Download"),
 )]
+pub(super) struct DownloadDeclaration;
+
+#[harmos_runtime::message]
+
 pub(super) struct Download {
     pub(super) value: u32,
 }
@@ -106,53 +113,50 @@ struct WrongShape {
     value: String,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    version = 1,
-    policy = Read::POLICY,
+#[harmos_runtime::operation(request = Exchange, infer_request, id = "exchange",
+
+    policy = ReadDeclaration::POLICY,
     response = u32,
     input = u32,
     output = u32,
     grpc(package = "fixture.v1", service = "Native", method = "Exchange"),
 )]
+pub(super) struct ExchangeDeclaration;
+
+#[harmos_runtime::message]
+
 pub(super) struct Exchange {
     pub(super) value: u32,
 }
 
 #[harmos_runtime::catalog]
 pub(super) enum Operations {
-    Upload(Upload),
-    Download(Download),
-    Exchange(Exchange),
+    Upload(UploadDeclaration),
+    Download(DownloadDeclaration),
+    Exchange(ExchangeDeclaration),
 }
 
 // Runtime-error endpoints bind through the same catalog projection as
 // `bind_operations`, which is the authored sidecar route.
-#[harmos_runtime::catalog]
-enum Implemented {
-    Upload(Uploading),
-    Download(Downloading),
-    Exchange(Exchanging),
-}
 
 /* === Traits === */
 
 /* === Implementations === */
 
-serving!(Uploading, Upload, StreamInput<u32>, request, input, {
+serving!(Uploading, UploadDeclaration, StreamInput<u32>, request, input, {
     let mut total = request.value;
     while let Some(item) = input.recv().await {
         total += *item;
     }
     Ok(total)
 });
-serving!(Downloading, Download, StreamOutput<u32>, request, output, {
+serving!(Downloading, DownloadDeclaration, StreamOutput<u32>, request, output, {
     for value in [0, request.value] {
         output.send_with(4, || Ok(value)).await?;
     }
     Ok(request.value)
 });
-serving!(Exchanging, Exchange, (StreamInput<u32>, StreamOutput<u32>), request, ports, {
+serving!(Exchanging, ExchangeDeclaration, (StreamInput<u32>, StreamOutput<u32>), request, ports, {
     let mut total = request.value;
     while let Some(item) = ports.0.recv().await {
         total += *item;
@@ -163,12 +167,18 @@ serving!(Exchanging, Exchange, (StreamInput<u32>, StreamOutput<u32>), request, p
 
 /* === Public Functions === */
 
-pub(super) fn bind(
-    table: &mut WireTable<harmos_runtime::sidecar::Supervisor>, counts: Arc<Counts>,
-) -> Result<(), harmos_runtime::operations::ServingError> {
+pub(super) fn bind(table: &mut WireTable, counts: Arc<Counts>) -> Result<(), harmos_runtime::operations::ServingError> {
     let direction = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(64).unwrap() };
     let limits = WireStreamLimits { input: direction, output: direction };
-    table.bind_streaming_operations::<Implemented, _>(counts, limits)
+    table.stream_limits(limits)?;
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(counts).unwrap();
+    table.register(
+        harmos_runtime::RegistrationBatch::new(dependencies)
+            .implementation::<UploadDeclaration, Uploading>()
+            .implementation::<DownloadDeclaration, Downloading>()
+            .implementation::<ExchangeDeclaration, Exchanging>(),
+    )
 }
 
 /* === Private Functions === */
@@ -190,7 +200,7 @@ fn opening<R: Send + Sync + 'static>(
 #[tokio::test]
 async fn grpc_stream_lifecycle() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     assert_eq!(fixture.runtime.grpc().methods().len(), 4);
     let operations = harmos_runtime::grpc::server::Settings::default();
@@ -281,7 +291,7 @@ async fn grpc_stream_lifecycle() {
 #[tokio::test]
 async fn grpc_shape_refusal() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     let operations = harmos_runtime::grpc::server::Settings::default();
     let attached = fixture

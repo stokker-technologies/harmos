@@ -43,10 +43,14 @@ where
     type Error = std::io::Error;
 
     async fn run(&mut self, context: ServiceContext<A>) -> Result<(), Self::Error> {
+        let deactivation = context.deactivation.clone();
         let result = self.attempt(context).await;
-        // An application fault is terminal: a caller awaiting staging learns the attempt was refused.
-        if result.is_err() {
-            self.calls.refuse();
+        if self.calls.announced_exit.load(std::sync::atomic::Ordering::Acquire) {
+            deactivation.store(true, std::sync::atomic::Ordering::Release);
+        }
+        // Callers Awaiting Staging Receive The Original Attempt Failure.
+        if let Err(reason) = &result {
+            self.calls.refuse(reason.clone());
         }
         result.map_err(std::io::Error::other)
     }

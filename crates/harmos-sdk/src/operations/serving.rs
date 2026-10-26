@@ -72,6 +72,8 @@ pub struct WireChildCall {
     pub values: Vec<super::CallValue>,
 
     pub operation: String,
+    pub fingerprint: [u8; 32],
+    pub generation: u64,
     pub payload: Vec<u8>,
 
     // Submitted children answer their instance id at admission and remain
@@ -188,6 +190,9 @@ pub enum WireAnswer {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServingError {
+    #[error("caller may not invoke operation `{operation}` without a host assignment")]
+    Unassigned { operation: &'static str },
+
     #[error("operation endpoint types differ from the declaration")]
     EndpointTypes,
 

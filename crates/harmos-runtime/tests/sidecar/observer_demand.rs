@@ -26,7 +26,7 @@ use std::time::Duration;
 use super::operations::{Lanes, Managed};
 use harmos_runtime::operations::OperationPhase;
 use harmos_runtime::operations::resident::{Key, Kind, Snapshot};
-use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor,
 };
@@ -116,11 +116,10 @@ impl Drop for Resources {
     }
 }
 
-const LIFECYCLE: OperationPolicy = OperationPolicy {
+const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 impl harmos_runtime::operations::lifecycle::Policy for Producer {
@@ -128,7 +127,7 @@ impl harmos_runtime::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos_runtime::plugin(id = "demand-authoring", provides = (), requires(harmos_runtime::operations::streams::Publish),  observers = Observers, streams(Row))]
+#[harmos_runtime::plugin(id = "demand_authoring", provides = (), requires(harmos_runtime::operations::streams::Publish),  observers = Observers, streams(Row))]
 impl harmos_runtime::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;
@@ -156,9 +155,7 @@ impl harmos_runtime::Plugin for Producer {
     fn resources(&self) -> Arc<Resources> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
@@ -243,7 +240,7 @@ async fn demand_survives_reload() {
     let mut fixture = Managed::attach(
         source,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         capacity,
         vec![RECORD.name(), AUXILIARY.name()],
         std::convert::identity,
@@ -252,7 +249,7 @@ async fn demand_survives_reload() {
     let demands = fixture.demands();
     let first = demands.hold(&RECORD.name()).unwrap();
     assert_eq!(counts.prepared.load(SeqCst), 0);
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     fixture.ready().wait_for(|ready| *ready).await.unwrap();
     assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));

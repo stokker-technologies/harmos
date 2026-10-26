@@ -125,7 +125,16 @@ where
                                         self.plugin.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))
                                     }) {
                                         self.caller.as_ref().ok_or(crate::Error::Closing { domain: "native generation caller" }).and_then(
-                                            |caller| caller.submit_encoded_at(&call.operation, call.payload, submitted, call.values),
+                                            |caller| {
+                                                caller.submit_encoded_at(
+                                                    &call.operation,
+                                                    call.fingerprint,
+                                                    call.generation,
+                                                    call.payload,
+                                                    submitted,
+                                                    call.values,
+                                                )
+                                            },
                                         )
                                     } else {
                                         Err(crate::Error::Closing { domain: "native attempt or generation context" })

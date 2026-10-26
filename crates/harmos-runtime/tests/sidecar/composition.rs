@@ -47,26 +47,34 @@ async fn declared_publication_enters() {
     let mut fixture = operations::Managed::attach(
         meter(Arc::new(AtomicUsize::new(0))),
         serde_json::to_vec(&()).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         NonZeroUsize::new(16).unwrap(),
         vec![],
         |resident| resident.ingest::<MeterPulse>(),
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture
         .runtime
         .operations
-        .register_operation::<Sampling>(
-            "meter-sample",
-            operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
-        )
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
+                dependencies
+            })
+            .implementation::<SampleDeclaration, Sampling>(),
+            operations::Lanes::Open,
+        ))
+        .await
         .unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
-    fixture.call(PublishPulse { sample: 42 }).await.expect("the sidecar publishes the requested sample");
+    fixture
+        .call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 })
+        .await
+        .expect("the sidecar publishes the requested sample");
 
     let samples: Vec<u64> = runtime
         .streams
@@ -86,9 +94,9 @@ async fn crash_spends_credit() {
     let attachments = Arc::new(AtomicUsize::new(0));
     let source = meter(Arc::clone(&attachments));
     let definition = operations::inspected(&source, serde_json::to_vec(&()).unwrap()).definitions().next().unwrap().clone();
-    let calls = Supervised::new(source, (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice));
-    let policy = harmos_runtime::operations::OperationPolicy {
-        restart: harmos_runtime::operations::RestartPolicy::OnTransient {
+    let calls = Supervised::new(source, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
+    let policy = harmos_runtime::ServicePolicy {
+        restart: harmos_runtime::operations::RestartPolicy::OnFailure {
             credit: 2,
             sustained_health: Duration::from_secs(30),
             backoff: harmos_runtime::operations::Backoff::Exponential {
@@ -100,7 +108,6 @@ async fn crash_spends_credit() {
         ..harmos_runtime::services::POLICY
     };
     let runtime = assembly()
-        .register(operations::Lanes::catalog())
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
@@ -110,19 +117,24 @@ async fn crash_spends_credit() {
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-            "meter-publication-core",
-            operations::Lanes::NativeOpen,
-            Arc::new(calls.clone()),
-        )
+        .register(harmos_runtime::RegistrationExt::lane(
+            crate::sidecar::publication_registration(Arc::new(calls.clone())),
+            operations::Lanes::Open,
+        ))
+        .await
         .unwrap();
     runtime
         .operations
-        .register_operation::<Sampling>(
-            "meter-sample",
-            operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection { streams: runtime.streams.clone() }),
-        )
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(SampleProjection { streams: runtime.streams.clone() })).unwrap();
+                dependencies
+            })
+            .implementation::<SampleDeclaration, Sampling>(),
+            operations::Lanes::Open,
+        ))
+        .await
         .unwrap();
     let resident = calls.clone();
     runtime
@@ -131,7 +143,7 @@ async fn crash_spends_credit() {
             harmos_runtime::sidecar::Managed::new(
                 resident.clone(),
                 definition.clone(),
-                operations::Lanes::NativeOpen,
+                operations::Lanes::Open,
                 NonZeroUsize::new(16).unwrap(),
                 NonZeroUsize::new(4096).unwrap(),
             )
@@ -144,10 +156,10 @@ async fn crash_spends_credit() {
     service_status(statuses.clone(), "meter", |status| *status == ServiceStatus::Running { credit: 2 }).await;
     let original = calls.operations().unwrap();
     let generation = original.scope().unwrap().generation();
-    let outcome = runtime.operations.call_encoded(Collapse::ID, Collapse {}.encode_to_vec()).await;
+    let outcome = runtime.operations.call_encoded(&format!("meter.{}", CollapseDeclaration::ID), Collapse {}.encode()).await;
     let disconnected = match &outcome {
         Err(harmos_runtime::Error::Closing { domain: "operation" | "operation plugin" }) => true,
-        Err(harmos_runtime::Error::OperationFailed { operation, source }) if operation == Collapse::ID => {
+        Err(harmos_runtime::Error::OperationFailed { operation, source }) if operation == CollapseDeclaration::ID => {
             matches!(
                 source.downcast_ref::<harmos_runtime::operations::NativeError>(),
                 Some(harmos_runtime::operations::NativeError::Transport(SidecarError::Unavailable))
@@ -168,7 +180,7 @@ async fn crash_spends_credit() {
     assert_ne!(calls.operations().unwrap().scope().unwrap().generation(), generation);
     let amplified = runtime
         .operations
-        .call_encoded(Amplify::ID, Amplify { value: 5 }.encode_to_vec())
+        .call_encoded(&format!("meter.{}", AmplifyDeclaration::ID), Amplify { value: 5 }.encode())
         .await
         .expect("the restarted sidecar serves the same routes");
     assert_eq!(Amplified::decode(&amplified).unwrap(), Amplified { value: 10 });
@@ -182,39 +194,44 @@ async fn oversized_exchange_survives() {
     let mut fixture = operations::Managed::attach(
         meter(Arc::new(AtomicUsize::new(0))),
         serde_json::to_vec(&()).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         NonZeroUsize::new(16).unwrap(),
         vec![],
         |resident| resident.ingest::<MeterPulse>(),
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture
         .runtime
         .operations
-        .register_operation::<Sampling>(
-            "meter-sample",
-            operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
-        )
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
+                dependencies
+            })
+            .implementation::<SampleDeclaration, Sampling>(),
+            operations::Lanes::Open,
+        ))
+        .await
         .unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
     let request = BudgetedRoute { payload: vec![0; Frame::LIMIT], reply_bytes: 0, refusal_bytes: 0 };
-    assert!(!Frame::request_fits::<BudgetedRoute>(&request));
-    let oversized = fixture.call(request).await.unwrap_err();
+    assert!(!Frame::request_fits::<BudgetedRouteDeclaration>(&request));
+    let oversized = fixture.call::<BudgetedRouteDeclaration>(request).await.unwrap_err();
     assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
 
     for request in [
         BudgetedRoute { payload: Vec::new(), reply_bytes: Frame::LIMIT as u32, refusal_bytes: 0 },
         BudgetedRoute { payload: Vec::new(), reply_bytes: 0, refusal_bytes: Frame::LIMIT as u32 },
     ] {
-        let refused = fixture.call(request).await.unwrap_err();
+        let refused = fixture.call::<BudgetedRouteDeclaration>(request).await.unwrap_err();
         assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
     }
 
     assert_eq!(
-        fixture.call(Amplify { value: 5 }).await.unwrap(),
+        fixture.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 5 }).await.unwrap(),
         Amplified { value: 10 },
         "every oversize refusal leaves the same exchange available to a later call"
     );
@@ -228,7 +245,7 @@ async fn announced_exit_reason() {
     let attachments = Arc::new(AtomicUsize::new(0));
     let source = meter(Arc::clone(&attachments));
     let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
-    let resident = Supervised::new(source, (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice));
+    let resident = Supervised::new(source, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
     let runtime = assembly()
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -239,11 +256,11 @@ async fn announced_exit_reason() {
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-            "meter-publication-core",
+        .register(harmos_runtime::RegistrationExt::lane(
+            crate::sidecar::publication_registration(Arc::new(resident.clone())),
             HostLanes::Open,
-            Arc::new(resident.clone()),
-        )
+        ))
+        .await
         .unwrap();
     runtime
         .operations
@@ -263,8 +280,10 @@ async fn announced_exit_reason() {
         .unwrap();
     let _lease = runtime.operations.submit_resident("meter").await.unwrap();
     service_status(runtime.operations.watch_residents(), "meter", |status| matches!(status, ServiceStatus::Running { .. })).await;
-    let outcome =
-        runtime.operations.call_encoded(Finish::ID, Finish { reason: "the recording is complete".to_owned() }.encode_to_vec()).await;
+    let outcome = runtime
+        .operations
+        .call_encoded(&format!("meter.{}", FinishDeclaration::ID), Finish { reason: "the recording is complete".to_owned() }.encode())
+        .await;
     assert!(
         matches!(outcome, Err(harmos_runtime::Error::Closing { domain: "operation" | "operation plugin" })),
         "a reply from the closed generation is revoked: {outcome:?}"
@@ -301,7 +320,11 @@ async fn retired_control_refused() {
 
     // Activation Answers On The Same Exchange
     outgoing
-        .send(harmos_sidecar::Frame::Call { id: 1, method: harmos_sidecar::Frame::REGISTER.to_owned(), params: Vec::new().into() })
+        .send(harmos_sidecar::Frame::Call {
+            id: 1,
+            method: harmos_sidecar::Frame::REGISTER.to_owned(),
+            params: "meter".to_owned().encode().into(),
+        })
         .await
         .expect("the activation is sent");
     let answer = received(incoming.receive().await.expect("the exchange remains valid"));
@@ -343,7 +366,7 @@ async fn public_private_handlers() {
     let mut fixture = operations::Managed::attach(
         source,
         serde_json::to_vec(&Calibration { factor: 5 }).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         capacity,
         vec![],
         std::convert::identity,
@@ -353,12 +376,15 @@ async fn public_private_handlers() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture.call(visibility::ScalePrivately { value: 4 }).await.unwrap(),
+        fixture
+            .call::<<visibility::ScalePrivately as harmos_runtime::RequestFor>::Operation>(visibility::ScalePrivately { value: 4 })
+            .await
+            .unwrap(),
         visibility::Scale { value: 20 },
         "a private method's route is still named and dispatched from outside          the module it was written in"
     );
     assert_eq!(
-        fixture.call(visibility::ScalePublicly {}).await.unwrap(),
+        fixture.call::<<visibility::ScalePublicly as harmos_runtime::RequestFor>::Operation>(visibility::ScalePublicly {}).await.unwrap(),
         visibility::Scale { value: 5 },
         "and a `pub` method's carrier reaches outside the module with it"
     );
@@ -377,7 +403,7 @@ async fn generated_entry_attaches() {
     let mut fixture = operations::Managed::attach(
         source,
         serde_json::to_vec(&Calibration { factor: 3 }).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         capacity,
         vec![],
         std::convert::identity,
@@ -387,26 +413,26 @@ async fn generated_entry_attaches() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture.call(GetMeasure { value: 7 }).await.unwrap(),
+        fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: 7 }).await.unwrap(),
         Measured { value: 21 },
         "the route answers under the configuration the entry was activated with"
     );
-    let error = fixture.call(GetMeasure { value: -1 }).await.unwrap_err();
+    let error = fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: -1 }).await.unwrap_err();
     let failure = error.failure().expect("handler refusal preserves its structured failure");
     assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
     assert_eq!(failure.cause(), "this gauge measures no negative value");
-    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+    assert_eq!(failure.context().operation(), Some(GetMeasureDeclaration::ID));
     assert_eq!(
         error.to_string(),
-        format!("operation `{}` failed", GetMeasure::ID),
+        format!("operation `{}` failed", GetMeasureDeclaration::ID),
         "the operation frame prints its own line, never the cause"
     );
 
     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-    let error = fixture.call(GetMeasure { value: i64::MIN }).await.unwrap_err();
+    let error = fixture.call::<<GetMeasure as harmos_runtime::RequestFor>::Operation>(GetMeasure { value: i64::MIN }).await.unwrap_err();
     let failure = error.failure().expect("the handler failure crosses as a structured value");
     assert_eq!(failure.cause(), "connection reset");
-    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+    assert_eq!(failure.context().operation(), Some(GetMeasureDeclaration::ID));
     assert_eq!(failure.context().step(), None);
     let diagnostics = failure.diagnostics().expect("origin diagnostics");
     assert_eq!(diagnostics.origin(), harmos_runtime::failure::Origin::Plugin);
@@ -417,20 +443,26 @@ async fn generated_entry_attaches() {
         .join(": ");
     assert_eq!(
         rendered,
-        format!("operation `{}` failed: connection reset", GetMeasure::ID),
+        format!("operation `{}` failed: connection reset", GetMeasureDeclaration::ID),
         "no carrier repeats the cause or adds a frame"
     );
 
-    assert_eq!(fixture.call(RunEcho { text: "hello".to_owned() }).await.unwrap(), "hello".to_owned());
-    assert_eq!(fixture.call(RunUppercase { text: "hello".to_owned() }).await.unwrap(), "HELLO".to_owned());
+    assert_eq!(
+        fixture.call::<<RunEcho as harmos_runtime::RequestFor>::Operation>(RunEcho { text: "hello".to_owned() }).await.unwrap(),
+        "hello".to_owned()
+    );
+    assert_eq!(
+        fixture.call::<<RunUppercase as harmos_runtime::RequestFor>::Operation>(RunUppercase { text: "hello".to_owned() }).await.unwrap(),
+        "HELLO".to_owned()
+    );
 
     assert_eq!(
-        fixture.call(StopSampling {}).await.unwrap(),
+        fixture.call::<<StopSampling as harmos_runtime::RequestFor>::Operation>(StopSampling {}).await.unwrap(),
         StopSamplingResponse {},
         "a route carrying nothing either way still names one message each way"
     );
     assert_eq!(
-        fixture.call(GetFactor {}).await.unwrap(),
+        fixture.call::<<GetFactor as harmos_runtime::RequestFor>::Operation>(GetFactor {}).await.unwrap(),
         Measured { value: 3 },
         "a reply written through the crate's own alias dispatches like any other"
     );
@@ -448,17 +480,17 @@ async fn refusal_keeps_carrier() {
     let mut fixture = operations::Managed::attach(
         peer,
         serde_json::to_vec(&()).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         NonZeroUsize::new(16).unwrap(),
         vec![],
         |resident| resident.ingest::<MeterPulse>(),
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
-    assert!(fixture.call(PublishPulse { sample: 42 }).await.is_err());
-    assert_eq!(fixture.call(Amplify { value: 5 }).await.unwrap().value, 10);
+    assert!(fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.is_err());
+    assert_eq!(fixture.call::<<Amplify as harmos_runtime::RequestFor>::Operation>(Amplify { value: 5 }).await.unwrap().value, 10);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
 }
@@ -485,25 +517,31 @@ async fn ingestion_authority_bounded() {
         let mut fixture = operations::Managed::attach(
             peer,
             serde_json::to_vec(&()).unwrap(),
-            operations::Lanes::NativeOpen,
+            operations::Lanes::Open,
             NonZeroUsize::new(16).unwrap(),
             vec![],
             |resident| resident.ingest::<MeterPulse>(),
         )
         .await;
-        fixture.publication().unwrap();
+        fixture.publication().await.unwrap();
         fixture
             .runtime
             .operations
-            .register_operation::<Sampling>(
-                "meter-sample",
-                operations::Lanes::NativeOpen,
-                Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
-            )
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
+                    dependencies
+                })
+                .implementation::<SampleDeclaration, Sampling>(),
+                operations::Lanes::Open,
+            ))
+            .await
             .unwrap();
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
-        let refused = fixture.call(PublishPulse { sample: 42 }).await.unwrap_err();
+        let refused =
+            fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.unwrap_err();
         assert!(matches!(refused, harmos_runtime::Error::OperationFailed { source, .. }
             if matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
                 Some(harmos_runtime::operations::NativeError::Remote(failure))
@@ -556,7 +594,7 @@ async fn graceful_stop_joins() {
         fn owner(&self) -> &str {
             self.source.owner()
         }
-        fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::Definition>> {
+        fn operations(&self) -> harmos_domain::Result<Vec<harmos_runtime::operations::OperationDefinition>> {
             self.source.operations()
         }
         fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_runtime::operations::Contract>>> {
@@ -612,7 +650,7 @@ async fn graceful_stop_joins() {
     let mut fixture = operations::Managed::attach(
         source,
         serde_json::to_vec(&()).unwrap(),
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         capacity,
         vec![],
         std::convert::identity,

@@ -106,6 +106,7 @@ pub struct Supervised<A: Application, S, H> {
 struct Attempt<'a>(&'a Calls);
 
 struct Calls {
+    announced_exit: std::sync::atomic::AtomicBool,
     live: Mutex<Option<Arc<Endpoint>>>,
     ready: tokio::sync::watch::Sender<bool>,
     staged: tokio::sync::watch::Sender<Staging>,
@@ -113,12 +114,12 @@ struct Calls {
 }
 
 // Where the current attempt stands for a caller awaiting its staged operations.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Staging {
     Pending,
     Staged,
-    // The attempt ended with a terminal application fault before or after staging.
-    Refused,
+    // Preserve The Attempt Refusal For Callers Awaiting Staging.
+    Refused(String),
 }
 
 struct Request {
@@ -436,7 +437,10 @@ where
         (true, _, _, _) => Ok(()),
         (false, Err(fault), _, _) => Err(fault),
         (false, Ok(()), Some(failure), _) => Err(failure),
-        (false, Ok(()), None, Some(reason)) => Err(reason),
+        (false, Ok(()), None, Some(reason)) => {
+            calls.announced_exit.store(true, std::sync::atomic::Ordering::Release);
+            Err(reason)
+        }
         (false, Ok(()), None, None) => Err("the sidecar exited without announcing it".to_owned()),
     }
 }

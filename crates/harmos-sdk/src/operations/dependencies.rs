@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 // Third Party Imports
 
@@ -40,6 +40,18 @@ pub struct Dependencies {
 pub struct OperationContext {
     dependencies: Dependencies,
     pub call: CallContext,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AssignedOperation {
+    pub operation: String,
+    pub fingerprint: [u8; 32],
+    pub generation: u64,
+}
+
+#[derive(Clone, Default)]
+pub struct OperationAssignments {
+    entries: Arc<OnceLock<Vec<AssignedOperation>>>,
 }
 
 /* === Enums === */
@@ -97,6 +109,43 @@ impl OperationContext {
         // Carrier Dependencies Retain Their Trusted Handles In Each Invocation Snapshot.
         Arc::make_mut(&mut dependencies.entries).extend(self.dependencies.entries.iter().map(|(key, value)| (*key, value.clone())));
         Self::new(dependencies, self.call.clone())
+    }
+}
+
+impl AssignedOperation {
+    pub fn encode(entries: &[Self]) -> Result<Vec<u8>, super::ServingError> {
+        postcard::to_allocvec(entries).map_err(|_| super::ServingError::Catalog)
+    }
+}
+
+impl OperationAssignments {
+    pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
+        let entries: Vec<AssignedOperation> =
+            if bytes.is_empty() { Vec::new() } else { postcard::from_bytes(bytes).map_err(|_| super::ServingError::Catalog)? };
+        let mut locals = std::collections::BTreeSet::new();
+        for entry in &entries {
+            harmos_domain::QualifiedId::parse(&entry.operation).map_err(|_| super::ServingError::Catalog)?;
+            let (_, local) = entry.operation.split_once('.').ok_or(super::ServingError::Catalog)?;
+            if entry.generation == 0 || !locals.insert(local) {
+                return Err(super::ServingError::Catalog);
+            }
+        }
+        if let Some(original) = self.entries.get() {
+            return if original == &entries { Ok(()) } else { Err(super::ServingError::Catalog) };
+        }
+        self.entries.set(entries).map_err(|_| super::ServingError::Catalog)
+    }
+
+    pub fn resolve<O: super::OperationDeclaration>(&self) -> Result<&AssignedOperation, super::ServingError> {
+        let entry = self
+            .entries
+            .get()
+            .and_then(|entries| entries.iter().find(|entry| entry.operation.split_once('.').is_some_and(|(_, local)| local == O::ID)))
+            .ok_or(super::ServingError::Unassigned { operation: O::ID })?;
+        if entry.fingerprint != O::definition().fingerprint.0 {
+            return Err(super::ServingError::Identity { operation: entry.operation.clone() });
+        }
+        Ok(entry)
     }
 }
 

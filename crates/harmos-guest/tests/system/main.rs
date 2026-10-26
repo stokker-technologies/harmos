@@ -109,14 +109,14 @@ impl Stub {
         };
         assert_ne!(call.context, [0; 32], "the SDK forwards the current finite calling context");
         match call.operation.as_str() {
-            "provider_echo" => {
+            "provider.provider_echo" => {
                 let request = Echo::decode(&call.payload).map_err(Refusal::of)?;
                 self.calls.push(Call::Provider { say: request.say.clone() });
                 let fallback = Ok(Echoed { said: request.say });
                 let answer = self.provider.pop_front().unwrap_or(fallback)?;
                 Ok(answer.encode())
             }
-            "host_publish" => {
+            "host.host_publish" => {
                 let request = harmos_domain::operations::streams::PublishRequest::decode(&call.payload).map_err(Refusal::of)?;
                 assert_eq!(request.schema, 1);
                 assert_eq!(request.sequence, None, "the guest asks its original lease to derive the sequence");
@@ -136,7 +136,7 @@ impl Stub {
 
 impl Stub {
     fn submit(&mut self, call: WireChildCall) -> Result<Vec<u8>, Refusal> {
-        assert_eq!(call.operation, "provider_echo");
+        assert_eq!(call.operation, "provider.provider_echo");
         let request = Echo::decode(&call.payload).map_err(Refusal::of)?;
         let instance = self.submitted.len() as u64 + 1;
         self.submitted.insert(instance, (request.say.clone(), false));
@@ -213,7 +213,28 @@ impl Session {
         }
     }
     async fn initialize(&mut self, config: &str) -> Result<(), String> {
-        let request = InitializeRequest { config_json: config.as_bytes().to_vec(), generation_context: vec![2; 32] };
+        let request = InitializeRequest {
+            config_json: config.as_bytes().to_vec(),
+            generation_context: vec![2; 32],
+            assignments: harmos_sdk::operations::AssignedOperation::encode(&[
+                harmos_sdk::operations::AssignedOperation {
+                    operation: "provider.provider_echo".into(),
+                    fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
+                        .fingerprint
+                        .0,
+                    generation: 1,
+                },
+                harmos_sdk::operations::AssignedOperation {
+                    operation: "host.host_publish".into(),
+                    fingerprint:
+                        <harmos_domain::operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
+                            .fingerprint
+                            .0,
+                    generation: 1,
+                },
+            ])
+            .unwrap(),
+        };
         self.call::<harmos_domain::operations::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
     }
 }

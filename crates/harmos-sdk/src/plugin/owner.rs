@@ -83,6 +83,7 @@ struct State<P: Plugin> {
     failure_reported: bool,
     shutdown_attempted: bool,
     context: Option<P::Context>,
+    assignments: Vec<u8>,
     attachment: Option<Arc<dyn Attachment<P::Context>>>,
     generation_context: Option<[u8; 32]>,
 }
@@ -180,6 +181,7 @@ impl<P: Plugin> Owner<P> {
             failure_reported: false,
             shutdown_attempted: false,
             context: None,
+            assignments: Vec::new(),
             attachment: None,
             generation_context: None,
         }
@@ -217,11 +219,13 @@ impl<P: Plugin> Owner<P> {
         slot.phase = Phase::Initializing;
         let mut state = self.state(Some(plugin), lifecycle::Action::Initialize);
         state.generation_context = generation_context;
+        state.assignments = request.assignments.clone();
         Ok(state)
     }
 
     async fn initialize(&self, state: &mut State<P>, context: &P::Context) -> Result<(), Error<P>> {
         if state.work.is_none() && state.result.is_none() {
+            context.assign_operations(&state.assignments).map_err(|error| Error::Serving(Arc::new(error)))?;
             let mut plugin = state.plugin.take().ok_or(Error::Phase)?;
             let context = state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token));
             state.work = Some(Box::pin(async move {

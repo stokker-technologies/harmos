@@ -34,7 +34,7 @@ use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildCont
 
 /* === Constants === */
 
-const VERSION: u8 = 7;
+const VERSION: u8 = 8;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -71,7 +71,7 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 7. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 8. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
@@ -113,6 +113,8 @@ enum Envelope<'a> {
         values: Vec<Value<'a>>,
 
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -262,7 +264,7 @@ impl WireChildCall {
     /// Counts a Child envelope with its actual portable values and payload length.
     /// Context identifiers and the submit flag have fixed encoded widths.
     pub fn payload_encoded_len(
-        operation: &str, payload: usize, generation_context: bool, values: &[super::super::CallValue],
+        operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[super::super::CallValue],
     ) -> Result<usize, WireCodecError> {
         check_values(values)?;
         let envelope = Envelope::Child {
@@ -270,6 +272,8 @@ impl WireChildCall {
             generation_context: generation_context.then_some([0; 32]),
             values: Vec::new(),
             operation,
+            fingerprint: [0; 32],
+            generation,
             payload: &[],
             submit: false,
         };
@@ -289,6 +293,8 @@ impl WireChildCall {
             generation_context: self.generation_context,
             values: borrowed(&self.values),
             operation: &self.operation,
+            fingerprint: self.fingerprint,
+            generation: self.generation,
             payload: &self.payload,
             submit: self.submit,
         })
@@ -311,14 +317,18 @@ impl WireChildControl {
 impl WireChild {
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         let child = match decode(bytes)? {
-            Envelope::Child { context, generation_context, values, operation, payload, submit } => Self::Call(WireChildCall {
-                context,
-                generation_context,
-                values: owned(values)?,
-                operation: operation.to_owned(),
-                payload: payload.to_vec(),
-                submit,
-            }),
+            Envelope::Child { context, generation_context, values, operation, fingerprint, generation, payload, submit } => {
+                Self::Call(WireChildCall {
+                    context,
+                    generation_context,
+                    values: owned(values)?,
+                    operation: operation.to_owned(),
+                    fingerprint,
+                    generation,
+                    payload: payload.to_vec(),
+                    submit,
+                })
+            }
             Envelope::ChildControl { context, instance, action } => Self::Control(WireChildControl { context, instance, action }),
             _ => return Err(WireCodecError::Kind),
         };
@@ -447,12 +457,14 @@ mod tests {
         for values in [Vec::new(), vec![CallValue { key: "測定".into(), payload: vec![255; 128] }], maximal] {
             for generation in [false, true] {
                 for submit in [false, true] {
-                    let expected = WireChildCall::payload_encoded_len("op.λ", 16384, generation, &values).unwrap();
+                    let expected = WireChildCall::payload_encoded_len("op.λ", u64::MAX, 16384, generation, &values).unwrap();
                     let call = WireChildCall {
                         context: [255; 32],
                         generation_context: generation.then_some([255; 32]),
                         values: values.clone(),
                         operation: "op.λ".into(),
+                        fingerprint: [1; 32],
+                        generation: u64::MAX,
                         payload: vec![255; 16384],
                         submit,
                     };
@@ -470,17 +482,19 @@ mod tests {
             (0..=PORTABLE_VALUES).map(|index| CallValue { key: index.to_string(), payload: Vec::new() }).collect(),
         ];
         for values in invalid {
-            assert!(WireChildCall::payload_encoded_len("op", 0, false, &values).is_err());
+            assert!(WireChildCall::payload_encoded_len("op", u64::MAX, 0, false, &values).is_err());
             let call = WireChildCall {
                 context: [0; 32],
                 generation_context: None,
                 values,
                 operation: "op".into(),
+                fingerprint: [1; 32],
+                generation: u64::MAX,
                 payload: Vec::new(),
                 submit: false,
             };
             assert!(call.encode().is_err());
         }
-        assert!(WireChildCall::payload_encoded_len("op", usize::MAX, false, &[]).is_err());
+        assert!(WireChildCall::payload_encoded_len("op", u64::MAX, usize::MAX, false, &[]).is_err());
     }
 }

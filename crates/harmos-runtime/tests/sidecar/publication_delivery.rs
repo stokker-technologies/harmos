@@ -47,7 +47,7 @@ async fn capture_survives_reload() {
     let attachments = Arc::new(AtomicUsize::new(0));
     let source = meter(attachments.clone());
     let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
-    let calls = Supervised::new(source, (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice));
+    let calls = Supervised::new(source, (|_: &ServiceContext<Bank>, _: Notice| {}) as fn(&ServiceContext<Bank>, Notice));
     let rows = Arc::new(Mutex::new(Vec::new()));
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
@@ -64,23 +64,28 @@ async fn capture_survives_reload() {
         runtime,
         definitions,
         calls,
-        Lanes::NativeOpen,
+        Lanes::Open,
         std::num::NonZeroUsize::new(16).unwrap(),
         harmos_runtime::services::POLICY,
     );
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture
         .runtime
         .operations
-        .register_operation::<Sampling>(
-            "meter-sample",
-            Lanes::NativeOpen,
-            Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
-        )
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() })).unwrap();
+                dependencies
+            })
+            .implementation::<super::SampleDeclaration, Sampling>(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
-    fixture.call(PublishPulse { sample: 41 }).await.unwrap();
+    fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 41 }).await.unwrap();
     let stream = fixture.runtime.streams.publication("meter.pulse", 1).unwrap();
     assert_eq!(stream.definition().owner(), Some("meter"));
     assert!(!stream.definition().schema().unwrap().root().unwrap().fields().is_empty());
@@ -89,7 +94,7 @@ async fn capture_survives_reload() {
     assert_eq!(stream.query(..).await.unwrap().count(), 1);
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
-    fixture.call(PublishPulse { sample: 42 }).await.unwrap();
+    fixture.call::<<PublishPulse as harmos_runtime::RequestFor>::Operation>(PublishPulse { sample: 42 }).await.unwrap();
     let samples: Vec<_> = stream
         .query(..)
         .await
@@ -119,13 +124,13 @@ async fn demand_survives_reload() {
     let mut fixture = Managed::attach(
         source,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         capacity,
         vec![TICKING_DEMAND.name()],
         std::convert::identity,
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     let demands = fixture.demands();
     let held = demands.hold(&TICKING_DEMAND.name()).unwrap();
     let streams = fixture.runtime.streams.clone();
@@ -196,7 +201,6 @@ async fn batches_keep_order() {
     let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
     // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
     let runtime = assembly()
-        .register(Lanes::catalog())
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
             ..Default::default()
@@ -207,11 +211,11 @@ async fn batches_keep_order() {
     let definitions = super::super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
     let resident = harmos_runtime::sidecar::Supervised::new(
         source,
-        (|_: &harmos_runtime::services::Service<crate::sidecar::support::Bank>, _: harmos_runtime::sidecar::Notice| {})
-            as fn(&harmos_runtime::services::Service<crate::sidecar::support::Bank>, _),
+        (|_: &harmos_runtime::services::ServiceContext<crate::sidecar::support::Bank>, _: harmos_runtime::sidecar::Notice| {})
+            as fn(&harmos_runtime::services::ServiceContext<crate::sidecar::support::Bank>, _),
     );
-    let mut fixture = Managed::from_runtime(runtime, definitions, resident, Lanes::NativeOpen, capacity, harmos_runtime::services::POLICY);
-    fixture.publication().unwrap();
+    let mut fixture = Managed::from_runtime(runtime, definitions, resident, Lanes::Open, capacity, harmos_runtime::services::POLICY);
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture.shutdown().await.unwrap();
@@ -257,11 +261,10 @@ async fn held_ingest_lossless() {
     let capacity = std::num::NonZeroUsize::new(4).unwrap();
     let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
     let mut fixture =
-        Managed::attach(source, serde_json::to_vec(witness.key()).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity)
-            .await;
+        Managed::attach(source, serde_json::to_vec(witness.key()).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
     // The Host's Ingest Follows Before The Producer Starts
     let mut feed = fixture.runtime.streams.follow(Cursor::ORIGIN);
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
 
@@ -299,8 +302,8 @@ async fn named_streams_isolated() {
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
     let mut fixture =
-        Managed::attach(source, serde_json::to_vec(&()).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
-    fixture.publication().unwrap();
+        Managed::attach(source, serde_json::to_vec(&()).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture.shutdown().await.unwrap();
@@ -329,11 +332,11 @@ async fn named_streams_isolated() {
 async fn projection_preserves_evidence() {
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
-    let mut fixture = Managed::attach(source, serde_json::to_vec(&()).unwrap(), Lanes::NativeOpen, capacity, vec![], |resident| {
+    let mut fixture = Managed::attach(source, serde_json::to_vec(&()).unwrap(), Lanes::Open, capacity, vec![], |resident| {
         resident.ingest::<Left>().ingest::<Right>()
     })
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture.shutdown().await.unwrap();
@@ -359,13 +362,13 @@ async fn shared_row_independence() {
     let mut fixture = Managed::attach(
         source,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         std::num::NonZeroUsize::new(4).unwrap(),
         vec![],
         std::convert::identity,
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
@@ -461,24 +464,18 @@ async fn catalog_precedes_initialization() {
         inert.unwrap();
         let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let peer = Advertised { inner, observers, attached: attempts.clone() };
-        let mut fixture =
-            Managed::from_definition(peer, definitions.unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
-        fixture.publication().unwrap();
-        assert!(fixture.initialize().await.is_err());
-        let status = service_status(fixture.runtime.operations.watch_residents(), "twin-observers", |status| {
-            matches!(status, ServiceStatus::Inactive { .. })
-        })
-        .await;
-        assert!(
-            matches!(status, ServiceStatus::Inactive { cause: ServiceExit::Application(ref message), .. } if message.contains(reason)),
-            "case {case}: {status:?}"
-        );
+        let mut fixture = Managed::from_definition(peer, definitions.unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
+        fixture.publication().await.unwrap();
+        let failure = fixture.initialize().await.unwrap_err();
+        let message = harmos_runtime::failure::Report(&failure).to_string();
+        assert!(message.contains(reason), "case {case}: {message}");
+        assert!(fixture.runtime.operations.residents().is_empty());
         assert_eq!(attempts.load(SeqCst), 1, "application admission refusal is terminal under the original service policy");
         assert_eq!(counts.initialized.load(SeqCst), 0, "case {case}");
         assert!(OBSERVER_SEEDS.lock().unwrap().contains_key(&seed.id), "wire mismatch precedes preparation");
         assert!(!*fixture.ready().borrow());
         assert_eq!(counts.released.load(SeqCst), 0);
-        assert!(matches!(fixture.runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+        fixture.runtime.stop().await.unwrap();
     }
 }
 
@@ -500,13 +497,13 @@ async fn catalog_order_admission() {
     let mut fixture = Managed::attach(
         peer,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         std::num::NonZeroUsize::new(4).unwrap(),
         vec![],
         std::convert::identity,
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     assert_eq!(counts.initialized.load(SeqCst), 1);
@@ -524,13 +521,13 @@ async fn shutdown_signals_siblings() {
     let mut fixture = Managed::attach(
         source,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         std::num::NonZeroUsize::new(4).unwrap(),
         vec![],
         std::convert::identity,
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
@@ -568,13 +565,13 @@ async fn stop_preserves_failure() {
     let mut fixture = Managed::attach(
         source,
         serde_json::to_vec(&seed.id).unwrap(),
-        Lanes::NativeOpen,
+        Lanes::Open,
         std::num::NonZeroUsize::new(4).unwrap(),
         vec![],
         std::convert::identity,
     )
     .await;
-    fixture.publication().unwrap();
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
@@ -623,13 +620,13 @@ async fn dropped_manager_recovery() {
         let mut fixture = Managed::attach(
             source,
             serde_json::to_vec(&seed.id).unwrap(),
-            Lanes::NativeOpen,
+            Lanes::Open,
             std::num::NonZeroUsize::new(4).unwrap(),
             vec![],
             std::convert::identity,
         )
         .await;
-        fixture.publication().unwrap();
+        fixture.publication().await.unwrap();
         fixture.initialize().await.unwrap();
         ready(fixture.ready().clone()).await;
         let mut left = fixture.runtime.streams.publication("twins.left", 1).unwrap().watch();
