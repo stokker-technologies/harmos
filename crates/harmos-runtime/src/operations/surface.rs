@@ -140,8 +140,7 @@ impl<A: crate::Application> crate::Runtime<A> {
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
-        self.operations.register(registration).await?;
-        staged.commit()?;
+        self.operations.execution().register_with_services(registration, staged)?;
         manager.activate(&ids).await
     }
 
@@ -178,8 +177,7 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         batch.services = services;
         let manager = self.services();
         let (staged, ids) = manager.stage(batch)?;
-        self.operations.register(registration).await?;
-        staged.commit()?;
+        self.operations.execution().register_with_services(registration, staged)?;
         manager.activate(&ids).await
     }
 
@@ -343,6 +341,35 @@ mod tests {
         fn classify(_: &std::io::Error) -> super::super::FailureKind {
             super::super::FailureKind::Transient
         }
+    }
+
+    struct Idle;
+
+    impl harmos_sdk::Service for Idle {
+        type Error = std::io::Error;
+        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> { Ok(Self) }
+        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::io::Result<()> {
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn mixed_registration_releases_invalid_batch_reservations() {
+        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+        let mut dependencies = harmos_sdk::Dependencies::new();
+        dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>("idle", crate::ServicePolicy {
+            stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never,
+        });
+        assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
+        assert!(runtime.operations.definition(Probe::ID).is_err());
+        assert!(runtime.operations.resident.definition("host.idle").is_none());
+        runtime.register(batch.defaults()).await.unwrap();
+        assert!(runtime.operations.definition(Probe::ID).is_ok());
+        assert!(runtime.operations.resident.definition("host.idle").is_some());
+        runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
+        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]

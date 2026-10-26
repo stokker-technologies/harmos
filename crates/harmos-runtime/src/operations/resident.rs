@@ -1175,6 +1175,10 @@ impl Drop for Lease {
 }
 
 impl Staged {
+    pub(crate) fn publication(&self) -> Arc<AtomicBool> {
+        self.published.clone()
+    }
+
     pub fn commit(self) -> Result<()> {
         let owner = self.owner.upgrade().ok_or(Error::Closing { domain: "resident" })?;
         let state = owner.state();

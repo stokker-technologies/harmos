@@ -101,6 +101,7 @@ pub trait ServiceInstance: Send {
 }
 
 pub trait NativeInstance: Send {
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind;
     fn initialize(&mut self, context: OperationContext) -> ServiceFuture<'_, ()>;
     fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
@@ -226,6 +227,10 @@ impl OperationFactory {
 }
 
 impl<O: Operation> NativeInstance for NativeOperation<O> {
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
+        error.downcast_ref::<O::Error>().map_or(crate::operations::FailureKind::Permanent, O::classify)
+    }
+
     fn initialize(&mut self, context: OperationContext) -> ServiceFuture<'_, ()> {
         Box::pin(async move {
             if self.operation.is_none() {
@@ -307,7 +312,7 @@ fn service_error(error: impl std::error::Error + 'static) -> ServingError {
 }
 
 fn operation_error<O: Operation>(error: O::Error) -> ServingError {
-    ServingError::Handler(crate::Failure::originate(O::classify(&error), &error, crate::failure::Origin::Plugin))
+    ServingError::Native(std::sync::Arc::new(error))
 }
 
 /* === Tests === */

@@ -136,6 +136,7 @@ pub(super) struct Entry {
     resident: bool,
 
     active: AtomicBool,
+    publication: Arc<AtomicBool>,
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
     pub(in crate::operations) binding: Arc<dyn Any + Send + Sync>,

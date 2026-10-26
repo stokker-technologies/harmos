@@ -137,7 +137,7 @@ impl State {
                 if entry.sdk.is_some() {
                     return false;
                 }
-                if !entry.active.load(Ordering::Acquire) {
+                if !entry.active.load(Ordering::Acquire) || !entry.publication.load(Ordering::Acquire) {
                     return false;
                 }
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

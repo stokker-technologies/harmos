@@ -35,6 +35,30 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(in crate::operations) fn register_with_services<L: Lane>(
+        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged,
+    ) -> Result<()> {
+        let mut entries = self.native_entries(registration, "host",
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            None,
+        )?;
+        let publication = staged.publication();
+        for entry in &mut entries {
+            Arc::get_mut(entry).expect("unpublished operation has one owner").publication = publication.clone();
+        }
+        self.reserve(&entries)?;
+        if let Err(error) = staged.commit() {
+            let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
+            for entry in &entries {
+                if state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
+                    state.remove_owned(entry.id(), entry.owner.as_str());
+                }
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+
     pub(crate) fn register_native<L: Lane>(&self, registration: crate::operations::Registration<L>) -> Result<()> {
         let entries = self.native_entries(
             registration,
@@ -123,6 +147,7 @@ impl Manager {
             #[cfg(feature = "plugin-sidecar")]
             resident: false,
             active: AtomicBool::new(true),
+            publication: Arc::new(AtomicBool::new(true)),
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
             binding,

@@ -145,10 +145,11 @@ impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
     }
 
     fn classify(&self, error: &Error) -> crate::operations::FailureKind {
-        super::binding::classify(error, |error: &harmos_sdk::ServingError| match error {
-            harmos_sdk::ServingError::Handler(failure) => failure.code(),
-            _ => crate::operations::FailureKind::Permanent,
-        })
+        let Error::OperationFailed { source, .. } = error else {
+            return crate::operations::FailureKind::Permanent;
+        };
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.physical.instance.classify(source.as_ref())))
+            .unwrap_or(crate::operations::FailureKind::Permanent)
     }
 
     fn finalize(&mut self) -> Finalize<'_> {
@@ -260,14 +261,18 @@ fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContex
         .map_err(|source| Error::OperationFailed { operation: "host context".to_owned(), source: Arc::new(source) })?;
     Ok(harmos_sdk::OperationContext::new(dependencies, context.context().clone()))
 }
-async fn guarded<O, E>(operation: &str, future: impl Future<Output = std::result::Result<O, E>>) -> Result<O>
-where
-    E: std::error::Error + Send + Sync + 'static,
-{
+async fn guarded<O>(operation: &str, future: impl Future<Output = std::result::Result<O, harmos_sdk::ServingError>>) -> Result<O> {
     let mut future = std::pin::pin!(future);
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
-        Ok(result) => result
-            .map(|result| result.map_err(|source| Error::OperationFailed { operation: operation.to_owned(), source: Arc::new(source) })),
+        Ok(result) => result.map(|result| {
+            result.map_err(|error| Error::OperationFailed {
+                operation: operation.to_owned(),
+                source: match error {
+                    harmos_sdk::ServingError::Native(source) => source,
+                    source => Arc::new(source),
+                },
+            })
+        }),
         Err(_) => std::task::Poll::Ready(Err(Error::OperationPanicked { operation: operation.to_owned() })),
     })
     .await

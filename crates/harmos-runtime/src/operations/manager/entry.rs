@@ -109,6 +109,9 @@ impl Entry {
     }
 
     pub(in crate::operations) fn available(&self) -> Result<()> {
+        if !self.publication.load(Ordering::Acquire) {
+            return Err(Error::NotReady { domain: "operation batch" });
+        }
         let retiring = self.retires_late();
         if !self.active.load(Ordering::Acquire) && !retiring {
             return Err(Error::Closing { domain: "operation" });

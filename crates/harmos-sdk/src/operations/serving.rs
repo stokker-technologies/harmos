@@ -258,6 +258,9 @@ pub enum ServingError {
     // The handler's failure, written once at its origin.
     #[error(transparent)]
     Handler(crate::Failure),
+
+    #[error("native handler failed: {0}")]
+    Native(#[source] std::sync::Arc<dyn std::error::Error + Send + Sync>),
 }
 
 /* === Traits === */
