@@ -551,7 +551,7 @@ lock_commands = [
 ]
 
 [version]
-value = "0.1.5"
+value = "0.1.6"
 files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
 
 [[package.executables]]
