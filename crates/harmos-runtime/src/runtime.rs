@@ -809,7 +809,7 @@ impl<A: Application> Builder<A> {
                 return Err(Incompatible::work(duplicate));
             }
         }
-        let operations = crate::operations::Manager::new(instances, &operation_settings, reserved, boot.identity.clone());
+        let operations = crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone());
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }

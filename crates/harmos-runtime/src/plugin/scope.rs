@@ -663,6 +663,9 @@ impl PluginScope {
     }
 
     pub(crate) fn close(&self) {
+        if let Ok(operations) = self.operation_manager() {
+            operations.resident.close_plugin(self);
+        }
         self.phase.send_if_modified(|phase| {
             if matches!(*phase, Phase::Closed { .. }) {
                 return false;
@@ -738,6 +741,56 @@ mod tests {
         ) -> std::result::Result<crate::Response<u64>, Self::Error> {
             Ok(7.into())
         }
+    }
+
+    struct Worker(Arc<AtomicUsize>);
+    impl harmos_sdk::services::Service for Worker {
+        type Error = harmos_sdk::DependencyError;
+        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
+            assert_eq!(context.dependency::<PluginScope>()?.owner(), "worker");
+            assert!(context.dependency::<crate::services::ServiceContext<Model>>().is_err());
+            let calls = context.dependency::<AtomicUsize>()?;
+            calls.fetch_add(1, Ordering::SeqCst);
+            context.dependency::<tokio::sync::Notify>()?.notify_one();
+            Ok(Self(calls))
+        }
+        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::result::Result<(), Self::Error> {
+            std::future::pending().await
+        }
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn dynamic_services_are_scoped_and_drained_on_unload() {
+        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+        let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
+        let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
+        assert!(scope.commit());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let mut dependencies = harmos_sdk::Dependencies::new();
+        dependencies.insert(started.clone()).unwrap();
+        dependencies.insert(calls.clone()).unwrap();
+        scope
+            .register(
+                harmos_sdk::RegistrationBatch::new(dependencies)
+                    .operation::<Read>()
+                    .service::<Worker>("service", crate::services::POLICY)
+                    .defaults::<Lanes>(),
+            )
+            .await
+            .unwrap();
+        assert!(scope.unregister(&crate::QualifiedId::parse("host.service").unwrap()).await.is_err());
+        assert!(runtime.operations.resident_definition("worker.service").is_some());
+        tokio::time::timeout(std::time::Duration::from_secs(5), started.notified()).await.unwrap();
+        receipt.shutdown().await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(runtime.operations.resident_definition("worker.service").is_none());
+        assert!(scope.operation_for::<Read, Lanes>(()).start().await.is_err());
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]

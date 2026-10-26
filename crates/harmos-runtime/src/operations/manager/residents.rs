@@ -47,9 +47,16 @@ use crate::{Application, Result};
 /* === Implementations === */
 
 impl Manager {
-    pub(crate) async fn start_registered_service(&self, id: &str) -> Result<()> {
+    pub(crate) async fn start_registered_service(&self, id: &str, owner: &crate::services::ServiceOwner) -> Result<()> {
         let root = self.resident.root();
-        let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), Identity::Host, false).await?;
+        let identity = match owner {
+            crate::services::ServiceOwner::Host => Identity::Host,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            crate::services::ServiceOwner::Plugin(scope) => {
+                Identity::Plugin { owner: scope.owner().into(), generation: scope.generation() }
+            }
+        };
+        let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), identity, false).await?;
         self.resident.hold(lease);
         Ok(())
     }

@@ -238,6 +238,7 @@ impl PluginRegistration {
         self.scope.unbind_operations();
         self.operations.fence(&self.entries, false);
         self.operations.settle_entries(&self.entries).await?;
+        self.operations.resident.shutdown_plugin(&self.scope).await?;
         self.entries.clear();
         Ok(())
     }

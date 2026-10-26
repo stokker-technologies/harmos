@@ -38,9 +38,24 @@ impl Manager {
     pub(in crate::operations) fn register_with_services<L: Lane>(
         &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged,
     ) -> Result<()> {
-        let mut entries = self.native_entries(registration, "host",
+        self.register_scoped_services(
+            registration,
+            staged,
+            "host",
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             None,
+        )
+    }
+
+    pub(in crate::operations) fn register_scoped_services<L: Lane>(
+        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged, owner: &str,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+    ) -> Result<()> {
+        let mut entries = self.native_entries(
+            registration,
+            owner,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            scope,
         )?;
         let publication = staged.publication();
         for entry in &mut entries {

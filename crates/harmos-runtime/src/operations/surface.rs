@@ -108,13 +108,22 @@ impl crate::plugin::PluginScope {
         Invocation { target: Target::Plugin(self.clone()), request, retry: None, lane: None, endpoints: () }
     }
 
-    pub async fn register<L: Lane>(&self, registration: super::Registration<L>) -> Result<()> {
+    pub async fn register<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
         if !self.is_ready() {
             return Err(Error::Closing { domain: "plugin scope" });
         }
         let operations = self.operation_manager()?;
-        let entries = operations.native_entries(registration, self.owner(), Some(self))?;
-        operations.reserve(&entries)
+        let services = std::mem::take(&mut registration.batch.services);
+        if services.is_empty() {
+            let entries = operations.native_entries(registration, self.owner(), Some(self))?;
+            return operations.reserve(&entries);
+        }
+        let mut batch = harmos_sdk::RegistrationBatch::new(registration.batch.dependencies.clone());
+        batch.services = services;
+        let manager = crate::ServiceManager::scoped(operations.clone(), self.clone());
+        let (staged, ids) = manager.stage(batch)?;
+        operations.register_scoped_services(registration, staged, self.owner(), Some(self))?;
+        manager.activate(&ids).await
     }
 
     pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
@@ -122,13 +131,17 @@ impl crate::plugin::PluginScope {
         if owner != self.owner() {
             return Err(Error::PermissionDenied);
         }
-        self.operation_manager()?.unregister(id).await
+        let operations = self.operation_manager()?;
+        if matches!(operations.resident.definition(id.as_str()), Some(super::resident::Definition::Service(_))) {
+            return crate::ServiceManager::scoped(operations, self.clone()).unregister(id).await;
+        }
+        operations.unregister(id).await
     }
 }
 
 impl<A: crate::Application> crate::Runtime<A> {
     pub fn services(&self) -> crate::ServiceManager {
-        crate::ServiceManager::for_application::<A>(self.operations.execution())
+        crate::ServiceManager::new(self.operations.execution())
     }
 
     pub async fn register(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
@@ -165,7 +178,7 @@ impl<A: crate::Application> crate::Runtime<A> {
 
 impl<A: crate::Application> crate::runtime::Handle<A> {
     pub fn services(&self) -> crate::ServiceManager {
-        crate::ServiceManager::for_application::<A>(self.operations.execution())
+        crate::ServiceManager::new(self.operations.execution())
     }
 
     pub async fn register(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
@@ -347,7 +360,9 @@ mod tests {
 
     impl harmos_sdk::Service for Idle {
         type Error = std::io::Error;
-        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> { Ok(Self) }
+        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+            Ok(Self)
+        }
         async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::io::Result<()> {
             std::future::pending().await
         }
@@ -358,9 +373,10 @@ mod tests {
         let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>("idle", crate::ServicePolicy {
-            stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never,
-        });
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>().service::<Idle>(
+            "idle",
+            crate::ServicePolicy { stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never },
+        );
         assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(runtime.operations.resident.definition("host.idle").is_none());

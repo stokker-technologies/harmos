@@ -709,6 +709,37 @@ impl Registry {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) fn close_plugin(&self, scope: &crate::plugin::PluginScope) {
+        let mut state = self.state();
+        let ids: std::collections::BTreeSet<_> = state
+            .definitions
+            .iter()
+            .filter(|(_, entry)| entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope)))
+            .map(|(id, entry)| {
+                entry.closing.store(true, Ordering::Release);
+                id.clone()
+            })
+            .collect();
+        state.stop(|key, _, _| ids.contains(&key.definition));
+        self.shared.publish(&state);
+    }
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) async fn shutdown_plugin(&self, scope: &crate::plugin::PluginScope) -> Result<()> {
+        let ids: Vec<_> = self
+            .state()
+            .definitions
+            .iter()
+            .filter(|(_, entry)| entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope)))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.unregister(&id).await?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn unregister(&self, id: &str) -> Result<()> {
         let (registration, running) = {
             let mut state = self.state();

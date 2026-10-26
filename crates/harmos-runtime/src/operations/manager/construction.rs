@@ -35,7 +35,7 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    pub(crate) fn new(
+    pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
     ) -> Self {
         Self {
@@ -45,6 +45,7 @@ impl Manager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                service_runner: crate::services::authored_runner::<A>,
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,

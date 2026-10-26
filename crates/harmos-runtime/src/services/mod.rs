@@ -69,6 +69,26 @@ pub const POLICY: ServicePolicy = ServicePolicy {
 
 /* === Type Aliases === */
 
+pub(crate) type ServiceRunner =
+    fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory, ServiceOwner) -> Arc<dyn crate::operations::resident::Runner>;
+
+#[derive(Clone)]
+pub(crate) enum ServiceOwner {
+    Host,
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    Plugin(crate::plugin::PluginScope),
+}
+
+pub(crate) fn authored_runner<A: Application>(
+    definition: ServiceDefinition, factory: harmos_sdk::operations::ServiceFactory, owner: ServiceOwner,
+) -> Arc<dyn crate::operations::resident::Runner> {
+    Arc::new(Typed::<A, (), _>::new(definition, move |_| AuthoredService {
+        factory: factory.clone(),
+        instance: None,
+        owner: owner.clone(),
+    }))
+}
+
 /* === Structs === */
 
 #[derive(Clone, Debug)]
@@ -89,10 +109,11 @@ pub(crate) struct Handles<A: Application> {
 #[derive(Clone)]
 pub struct ServiceManager {
     operations: Manager,
-    runner: fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory) -> Arc<dyn crate::operations::resident::Runner>,
+    owner: ServiceOwner,
 }
 
 struct AuthoredService {
+    owner: ServiceOwner,
     factory: harmos_sdk::operations::ServiceFactory,
     instance: Option<Box<dyn harmos_sdk::operations::ServiceInstance>>,
 }
@@ -160,12 +181,18 @@ pub trait Resident<A: Application>: Send + 'static {
 /* === Implementations === */
 
 impl ServiceManager {
-    pub(crate) fn for_application<A: Application>(operations: Manager) -> Self {
-        Self {
-            operations,
-            runner: |definition, factory| {
-                Arc::new(Typed::<A, (), _>::new(definition, move |_| AuthoredService { factory: factory.clone(), instance: None }))
-            },
+    pub(crate) fn new(operations: Manager) -> Self {
+        Self { operations, owner: ServiceOwner::Host }
+    }
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) fn scoped(operations: Manager, scope: crate::plugin::PluginScope) -> Self {
+        Self { operations, owner: ServiceOwner::Plugin(scope) }
+    }
+    fn owner(&self) -> &str {
+        match &self.owner {
+            ServiceOwner::Host => "host",
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            ServiceOwner::Plugin(scope) => scope.owner(),
         }
     }
 
@@ -182,12 +209,12 @@ impl ServiceManager {
         let mut entries = Vec::with_capacity(batch.services.len());
         let mut ids = Vec::with_capacity(batch.services.len());
         for factory in batch.services {
-            let id = crate::QualifiedId::qualify("host", &factory.local_id)
+            let id = crate::QualifiedId::qualify(self.owner(), &factory.local_id)
                 .map_err(|_| Error::InvalidInput { field: "service identity", reason: "invalid local service identifier" })?;
             let definition = ServiceDefinition { id: id.as_str().to_owned(), policy: factory.policy };
             validate(&definition)?;
             ids.push(definition.id.clone());
-            let runner = (self.runner)(definition.clone(), factory);
+            let runner = (self.operations.registry.service_runner)(definition.clone(), factory, self.owner.clone());
             entries.push((crate::operations::resident::Definition::Service(definition), runner));
         }
         let root = self.operations.resident.root();
@@ -195,14 +222,17 @@ impl ServiceManager {
             &root,
             entries,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            None,
+            match &self.owner {
+                ServiceOwner::Host => None,
+                ServiceOwner::Plugin(scope) => Some(scope.clone()),
+            },
         )?;
         Ok((staged, ids))
     }
 
     pub(crate) async fn activate(&self, ids: &[String]) -> Result<()> {
         for id in ids {
-            if let Err(error) = self.operations.start_registered_service(id).await {
+            if let Err(error) = self.operations.start_registered_service(id, &self.owner).await {
                 for id in ids {
                     self.operations.resident.unregister(id).await?;
                 }
@@ -213,7 +243,7 @@ impl ServiceManager {
     }
 
     pub async fn unregister(&self, id: &crate::QualifiedId) -> Result<()> {
-        if !id.as_str().starts_with("host.") {
+        if id.as_str().split_once('.').map(|(owner, _)| owner) != Some(self.owner()) {
             return Err(Error::PermissionDenied);
         }
         self.operations.resident.unregister(id.as_str()).await
@@ -224,13 +254,22 @@ impl<A: Application> Resident<A> for AuthoredService {
     type Error = harmos_sdk::ServingError;
 
     async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
+        let mut stopping = context.stopping.clone();
         let context = Arc::new(context);
         let mut dependencies = harmos_sdk::Dependencies::new();
-        dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?;
+        match &self.owner {
+            ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
+        }
         let call = harmos_sdk::OperationContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
-        self.instance.as_mut().expect("initialized service").run(call).await
+        tokio::select! {
+            biased;
+            _ = stopping.wait_for(|stopping| *stopping) => Ok(()),
+            result = self.instance.as_mut().expect("initialized service").run(call) => result,
+        }
     }
 
     async fn stop(&mut self) -> std::result::Result<(), Self::Error> {

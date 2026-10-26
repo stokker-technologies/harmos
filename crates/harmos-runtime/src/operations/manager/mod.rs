@@ -74,7 +74,7 @@ pub struct OperationManager<L: Lane> {
 
 #[derive(Clone)]
 pub struct Manager {
-    pub(super) registry: Arc<Registry>,
+    pub(crate) registry: Arc<Registry>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
     pub(super) preparation: Option<Arc<Semaphore>>,
@@ -94,6 +94,7 @@ pub(crate) struct WeakOperationManager {
 }
 
 pub(crate) struct Registry {
+    pub(crate) service_runner: crate::services::ServiceRunner,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }
