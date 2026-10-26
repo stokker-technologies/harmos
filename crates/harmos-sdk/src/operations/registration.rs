@@ -58,6 +58,7 @@ pub struct PreparedNative {
 #[derive(Clone)]
 pub struct OperationFactory {
     pub definition: OperationDefinition,
+    declared: fn() -> OperationDefinition,
     pub dependencies: Dependencies,
     contract: fn() -> Result<Contract, super::ContractError>,
     install: Install,
@@ -129,6 +130,7 @@ impl RegistrationBatch {
     {
         self.operations.push(OperationFactory {
             definition: D::definition(),
+            declared: D::definition,
             dependencies: self.dependencies.clone(),
             contract: || {
                 if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>() {
@@ -192,7 +194,7 @@ impl RegistrationBatch {
 impl OperationFactory {
     pub fn validate(&self) -> Result<(), ServingError> {
         self.definition.validate().map_err(ServingError::from)?;
-        if !(self.endpoints_valid)() {
+        if self.definition != (self.declared)() || !(self.endpoints_valid)() {
             return Err(ServingError::Catalog);
         }
         Ok(())
@@ -425,6 +427,13 @@ mod tests {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
+    }
+
+    #[test]
+    fn factory_rejects_a_substituted_declaration() {
+        let mut batch = RegistrationBatch::new(Dependencies::new()).operation::<Read>();
+        batch.operations[0].definition.id = crate::Identifier::new("different").unwrap();
+        assert!(matches!(batch.operations[0].validate(), Err(ServingError::Catalog)));
     }
 
     #[test]

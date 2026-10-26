@@ -354,7 +354,15 @@ mod tests {
         let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
         assert!(runtime.register(batch.clone().operation::<Probe>().defaults()).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
+        let mut mismatched = batch.clone();
+        mismatched.operations[0].definition.id = crate::Identifier::new("different").unwrap();
+        assert!(runtime.register(mismatched.defaults()).await.is_err());
+        assert!(runtime.operations.definition("different").is_err());
         runtime.operations.register(batch.defaults()).await.unwrap();
+        assert!(matches!(
+            runtime.operations.call_encoded("host.probe", Vec::new()).await,
+            Err(Error::InvalidInput { field: "operation preparation bytes", .. })
+        ));
         let invocation = runtime.operation_for::<Probe>(1);
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert!(invocation.run().await.is_err());

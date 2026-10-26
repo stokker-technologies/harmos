@@ -150,7 +150,13 @@ impl Manager {
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
-        let entry = self.entry_as(operation, &origin)?;
+        let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
+            field: "encoded operation",
+            reason: "routing requires an owner-qualified operation identity",
+        })?;
+        let (owner, local) = qualified.as_str().split_once('.').expect("validated qualified identity");
+        let entry = self.capture_provider(local, Some(owner))?;
+        entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         let dispatch = entry
             .wire
@@ -342,10 +348,11 @@ pub(super) fn dispatch_native(
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
-        None => std::num::NonZeroUsize::new(input.payload.capacity()).map(|bytes| operations.claim_preparation(bytes)).transpose()?,
+        None => Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?),
     };
-    let decoding_bytes =
-        factory.decoding_memory(&input.payload).map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
+    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| factory.decoding_memory(&input.payload)))
+        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+        .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
         if let Some(original) = &mut submission.preparation {

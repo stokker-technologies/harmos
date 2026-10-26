@@ -406,7 +406,7 @@ impl Context<'_> {
 /* === Public Functions === */
 
 impl HostContext {
-    pub(crate) fn borrow(&self) -> Context<'_> {
+    pub fn borrow(&self) -> Context<'_> {
         Context {
             scope: Scope::over(&self.scope),
             id: self.id,
