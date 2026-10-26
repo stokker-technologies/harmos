@@ -217,9 +217,7 @@ impl ServiceManager {
             let runner = (self.operations.registry.service_runner)(definition.clone(), factory, self.owner.clone());
             entries.push((crate::operations::resident::Definition::Service(definition), runner));
         }
-        let root = self.operations.resident.root();
-        let staged = self.operations.resident.stage(
-            &root,
+        let staged = self.operations.stage_services(
             entries,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             match &self.owner {

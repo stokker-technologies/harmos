@@ -458,6 +458,10 @@ impl Registry {
         Ok(Staged { owner: Arc::downgrade(&self.shared), scope: Arc::clone(scope), entries: staged, published })
     }
 
+    pub(crate) fn contains(&self, id: &str) -> bool {
+        self.state().definitions.contains_key(id)
+    }
+
     pub(crate) fn definition(&self, id: &str) -> Option<Definition> {
         self.state().definitions.get(id).filter(|item| item.is_published()).map(|item| item.definition.clone())
     }

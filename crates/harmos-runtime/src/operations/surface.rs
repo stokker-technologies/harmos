@@ -389,6 +389,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn operation_and_service_share_one_identity_namespace() {
+        let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+        let mut dependencies = harmos_sdk::Dependencies::new();
+        dependencies.insert(Arc::new(AtomicUsize::new(0))).unwrap();
+        let operation = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Probe>();
+        let policy = crate::ServicePolicy { stop_timeout: std::time::Duration::from_secs(1), restart: crate::RestartPolicy::Never };
+        let service = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).service::<Idle>("probe", policy);
+        assert!(runtime.register(operation.clone().service::<Idle>("probe", policy).defaults()).await.is_err());
+        assert!(runtime.operations.definition(Probe::ID).is_err());
+        assert!(!runtime.operations.resident.contains("host.probe"));
+        runtime.operations.register(operation.clone().defaults()).await.unwrap();
+        assert!(runtime.services().register(service.clone()).await.is_err());
+        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.services().register(service).await.unwrap();
+        assert!(runtime.operations.register(operation.defaults()).await.is_err());
+        runtime.unregister(&crate::QualifiedId::parse("host.probe").unwrap()).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn native_registration_is_atomic_and_invocation_policy_is_local() {
         let runtime = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
         let initialized = Arc::new(AtomicUsize::new(0));

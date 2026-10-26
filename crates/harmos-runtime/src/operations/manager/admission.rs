@@ -72,7 +72,10 @@ impl Manager {
             let retired = state.retired();
             let result = if state.closing || !self.instances.is_accepting() {
                 Err(Error::Closing { domain: "operations" })
-            } else if let Some(entry) = entries.iter().find(|entry| state.owned(entry.id(), entry.owner.as_str()).is_some()) {
+            } else if let Some(entry) = entries.iter().find(|entry| {
+                state.owned(entry.id(), entry.owner.as_str()).is_some()
+                    || self.resident.contains(&format!("{}.{}", entry.owner, entry.id()))
+            }) {
                 Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() })
             } else {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]

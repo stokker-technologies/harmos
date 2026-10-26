@@ -47,6 +47,30 @@ use crate::{Application, Result};
 /* === Implementations === */
 
 impl Manager {
+    pub(crate) fn stage_services(
+        &self, entries: Vec<(Definition, Arc<dyn resident::Runner>)>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+    ) -> Result<resident::Staged> {
+        let state = self.registry.state.lock().expect("operation registry lock is healthy");
+        if state.closing || !self.instances.is_accepting() {
+            return Err(crate::Error::Closing { domain: "operations" });
+        }
+        for (definition, _) in &entries {
+            let (owner, local) = definition.id().split_once('.').expect("validated service identity");
+            if state.owned(local, owner).is_some() {
+                return Err(crate::Error::AlreadyRegistered { domain: "service", name: definition.id().to_owned() });
+            }
+        }
+        let staged = self.resident.stage(
+            &self.resident.root(),
+            entries,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            plugin,
+        );
+        drop(state);
+        staged
+    }
+
     pub(crate) async fn start_registered_service(&self, id: &str, owner: &crate::services::ServiceOwner) -> Result<()> {
         let root = self.resident.root();
         let identity = match owner {
