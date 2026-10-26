@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:2adf366f2c7686e2f00e946cebc7ebd0fca41c0f2ea3e242f2f9adc44a0d008a
+# Rendered by stkr project update from templates/python/release/run.py; sha256:d22022d39cd4221e540a0590b90dbe72a2e0b210b180ae8cbeb5e3cfdd02c3d0
 # ***
 #
 # __PRODUCT_NAME__
@@ -96,10 +96,18 @@ def assets(directory: Path, settings: dict, selected: str, tag: str, profile: st
     result = []
     declared = settings.get("assets", []) + packages.packaged(directory, profile, selected)
     for definition in declared:
+        profiles = definition.get("profiles", ["dev", "release"])
+        if (
+            not isinstance(profiles, list)
+            or not profiles
+            or any(profile not in ("dev", "release") for profile in profiles)
+            or len(set(profiles)) != len(profiles)
+        ):
+            raise policy.ToolError("release.assets.profiles must be a nonempty array of distinct dev or release values")
         signed_only = definition.get("signed_only", False)
         if not isinstance(signed_only, bool):
             raise policy.ToolError("release.assets.signed_only must be a boolean")
-        if definition.get("target") != selected:
+        if definition.get("target") != selected or profile not in profiles:
             continue
         if signed_only and not signed:
             continue
