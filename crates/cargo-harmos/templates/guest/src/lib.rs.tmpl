@@ -55,7 +55,7 @@ impl harmos_guest::builtins::lifecycle::Policy for Plugin {
 impl harmos_guest::Plugin for Plugin {
     type Config = ();
     type Error = std::io::Error;
-    type Context = harmos_guest::Context;
+    type Context = harmos_guest::kit::Context;
     type Resources = ();
     fn prepare(_: ()) -> Result<Self, Self::Error> {
         Ok(Self { resources: Arc::new(()) })

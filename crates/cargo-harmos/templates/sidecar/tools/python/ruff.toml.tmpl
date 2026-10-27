@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/tools/ruff.toml; sha256:0eabb265b58cbc74aad808b6316cb26e3d58598b8434008c0ec86e0c0bdf613f
+# Rendered by stkr project update from templates/tools/ruff.toml; sha256:587e93b3b69431c66a341b421add81ffaad143f58bc5360d29d89015bf757cc6
 # ***
 #
 # __PRODUCT_NAME__
@@ -12,5 +12,8 @@
 # Width 140 matches every Hub-rendered formatter: wide displays are the norm and two files still sit side by side in a
 # diff on a 4K display.
 line-length = 140
+# Templates Are Rendered Before Source Formatting
+extend-exclude = ["**/.stkr/templates/**"]
+force-exclude = true
 # The package's own pyproject.toml keeps every other setting.
 extend = "pyproject.toml"

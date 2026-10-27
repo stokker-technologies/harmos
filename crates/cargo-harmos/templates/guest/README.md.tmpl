@@ -18,3 +18,9 @@ mise run test:rust:unit
 The scaffold uses the explicitly selected Harmos source revision or local checkout.
 Install `cargo-harmos` to run `mise run dev`; it is the development tool used to create this project.
 Keep generated tooling current with `stkr project update` when adopting company tooling changes.
+
+## Operation Context
+
+Operations consume their request in `run(self, ctx: harmos::Context<'_, Self>)`. The guest SDK re-exports the same
+`Operation`, `Context` and `Response` types. Declare `resources` and `operations` on the operation; use
+`ctx.resource::<T>()`, `ctx.operation(request)` and `ctx.streams()`. Plugin lifecycle hooks use `harmos_guest::kit::Context`.

@@ -586,3 +586,136 @@ inputs = [
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-sidecar.exe", destination = "plugins/schematic-sidecar.exe" },
   { path = "target/build/{profile}/{target}/bin/plugins/schematic-guest.wasm", destination = "plugins/schematic-guest.wasm" },
 ]
+
+[[template]]
+name = "header"
+language = "c-header"
+path = "c/header.h"
+default = true
+snippet = "stkr-h"
+
+[[template]]
+name = "module"
+language = "c"
+path = "c/module.c"
+default = true
+snippet = "stkr-c"
+
+[[template]]
+name = "package"
+language = "cargo"
+path = "cargo/package.toml"
+default = true
+snippet = "stkr-cargo"
+
+[[template]]
+name = "workspace"
+language = "cargo"
+path = "cargo/workspace.toml"
+default = false
+snippet = "stkr-cargo-workspace"
+
+[[template]]
+name = "header"
+language = "cpp-header"
+path = "cpp/header.hpp"
+default = true
+snippet = "stkr-hpp"
+
+[[template]]
+name = "module"
+language = "cpp"
+path = "cpp/module.cpp"
+default = true
+snippet = "stkr-cpp"
+
+[[template]]
+name = "module"
+language = "css"
+path = "css/module.css"
+default = true
+snippet = "stkr-css"
+
+[[template]]
+name = "module"
+language = "javascript"
+path = "javascript/module.js"
+default = true
+snippet = "stkr-js"
+
+[[template]]
+name = "contributing"
+language = "markdown"
+path = "markdown/contributing.md"
+default = false
+snippet = "stkr-md-contributing"
+
+[[template]]
+name = "file"
+language = "markdown"
+path = "markdown/file.md"
+default = true
+snippet = "stkr-md"
+
+[[template]]
+name = "readme"
+language = "markdown"
+path = "markdown/readme.md"
+default = false
+snippet = "stkr-md-readme"
+
+[[template]]
+name = "module"
+language = "python"
+path = "python/module.py"
+default = true
+snippet = "stkr-py"
+
+[[template]]
+name = "module"
+language = "rust"
+path = "rust/module.rs"
+default = true
+snippet = "stkr-rs"
+
+[[template]]
+name = "module"
+language = "scss"
+path = "scss/module.scss"
+default = true
+snippet = "stkr-scss"
+
+[[template]]
+name = "file"
+language = "toml"
+path = "toml/file.toml"
+default = true
+snippet = "stkr-toml"
+
+[[template]]
+name = "stkr"
+language = "stkr"
+path = "toml/stkr.toml"
+default = true
+snippet = "stkr-stkr"
+
+[[template]]
+name = "component"
+language = "typescriptreact"
+path = "typescript/component.tsx"
+default = true
+snippet = "stkr-tsx"
+
+[[template]]
+name = "module"
+language = "typescript"
+path = "typescript/module.ts"
+default = true
+snippet = "stkr-ts"
+
+[[template]]
+name = "module"
+language = "yaml"
+path = "yaml/module.yaml"
+default = true
+snippet = "stkr-yaml"
