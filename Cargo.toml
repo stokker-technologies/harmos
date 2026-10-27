@@ -81,6 +81,8 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false }
 wit-bindgen = { version = "=0.62.0", default-features = false }
 wit-component = { version = "=0.261.0", default-features = false }
+wasm-encoder = { version = "=0.261.0", default-features = false }
+wasmparser = { version = "=0.261.0", default-features = false }
 
 # Configuration
 clap = { version = "4", default-features = false }

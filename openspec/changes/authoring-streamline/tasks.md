@@ -198,7 +198,11 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 
 ## 2. Validation And Delivery
 
-- [ ] 2.1 Orchestrator: obtain delivery authorization after presenting the source-complete candidate.
-- [ ] 2.2 Orchestrator: push the combined candidate, verify its remote revision, start the default all-required-platform CI simulation and hosted checks, and create the ready PR into dev with native auto-merge.
+- [ ] 2.5 Sole CI Fix Agent: repair schematic collection at the product/example owner, reproduce Windows fixture preparation and repair its root cause within authorized ownership; validate failing jobs and affected dependents on both platforms. Inventory: schematic operations and carrier consumers, product capture in tools/python/src/harmos_tools/build/__main__.py, packaging collection if required, deterministic affected tests and this task inventory; review README impact without changing unaffected prose. Shared Hub tooling repair requires separate authorization because this assignment excludes other worktrees.
+- [ ] 2.6 Implement authorized product-owned debug-symbol separation in harmos-packaging collection for every platform, preserving original compiler outputs, receipt integrity, the 128 MiB bundle limit and compiler profiles. Own build.rs, component.rs, packaging and workspace manifests/locks, consumer locks, capture and component tests, and affected product-guide documentation; README claims remain accurate. Prove Linux Product, package and Rust lanes through project tasks.
+- [x] 2.7 Direct Windows fixture preparation passed. Owner explicitly excludes the local Windows executor job because its pwsh shim fails before task entry; hosted Windows CI remains required. No shared Hub or executor edits are authorized.
+
+- [x] 2.1 Orchestrator: obtain delivery authorization after presenting the source-complete candidate.
+- [x] 2.2 Orchestrator: push the combined candidate, verify its remote revision, start the default all-required-platform CI simulation and hosted checks, and create the ready PR into dev with native auto-merge.
 - [ ] 2.3 Orchestrator: resolve required proof failures and record actual validation outcomes without treating unavailable executors as passed.
 - [ ] 2.4 Orchestrator: finish and archive the specification only after all required tasks are complete.

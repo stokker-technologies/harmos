@@ -116,8 +116,11 @@ Keep generated guidance and tooling current through the owning authoring tool.
 `cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
 drives the selected Wasm build and converts guest core modules
 into inspected `.component.wasm` files beside the selected module, and reports
-exact artifact and schema paths. It keeps generated components separate from
-Cargo's original modules. Each backend's `dev` command watches sources and local
+exact artifact and schema paths. Native collection requires Rust's `llvm-tools`
+component. Collection removes debug information from shipping copies under `harmos/<producer>/`
+beside compiler outputs on every platform. Original compiler outputs and separate
+debug files remain available for debugging. The 128 MiB bundle limit applies to
+shipping bytes; compiler profiles are unchanged. Each backend's `dev` command watches sources and local
 Cargo dependencies, coalesces changes and rebuilds serially. Failed builds keep
 the last usable artifact until preparation succeeds. Generated output directories
 are excluded; Ctrl+C stops watching and settles the active Cargo process tree.

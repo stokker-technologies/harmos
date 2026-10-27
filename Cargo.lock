@@ -1150,6 +1150,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tracing",
+ "wasm-encoder 0.261.0",
+ "wasmparser 0.261.0",
  "wit-component 0.261.0",
 ]
 
@@ -3106,6 +3108,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
  "semver",
+ "serde",
 ]
 
 [[package]]
