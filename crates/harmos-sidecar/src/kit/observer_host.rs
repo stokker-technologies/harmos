@@ -76,7 +76,7 @@ impl<R: Sync, C> ObserverCaller<R, C> for Supervisor
 where
     C: harmos_domain::operations::OperationDeclaration,
 {
-    type Request = C;
+    type Request = C::Request;
     type Response = C::Response;
     type Error = CallError;
 

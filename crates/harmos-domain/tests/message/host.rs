@@ -19,7 +19,7 @@
 
 // Local Imports
 use harmos_domain::MemorySize;
-use harmos_domain::operations::streams::{FollowingRow, Publish};
+use harmos_operations::streams::{FollowingRow, PublishRequest};
 use harmos_sdk::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -109,8 +109,8 @@ fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + Memo
 #[test]
 fn publication_keeps_tags() {
     for value in [
-        Publish::default(),
-        Publish {
+        PublishRequest::default(),
+        PublishRequest {
             stream: "records".into(),
             schema: u32::MAX,
             sequence: Some(0),
@@ -130,7 +130,7 @@ fn publication_keeps_tags() {
         };
         let bytes = prost::Message::encode_to_vec(&previous);
         assert_eq!(crate::encode(&value), bytes);
-        assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
+        assert_eq!(grpc::decode::<PublishRequest>(DecodeInput::new(&bytes)).unwrap(), value);
         assert_eq!(<PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(), previous);
         roundtrip(value);
     }
@@ -141,7 +141,7 @@ fn batch_rows_follow() {
     // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
     // Following Row A Short Delta; A Backwards Row Stays Encodable.
     let deltas = [Some(1_000), Some(1_000), Some(-1), None];
-    let value = Publish {
+    let value = PublishRequest {
         stream: "records".into(),
         sequence: Some(7),
         published_unix_micros: Some(1_760_000_000_000_000),
@@ -151,7 +151,7 @@ fn batch_rows_follow() {
             .zip(2_u8..)
             .map(|(&published_delta_micros, payload)| FollowingRow { payload: vec![payload], published_delta_micros })
             .collect(),
-        ..Publish::default()
+        ..PublishRequest::default()
     };
     let oracle = BatchedPublication {
         stream: value.stream.clone(),
@@ -166,7 +166,7 @@ fn batch_rows_follow() {
     };
     let bytes = prost::Message::encode_to_vec(&oracle);
     assert_eq!(crate::encode(&value), bytes);
-    assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
+    assert_eq!(grpc::decode::<PublishRequest>(DecodeInput::new(&bytes)).unwrap(), value);
     // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
     let steady = FollowingRow { payload: vec![0], published_delta_micros: Some(1_000) };
     let oracle = BatchedRow { payload: vec![0], published_delta_micros: Some(1_000) };

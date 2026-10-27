@@ -34,13 +34,22 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
-    pub async fn unregister(&self, id: &str) -> Result<()> {
-        self.unregister_selected(id, None).await
+impl Manager {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(in crate::operations) fn scope_entries(&self, scope: &crate::plugin::PluginScope) -> Vec<Arc<Entry>> {
+        let state = self.registry.state.lock().expect("operation registry lock is healthy");
+        state
+            .entries
+            .values()
+            .flat_map(|owners| owners.values())
+            .filter(|entry| entry.plugin.as_ref().is_some_and(|original| original.same_activation(scope)))
+            .cloned()
+            .collect()
     }
 
-    pub async fn unregister_from(&self, owner: &str, id: &str) -> Result<()> {
-        self.unregister_selected(id, Some(owner)).await
+    pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
+        let (owner, local) = id.as_str().split_once('.').expect("qualified identity has two validated segments");
+        self.unregister_selected(local, Some(owner)).await
     }
 
     pub(super) async fn unregister_selected(&self, id: &str, owner: Option<&str>) -> Result<()> {
@@ -61,6 +70,9 @@ impl OperationManager {
             let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
             entry.retirement.store(Retirement::Explicit as u8, Ordering::Release);
             entry.active.store(false, Ordering::Release);
+            for control in _pending.values() {
+                control.cancel();
+            }
             let retired = state.remove_cache(|cached| !cached.target.upgrade().is_some_and(|target| !Arc::ptr_eq(&target, &entry)));
             drop(_pending);
             retired
@@ -100,9 +112,17 @@ impl OperationManager {
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn remove_settled(&self, entries: &[Arc<Entry>]) {
+        self.release_settled(entries, true);
+    }
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    fn release_settled(&self, entries: &[Arc<Entry>], preserve_explicit: bool) {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         for entry in entries {
-            if entry.settled() && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
+            if (!preserve_explicit || entry.retirement.load(Ordering::Acquire) != Retirement::Explicit as u8)
+                && entry.settled()
+                && state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry))
+            {
                 state.remove_owned(entry.id(), entry.owner.as_str());
             }
         }
@@ -112,7 +132,7 @@ impl OperationManager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) async fn settle_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         self.settle_owned_entries(entries).await?;
-        self.remove_settled(entries);
+        self.release_settled(entries, false);
         Ok(())
     }
 

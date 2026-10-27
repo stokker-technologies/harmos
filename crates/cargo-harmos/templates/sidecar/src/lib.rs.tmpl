@@ -11,11 +11,12 @@
 
 /* === Modules === */
 pub mod domain;
-mod operations;
+pub mod operations;
 
 /* === Re-Exports === */
 
 /* === Imports === */
+#[cfg(feature = "runtime")]
 use std::sync::Arc;
 
 // Standard Library Imports
@@ -31,6 +32,7 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 /* === Structs === */
+#[cfg(feature = "runtime")]
 pub struct Plugin {
     resources: Arc<()>,
 }
@@ -40,12 +42,14 @@ pub struct Plugin {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: harmos_domain::operations::OperationPolicy = domain::operations::POLICY;
-    const SHUTDOWN_POLICY: harmos_domain::operations::OperationPolicy = domain::operations::POLICY;
+#[cfg(feature = "runtime")]
+impl harmos_sidecar::builtins::lifecycle::Policy for Plugin {
+    const INITIALIZATION_POLICY: harmos::OperationPolicy = operations::POLICY;
+    const SHUTDOWN_POLICY: harmos::OperationPolicy = operations::POLICY;
 }
 
-#[harmos_sidecar::plugin(id = "__PACKAGE_NAME__", provides = domain::operations::Operations, requires = ())]
+#[cfg(feature = "runtime")]
+#[harmos_sidecar::plugin(id = "__RUST_MODULE__", provides = operations::Operations, requires = ())]
 impl harmos_sidecar::Plugin for Plugin {
     type Config = ();
     type Error = std::io::Error;
@@ -57,10 +61,8 @@ impl harmos_sidecar::Plugin for Plugin {
     fn resources(&self) -> Arc<()> {
         Arc::clone(&self.resources)
     }
-    fn bind_operations(
-        &self, table: &mut harmos_sidecar::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_sidecar::operations::ServingError> {
-        table.bind_operation::<operations::greeting::Greeting>(self.resources())
+    fn bind_operations(&self, table: &mut harmos_sidecar::operations::WireTable) -> Result<(), harmos_sidecar::operations::ServingError> {
+        table.register(operations::Operations::registration(harmos_sidecar::Dependencies::new()))
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())

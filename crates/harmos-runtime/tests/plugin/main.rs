@@ -48,7 +48,7 @@ mod retirement;
 
 use harmos_runtime::catalog::{Catalog, Member};
 use harmos_runtime::operations::{
-    Bindings, Context, Definition, Operation, OperationDeclaration, OperationManager, OperationPolicy, PluginRegistration, RestartPolicy,
+    Bindings, Operation, OperationDeclaration, OperationDefinition as Definition, OperationManager, OperationPolicy, PluginRegistration,
     RetryPolicy, Visibility,
 };
 use harmos_runtime::plugin::*;
@@ -72,7 +72,7 @@ type Manager = PluginManager<Activation, Activation, Activation>;
 struct StopContext {
     owner: String,
     entered: Arc<tokio::sync::Notify>,
-    operations: OperationManager,
+    operations: OperationManager<Lanes>,
     control: Arc<Mutex<Control>>,
     release: Arc<tokio::sync::Notify>,
 }
@@ -169,6 +169,7 @@ enum Lanes {
 }
 
 impl harmos_runtime::Application for Fixture {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -188,11 +189,12 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Run<OWNER, MILL
 }
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::Message for Run<OWNER, MILLIS, PRIVATE> {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        harmos_runtime::Message::encode_to_vec(&self.wire())
+    const CODEC: &'static str = <RunRequest as harmos_runtime::Message>::CODEC;
+    fn encode(&self) -> Vec<u8> {
+        harmos_runtime::Message::encode(&self.wire())
     }
-    fn encoded_len(&self) -> usize {
-        harmos_runtime::Message::encoded_len(&self.wire())
+    fn encoded_size(&self) -> usize {
+        harmos_runtime::Message::encoded_size(&self.wire())
     }
     fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
         <RunRequest as harmos_runtime::Message>::decoding_memory(bytes)
@@ -215,59 +217,65 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime:
 }
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclaration for Run<OWNER, MILLIS, PRIVATE> {
+    type Request = Self;
     type Response = String;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
-    const VERSION: u32 = 1;
-    const ID: &'static str = match OWNER {
-        0 => "provider.run",
-        1 => "client.run",
-        _ => "other.run",
-    };
+    const ID: &'static str = "run";
     const VISIBILITY: Visibility = if PRIVATE { Visibility::Private } else { Visibility::Shared };
-    const POLICY: OperationPolicy = OperationPolicy {
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_millis(MILLIS),
         attempt_timeout: Duration::from_millis(MILLIS),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 }
 
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::RequestFor for Run<OWNER, MILLIS, PRIVATE> {
+    type Operation = Self;
+}
+
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation for Running<OWNER, MILLIS, PRIVATE> {
-    type Declaration = Run<OWNER, MILLIS, PRIVATE>;
-    type Resources = Owner;
+    type Request = Run<OWNER, MILLIS, PRIVATE>;
+    type Response = String;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::io::Result<Self> {
-        Ok(Self { _resources: resources })
+    async fn initialize(context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
+        Ok(Self { _resources: context.dependency::<Owner>().expect("fixture owner") })
     }
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Run<OWNER, MILLIS, PRIVATE>, _endpoints: &mut Self::Endpoints,
-    ) -> std::io::Result<harmos_runtime::operations::Response<String>> {
-        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.value.clone()) }.await;
-        result.map(::core::convert::Into::into)
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Self::Request, _: &mut (),
+    ) -> std::io::Result<harmos_runtime::Response<String>> {
+        Ok(request.value.clone().into())
     }
 }
 
 impl<V, const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Catalog<V> for Operations<OWNER, MILLIS, PRIVATE>
 where
-    V: Member<Running<OWNER, MILLIS, PRIVATE>>,
+    V: Member<Run<OWNER, MILLIS, PRIVATE>>,
 {
     type Entries = [V::Entry; 1];
     const ENTRIES: Self::Entries = [V::ENTRY];
 }
 
+fn registration<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool>() -> harmos_runtime::operations::Registration<Lanes> {
+    use harmos_runtime::RegistrationExt;
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(Arc::new(Owner)).unwrap();
+    harmos_runtime::RegistrationBatch::new(dependencies)
+        .implementation::<Run<OWNER, MILLIS, PRIVATE>, Running<OWNER, MILLIS, PRIVATE>>()
+        .lane(Lanes::Open)
+}
+
 fn request_payload() -> Vec<u8> {
-    harmos_runtime::Message::encode_to_vec(&RunRequest { value: String::new() })
+    harmos_runtime::Message::encode(&RunRequest { value: String::new() })
 }
 
 fn bind<const OWNER: usize>(bindings: &mut Bindings<'_>, definition: &Definition) -> Result<()> {
     match (definition.policy.timeout.as_millis(), definition.visibility) {
-        (100, Visibility::Shared) => bindings.register_wire_operations::<Operations<OWNER, 100, false>, _>(Lanes::Open, Arc::new(Owner)),
-        (100, Visibility::Private) => bindings.register_wire_operations::<Operations<OWNER, 100, true>, _>(Lanes::Open, Arc::new(Owner)),
-        (200, Visibility::Shared) => bindings.register_wire_operations::<Operations<OWNER, 200, false>, _>(Lanes::Open, Arc::new(Owner)),
-        (200, Visibility::Private) => bindings.register_wire_operations::<Operations<OWNER, 200, true>, _>(Lanes::Open, Arc::new(Owner)),
+        (100, Visibility::Shared) => bindings.register(registration::<OWNER, 100, false>()),
+        (100, Visibility::Private) => bindings.register(registration::<OWNER, 100, true>()),
+        (200, Visibility::Shared) => bindings.register(registration::<OWNER, 200, false>()),
+        (200, Visibility::Private) => bindings.register(registration::<OWNER, 200, true>()),
         _ => panic!("fixture has no authored handler for this operation policy"),
     }
 }
@@ -285,7 +293,7 @@ impl Host {
             .unwrap();
         Self { runtime: Some(runtime), ..Self::default() }
     }
-    fn operations(&self) -> &OperationManager {
+    fn operations(&self) -> &OperationManager<Lanes> {
         &self.runtime.as_ref().unwrap().operations
     }
     async fn call(&self, source: &PluginCaller, method: &str, payload: Vec<u8>) -> Result<Vec<u8>> {

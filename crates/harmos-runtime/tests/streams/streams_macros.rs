@@ -12,31 +12,13 @@
 mod streams {
     use serde::{Deserialize, Deserializer, Serialize};
 
-    #[harmos_runtime::stream]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct PulseV1(pub u64);
-
-    impl<'de> Deserialize<'de> for PulseV1 {
-        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            u64::deserialize(deserializer).map(Self)
-        }
-    }
-
-    #[harmos_runtime::stream(description = "A waveform-shaped row with one historical schema.", id = "pulse", window = 4, history(PulseV1))]
+    #[harmos_runtime::stream(description = "A waveform-shaped row.", id = "pulse", window = 4)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
     pub struct Pulse(pub u64);
 
     impl<'de> Deserialize<'de> for Pulse {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             u64::deserialize(deserializer).map(Self)
-        }
-    }
-
-    impl TryFrom<PulseV1> for Pulse {
-        type Error = String;
-
-        fn try_from(historical: PulseV1) -> Result<Self, Self::Error> {
-            Ok(Self(historical.0 + 1))
         }
     }
 
@@ -94,7 +76,6 @@ mod streams {
 use std::convert::Infallible;
 use std::pin::Pin;
 // Third Party Imports
-use serde::de::value::{Error as ValueError, U64Deserializer};
 // Local Imports
 use harmos_runtime::{
     Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial, streams::Item, streams::Prefix, streams::Stream,
@@ -142,7 +123,14 @@ impl Transaction<State> for Change {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum StudioLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Studio {
+    type Lanes = StudioLanes;
     type State = State;
     type Transaction = Change;
     type Record = ();
@@ -212,12 +200,11 @@ fn generated_catalog_registers() {
 
     assert_eq!(catalog.len(), 3, "one enum variant yields one definition");
     assert_eq!(catalog[0].id(), "pulse");
-    assert_eq!(catalog[0].version(), 2);
+    assert_eq!(catalog[0].version(), 1);
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
     assert!(streams::Studio::definition("outside").is_none());
-    assert_eq!(streams::Pulse::DEFINITION, ("pulse", 2, 4));
-    assert_eq!(streams::Pulse::HISTORY, [("pulse", 1)]);
+    assert_eq!(streams::Pulse::DEFINITION, ("pulse", 1, 4));
     assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
 }
 
@@ -255,29 +242,11 @@ fn selection_prefix_declared() {
 }
 
 #[test]
-fn rows_restore_direct() {
-    assert_eq!(
-        streams::Pulse::restore(1, U64Deserializer::<ValueError>::new(40))
-            .expect("the historical row decodes")
-            .expect("version 1 is declared"),
-        streams::Pulse(41),
-        "the historical row converts directly into the current row"
-    );
-    assert_eq!(
-        streams::Pulse::restore(2, U64Deserializer::<ValueError>::new(9)).expect("the current row decodes"),
-        Some(streams::Pulse(9))
-    );
-    assert!(
-        streams::Pulse::restore(99, U64Deserializer::<ValueError>::new(9)).expect("an unknown version is not a decode error").is_none()
-    );
-}
-
-#[test]
 fn stream_attribute_carries() {
     use harmos_runtime::{Message, StreamSpec};
 
     let row = PresentedSample { voltage: -12.5, sample_index: u64::MAX };
-    let decoded = PresentedSample::decode(&row.encode_to_vec()).unwrap();
+    let decoded = PresentedSample::decode(&row.encode()).unwrap();
     assert_eq!(decoded.voltage.to_bits(), row.voltage.to_bits());
     assert_eq!(decoded.sample_index, u64::MAX);
     assert_eq!(<PresentedSample as StreamSpec>::metadata().label, "Samples");
@@ -302,3 +271,9 @@ fn stream_attribute_carries() {
 }
 
 /* === Tests === */
+
+#[test]
+fn current_row_restores() {
+    use serde::de::value::{Error as ValueError, U64Deserializer};
+    assert_eq!(streams::Pulse::restore(1, U64Deserializer::<ValueError>::new(9)).unwrap(), Some(streams::Pulse(9)));
+}

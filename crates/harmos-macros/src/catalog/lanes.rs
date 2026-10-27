@@ -108,7 +108,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     let fallback = &lanes.iter().find(|lane| lane.default).expect("one default lane is declared").name;
 
     Ok(quote! {
-        #[derive(Clone, Copy, Debug)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         #catalog
 
         #[automatically_derived]
@@ -120,6 +120,10 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
 
         #[automatically_derived]
         impl #harmos::operations::Lane for #name {
+            fn default_lane() -> Self {
+                Self::#fallback
+            }
+
             fn name(&self) -> &'static str {
                 match self { #(#names)* }
             }

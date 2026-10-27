@@ -19,7 +19,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::catalog::{Member, Visitor};
-use crate::operations::{Declares, OperationDeclaration, WireDeclaration};
+use crate::operations::{OperationDeclaration, WireDeclaration};
 
 /* === Constants === */
 
@@ -93,9 +93,9 @@ impl Visitor for Requirements {
 
 impl<M> Member<M> for Requirements
 where
-    M: Declares,
+    M: OperationDeclaration,
 {
-    const ENTRY: Requirement = Requirement::of::<M::Declaration>(&[]);
+    const ENTRY: Requirement = Requirement::of::<M>(&[]);
 }
 
 /* === Public Functions === */

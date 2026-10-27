@@ -22,7 +22,8 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, Operation, ServingError, WireTable, lifecycle};
+use crate::operations::{Contract, OperationContext, ServingError, WireTable};
+use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
 
@@ -30,27 +31,23 @@ use crate::operations::{Contract, Operation, ServingError, WireTable, lifecycle}
 
 /* === Type Aliases === */
 
-pub type Table<P> = Arc<Mutex<WireTable<<P as Plugin>::Context>>>;
+pub type Table = Arc<Mutex<WireTable>>;
 type Transition<P> = Pin<Box<dyn Future<Output = (P, Result<(), Error<P>>, bool)> + Send>>;
 
 /* === Structs === */
 
 pub struct Owner<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
-    table: Weak<Mutex<WireTable<P::Context>>>,
+    table: Weak<Mutex<WireTable>>,
     contracts: Arc<[Contract]>,
     observers: Arc<[crate::inventory::observers::Declaration]>,
     retirement: Mutex<Retirement<P>>,
 }
 
-struct Initializing<P: Plugin> {
+struct LifecycleInvocation<P: Plugin> {
     owner: Arc<Owner<P>>,
     state: Option<State<P>>,
-}
-
-struct ShuttingDown<P: Plugin> {
-    owner: Arc<Owner<P>>,
-    state: Option<State<P>>,
+    action: lifecycle::Action,
 }
 
 struct Retirement<P: Plugin> {
@@ -74,7 +71,7 @@ struct Slot<P: Plugin> {
 
 struct State<P: Plugin> {
     slot: Arc<Mutex<Slot<P>>>,
-    table: Weak<Mutex<WireTable<P::Context>>>,
+    table: Weak<Mutex<WireTable>>,
     plugin: Option<P>,
     work: Option<Transition<P>>,
     result: Option<Result<(), Error<P>>>,
@@ -83,6 +80,7 @@ struct State<P: Plugin> {
     failure_reported: bool,
     shutdown_attempted: bool,
     context: Option<P::Context>,
+    assignments: Vec<u8>,
     attachment: Option<Arc<dyn Attachment<P::Context>>>,
     generation_context: Option<[u8; 32]>,
 }
@@ -103,16 +101,18 @@ enum Phase {
 /* === Implementations === */
 
 impl<P: Plugin> Owner<P> {
-    pub fn new(contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table<P>), Error<P>> {
-        Self::new_with_observers(contracts, capacity, Vec::new())
+    pub fn new(owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize) -> Result<(Arc<Self>, Table), Error<P>> {
+        Self::new_with_observers(owner, contracts, capacity, Vec::new())
     }
 
     pub fn new_with_observers(
-        contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
-    ) -> Result<(Arc<Self>, Table<P>), Error<P>> {
+        assigned_owner: &str, contracts: Vec<Contract>, capacity: NonZeroUsize, observers: Vec<crate::inventory::observers::Declaration>,
+    ) -> Result<(Arc<Self>, Table), Error<P>> {
         let definitions: Vec<_> = contracts.iter().map(|contract| contract.operation().clone()).collect();
         crate::inventory::operations::validate(&definitions).map_err(|error| Error::Inventory(Arc::new(error)))?;
-        let table = Arc::new(Mutex::new(WireTable::new(capacity)));
+        let mut serving = WireTable::new(assigned_owner).map_err(|error| Error::Serving(Arc::new(error)))?;
+        serving.capacity(capacity);
+        let table = Arc::new(Mutex::new(serving));
         let owner = Arc::new(Self {
             slot: Arc::new(Mutex::new(Slot { plugin: None, phase: Phase::Empty, attachment: None, generation_context: None })),
             table: Arc::downgrade(&table),
@@ -120,11 +120,6 @@ impl<P: Plugin> Owner<P> {
             observers: observers.into(),
             retirement: Mutex::new(Retirement { state: None, active: false, finished: false }),
         });
-        {
-            let mut bindings = table.lock().map_err(|_| Error::Poisoned)?;
-            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>, _>(&mut bindings, Arc::clone(&owner))
-                .map_err(|error| Error::Serving(Arc::new(error)))?;
-        }
         Ok((owner, table))
     }
 
@@ -176,6 +171,7 @@ impl<P: Plugin> Owner<P> {
             failure_reported: false,
             shutdown_attempted: false,
             context: None,
+            assignments: Vec::new(),
             attachment: None,
             generation_context: None,
         }
@@ -194,17 +190,17 @@ impl<P: Plugin> Drop for RetirementLoan<P> {
 }
 
 impl<P: Plugin> Owner<P> {
-    fn prepare_initialize(&self, request: &lifecycle::Initialize) -> Result<State<P>, Error<P>> {
-        let generation_context = if request.generation_context.is_empty() {
+    fn prepare_initialize(&self, config_json: &[u8], generation_context: &[u8], assignments: &[u8]) -> Result<State<P>, Error<P>> {
+        let generation_context = if generation_context.is_empty() {
             None
         } else {
-            let token: [u8; 32] = request.generation_context.as_slice().try_into().map_err(|_| Error::GenerationContext)?;
+            let token: [u8; 32] = generation_context.try_into().map_err(|_| Error::GenerationContext)?;
             if token == [0; 32] {
                 return Err(Error::GenerationContext);
             }
             Some(token)
         };
-        let config = crate::decode_config(&request.config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
+        let config = crate::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
         let plugin = P::prepare(config).map_err(|error| Error::Plugin(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
@@ -213,11 +209,13 @@ impl<P: Plugin> Owner<P> {
         slot.phase = Phase::Initializing;
         let mut state = self.state(Some(plugin), lifecycle::Action::Initialize);
         state.generation_context = generation_context;
+        state.assignments = assignments.to_vec();
         Ok(state)
     }
 
     async fn initialize(&self, state: &mut State<P>, context: &P::Context) -> Result<(), Error<P>> {
         if state.work.is_none() && state.result.is_none() {
+            context.assign_operations(&state.assignments).map_err(|error| Error::Serving(Arc::new(error)))?;
             let mut plugin = state.plugin.take().ok_or(Error::Phase)?;
             let context = state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token));
             state.work = Some(Box::pin(async move {
@@ -294,73 +292,52 @@ impl<P: Plugin> Owner<P> {
     }
 }
 
-impl<P: Plugin> Operation for Initializing<P> {
-    type Declaration = lifecycle::Initialize;
-    type Resources = Owner<P>;
-    type Error = Error<P>;
-    type Endpoints = ();
-    type Context<'a> = &'a P::Context;
-
-    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
-        Ok(Self { owner, state: None })
-    }
-
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut lifecycle::Initialize, _endpoints: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<()>, Error<P>> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if self.state.is_none() {
-                self.state = Some(self.owner.prepare_initialize(request)?);
-            }
-            self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, context).await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Error<P>> {
-        match self.state.as_mut() {
-            Some(state) => state.finalize().await,
-            None => Ok(()),
-        }
+impl<P: Plugin> crate::operations::lifecycle::PluginLifecycle for Owner<P> {
+    fn begin(self: Arc<Self>, action: lifecycle::Action) -> Box<dyn crate::operations::lifecycle::LifecycleInstance> {
+        Box::new(LifecycleInvocation { owner: self, state: None, action })
     }
 }
-
-impl<P: Plugin> Operation for ShuttingDown<P> {
-    type Declaration = lifecycle::Shutdown;
-    type Resources = Owner<P>;
-    type Error = Error<P>;
-    type Endpoints = ();
-    type Context<'a> = &'a P::Context;
-
-    async fn initialize<'ctx>(owner: Arc<Owner<P>>, _: Self::Context<'ctx>) -> Result<Self, Error<P>> {
-        Ok(Self { owner, state: None })
-    }
-
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, _request: &mut lifecycle::Shutdown, _endpoints: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<()>, Error<P>> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if self.state.is_none() {
-                self.state = Some(self.owner.prepare_shutdown()?);
+impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
+    fn run<'a>(
+        &'a mut self, context: OperationContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
+    ) -> crate::operations::lifecycle::Transition<'a> {
+        Box::pin(async move {
+            let result: Result<(), Error<P>> = async {
+                match self.action {
+                    lifecycle::Action::Initialize => {
+                        if self.state.is_none() {
+                            self.state = Some(self.owner.prepare_initialize(config, generation, assignments)?);
+                        }
+                        let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                        self.owner.initialize(self.state.as_mut().ok_or(Error::Phase)?, &carrier).await
+                    }
+                    lifecycle::Action::Shutdown => {
+                        if self.state.is_none() {
+                            self.state = Some(self.owner.prepare_shutdown()?);
+                        }
+                        let state = self.state.as_mut().ok_or(Error::Phase)?;
+                        if state.work.is_none() && state.result.is_none() {
+                            let carrier = context.dependency::<P::Context>().map_err(|error| Error::Dependency(Arc::new(error)))?;
+                            state.context =
+                                Some(state.generation_context.map_or_else(|| (*carrier).clone(), |token| carrier.with_generation(token)));
+                            state.start_shutdown()?;
+                        }
+                        state.finish().await?;
+                        state.result.as_ref().ok_or(Error::Phase)?.clone()
+                    }
+                }
             }
-            let state = self.state.as_mut().ok_or(Error::Phase)?;
-            if state.work.is_none() && state.result.is_none() {
-                state.context = Some(state.generation_context.map_or_else(|| context.clone(), |token| context.with_generation(token)));
-                state.start_shutdown()?;
-            }
-            state.finish().await?;
-            state.result.as_ref().ok_or(Error::Phase)?.clone()
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+            .await;
+            result.map_err(Into::into)
+        })
     }
-
-    async fn cleanup(&mut self) -> Result<(), Error<P>> {
-        match self.state.as_mut() {
-            Some(state) => state.finalize().await,
-            None => Ok(()),
-        }
+    fn cleanup(&mut self) -> crate::operations::lifecycle::Transition<'_> {
+        Box::pin(async {
+            match self.state.as_mut() {
+                Some(state) => state.finalize().await.map_err(Into::into),
+                None => Ok(()),
+            }
+        })
     }
 }
 

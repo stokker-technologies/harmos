@@ -27,8 +27,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos_runtime::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationInstanceId, OperationPhase, OperationPolicy, ReplaySafety, RestartPolicy,
-    RetryPolicy,
+    Backoff, FailureKind, Jitter, Operation, OperationInstanceId, OperationPhase, OperationPolicy, ReplaySafety, RetryPolicy,
 };
 use harmos_runtime::{Error, Refusal, Runtime};
 
@@ -87,11 +86,10 @@ enum Mode {
     PanicRun,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = ReadContract, infer_request,
         response = Answer,
-        id = "authored.read",
-        version = 1,
+        id = "authored_read",
+
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -99,17 +97,20 @@ enum Mode {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
             },
-            restart: RestartPolicy::Never,
         },
         replay = ReplaySafety::Idempotent,
     )]
+struct ReadContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct ReadContract {
     mode: Mode,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ReadContract(ReadContract),
+    ReadContract(ReadContractDeclaration),
 }
 
 /* === Traits === */
@@ -117,13 +118,15 @@ enum Operations {
 /* === Implementations === */
 
 impl Operation for Read {
-    type Declaration = ReadContract;
-    type Resources = Resources;
+    type Request = ReadContract;
+    type Response = <ReadContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(resources: Arc<Resources>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Resources>().expect("fixture registers its dependency");
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let constructed: Result<Self, Self::Error> = async move {
             resources.0.constructed.fetch_add(1, Ordering::SeqCst);
             if resources.0.fail_new.load(Ordering::SeqCst) {
@@ -152,9 +155,11 @@ impl Operation for Read {
         Ok(operation)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Answer>, Self::Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Answer, Self::Error> = async move {
             self.trace.ran.fetch_add(1, Ordering::SeqCst);
             self.trace.ids.lock().unwrap().push(context.id());
@@ -217,7 +222,19 @@ impl Drop for Read {
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());
-    runtime.operations.register_operation::<Read>("app", Lanes::Serial, Arc::new(Resources(trace.clone()))).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Resources(trace.clone()))).unwrap();
+                dependencies
+            })
+            .implementation::<ReadContractDeclaration, Read>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     (runtime, trace)
 }
 
@@ -230,7 +247,7 @@ fn count(value: &AtomicUsize) -> usize {
 #[tokio::test]
 async fn lazy_construction_lifecycle() {
     let (runtime, trace) = runtime().await;
-    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+    let mut instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
     // Construction waits for the first attempt's initialization.
     assert_eq!(count(&trace.constructed), 0);
     assert_eq!(count(&trace.initialized), 0);
@@ -250,7 +267,7 @@ async fn initialization_refuses_work() {
         let (runtime, trace) = runtime().await;
         trace.fail_new.store(true, Ordering::SeqCst);
         // A refused construction fails the instance before any work.
-        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         assert!(matches!(instance.join().await, Err(Error::OperationFailed { .. })));
         runtime.stop().await.unwrap();
         assert_eq!(count(&trace.initialized), 0);
@@ -263,7 +280,7 @@ async fn initialization_refuses_work() {
         // A failed initialization owns no instance, so a failing
         // stop cannot retain one.
         trace.fail_stop.store(true, Ordering::SeqCst);
-        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let mut instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         assert!(matches!((&mut instance).await, Err(Error::OperationFailed { .. })));
         instance.settle().await.unwrap();
         assert_eq!(instance.status().phase(), OperationPhase::Settled);
@@ -284,7 +301,7 @@ async fn initialization_settles_partial() {
     {
         let (runtime, trace) = runtime().await;
         trace.wait_initialize.store(true, Ordering::SeqCst);
-        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         trace.initializing.notified().await;
         assert_eq!(instance.status().phase(), OperationPhase::Initializing);
         assert!(instance.status().started_at().is_some());
@@ -300,7 +317,7 @@ async fn initialization_settles_partial() {
     {
         let (runtime, trace) = runtime().await;
         trace.wait_initialize.store(true, Ordering::SeqCst);
-        let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         trace.initializing.notified().await;
         tokio::time::advance(Duration::from_secs(2)).await;
         assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::TimedOut))));
@@ -317,7 +334,7 @@ async fn finalization_retries_owner() {
     {
         let (runtime, trace) = runtime().await;
         trace.fail_stop.store(true, Ordering::SeqCst);
-        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let mut instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         assert!((&mut instance).await.is_err());
         // A failed stop retains the owner with its cleanup pending.
         assert_eq!(instance.status().phase(), OperationPhase::Stopping);
@@ -358,7 +375,7 @@ async fn finalization_retries_owner() {
     {
         let (runtime, trace) = runtime().await;
         trace.fail_finalize.store(true, Ordering::SeqCst);
-        let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+        let mut instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
         assert!((&mut instance).await.is_err());
         assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
         assert_eq!(count(&trace.stopped), 1);
@@ -376,7 +393,7 @@ async fn finalization_retries_owner() {
 #[tokio::test]
 async fn panic_stops_finalizes() {
     let (runtime, trace) = runtime().await;
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::PanicRun }).unwrap();
+    let instance = runtime.operation(ReadContract { mode: Mode::PanicRun }).start().await.unwrap();
     assert!(matches!(instance.join().await, Err(Error::OperationPanicked { .. })));
     assert_eq!(count(&trace.initialized), 1);
     assert_eq!(count(&trace.ran), 1);
@@ -393,7 +410,7 @@ async fn response_awaits_cleanup() {
     use std::task::{Context as TaskContext, Waker};
     let (runtime, trace) = runtime().await;
     trace.block_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+    let instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
     let id = instance.id();
     let mut response = Box::pin(harmos_runtime::grpc::response(instance));
     trace.finalizing.notified().await;
@@ -411,7 +428,7 @@ async fn response_awaits_cleanup() {
 async fn response_keeps_owner() {
     let (runtime, trace) = runtime().await;
     trace.fail_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+    let instance = runtime.operation(ReadContract { mode: Mode::Complete }).start().await.unwrap();
     let id = instance.id();
     assert!(harmos_runtime::grpc::response(instance).await.is_err());
     let status = runtime.operations.status(id).expect("failed cleanup retains its owner");
@@ -435,7 +452,7 @@ async fn response_drop_retains() {
     for polled in [false, true] {
         let (runtime, trace) = runtime().await;
         trace.block_finalize.store(true, Ordering::SeqCst);
-        let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
+        let instance = runtime.operation(ReadContract { mode: Mode::WaitRun }).start().await.unwrap();
         let id = instance.id();
         // Only a constructed instance has cleanup to retain.
         trace.running.notified().await;
@@ -459,7 +476,7 @@ async fn response_drop_retains() {
 
     let (runtime, trace) = runtime().await;
     trace.block_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
+    let instance = runtime.operation(ReadContract { mode: Mode::WaitRun }).start().await.unwrap();
     let id = instance.id();
     let mut response = Box::pin(harmos_runtime::grpc::response(instance));
     trace.running.notified().await;
@@ -483,66 +500,82 @@ mod listed {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use harmos_runtime::operations::{AuthoredDeclarations, Context, Contracts, Declarations, OperationPolicy, RestartPolicy, RetryPolicy};
+    use harmos_runtime::operations::{Contracts, Declarations, OperationPolicy, RetryPolicy};
 
-    const POLICY: OperationPolicy = OperationPolicy {
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(1),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 
+    #[harmos_runtime::operation(request = DoublingDeclaration, infer_request, id = "authored_doubling",  response = u32, policy = POLICY)]
+    pub struct DoublingDeclarationDeclaration;
+
     #[harmos_runtime::message]
-    #[harmos_runtime::operation(id = "authored.doubling", version = 1, response = u32, policy = POLICY)]
+
     pub struct DoublingDeclaration {
         value: u32,
     }
 
-    #[harmos_runtime::message]
-    #[harmos_runtime::operation(
-        id = "authored.inferred_owned",
-        version = 1,
+    #[harmos_runtime::operation(request = InferredOwnedDeclaration, infer_request,
+        id = "authored_inferred_owned",
+
         response = u32,
         policy = POLICY
     )]
+    struct InferredOwnedDeclarationDeclaration;
+
+    #[harmos_runtime::message]
+
     struct InferredOwnedDeclaration {
         value: u32,
     }
 
-    #[harmos_runtime::message]
-    #[harmos_runtime::operation(
-        id = "authored.cached_owner",
-        version = 1,
+    #[harmos_runtime::operation(request = CachedOwnerDeclaration, infer_request,
+        id = "authored_cached_owner",
+
         response = u32,
         policy = POLICY,
         key = owner_key
     )]
+    struct CachedOwnerDeclarationDeclaration;
+
+    #[harmos_runtime::message]
+
     struct CachedOwnerDeclaration {
         value: u32,
     }
 
     pub struct Doubling;
 
-    #[harmos_runtime::operation]
-    impl Doubling {
-        pub async fn initialize(_: Arc<()>, _: Context<'_>) -> Self {
-            Self
+    impl harmos_runtime::Operation for Doubling {
+        type Request = DoublingDeclaration;
+        type Response = u32;
+        type Error = harmos_runtime::Error;
+        type Endpoints = ();
+        async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+            Ok(Self)
         }
 
-        async fn run(&mut self, _: Context<'_>, request: &mut DoublingDeclaration) -> Result<u32, harmos_runtime::Error> {
-            Ok(request.value * 2)
+        async fn run(
+            &mut self, _: harmos_runtime::OperationContext, request: &mut DoublingDeclaration, _: &mut (),
+        ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
+            Ok((request.value * 2).into())
         }
     }
 
     struct InferredOwned(Arc<u32>);
 
-    #[harmos_runtime::operation]
-    impl InferredOwned {
-        async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
-            Self(owner)
+    impl harmos_runtime::Operation for InferredOwned {
+        type Request = InferredOwnedDeclaration;
+        type Response = u32;
+        type Error = harmos_runtime::Error;
+        type Endpoints = ();
+        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+            Ok(Self(context.dependency::<u32>()?))
         }
         async fn run(
-            &mut self, _: Context<'_>, _: &mut InferredOwnedDeclaration,
+            &mut self, _: harmos_runtime::OperationContext, _: &mut InferredOwnedDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
         }
@@ -550,13 +583,16 @@ mod listed {
 
     struct DeclaredOwned(Arc<u32>);
 
-    #[harmos_runtime::operation]
-    impl DeclaredOwned {
-        async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
-            Self(owner)
+    impl harmos_runtime::Operation for DeclaredOwned {
+        type Request = DoublingDeclaration;
+        type Response = u32;
+        type Error = harmos_runtime::Error;
+        type Endpoints = ();
+        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+            Ok(Self(context.dependency::<u32>()?))
         }
         async fn run(
-            &mut self, _: Context<'_>, _: &mut DoublingDeclaration,
+            &mut self, _: harmos_runtime::OperationContext, _: &mut DoublingDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
         }
@@ -566,13 +602,13 @@ mod listed {
         value: u32,
         borrowed: std::sync::atomic::AtomicUsize,
         ran: std::sync::atomic::AtomicUsize,
-        operations: std::sync::Weak<harmos_runtime::operations::OperationManager>,
+        operations: std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>,
     }
 
     impl std::borrow::Borrow<u32> for BorrowOwner {
         fn borrow(&self) -> &u32 {
             self.borrowed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            self.operations.upgrade().unwrap().definition("authored.cached_owner").unwrap();
+            self.operations.upgrade().unwrap().definition("authored_cached_owner").unwrap();
             &self.value
         }
     }
@@ -583,13 +619,16 @@ mod listed {
         Some(harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
     }
 
-    #[harmos_runtime::operation]
-    impl CachedOwner {
-        async fn initialize(owner: Arc<BorrowOwner>, _: Context<'_>) -> Self {
-            Self(owner)
+    impl harmos_runtime::Operation for CachedOwner {
+        type Request = CachedOwnerDeclaration;
+        type Response = u32;
+        type Error = harmos_runtime::Error;
+        type Endpoints = ();
+        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+            Ok(Self(context.dependency::<BorrowOwner>()?))
         }
         async fn run(
-            &mut self, _: Context<'_>, _: &mut CachedOwnerDeclaration,
+            &mut self, _: harmos_runtime::OperationContext, _: &mut CachedOwnerDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             self.0.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
@@ -597,13 +636,8 @@ mod listed {
     }
 
     #[harmos_runtime::catalog]
-    pub enum Listing {
-        Doubling(Doubling),
-    }
-
-    #[harmos_runtime::catalog]
     pub enum Declared {
-        Doubling(DoublingDeclaration),
+        Doubling(DoublingDeclarationDeclaration),
     }
 
     #[tokio::test]
@@ -616,9 +650,21 @@ mod listed {
             ran: std::sync::atomic::AtomicUsize::new(0),
             operations: Arc::downgrade(&observed),
         });
-        runtime.operations.register_operation::<CachedOwner>("owner", crate::operations::fixture::Lanes::Open, owner.clone()).unwrap();
-        let first = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
-        let cached = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(owner.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<CachedOwnerDeclarationDeclaration, CachedOwner>(),
+                crate::operations::fixture::Lanes::Open,
+            ))
+            .await
+            .unwrap();
+        let first = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
+        let cached = runtime.operation(CachedOwnerDeclaration { value: 0 }).run().await.unwrap();
         assert!(first.ptr_eq(&cached));
         assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -636,10 +682,34 @@ mod listed {
     async fn macro_retains_owner() {
         let runtime = crate::operations::fixture::runtime().await;
         let original = Arc::new(7_u32);
-        runtime.operations.register_operation::<InferredOwned>("owner", crate::operations::fixture::Lanes::Open, original.clone()).unwrap();
-        runtime.operations.register_operation::<DeclaredOwned>("owner", crate::operations::fixture::Lanes::Open, original.clone()).unwrap();
-        let inferred = runtime.operations.call(InferredOwnedDeclaration { value: 0 }).await.unwrap();
-        let declared = runtime.operations.call(DoublingDeclaration { value: 0 }).await.unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(original.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<InferredOwnedDeclarationDeclaration, InferredOwned>(),
+                crate::operations::fixture::Lanes::Open,
+            ))
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(original.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<DoublingDeclarationDeclaration, DeclaredOwned>(),
+                crate::operations::fixture::Lanes::Open,
+            ))
+            .await
+            .unwrap();
+        let inferred = runtime.operation(InferredOwnedDeclaration { value: 0 }).run().await.unwrap();
+        let declared = runtime.operation(DoublingDeclaration { value: 0 }).run().await.unwrap();
         assert_eq!(*inferred, 7_u32);
         assert_eq!(*declared, 7_u32);
         assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
@@ -652,12 +722,14 @@ mod listed {
 
     #[test]
     fn catalogs_project_declarations() {
-        let projected = Declarations::of::<Listing>().unwrap();
+        let batch = harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+            .implementation::<DoublingDeclarationDeclaration, Doubling>();
+        batch.operations[0].validate().unwrap();
+        let projected = Declared::catalog();
+        assert_eq!(batch.operations[0].definition, projected[0]);
         assert_eq!(projected, Declarations::of::<Declared>().unwrap());
-        assert_eq!(projected, AuthoredDeclarations::of::<Listing>().unwrap());
-        assert_eq!(projected[0].id.as_str(), "authored.doubling");
-        let contracts = Contracts::of::<Listing>().unwrap();
-        assert_eq!(contracts, Contracts::of::<Declared>().unwrap());
-        assert_eq!(contracts[0].version(), 1);
+        assert_eq!(projected[0].id.as_str(), "authored_doubling");
+        let contracts = Contracts::of::<Declared>().unwrap();
+        assert_eq!(contracts[0].fingerprint(), projected[0].fingerprint);
     }
 }

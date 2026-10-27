@@ -47,12 +47,12 @@ struct Probing {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Client {
+impl harmos_operations::lifecycle::Policy for Client {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process-client", provides = Queries, requires = Readings)]
+#[harmos_runtime::plugin(id = "process_client", provides = Queries, requires = Readings)]
 impl harmos_runtime::Plugin for Client {
     type Context = Supervisor;
     type Config = String;
@@ -65,7 +65,7 @@ impl harmos_runtime::Plugin for Client {
 
     async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("initializing");
-        let response = context.call(Read { phase: 1 }).await.map_err(Refusal::from)?;
+        let response = context.call::<contract::ReadDeclaration>(Read { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
@@ -81,12 +81,19 @@ impl harmos_runtime::Plugin for Client {
         Arc::clone(&self.resources)
     }
 
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Probing>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<contract::ProbeDeclaration, Probing>(),
+        )
     }
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        let response = context.call(Read { phase: 2 }).await.map_err(Refusal::from)?;
+        let response = context.call::<contract::ReadDeclaration>(Read { phase: 2 }).await.map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }
@@ -102,13 +109,14 @@ impl harmos_runtime::Plugin for Client {
 }
 
 impl Operation for Probing {
-    type Declaration = Probe;
-    type Resources = Witness;
+    type Request = <contract::ProbeDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <contract::ProbeDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(resources: Arc<Witness>, _context: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Witness>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
@@ -121,8 +129,8 @@ impl Operation for Probing {
         Ok(operation)
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Probe, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Probe, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.resources.mark("probe-started");

@@ -94,9 +94,6 @@ pub enum Origin {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodecError {
-    #[error("failure encoding version is unsupported")]
-    Version,
-
     #[error("failure encoding has trailing bytes")]
     Trailing,
 
@@ -189,10 +186,7 @@ impl Failure {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let (version, rest) = postcard::take_from_bytes::<u8>(bytes).map_err(CodecError::Encoding)?;
-        if version != VERSION {
-            return Err(CodecError::Version);
-        }
+        let (_version, rest) = postcard::take_from_bytes::<u8>(bytes).map_err(CodecError::Encoding)?;
         let (failure, rest) = postcard::take_from_bytes::<Self>(rest).map_err(CodecError::Encoding)?;
         if !rest.is_empty() {
             return Err(CodecError::Trailing);

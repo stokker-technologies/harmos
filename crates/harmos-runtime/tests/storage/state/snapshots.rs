@@ -44,19 +44,13 @@ struct Store {
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "snapshot.add", version = 2, irreversible, history(OldAdd))]
+#[harmos_runtime::transaction(id = "snapshot.add", irreversible)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::transaction(version = 1)]
-#[derive(serde::Serialize, serde::Deserialize)]
-struct OldAdd {
-    amount: i64,
-}
-
-#[harmos_runtime::record(id = "snapshot.seen", version = 1)]
+#[harmos_runtime::record(id = "snapshot.seen")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
@@ -92,7 +86,14 @@ impl Store {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl harmos_runtime::Application for Model {
+    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Transactions;
     type Record = Records;
@@ -110,25 +111,6 @@ impl harmos_runtime::state::Transaction<i64> for Add {
     }
     fn apply(&self, state: &mut i64) {
         *state += self.amount;
-    }
-}
-
-impl harmos_runtime::state::Transaction<i64> for OldAdd {
-    type Error = Refusal;
-    fn check(&self, _: &i64) -> Result<(), Refusal> {
-        panic!("replay must not check")
-    }
-    fn records(&self, _: &i64, _: &mut harmos_runtime::state::Records) {
-        panic!("replay must not collect records")
-    }
-    fn apply(&self, state: &mut i64) {
-        *state += self.amount * 2;
-    }
-}
-
-impl From<OldAdd> for Add {
-    fn from(value: OldAdd) -> Self {
-        Self { amount: value.amount }
     }
 }
 
@@ -244,7 +226,7 @@ async fn journal_replays_alone() {
 }
 
 #[tokio::test]
-async fn snapshot_keeps_history() {
+async fn snapshot_keeps_tail() {
     let store = Store::new();
     let build = |snapshots| {
         Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
@@ -255,16 +237,9 @@ async fn snapshot_keeps_history() {
     let runtime = build(None).runtime_with_storage(&storage).await.unwrap();
     runtime.state.commit(Add { amount: 3 }).await.unwrap();
     runtime.stop().await.unwrap();
-    {
-        let mut entries = store.recovery.entries.lock().unwrap();
-        let first = entries.get_mut(&1).unwrap();
-        let mut group: serde_json::Value = serde_json::from_slice(&first.payload).unwrap();
-        group["entries"][0]["version"] = 1.into();
-        first.payload = serde_json::to_vec(&group).unwrap();
-    }
     let storage = store.manager(config());
     let runtime = build(Some(policy(100))).runtime_with_storage(&storage).await.unwrap();
-    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 6);
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
     runtime.stop().await.unwrap();
     let snapshot: serde_json::Value = serde_json::from_slice(&store.snapshot().payload).unwrap();
     assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
@@ -272,7 +247,7 @@ async fn snapshot_keeps_history() {
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
     let runtime = build(Some(policy(100))).runtime_with_storage(&storage).await.unwrap();
-    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 6);
+    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
     let facts: Vec<_> = runtime.state.query::<Records>(Position::ORIGIN).await.collect();
     assert_eq!(facts.len(), 1);
     assert!(facts[0].is_ok());
@@ -329,7 +304,7 @@ async fn snapshot_waits_queue() {
 
 #[tokio::test]
 async fn corrupt_snapshot_blocks() {
-    for field in ["version", "schema", "position", "undo", "receipts", "tail", "boundary"] {
+    for field in ["schema", "position", "undo", "receipts", "tail", "boundary"] {
         let store = Store::new();
         let storage = store.manager(config());
         let runtime = builder(policy(100)).runtime_with_storage(&storage).await.unwrap();
@@ -340,7 +315,6 @@ async fn corrupt_snapshot_blocks() {
             let snapshot = snapshot.as_mut().unwrap();
             let mut value: serde_json::Value = serde_json::from_slice(&snapshot.payload).unwrap();
             match field {
-                "version" => value["version"] = 2.into(),
                 "schema" => value["schema"]["id"] = "other".into(),
                 "position" => value["position"] = 0.into(),
                 "undo" => value["undos"][0]["inverse"]["id"] = "unknown".into(),

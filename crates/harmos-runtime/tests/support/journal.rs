@@ -397,8 +397,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
         }
         for entry in &entries {
             if let Recorded::Transaction(change) = &entry.value {
-                // Without original bytes a carried historical value cannot
-                // prove which apply produced the accepted state.
+                // Replay Requires The Original Accepted Bytes.
                 let replayed = entry.prepared.as_ref().is_some_and(|prepared| {
                     harmos_runtime::state::TransactionCatalog::replay(&**change, prepared, &mut self.replica).is_ok()
                 });
@@ -474,8 +473,7 @@ fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Inco
     if member.kind == Kind::Record {
         match SystemFact::restore(&member.id, member.version, &member.payload) {
             Ok(Some(fact)) => {
-                let payload =
-                    Payload { prepared: None, id: member.id.clone(), version: member.version, value: Recorded::System(fact), apply: None };
+                let payload = Payload { prepared: None, id: member.id.clone(), version: member.version, value: Recorded::System(fact) };
                 return Ok(Some(envelope(member, payload)));
             }
             Ok(None) => {}

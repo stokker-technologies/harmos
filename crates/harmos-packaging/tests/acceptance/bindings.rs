@@ -30,7 +30,7 @@ use std::process::Stdio;
 // Local Imports
 use crate::fixtures;
 use harmos_domain::config::SchemaSettings;
-use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RetryPolicy};
 use harmos_domain::schema::{
     Cardinality, Described,
     graph::{Field, Kind, Schema},
@@ -48,7 +48,6 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 // The Generated Python Surface Of A Request Carrying Aggregates
@@ -71,36 +70,44 @@ struct Payload {
 }
 
 #[harmos_domain::message]
-#[harmos_domain::operation(response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
 struct Read {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Read, infer_request, id = "read", response = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+struct ReadOperation;
+
 #[harmos_domain::message]
-#[harmos_domain::operation(response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
 struct Exchange {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Exchange, infer_request, id = "exchange", response = Payload, input = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+struct ExchangeOperation;
+
 #[harmos_domain::message]
-#[harmos_domain::operation(response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
 struct Upload {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Upload, infer_request, id = "upload", response = Payload, input = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+struct UploadOperation;
+
 #[harmos_domain::message]
-#[harmos_domain::operation(response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
 struct Download {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
+
+#[harmos_domain::operation(request = Download, infer_request, id = "download", response = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+struct DownloadOperation;
 
 #[harmos_domain::message]
 #[derive(PartialEq)]
@@ -120,10 +127,10 @@ struct Exported {
 
 #[harmos_domain::catalog]
 enum Routes {
-    Read(Read),
-    Exchange(Exchange),
-    Upload(Upload),
-    Download(Download),
+    Read(ReadOperation),
+    Exchange(ExchangeOperation),
+    Upload(UploadOperation),
+    Download(DownloadOperation),
 }
 
 /* === Traits === */
@@ -148,9 +155,9 @@ fn contracts() -> Vec<Contract> {
             kind: Kind::Message { definition: 0 },
         }]],
     };
-    contracts.push(contract(&template, "fixture.checkpoint", "Checkpoint", checkpoint));
-    contracts.push(contract(&template, "fixture.recursive", "Recursive", recursive));
-    contracts.push(contract(&template, "fixture.reserved", "Reserved", reserved()));
+    contracts.push(contract(&template, "fixture_checkpoint", "Checkpoint", checkpoint));
+    contracts.push(contract(&template, "fixture_recursive", "Recursive", recursive));
+    contracts.push(contract(&template, "fixture_reserved", "Reserved", reserved()));
 
     contracts
 }
@@ -214,7 +221,14 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
     schema.root = schema.definitions.len();
     schema.definitions.push(root);
 
-    Contract::new(operation, 2, Codec::Postcard, schema).unwrap().with_grpc(Some(Grpc::new("test.v1", "Shapes", method))).unwrap()
+    {
+        let fingerprint = harmos_domain::schema::identity::contract(id, &schema, "harmos.postcard.v1").unwrap();
+        operation.fingerprint = fingerprint;
+        Contract::new(operation, fingerprint, Codec::Postcard, schema)
+    }
+    .unwrap()
+    .with_grpc(Some(Grpc::new("test.v1", "Shapes", method)))
+    .unwrap()
 }
 
 fn protoc() -> PathBuf {
@@ -319,7 +333,7 @@ fn export_refuses_invalid() {
         cardinality: Cardinality::Variant,
         kind: Kind::Message { definition: 1 },
     });
-    let collision = contract(&contracts[0], "fixture.collision", "Collision", collision);
+    let collision = contract(&contracts[0], "fixture_collision", "Collision", collision);
     assert!(Artifacts::new([&collision]).is_err());
     assert!(!output.exists());
 
@@ -420,7 +434,7 @@ fn aggregate_members_typed() {
     // The Generated Surface Of A Request Carrying Aggregates Is Stable
     let template = Contracts::of::<Routes>().unwrap()[0].clone();
     let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
-    let summary = contract(&template, "fixture.aggregate", "Aggregate", schema);
+    let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
     let artifacts = Artifacts::new([&summary]).unwrap();
     let target = tempfile::tempdir().unwrap();
     let package = target.path().join("package");

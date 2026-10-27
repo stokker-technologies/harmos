@@ -15,6 +15,7 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
 use tokio::sync::watch;
@@ -38,12 +39,14 @@ pub struct Scope<'a> {
     core: &'a ScopeCore,
 }
 
+#[derive(Clone)]
 pub(crate) struct ScopeCore {
     instances: Arc<Instances>,
     parent: Weak<Instance>,
     admission: Admission,
     cause: Option<Position>,
     children: Arc<Mutex<BTreeMap<OperationInstanceId, Child>>>,
+    closed: Arc<AtomicBool>,
 }
 
 pub(crate) struct ClosedScope {
@@ -62,6 +65,10 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl<'a> Scope<'a> {
+    pub(crate) fn owned(&self) -> ScopeCore {
+        self.core.clone()
+    }
+
     pub(crate) fn over(core: &'a ScopeCore) -> Self {
         Self { core }
     }
@@ -78,6 +85,10 @@ impl<'a> Scope<'a> {
     where
         O: Send + 'static,
     {
+        let mut tracked = self.core.children.lock().expect("scope child lock is healthy");
+        if self.core.closed.load(Ordering::Acquire) {
+            return Err(crate::Error::Closing { domain: "operation scope" });
+        }
         let children = Arc::downgrade(&self.core.children);
         let preparation = self.core.instances.reserve(id, lane, submitted, privileged, move || {
             if let Some(children) = children.upgrade() {
@@ -90,7 +101,7 @@ impl<'a> Scope<'a> {
         if let Some(parent) = self.core.parent.upgrade() {
             parent.track(&child.settlement());
         }
-        self.core.children.lock().expect("scope child lock is healthy").insert(id, child);
+        tracked.insert(id, child);
         Ok(preparation.inherit(self.core.cause))
     }
 
@@ -135,11 +146,22 @@ impl std::fmt::Debug for Scope<'_> {
 
 impl ScopeCore {
     pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
-        Self { instances, parent, admission, cause, children: Arc::new(Mutex::new(BTreeMap::new())) }
+        Self {
+            instances,
+            parent,
+            admission,
+            cause,
+            children: Arc::new(Mutex::new(BTreeMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub(crate) fn close(self) -> ClosedScope {
-        let children: Vec<_> = std::mem::take(&mut *self.children.lock().expect("scope child lock is healthy")).into_values().collect();
+        let children: Vec<_> = {
+            let mut children = self.children.lock().expect("scope child lock is healthy");
+            self.closed.store(true, Ordering::Release);
+            std::mem::take(&mut *children).into_values().collect()
+        };
         for child in &children {
             child.control.cancel();
         }

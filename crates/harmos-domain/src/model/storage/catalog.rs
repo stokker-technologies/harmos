@@ -143,9 +143,9 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         value.validate()?;
         let schema = object_schema::<T>()?;
         let item = object_key(value.key(), max_payload_bytes)?;
-        let length = value.encoded_len();
+        let length = value.encoded_size();
         check_length(length, max_payload_bytes)?;
-        let payload = value.encode_to_vec();
+        let payload = value.encode();
         if payload.len() != length {
             return Err(invalid("object codec reported an inconsistent length"));
         }

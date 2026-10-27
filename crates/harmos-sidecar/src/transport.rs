@@ -44,7 +44,7 @@ use crate::{Frame, FramePayload};
 
 /* === Constants === */
 
-const VERSION: u8 = 3;
+const VERSION: u8 = 1;
 const CONTROL_LIMIT: usize = 64;
 const COALESCE_BYTES: usize = 64 * 1024;
 
@@ -69,7 +69,7 @@ pub enum Packet {
     Cancellation { id: u64, preceding: u64 },
 }
 
-// Variant Order Is Fixed By Version 3. No Owned Allocation Occurs While Decoding.
+// Variant Order Is Fixed By Version 1. No Owned Allocation Occurs While Decoding.
 #[derive(Serialize, Deserialize)]
 enum Body<'a> {
     Call {
@@ -155,10 +155,7 @@ impl Packet {
         if bytes.is_empty() || bytes.len() > channel.limit() {
             return Err(invalid("packet exceeds channel limit or is empty"));
         }
-        let (version, rest) = postcard::take_from_bytes::<u8>(&bytes).map_err(invalid)?;
-        if version != VERSION {
-            return Err(invalid("unsupported sidecar transport version"));
-        }
+        let (_version, rest) = postcard::take_from_bytes::<u8>(&bytes).map_err(invalid)?;
         let (body, rest) = postcard::take_from_bytes::<Body<'_>>(rest).map_err(invalid)?;
         if !rest.is_empty() {
             return Err(invalid("trailing sidecar transport bytes"));
@@ -265,7 +262,7 @@ async fn write_with<W: AsyncWrite + Unpin>(writer: &mut W, packet: &Packet, head
     }
     header.resize(prefix_size, 0);
     header[..4].copy_from_slice(&((size - 4) as u32).to_be_bytes());
-    // Version 3's Fixed Body Tags Match The Canonical Serializer Above.
+    // Version 1's Fixed Body Tags Match The Canonical Serializer Above.
     match packet {
         Packet::Frame(Frame::Call { id, method, .. }) => {
             postcard::to_slice(&(VERSION, 0_u32, id, method.as_str(), payload.len()), &mut header[4..]).map_err(invalid)?;

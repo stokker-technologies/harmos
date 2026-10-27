@@ -136,7 +136,7 @@ fn unknown_mode_refused() {
     refused::<known::Boxed>(&segmented);
 
     // Portable And Protobuf Decoders Both Refuse The Added Variant.
-    let remote = Message::encode_to_vec(&newer::Mode::Remote);
+    let remote = Message::encode(&newer::Mode::Remote);
     assert!(<known::Mode as Message>::decode(&remote).is_err());
     refused::<known::Mode>(&wire(&newer::Mode::Remote));
 }
@@ -160,7 +160,7 @@ fn known_mode_defaults() {
     let wrapped = wire(&newer::Wrapped::Hold(Box::new(newer::Mode::Manual)));
     assert_eq!(read::<known::Wrapped>(&wrapped), known::Wrapped::Hold(Box::new(known::Mode::Manual)));
 
-    let manual = Message::encode_to_vec(&newer::Mode::Manual);
+    let manual = Message::encode(&newer::Mode::Manual);
     assert_eq!(<known::Mode as Message>::decode(&manual).unwrap(), known::Mode::Manual);
 }
 

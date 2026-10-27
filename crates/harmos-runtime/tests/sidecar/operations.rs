@@ -30,18 +30,18 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{assembly, service_status};
+use super::assembly;
 use crate::sidecar::support::Bank;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{
-    Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
+    Declarations, Operation, OperationDeclaration, OperationDefinition as Definition, OperationPolicy, RetryPolicy, Visibility,
 };
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginTransition, Router,
 };
+use harmos_runtime::services::ServiceContext;
 use harmos_runtime::sidecar::{Attach, Attached, Notice, Supervised};
-use harmos_runtime::{services::Service, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -55,7 +55,7 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Counts>>> 
 
 type RetirementGate = Arc<Mutex<Option<(Arc<Notify>, Arc<Notify>)>>>;
 type Source = Advertised<harmos_sidecar::PluginNative<Endpoint>>;
-pub(crate) type Resident<A> = Supervised<Bank, A, fn(&Service<Bank>, Notice)>;
+pub(crate) type Resident<A> = Supervised<Bank, A, fn(&ServiceContext<Bank>, Notice)>;
 type Backends<A> = PluginBackend<(), Backend<A>, ()>;
 
 /* === Structs === */
@@ -109,10 +109,9 @@ struct Endpoint {
     counts: Arc<Counts>,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "fixture.read",
-    version = 1,
+#[harmos_runtime::operation(request = Read, infer_request,
+    id = "read",
+
     policy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
@@ -123,13 +122,16 @@ struct Endpoint {
                 jitter: harmos_runtime::operations::Jitter::None,
             },
         },
-        restart: RestartPolicy::Never,
     },
     response = (),
     description = "Reads a device",
     visibility = Visibility::Shared,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
+struct ReadDeclaration;
+
+#[harmos_runtime::message]
+
 struct Read {}
 
 struct ReadOperation {
@@ -139,8 +141,11 @@ struct ReadOperation {
 
 struct RefreshOperation(Arc<Counts>);
 
+#[harmos_runtime::operation(request = Refresh, infer_request, id = "refresh",  policy = ReadDeclaration::POLICY, response = ())]
+struct RefreshDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "fixture.refresh", version = 1, policy = Read::POLICY, response = ())]
+
 struct Refresh {}
 
 #[derive(Clone)]
@@ -152,10 +157,10 @@ struct Advertised<S> {
 }
 
 struct Backend<A: Attach> {
-    services: Option<harmos_runtime::operations::OperationManager>,
+    services: Option<harmos_runtime::operations::OperationManager<super::support::Lanes>>,
     retirement_gate: RetirementGate,
     resident: Option<Resident<A>>,
-    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
+    lease: Option<harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>>,
     registration: Option<harmos_runtime::operations::PluginRegistration>,
     sdk: Option<harmos_runtime::operations::PluginSdkRegistration>,
     initializing: Option<harmos_runtime::operations::EncodedInvocation>,
@@ -170,8 +175,8 @@ struct Host<A: Attach> {
     resident: Resident<A>,
     lane: Lanes,
     capacity: std::num::NonZeroUsize,
-    supervision: harmos_runtime::operations::OperationPolicy,
-    operations: harmos_runtime::operations::OperationManager,
+    supervision: harmos_runtime::ServicePolicy,
+    operations: harmos_runtime::operations::OperationManager<super::support::Lanes>,
     retirement_gate: RetirementGate,
 }
 
@@ -185,22 +190,15 @@ pub(crate) struct Calling(pub(crate) harmos_runtime::operations::EncodedInvocati
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub(crate) enum Lanes {
-    #[default]
-    NativeOpen,
-
-    #[lane(serial)]
-    NativeSerial,
-}
+pub(crate) use super::support::Lanes;
 
 #[harmos_runtime::catalog]
 enum Operations {
-    Refresh(Refresh),
-    Read(Read),
-    Upload(streams::Upload),
-    Download(streams::Download),
-    Exchange(streams::Exchange),
+    Refresh(RefreshDeclaration),
+    Read(ReadDeclaration),
+    Upload(streams::UploadDeclaration),
+    Download(streams::DownloadDeclaration),
+    Exchange(streams::ExchangeDeclaration),
 }
 
 /* === Traits === */
@@ -218,12 +216,13 @@ impl harmos_runtime::operations::ContextValue for Tenant {
 }
 
 impl Operation for ReadOperation {
-    type Declaration = Read;
-    type Resources = Counts;
+    type Request = Read;
+    type Response = <ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos_runtime::sidecar::Supervisor;
-    async fn initialize<'ctx>(counts: Arc<Counts>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let counts = context.dependency::<Counts>().expect("fixture registers its dependency");
+        let context = context.dependency::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
         let constructed: Result<Self, Self::Error> = async move {
             counts.prepared.fetch_add(1, Ordering::SeqCst);
             if counts.fail_prepare.load(Ordering::SeqCst) {
@@ -244,8 +243,8 @@ impl Operation for ReadOperation {
                 return Err(std::io::Error::other("partial initialization failed"));
             }
             if operation.counts.initialization_child.load(Ordering::SeqCst) {
-                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
-                *operation.counts.initialization_saved.lock().unwrap() = Some(context.clone());
+                context.call::<RefreshDeclaration>(Refresh {}).await.map_err(std::io::Error::other)?;
+                *operation.counts.initialization_saved.lock().unwrap() = Some((*context).clone());
             }
             Ok(())
         }
@@ -253,16 +252,17 @@ impl Operation for ReadOperation {
         started?;
         Ok(operation)
     }
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, _request: &mut Read, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Read, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+        let context = context.dependency::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> = async move {
             if self.counts.submit_child.load(Ordering::SeqCst) {
-                return submitted(context, &self.counts).await.map_err(std::io::Error::other);
+                return submitted(&context, &self.counts).await.map_err(std::io::Error::other);
             }
             let initialized = self.counts.initialization_saved.lock().unwrap().take();
             if let Some(initialized) = initialized {
-                if initialized.call(Refresh {}).await.is_ok() {
+                if initialized.call::<RefreshDeclaration>(Refresh {}).await.is_ok() {
                     return Err(std::io::Error::other("initialization context remained active"));
                 }
                 self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
@@ -275,13 +275,13 @@ impl Operation for ReadOperation {
             if self.counts.call_child.load(Ordering::SeqCst) {
                 let previous = self.counts.saved.lock().unwrap().take();
                 if let Some(previous) = previous {
-                    if previous.call(Refresh {}).await.is_ok() {
+                    if previous.call::<RefreshDeclaration>(Refresh {}).await.is_ok() {
                         return Err(std::io::Error::other("expired attempt admitted a child"));
                     }
                     self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
                 }
-                *self.counts.saved.lock().unwrap() = Some(context.clone());
-                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
+                *self.counts.saved.lock().unwrap() = Some((*context).clone());
+                context.call::<RefreshDeclaration>(Refresh {}).await.map_err(std::io::Error::other)?;
             }
             if self.attempts == 1 {
                 return Err(std::io::Error::other("one transient failure"));
@@ -308,16 +308,16 @@ impl Operation for ReadOperation {
 }
 
 impl Operation for RefreshOperation {
-    type Declaration = Refresh;
-    type Resources = Counts;
+    type Request = Refresh;
+    type Response = <RefreshDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos_runtime::sidecar::Supervisor;
-    async fn initialize<'ctx>(counts: Arc<Counts>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let counts = context.dependency::<Counts>().expect("fixture registers its dependency");
         Ok(Self(counts))
     }
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, _request: &mut Refresh, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _request: &mut Refresh, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.children.fetch_add(1, Ordering::SeqCst);
@@ -339,17 +339,16 @@ impl Operation for RefreshOperation {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Endpoint {
-    const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
+impl harmos_operations::lifecycle::Policy for Endpoint {
+    const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_runtime::plugin(id = "operation-handshake", provides = Operations, requires = ())]
+#[harmos_runtime::plugin(id = "operation_handshake", provides = Operations, requires = ())]
 impl harmos_runtime::Plugin for Endpoint {
     type Config = usize;
     type Context = harmos_runtime::sidecar::Supervisor;
@@ -371,11 +370,23 @@ impl harmos_runtime::Plugin for Endpoint {
     fn resources(&self) -> Arc<Counts> {
         self.counts.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Self::Context>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<ReadOperation>(self.resources())?;
-        table.bind_operation::<RefreshOperation>(self.resources())?;
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<ReadDeclaration, ReadOperation>(),
+        )?;
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<RefreshDeclaration, RefreshOperation>(),
+        )?;
         streams::bind(table, self.resources())?;
         Ok(())
     }
@@ -448,7 +459,6 @@ impl<A: Attach> Managed<A> {
         configure: impl FnOnce(Resident<A>) -> Resident<A>,
     ) -> Self {
         let runtime = assembly()
-            .register(Lanes::catalog())
             .operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
                 ..Default::default()
@@ -456,12 +466,12 @@ impl<A: Attach> Managed<A> {
             .runtime()
             .await
             .unwrap();
-        let resident = configure(Supervised::new(source, notices as fn(&Service<Bank>, Notice)).demand_keys(demand_keys));
+        let resident = configure(Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).demand_keys(demand_keys));
         Self::from_runtime(runtime, definitions, resident, lane, capacity, harmos_runtime::services::POLICY)
     }
     pub(crate) fn from_runtime(
         runtime: harmos_runtime::Runtime<Bank>, definitions: PluginDefinitions, resident: Resident<A>, lane: Lanes,
-        capacity: std::num::NonZeroUsize, supervision: harmos_runtime::operations::OperationPolicy,
+        capacity: std::num::NonZeroUsize, supervision: harmos_runtime::ServicePolicy,
     ) -> Self {
         let host = Host {
             ready: None,
@@ -480,10 +490,10 @@ impl<A: Attach> Managed<A> {
     pub(crate) fn status(&self, id: &str) -> Option<harmos_runtime::plugin::PluginStatus> {
         self.manager.status(id)
     }
-    pub(crate) fn publication(&self) -> harmos_runtime::Result<()> {
-        let selected = harmos_runtime::operations::WireDeclaration::of::<harmos_runtime::operations::streams::Publish>()
+    pub(crate) async fn publication(&self) -> harmos_runtime::Result<()> {
+        let selected = harmos_runtime::operations::WireDeclaration::of::<harmos_operations::streams::Publish>()
             .contract()
-            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host.publish".into(), source: Arc::new(source) })?;
+            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })?;
         let required = self
             .manager
             .definitions()
@@ -494,14 +504,16 @@ impl<A: Attach> Managed<A> {
                 reason: "provider differs from the original selected native contract",
             });
         }
-        self.runtime.operations.register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-            "native-publication-core",
-            self.host.lane,
-            Arc::new(self.host.resident.clone()),
-        )
+        self.runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                crate::sidecar::publication_registration(Arc::new(self.host.resident.clone())),
+                self.host.lane,
+            ))
+            .await
     }
 
-    pub(crate) async fn call<O>(&self, request: O) -> harmos_runtime::Result<O::Response>
+    pub(crate) async fn call<O>(&self, request: O::Request) -> harmos_runtime::Result<O::Response>
     where
         O: OperationDeclaration,
     {
@@ -509,7 +521,7 @@ impl<A: Attach> Managed<A> {
     }
 
     pub(crate) async fn call_in<O>(
-        &self, context: harmos_runtime::operations::CallContext, request: O,
+        &self, context: harmos_runtime::operations::CallContext, request: O::Request,
     ) -> harmos_runtime::Result<O::Response>
     where
         O: OperationDeclaration,
@@ -517,19 +529,24 @@ impl<A: Attach> Managed<A> {
         let contract = harmos_runtime::operations::WireDeclaration::of::<O>()
             .contract()
             .map_err(|source| harmos_runtime::Error::OperationFailed { operation: O::ID.into(), source: Arc::new(source) })?;
-        let selected = self
-            .manager
-            .definitions()
-            .flat_map(|definition| &definition.contributions.wire_contracts)
-            .find(|selected| selected.operation().id.as_str() == O::ID);
-        if selected != Some(&contract) {
+        let selected = self.manager.definitions().find_map(|definition| {
+            definition
+                .contributions
+                .wire_contracts
+                .iter()
+                .find(|selected| selected.operation().id.as_str() == O::ID)
+                .map(|selected| (definition.id.as_str(), selected))
+        });
+        if selected.map(|(_, contract)| contract) != Some(&contract) {
             return Err(harmos_runtime::Error::InvalidInput {
                 field: "fixture wire operation",
                 reason: "caller differs from the original frozen contract",
             });
         }
-        let payload = harmos_runtime::Message::encode_to_vec(&request);
-        let invocation = self.runtime.operations.with_context(context).submit_encoded(O::ID, payload)?;
+        let payload = harmos_runtime::Message::encode(&request);
+        let target = harmos_runtime::QualifiedId::qualify(selected.expect("validated fixture contract").0, O::ID)
+            .expect("fixture uses portable owner and local identities");
+        let invocation = self.runtime.operations.with_context(context).submit_encoded(target.as_str(), payload)?;
         let reply = Calling(invocation).await?;
         harmos_runtime::Message::decode(&reply)
             .map_err(|source| harmos_runtime::Error::OperationPayload { operation: O::ID.into(), source })
@@ -623,7 +640,11 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 authority,
                 &definition.configuration,
                 std::num::NonZeroUsize::new(
-                    2 * definition.configuration.len() + std::mem::size_of::<harmos_runtime::operations::lifecycle::Initialize>() + 64 + 20,
+                    2 * definition.configuration.len()
+                        + std::mem::size_of::<harmos_operations::lifecycle::InitializeRequest>()
+                        + 64
+                        + 30
+                        + 3072,
                 )
                 .unwrap(),
             )?,
@@ -702,7 +723,7 @@ impl<S: Attach> Attach for Advertised<S> {
     fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
@@ -749,7 +770,7 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
 
 /* === Private Functions === */
 
-fn notices(_: &Service<Bank>, _: Notice) {}
+fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
 // Drives submitted children through the sidecar binding of the host.
 async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) -> Result<(), harmos_sidecar::CallError> {
@@ -757,7 +778,7 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     use harmos_runtime::operations::{Host, Instance};
 
     // Status, Then Join
-    let joined = host.submit(Refresh {}).await?;
+    let joined = host.submit::<RefreshDeclaration>(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let status = joined.status().await?;
     assert_eq!(status.phase, Phase::Running);
@@ -765,12 +786,12 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     joined.join().await?;
 
     // Cancel, Then Join
-    let cancelled = host.submit(Refresh {}).await?;
+    let cancelled = host.submit::<RefreshDeclaration>(Refresh {}).await?;
     counts.refresh_started.notified().await;
     assert!(Instance::cancel_and_join(cancelled).await.is_err());
 
     // Dropping The Handle Releases The Child
-    let dropped = host.submit(Refresh {}).await?;
+    let dropped = host.submit::<RefreshDeclaration>(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
     drop(dropped);
@@ -782,11 +803,11 @@ async fn submitted(host: &harmos_runtime::sidecar::Supervisor, counts: &Counts) 
     .await;
 
     // Detaching Keeps The Child Running Within This Attempt
-    let detached = host.submit(Refresh {}).await?;
+    let detached = host.submit::<RefreshDeclaration>(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.
-    let refused = host.call(harmos_runtime::builtin::Status::of(id)).await;
+    let refused = host.call::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::StatusRequest::of(id)).await;
     *counts.detached_status.lock().unwrap() = refused.err().map(|error| {
         std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
             .map(ToString::to_string)

@@ -34,8 +34,8 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
-    pub(crate) fn new(
+impl Manager {
+    pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
     ) -> Self {
         Self {
@@ -45,6 +45,7 @@ impl OperationManager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                service_runner: crate::services::authored_runner::<A>,
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,
@@ -72,8 +73,8 @@ impl OperationManager {
 
     #[cfg(feature = "grpc")]
     pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: crate::operations::StreamItem<O>, endpoints: P,
-    ) -> Result<OperationInstance<O>> {
+        &self, request: crate::operations::StreamItem<O::Request>, endpoints: P,
+    ) -> Result<Running<O>> {
         self.admit::<O, P>((crate::operations::binding::Request::charged(request)?, endpoints), None, &[], &Source::Host.external()?, None)
     }
 

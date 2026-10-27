@@ -39,7 +39,7 @@ pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<
 
 #[derive(Clone)]
 pub(super) struct Router {
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
     settings: server::Settings,
     calls: server::Calls,
 }
@@ -51,7 +51,7 @@ pub(super) struct Router {
 /* === Implementations === */
 
 impl Router {
-    pub(super) fn new(operations: crate::operations::OperationManager, settings: server::Settings) -> Result<Self, tonic::Status> {
+    pub(super) fn new(operations: crate::operations::Manager, settings: server::Settings) -> Result<Self, tonic::Status> {
         settings.validate()?;
         Ok(Self { operations, settings, calls: server::Calls::new(settings.calls)? })
     }
@@ -92,6 +92,7 @@ where
 /* === Public Functions === */
 
 // The gRPC handler of one declaration, selected by the directions it streams.
+#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
     use crate::operations::Direction;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {

@@ -86,9 +86,6 @@ pub enum Error {
         source: Box<PluginDefinitionError>,
     },
 
-    #[error("operation `{id}` is declared by both `{first}` and `{second}`")]
-    OperationConflict { id: String, first: String, second: String },
-
     #[error("plugin `{artifact}` requires incompatible wire operation `{operation}` from `{provider}`: {reason}")]
     IncompatibleOperation { artifact: String, operation: String, provider: String, reason: &'static str },
 
@@ -155,13 +152,6 @@ impl PluginGraph {
             artifact.validate().map_err(|source| Error::Definition { artifact: id.clone(), source: Box::new(source) })?;
             for operation in &artifact.contributions.operations {
                 let providers = operations.entry(operation.id.clone()).or_default();
-                if let Some(first) = providers.first() {
-                    let canonical = artifact.contributions.wire_contracts.iter().any(|contract| contract.operation().id == operation.id)
-                        && declared[first].contributions.wire_contracts.iter().any(|contract| contract.operation().id == operation.id);
-                    if !canonical {
-                        return Err(Error::OperationConflict { id: operation.id.to_string(), first: first.clone(), second: id });
-                    }
-                }
                 providers.push(id.clone());
             }
             for stream in &artifact.contributions.streams {

@@ -20,16 +20,15 @@ use std::time::Duration;
 // Local Imports
 use harmos_runtime::grpc::dynamic::{Event, Operation};
 use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireDeclaration};
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
 
-const POLICY: OperationPolicy = OperationPolicy {
+const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -46,23 +45,29 @@ struct Value {
     optional: Option<u32>,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "dynamic.unary", response = Value, policy = POLICY,
-    version = 1, grpc(package = "dynamic.v1", service = "External", method = "Unary"),
+#[harmos_runtime::operation(request = Unary, infer_request,
+    id = "dynamic_unary", response = Value, policy = POLICY,
+     grpc(package = "dynamic.v1", service = "External", method = "Unary"),
 )]
+struct UnaryDeclaration;
+
+#[harmos_runtime::message]
+
 struct Unary {
     small: u32,
     wide: u64,
     optional: Option<u32>,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "dynamic.exchange", response = Value, input = Value,
-    output = Value, policy = POLICY, version = 1,
+#[harmos_runtime::operation(request = Exchange, infer_request,
+    id = "dynamic_exchange", response = Value, input = Value,
+    output = Value, policy = POLICY,
     grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
 )]
+struct ExchangeDeclaration;
+
+#[harmos_runtime::message]
+
 struct Exchange {
     small: u32,
     wide: u64,
@@ -83,7 +88,7 @@ struct Exchange {
 
 #[test]
 fn dynamic_wire_interop() {
-    let contract = WireDeclaration::of::<Unary>().contract().unwrap();
+    let contract = WireDeclaration::of::<UnaryDeclaration>().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
     let json = br#"{"small":7,"wide":"18446744073709551615","optional":0}"#;
     let payload = operation.request(json).unwrap();
@@ -114,7 +119,7 @@ fn dynamic_wire_interop() {
 
 #[test]
 fn dynamic_stream_interop() {
-    let contract = WireDeclaration::of::<Exchange>().contract().unwrap();
+    let contract = WireDeclaration::of::<ExchangeDeclaration>().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
     let json = br#"{"small":7,"wide":"9"}"#;
     assert!(operation.client_streaming());

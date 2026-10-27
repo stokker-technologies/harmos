@@ -24,12 +24,12 @@ use crate::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::plugin::PluginState;
 use schematic::model::{Connection, Point, Snapshot};
-use schematic::operations::Operations;
-use schematic::operations::schematic::{analyze, propose, validate};
+use schematic_operations::Operations;
+use schematic_operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
 
-const PLUGIN: &str = "schematic-tools";
+const PLUGIN: &str = "schematic_tools";
 
 /* === Macros === */
 
@@ -53,8 +53,8 @@ enum Lanes {
 
 /* === Private Functions === */
 
-fn route() -> propose::ProposeRoute {
-    propose::ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }
+fn route() -> propose::ProposeRouteRequest {
+    propose::ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }
 }
 
 fn corner() -> [Point; 3] {
@@ -85,7 +85,7 @@ async fn guest_composition_walks() {
     assert_eq!(declaration.id, PLUGIN);
     let mut declared: Vec<_> = declaration.operations.iter().map(|operation| operation.id.to_string()).collect();
     declared.sort();
-    assert_eq!(declared, ["schematic.analyze", "schematic.route", "schematic.validate"]);
+    assert_eq!(declared, ["schematic_analyze", "schematic_route", "schematic_validate"]);
 
     // Scene 3: Registration And Initialization Make The Guest Ready
     let settings = harmos_runtime::config::PluginSettings { configuration: b"null".to_vec(), ..Default::default() };
@@ -95,13 +95,15 @@ async fn guest_composition_walks() {
     assert_eq!(ready.state, PluginState::Ready);
 
     // Scene 4: A Typed Caller Routes Through The Guest
-    let routed = runtime.operations.call(route()).await.unwrap();
+    let routed = runtime.operation(route()).run().await.unwrap();
     assert_eq!(routed.points, corner());
 
     // Scene 5: Validation Reports Every Diagnostic Of A Broken Schematic
     let validated = runtime
-        .operations
-        .call(validate::ValidateSchematic { schematic: Snapshot { symbols: vec![1, 1], connections: vec![Connection { from: 1, to: 2 }] } })
+        .operation(validate::ValidateSchematicRequest {
+            schematic: Snapshot { symbols: vec![1, 1], connections: vec![Connection { from: 1, to: 2 }] },
+        })
+        .run()
         .await
         .unwrap();
     assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 To 2 References A Missing Symbol"]);
@@ -109,7 +111,7 @@ async fn guest_composition_walks() {
     // Scene 6: Analysis Streams Its Findings Before Its Response
     let settings = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
     let request =
-        analyze::AnalyzeSchematic { schematic: Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] } };
+        analyze::AnalyzeSchematicRequest { schematic: Snapshot { symbols: vec![1, 2], connections: vec![Connection { from: 1, to: 2 }] } };
     let mut download = runtime.operations.download::<analyze::AnalyzeSchematic>(request, settings).unwrap();
     for expected in ["2 symbols", "1 connections", "Analysis complete"] {
         assert_eq!(download.next().await.unwrap().unwrap().text, expected);
@@ -122,12 +124,12 @@ async fn guest_composition_walks() {
     let reloaded = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, ready.generation);
-    let routed = runtime.operations.call(route()).await.unwrap();
+    let routed = runtime.operation(route()).run().await.unwrap();
     assert_eq!(routed.points, corner());
 
     // Scene 8: Stopping The Guest Withdraws Its Operations
     runtime.plugin.stop(PLUGIN).await.unwrap();
-    assert!(runtime.operations.call(route()).await.is_err());
+    assert!(runtime.operation(route()).run().await.is_err());
 
     // Scene 9: The Host Stops Cleanly
     runtime.stop().await.unwrap();

@@ -53,7 +53,7 @@ fn authoring_refusals_compile() {
 
     for (fixture, expected) in [
         ("operation_on_variant.rs", "catalogs only assemble types"),
-        ("operation_request_argument.rs", "the operation is its request type"),
+        ("duplicate_request_inference.rs", "conflicting implementations"),
         ("unsafe_id.rs", "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments"),
         ("zero_window.rs", "a stream window must retain at least 1 row"),
         ("absent_axis_field.rs", "the declared `axis` names no field of this row"),
@@ -73,7 +73,7 @@ fn authoring_refusals_compile() {
         ("capacitated_default_lane.rs", "the default lane is unbounded"),
         ("defaultless_lanes.rs", "exactly one lane `#[default]`"),
         ("doubly_defaulted_lanes.rs", "exactly one lane `#[default]`"),
-        ("operation_owned_request.rs", "request and endpoints must be borrowed"),
+        ("operation_on_impl.rs", "operation belongs on the implementation struct"),
         // Direct artifact declaration failures.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),

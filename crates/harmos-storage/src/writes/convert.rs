@@ -27,7 +27,7 @@ use crate::schema::{
     Cardinality,
     graph::{Field, Kind, Schema},
 };
-use crate::storage::{ObjectKey, ObjectValue, PayloadEncoding, RecordInput, StreamInput};
+use crate::storage::{ObjectKey, ObjectValue, RecordInput, StreamInput};
 use crate::{Error, Identifier, Result};
 
 /* === Constants === */
@@ -55,11 +55,11 @@ const MAX_DEPTH: usize = 64;
 /// schema/encoding validation and cumulative `max_bytes` limit apply as encoding.
 /// This does not include consumer codec decoding or its projected DTO allocations.
 #[tracing::instrument(name = "storage.arrow.encode_payloads_memory", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
-pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<usize> {
+pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, max_bytes: NonZeroUsize) -> Result<usize> {
     let result: Result<usize> = (|| {
         let mut count = payload_counter(payload.len(), max_bytes)?;
         for row in 0..payload.len() {
-            encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
+            encode_message(schema, schema.root, payload, row, 0, &mut count)?;
         }
         Ok(count.bytes)
     })();
@@ -68,15 +68,15 @@ pub fn encode_payloads_memory(schema: &Schema, payload: &StructArray, encoding: 
 }
 
 #[tracing::instrument(name = "storage.arrow.encode_payloads", level = "trace", skip_all, fields(rows = payload.len(), max_bytes = max_bytes.get(), outcome = "cancelled"))]
-pub fn encode_payloads(schema: &Schema, payload: &StructArray, encoding: PayloadEncoding, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
+pub fn encode_payloads(schema: &Schema, payload: &StructArray, max_bytes: NonZeroUsize) -> Result<Vec<Vec<u8>>> {
     let result: Result<Vec<Vec<u8>>> = (|| {
         let mut count = payload_counter(payload.len(), max_bytes)?;
         let mut rows = Vec::with_capacity(payload.len());
         for row in 0..payload.len() {
             let previous = count.bytes;
-            encode_message(schema, schema.root, payload, row, encoding, 0, &mut count)?;
+            encode_message(schema, schema.root, payload, row, 0, &mut count)?;
             let mut bytes = Vec::with_capacity(count.bytes - previous);
-            encode_message(schema, schema.root, payload, row, encoding, 0, &mut bytes)?;
+            encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
             rows.push(bytes);
         }
         Ok(rows)
@@ -112,7 +112,7 @@ pub fn records(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema
                 })
                 .transpose()?;
             let mut bytes = Vec::new();
-            encode_message(schema, schema.root, payload, row, batch.schema.payload_encoding, 0, &mut bytes)?;
+            encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
             Ok(RecordInput {
                 schema: batch.schema.clone(),
                 scope: scope.cloned().or(authored_scope),
@@ -155,7 +155,7 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
                 return Err(invalid());
             }
             let mut bytes = Vec::new();
-            encode_message(schema, schema.root, payload, row, batch.schema.payload_encoding, 0, &mut bytes)?;
+            encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
             Ok(ObjectValue { schema: batch.schema.clone(), item: ObjectKey::new(items.value(row), max_key_bytes)?, payload: bytes })
         })
         .collect()
@@ -197,7 +197,7 @@ fn scalar<T: serde::Serialize>(value: T, output: &mut impl Sink) -> Result<()> {
     output.append(encoded)
 }
 fn encode_message(
-    schema: &Schema, definition: usize, values: &StructArray, row: usize, encoding: PayloadEncoding, depth: usize, output: &mut impl Sink,
+    schema: &Schema, definition: usize, values: &StructArray, row: usize, depth: usize, output: &mut impl Sink,
 ) -> Result<()> {
     if depth > MAX_DEPTH || values.is_null(row) {
         return Err(invalid());
@@ -220,18 +220,14 @@ fn encode_message(
         if discriminant.is_null(row) || discriminant.value(row) as usize != index {
             return Err(invalid());
         }
-        if encoding == PayloadEncoding::PostcardV1 {
-            scalar(index as u32, output)?;
-        }
-        return encode_value(schema, field, value.as_ref(), row, encoding, depth + 1, output);
+        scalar(index as u32, output)?;
+        return encode_value(schema, field, value.as_ref(), row, depth + 1, output);
     }
     for field in fields {
         let value = values.column_by_name(&field.name).ok_or_else(invalid)?;
         match field.cardinality {
             Cardinality::Optional => {
-                if encoding == PayloadEncoding::PostcardV1 {
-                    scalar(!value.is_null(row), output)?;
-                }
+                scalar(!value.is_null(row), output)?;
                 if value.is_null(row) {
                     continue;
                 }
@@ -243,72 +239,48 @@ fn encode_message(
                 }
                 let start = lists.value_offsets()[row] as usize;
                 let end = lists.value_offsets()[row + 1] as usize;
-                if encoding == PayloadEncoding::PostcardV1 {
-                    scalar((end - start) as u64, output)?;
-                }
+                scalar((end - start) as u64, output)?;
                 for index in start..end {
-                    encode_value(schema, field, lists.values().as_ref(), index, encoding, depth + 1, output)?;
+                    encode_value(schema, field, lists.values().as_ref(), index, depth + 1, output)?;
                 }
                 continue;
             }
             Cardinality::Required | Cardinality::Variant => {}
         }
-        encode_value(schema, field, value.as_ref(), row, encoding, depth + 1, output)?;
+        encode_value(schema, field, value.as_ref(), row, depth + 1, output)?;
     }
     Ok(())
 }
-fn encode_value(
-    schema: &Schema, field: &Field, array: &dyn Array, row: usize, encoding: PayloadEncoding, depth: usize, output: &mut impl Sink,
-) -> Result<()> {
+fn encode_value(schema: &Schema, field: &Field, array: &dyn Array, row: usize, depth: usize, output: &mut impl Sink) -> Result<()> {
     if array.is_null(row) {
         return Err(invalid());
     }
-    let protobuf = encoding == PayloadEncoding::ProtobufV1;
     macro_rules! number {
-        ($array:ty, $wire:expr, $encode:expr) => {{
-            let value = typed::<$array>(array)?.value(row);
-            if protobuf {
-                varint((u64::from(field.tag) << 3) | $wire, output)?;
-                ($encode)(value, output)?;
-            } else {
-                scalar(value, output)?;
-            }
+        ($array:ty) => {{
+            scalar(typed::<$array>(array)?.value(row), output)?;
         }};
     }
     match field.kind {
-        Kind::Bool => number!(BooleanArray, 0, |value: bool, out: &mut _| varint(u64::from(value), out)),
-        Kind::U32 => number!(UInt32Array, 0, |value: u32, out: &mut _| varint(u64::from(value), out)),
-        Kind::U64 => number!(UInt64Array, 0, |value: u64, out: &mut _| varint(value, out)),
-        Kind::I32 => number!(Int32Array, 0, |value: i32, out: &mut _| varint(value as i64 as u64, out)),
-        Kind::I64 => number!(Int64Array, 0, |value: i64, out: &mut _| varint(value as u64, out)),
-        Kind::F32 => number!(Float32Array, 5, |value: f32, out: &mut _| Sink::append(out, &value.to_le_bytes())),
-        Kind::F64 => number!(Float64Array, 1, |value: f64, out: &mut _| Sink::append(out, &value.to_le_bytes())),
+        Kind::Bool => number!(BooleanArray),
+        Kind::U32 => number!(UInt32Array),
+        Kind::U64 => number!(UInt64Array),
+        Kind::I32 => number!(Int32Array),
+        Kind::I64 => number!(Int64Array),
+        Kind::F32 => number!(Float32Array),
+        Kind::F64 => number!(Float64Array),
         Kind::String => {
             let value = typed::<StringArray>(array)?.value(row);
-            if protobuf {
-                header(field.tag, value.len(), output)?;
-            } else {
-                scalar(value.len() as u64, output)?;
-            }
+            scalar(value.len() as u64, output)?;
             output.append(value.as_bytes())?;
         }
         Kind::Bytes => {
             let value = typed::<BinaryArray>(array)?.value(row);
-            if protobuf {
-                header(field.tag, value.len(), output)?;
-            } else {
-                scalar(value.len() as u64, output)?;
-            }
+            scalar(value.len() as u64, output)?;
             output.append(value)?;
         }
         Kind::Message { definition } => {
             let values = struct_column(array)?;
-            if protobuf {
-                let mut count = Counter { bytes: 0, limit: usize::MAX };
-                encode_message(schema, definition, values, row, encoding, depth + 1, &mut count)?;
-                header(field.tag, count.bytes, output)?;
-            }
-            encode_message(schema, definition, values, row, encoding, depth + 1, output)?;
+            encode_message(schema, definition, values, row, depth + 1, output)?;
         }
     }
     Ok(())
@@ -332,21 +304,6 @@ fn optional_id(values: &StructArray, name: &str, row: usize) -> Result<Option<Id
 }
 fn required_id(values: &StructArray, name: &str, row: usize) -> Result<Identifier> {
     optional_id(values, name, row)?.ok_or_else(invalid)
-}
-fn varint(mut value: u64, output: &mut impl Sink) -> Result<()> {
-    let mut bytes = [0u8; 10];
-    let mut count = 0;
-    while value >= 128 {
-        bytes[count] = (value as u8 & 127) | 128;
-        value >>= 7;
-        count += 1;
-    }
-    bytes[count] = value as u8;
-    output.append(&bytes[..=count])
-}
-fn header(tag: u32, length: usize, output: &mut impl Sink) -> Result<()> {
-    varint((u64::from(tag) << 3) | 2, output)?;
-    varint(length as u64, output)
 }
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "Arrow payload encoding bytes" }
@@ -419,42 +376,36 @@ mod tests {
     fn payload_bound_capacities() {
         let schema = schema();
         let payload = payload(false);
-        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
-            let maximum = NonZeroUsize::new(1_000_000).unwrap();
-            let bound = encode_payloads_memory(&schema, &payload, encoding, maximum).unwrap();
-            let exact = NonZeroUsize::new(bound).unwrap();
-            let rows = encode_payloads(&schema, &payload, encoding, exact).unwrap();
-            assert_eq!(rows.len(), 2);
-            assert!(resident(&rows, rows.capacity()) <= bound);
-            assert_eq!(encode_payloads_memory(&schema, &payload, encoding, exact).unwrap(), bound);
-            let smaller = NonZeroUsize::new(bound - 1).unwrap();
-            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, smaller), Err(Error::ResourceExhausted { .. })));
-            assert!(matches!(encode_payloads(&schema, &payload, encoding, smaller), Err(Error::ResourceExhausted { .. })));
-        }
+        let maximum = NonZeroUsize::new(1_000_000).unwrap();
+        let bound = encode_payloads_memory(&schema, &payload, maximum).unwrap();
+        let exact = NonZeroUsize::new(bound).unwrap();
+        let rows = encode_payloads(&schema, &payload, exact).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(resident(&rows, rows.capacity()) <= bound);
+        assert_eq!(encode_payloads_memory(&schema, &payload, exact).unwrap(), bound);
+        let smaller = NonZeroUsize::new(bound - 1).unwrap();
+        assert!(matches!(encode_payloads_memory(&schema, &payload, smaller), Err(Error::ResourceExhausted { .. })));
+        assert!(matches!(encode_payloads(&schema, &payload, smaller), Err(Error::ResourceExhausted { .. })));
     }
 
     #[test]
     fn payload_bound_empty() {
         let schema = Schema { root: 0, definitions: vec![vec![]] };
         let payload = StructArray::new_empty_fields(0, None);
-        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
-            let maximum = NonZeroUsize::new(1024).unwrap();
-            let bound = encode_payloads_memory(&schema, &payload, encoding, maximum).unwrap();
-            let rows = encode_payloads(&schema, &payload, encoding, maximum).unwrap();
-            assert!(rows.is_empty());
-            assert_eq!(bound, resident(&rows, rows.capacity()));
-        }
+        let maximum = NonZeroUsize::new(1024).unwrap();
+        let bound = encode_payloads_memory(&schema, &payload, maximum).unwrap();
+        let rows = encode_payloads(&schema, &payload, maximum).unwrap();
+        assert!(rows.is_empty());
+        assert_eq!(bound, resident(&rows, rows.capacity()));
     }
 
     #[test]
     fn payload_bound_malformed() {
         let schema = schema();
         let payload = payload(true);
-        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
-            let maximum = NonZeroUsize::new(1_000_000).unwrap();
-            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, maximum), Err(Error::InvalidInput { .. })));
-            assert!(matches!(encode_payloads(&schema, &payload, encoding, maximum), Err(Error::InvalidInput { .. })));
-        }
+        let maximum = NonZeroUsize::new(1_000_000).unwrap();
+        assert!(matches!(encode_payloads_memory(&schema, &payload, maximum), Err(Error::InvalidInput { .. })));
+        assert!(matches!(encode_payloads(&schema, &payload, maximum), Err(Error::InvalidInput { .. })));
     }
 
     #[test]
@@ -463,9 +414,7 @@ mod tests {
         // No Column Allocation Is Needed To Exercise The Row-Slot Overflow.
         let payload = StructArray::new_empty_fields(usize::MAX, None);
         let maximum = NonZeroUsize::new(usize::MAX).unwrap();
-        for encoding in [PayloadEncoding::PostcardV1, PayloadEncoding::ProtobufV1] {
-            assert!(matches!(encode_payloads_memory(&schema, &payload, encoding, maximum), Err(Error::ResourceExhausted { .. })));
-            assert!(matches!(encode_payloads(&schema, &payload, encoding, maximum), Err(Error::ResourceExhausted { .. })));
-        }
+        assert!(matches!(encode_payloads_memory(&schema, &payload, maximum), Err(Error::ResourceExhausted { .. })));
+        assert!(matches!(encode_payloads(&schema, &payload, maximum), Err(Error::ResourceExhausted { .. })));
     }
 }

@@ -31,7 +31,7 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::operations::{Operation, ServingError, WireTable};
+use harmos_sdk::operations::{Dependencies, Operation, OperationContext, RegistrationBatch, ServingError, WireTable};
 use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
@@ -103,8 +103,10 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     }
 
     // Bind the built-in observe control the host submits to run an observer.
-    pub fn bind(self: &Arc<Self>, table: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
-        table.bind_observe_control::<Observe<R, H>>(Arc::clone(self))
+    pub fn bind(self: &Arc<Self>, table: &mut WireTable) -> Result<(), ServingError> {
+        let mut dependencies = Dependencies::new();
+        dependencies.insert(Arc::clone(self)).map_err(|_| ServingError::Catalog)?;
+        table.register(RegistrationBatch::new(dependencies).implementation::<Control, Observe<R, H>>())
     }
 }
 
@@ -130,25 +132,29 @@ where
     R: Send + Sync + 'static,
     H: ObserverHost<R>,
 {
-    type Declaration = Control;
-    type Resources = ObserverAttachment<R, H>;
+    type Request = <Control as harmos_domain::OperationDeclaration>::Request;
+    type Response = ();
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(attachment: Arc<Self::Resources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: OperationContext) -> Result<Self, Refusal> {
+        let attachment = context.dependency::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
         Ok(Self { attachment, running: None, activity: None })
     }
 
-    async fn run<'ctx>(
-        &mut self, host: Self::Context<'ctx>, control: &mut Control, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: OperationContext, control: &mut Self::Request, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
                 return Err(Refusal::of("observer admission is closing"));
             }
             let name = self.attachment.instances.get(control.observer.as_str()).ok_or_else(|| Refusal::of("unknown observer"))?.id();
-            self.running = Some(Running::spawn(Arc::clone(&self.attachment), name, host.clone())?);
+            self.running = Some(Running::spawn(
+                Arc::clone(&self.attachment),
+                name,
+                context.dependency::<Supervisor>().map_err(Refusal::of)?.as_ref().clone(),
+            )?);
         }
         let running = self.running.as_mut().expect("spawned activation");
         let failed = running.failed.as_mut();

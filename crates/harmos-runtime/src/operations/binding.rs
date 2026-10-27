@@ -23,8 +23,8 @@ use super::admission::Admission;
 use super::caller::{Origin, Source};
 use super::execution::{Body, Prepared};
 use super::manager::Entry;
-use crate::operations::{FailureKind, OperationDeclaration};
-use crate::{Error, Result};
+use crate::Result;
+use crate::operations::OperationDeclaration;
 
 /* === Constants === */
 
@@ -33,7 +33,7 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 type Prepare<O, P> = dyn Fn(
-        (Request<O>, P),
+        (Request<<O as OperationDeclaration>::Request>, P),
         OperationInstanceId,
         Arc<crate::supervision::instance::Instance>,
         Arc<Entry>,
@@ -49,8 +49,13 @@ type Prepare<O, P> = dyn Fn(
 
 pub(super) struct Request<T> {
     pub(super) value: T,
+    pub(super) retry: Option<super::RetryPolicy>,
+    pub(super) lane: Option<&'static str>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(super) retention: Option<super::streaming::RequestClaims>,
+    pub(super) binding: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    pub(super) grant: Option<harmos_domain::plugin::Grant>,
+    pub(super) key: Option<super::CacheKey>,
 }
 
 pub(super) struct Typed<O: OperationDeclaration, P = ()> {
@@ -65,13 +70,31 @@ pub(super) struct Typed<O: OperationDeclaration, P = ()> {
 
 impl<T> From<T> for Request<T> {
     fn from(value: T) -> Self {
-        Self { value, retention: None, context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) }
+        Self {
+            value,
+            retry: None,
+            lane: None,
+            retention: None,
+            binding: None,
+            grant: None,
+            key: None,
+            context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
+        }
     }
 }
 impl<T> Request<T> {
     pub(super) fn charged(item: super::StreamItem<T>) -> Result<Self> {
         let (value, claims) = item.into_request()?;
-        Ok(Self { value, retention: Some(claims), context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) })
+        Ok(Self {
+            value,
+            retry: None,
+            lane: None,
+            retention: Some(claims),
+            binding: None,
+            grant: None,
+            key: None,
+            context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
+        })
     }
 }
 
@@ -87,15 +110,6 @@ pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn 
         refusal: None,
         middleware: None,
     }
-}
-
-pub(super) fn classify<E: std::error::Error + Send + Sync + 'static>(error: &Error, classify: fn(&E) -> FailureKind) -> FailureKind {
-    let Error::OperationFailed { source, .. } = error else {
-        return FailureKind::Permanent;
-    };
-    source.downcast_ref::<E>().map_or(FailureKind::Permanent, |error| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| classify(error))).unwrap_or(FailureKind::Permanent)
-    })
 }
 
 /* === Private Functions === */

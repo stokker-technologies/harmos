@@ -34,7 +34,7 @@ use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildCont
 
 /* === Constants === */
 
-const VERSION: u8 = 6;
+const VERSION: u8 = 1;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -58,9 +58,6 @@ pub enum WireCodecError {
     #[error("operation envelope exceeds the 16 MiB limit")]
     Oversized,
 
-    #[error("unsupported operation envelope version")]
-    Version,
-
     #[error("unexpected operation envelope kind")]
     Kind,
 
@@ -71,13 +68,15 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 6. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 1. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
     Prepare {
         invocation: u64,
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -111,6 +110,8 @@ enum Envelope<'a> {
         values: Vec<Value<'a>>,
 
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -120,6 +121,8 @@ enum Envelope<'a> {
     PrepareGrpc {
         invocation: u64,
         operation: &'a str,
+        fingerprint: [u8; 32],
+        generation: u64,
 
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -171,8 +174,10 @@ enum Envelope<'a> {
 
 impl WireCommand {
     /// Counts the versioned Prepare envelope without encoding or allocating its payload.
-    pub fn prepare_encoded_len(invocation: u64, operation: &str, payload: usize) -> Result<usize, WireCodecError> {
-        payload_size(Envelope::Prepare { invocation, operation, payload: &[] }, payload)
+    pub fn prepare_encoded_len(
+        invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: usize,
+    ) -> Result<usize, WireCodecError> {
+        payload_size(Envelope::Prepare { invocation, operation, fingerprint, generation, payload: &[] }, payload)
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
@@ -181,11 +186,11 @@ impl WireCommand {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::Prepare { invocation, operation, payload } => {
-                Self::Prepare { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            Envelope::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                Self::Prepare { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
             }
-            Envelope::PrepareGrpc { invocation, operation, payload } => {
-                Self::PrepareGrpc { invocation, operation: operation.to_owned(), payload: payload.to_vec() }
+            Envelope::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                Self::PrepareGrpc { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
             }
             Envelope::Initialize { invocation, context } => Self::Initialize { invocation, context },
             Envelope::Attempt { invocation, context, values } => Self::Attempt { invocation, context, values: owned(values)? },
@@ -202,8 +207,12 @@ impl WireCommand {
 
     fn envelope(&self) -> Envelope<'_> {
         match self {
-            Self::Prepare { invocation, operation, payload } => Envelope::Prepare { invocation: *invocation, operation, payload },
-            Self::PrepareGrpc { invocation, operation, payload } => Envelope::PrepareGrpc { invocation: *invocation, operation, payload },
+            Self::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                Envelope::Prepare { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
+            }
+            Self::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                Envelope::PrepareGrpc { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
+            }
             Self::Initialize { invocation, context } => Envelope::Initialize { invocation: *invocation, context: *context },
             Self::Attempt { invocation, context, values } => {
                 Envelope::Attempt { invocation: *invocation, context: *context, values: borrowed(values) }
@@ -252,7 +261,7 @@ impl WireChildCall {
     /// Counts a Child envelope with its actual portable values and payload length.
     /// Context identifiers and the submit flag have fixed encoded widths.
     pub fn payload_encoded_len(
-        operation: &str, payload: usize, generation_context: bool, values: &[super::super::CallValue],
+        operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[super::super::CallValue],
     ) -> Result<usize, WireCodecError> {
         check_values(values)?;
         let envelope = Envelope::Child {
@@ -260,6 +269,8 @@ impl WireChildCall {
             generation_context: generation_context.then_some([0; 32]),
             values: Vec::new(),
             operation,
+            fingerprint: [0; 32],
+            generation,
             payload: &[],
             submit: false,
         };
@@ -279,6 +290,8 @@ impl WireChildCall {
             generation_context: self.generation_context,
             values: borrowed(&self.values),
             operation: &self.operation,
+            fingerprint: self.fingerprint,
+            generation: self.generation,
             payload: &self.payload,
             submit: self.submit,
         })
@@ -301,14 +314,18 @@ impl WireChildControl {
 impl WireChild {
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         let child = match decode(bytes)? {
-            Envelope::Child { context, generation_context, values, operation, payload, submit } => Self::Call(WireChildCall {
-                context,
-                generation_context,
-                values: owned(values)?,
-                operation: operation.to_owned(),
-                payload: payload.to_vec(),
-                submit,
-            }),
+            Envelope::Child { context, generation_context, values, operation, fingerprint, generation, payload, submit } => {
+                Self::Call(WireChildCall {
+                    context,
+                    generation_context,
+                    values: owned(values)?,
+                    operation: operation.to_owned(),
+                    fingerprint,
+                    generation,
+                    payload: payload.to_vec(),
+                    submit,
+                })
+            }
             Envelope::ChildControl { context, instance, action } => Self::Control(WireChildControl { context, instance, action }),
             _ => return Err(WireCodecError::Kind),
         };
@@ -375,10 +392,7 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
     if bytes.len() > LIMIT {
         return Err(WireCodecError::Oversized);
     }
-    let (version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
-    if version != VERSION {
-        return Err(WireCodecError::Version);
-    }
+    let (_version, rest) = postcard::take_from_bytes::<u8>(bytes)?;
     let (envelope, rest) = postcard::take_from_bytes::<Envelope<'_>>(rest)?;
     if !rest.is_empty() {
         return Err(WireCodecError::Trailing);
@@ -401,14 +415,30 @@ mod tests {
             let operation = "λ".repeat([1, 63, 64, 65][index % 4]);
             let invocation = ids[index % ids.len()];
             let payload = vec![255; size];
-            let expected = WireCommand::prepare_encoded_len(invocation, &operation, size).unwrap();
-            let command = WireCommand::Prepare { invocation, operation, payload: payload.clone() };
+            let expected = WireCommand::prepare_encoded_len(invocation, &operation, [255; 32], invocation, size).unwrap();
+            let command =
+                WireCommand::Prepare { invocation, operation, fingerprint: [255; 32], generation: invocation, payload: payload.clone() };
             assert_eq!(command.encode().unwrap().len(), expected);
             let expected = WireAnswer::ready_encoded_len(size).unwrap();
             assert_eq!(WireAnswer::Ready { payload }.encode().unwrap().len(), expected);
         }
-        assert!(WireCommand::prepare_encoded_len(0, "op", usize::MAX).is_err());
+        assert!(WireCommand::prepare_encoded_len(0, "op", [255; 32], u64::MAX, usize::MAX).is_err());
         assert!(WireAnswer::ready_encoded_len(usize::MAX).is_err());
+    }
+
+    #[test]
+    fn prepare_identity_roundtrips() {
+        let command = WireCommand::Prepare {
+            invocation: 127,
+            operation: "fixture.read".into(),
+            fingerprint: [173; 32],
+            generation: u64::MAX,
+            payload: vec![1, 2],
+        };
+        let bytes = command.encode().unwrap();
+        assert!(matches!(WireCommand::decode(&bytes).unwrap(), WireCommand::Prepare {
+            invocation: 127, operation, fingerprint, generation: u64::MAX, payload
+        } if operation == "fixture.read" && fingerprint == [173; 32] && payload == [1, 2]));
     }
 
     #[test]
@@ -419,12 +449,14 @@ mod tests {
         for values in [Vec::new(), vec![CallValue { key: "測定".into(), payload: vec![255; 128] }], maximal] {
             for generation in [false, true] {
                 for submit in [false, true] {
-                    let expected = WireChildCall::payload_encoded_len("op.λ", 16384, generation, &values).unwrap();
+                    let expected = WireChildCall::payload_encoded_len("op.λ", u64::MAX, 16384, generation, &values).unwrap();
                     let call = WireChildCall {
                         context: [255; 32],
                         generation_context: generation.then_some([255; 32]),
                         values: values.clone(),
                         operation: "op.λ".into(),
+                        fingerprint: [1; 32],
+                        generation: u64::MAX,
                         payload: vec![255; 16384],
                         submit,
                     };
@@ -442,17 +474,19 @@ mod tests {
             (0..=PORTABLE_VALUES).map(|index| CallValue { key: index.to_string(), payload: Vec::new() }).collect(),
         ];
         for values in invalid {
-            assert!(WireChildCall::payload_encoded_len("op", 0, false, &values).is_err());
+            assert!(WireChildCall::payload_encoded_len("op", u64::MAX, 0, false, &values).is_err());
             let call = WireChildCall {
                 context: [0; 32],
                 generation_context: None,
                 values,
                 operation: "op".into(),
+                fingerprint: [1; 32],
+                generation: u64::MAX,
                 payload: Vec::new(),
                 submit: false,
             };
             assert!(call.encode().is_err());
         }
-        assert!(WireChildCall::payload_encoded_len("op", usize::MAX, false, &[]).is_err());
+        assert!(WireChildCall::payload_encoded_len("op", u64::MAX, usize::MAX, false, &[]).is_err());
     }
 }

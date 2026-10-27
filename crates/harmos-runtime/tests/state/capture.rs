@@ -36,11 +36,11 @@ type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
 
 /* === Structs === */
 
-#[harmos_runtime::record(id = "capture.observed", version = 1)]
+#[harmos_runtime::record(id = "capture.observed")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Observed(String);
 
-#[harmos_runtime::transaction(id = "capture.add", version = 1, inverse = Self)]
+#[harmos_runtime::transaction(id = "capture.add",  inverse = Self)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Add(i64);
 
@@ -91,7 +91,14 @@ impl harmos_runtime::state::Invert<i64> for Add {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Model {
+    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;

@@ -14,8 +14,11 @@
 /* === Imports === */
 
 use harmos_domain::model::storage::*;
-use harmos_domain::operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ListDirectory, ReadFile, WatchDirectory};
 use harmos_domain::{MemorySize, Message};
+use harmos_operations::storage::{
+    CaptureFileRequest, FollowFileRequest, FollowProductionRequest, HashFileRequest, ListDirectoryRequest, ReadFileRequest,
+    WatchDirectoryRequest,
+};
 use std::path::PathBuf;
 
 /* === Constants === */
@@ -37,7 +40,7 @@ use std::path::PathBuf;
 /* === Private Functions === */
 
 fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + PartialEq + std::fmt::Debug>(value: T) {
-    let bytes = value.encode_to_vec();
+    let bytes = value.encode();
     assert_eq!(T::decode(&bytes).unwrap(), value);
     let mut protobuf = Vec::new();
     harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
@@ -58,8 +61,8 @@ fn directory_contract_roundtrips() {
             DirectoryRule { pattern: "private/**".into(), include: false },
         ],
     };
-    roundtrip(ListDirectory { selection: selection.clone() });
-    roundtrip(WatchDirectory { selection, include_existing: true });
+    roundtrip(ListDirectoryRequest { selection: selection.clone() });
+    roundtrip(WatchDirectoryRequest { selection, include_existing: true });
     let entry = DirectoryEntry { path: "measurements/run.bin".into(), directory: false, length: 8192 };
     for event in [
         DirectoryEvent::Existing(entry.clone()),
@@ -95,21 +98,21 @@ fn file_contract_roundtrips() {
     let range = ByteRange { offset: 1, limit: Some(2) };
     for source in [FileSource::Stored(file), FileSource::Local(PathBuf::from("measurements/échantillon.bin"))] {
         roundtrip(source.clone());
-        roundtrip(ReadFile { source: source.clone(), range });
-        roundtrip(HashFile { source: source.clone(), range });
+        roundtrip(ReadFileRequest { source: source.clone(), range });
+        roundtrip(HashFileRequest { source: source.clone(), range });
         for consistency in [CaptureConsistency::Bounded, CaptureConsistency::Stable] {
-            roundtrip(CaptureFile { source: source.clone(), range, metadata: metadata.clone(), consistency });
+            roundtrip(CaptureFileRequest { source: source.clone(), range, metadata: metadata.clone(), consistency });
         }
         for start in [FollowStart::Beginning, FollowStart::End, FollowStart::At(2)] {
-            roundtrip(FollowFile { source: source.clone(), start });
+            roundtrip(FollowFileRequest { source: source.clone(), start });
         }
     }
-    roundtrip(FollowProduction { file: StagedFile { history, id: metadata.id }, offset: 2 });
+    roundtrip(FollowProductionRequest { file: StagedFile { history, id: metadata.id }, offset: 2 });
     roundtrip(FileHash { bytes_read: 12345, sha256: [0xa5; 32] });
     roundtrip(FileEvent::Data(FileBatch { offset: 1000, bytes: vec![1, 2, 3] }));
     roundtrip(FileEvent::Truncated { length: 2 });
     roundtrip(FileEvent::Replaced);
-    let mut short = FileHash { bytes_read: 1, sha256: [0; 32] }.encode_to_vec();
+    let mut short = FileHash { bytes_read: 1, sha256: [0; 32] }.encode();
     short[1] = 31;
     short.pop();
     assert!(FileHash::decode(&short).is_err());
@@ -121,7 +124,7 @@ fn path_transport_rejects() {
     use std::os::unix::ffi::OsStringExt;
     let path = PathBuf::from(std::ffi::OsString::from_vec(vec![b'a', 0xff]));
     let source = FileSource::Local(path);
-    assert!(FileSource::decode(&source.encode_to_vec()).is_err());
+    assert!(FileSource::decode(&source.encode()).is_err());
     let mut protobuf = Vec::new();
     harmos_sdk::grpc::encode(&source, &mut protobuf).unwrap();
     let prepared = harmos_sdk::grpc::prepare::<FileSource>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap();

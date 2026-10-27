@@ -26,13 +26,13 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, split};
 // Local Imports
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
-use harmos_domain::operations::lifecycle::{Initialize, Shutdown};
+use harmos_operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
 use harmos_sidecar::Message;
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport;
 use harmos_sidecar::{Attach, Executable, Frame, serve_plugin_channels};
 use harmos_sidecar::{Publication, StreamSpec};
-use protocol::{Done, Echo, Sample, Start, TransportPlugin};
+use protocol::{Done, Echo, EchoOperation, Sample, Start, StartOperation, TransportPlugin};
 
 /* === Constants === */
 
@@ -166,7 +166,7 @@ async fn capacity_profile(settings: Settings, outgoing: Sender, mut incoming: Re
     eprintln!(
         "CAPACITY real child stdio; current-thread Tokio runtimes; Postcard decode + full payload pattern validation; settings={settings:?}"
     );
-    call(&outgoing, &mut incoming, 1, Frame::REGISTER, Vec::new()).await;
+    call(&outgoing, &mut incoming, 1, Frame::REGISTER, "throughput_fixture".to_owned().encode()).await;
     sdk(&outgoing, &mut incoming, 2, true).await;
     let mut id = 2;
     let mut reception = Reception { decode: true, sequence: 0 };
@@ -244,7 +244,7 @@ async fn timed_case(
 
 async fn measure(label: &str, outgoing: Sender, mut incoming: Receiver) {
     let mut call_id = 1_u64;
-    call(&outgoing, &mut incoming, call_id, Frame::REGISTER, Vec::new()).await;
+    call(&outgoing, &mut incoming, call_id, Frame::REGISTER, "throughput_fixture".to_owned().encode()).await;
     call_id += 1;
     sdk(&outgoing, &mut incoming, call_id, true).await;
 
@@ -274,7 +274,13 @@ async fn throughput_case(
         outgoing,
         incoming,
         call_id,
-        WireCommand::Prepare { invocation: call_id, operation: Start::ID.to_owned(), payload: request.encode_to_vec() },
+        WireCommand::Prepare {
+            invocation: call_id,
+            operation: format!("throughput_fixture.{}", StartOperation::ID),
+            fingerprint: (harmos_domain::operations::Entry::of::<StartOperation>().fingerprint)().unwrap().0,
+            generation: 1,
+            payload: request.encode(),
+        },
     )
     .await;
     phase(outgoing, incoming, call_id, WireCommand::Initialize { invocation: call_id, context: [0; 32] }).await;
@@ -294,9 +300,9 @@ async fn throughput_case(
             Frame::Call { id, method, params } if method == harmos_sdk::operations::CHILD_METHOD => {
                 let call: harmos_sdk::operations::WireChildCall =
                     harmos_sdk::operations::WireChildCall::decode(&params).expect("typed child envelope");
-                assert_eq!(call.operation, "host.publish");
+                assert_eq!(call.operation, "host_publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
-                let row = harmos_domain::operations::streams::Publish::decode(&call.payload).expect("typed publication");
+                let row = harmos_operations::streams::PublishRequest::decode(&call.payload).expect("typed publication");
                 calls += 1;
                 if row.stream == Done::ID {
                     done = Some(Done::decode(&row.payload).expect("typed completion stream"));
@@ -327,7 +333,7 @@ async fn throughput_case(
                 }
                 // This Bench Exercises The Direct Carrier, Not Root Authorization
                 outgoing
-                    .send(Frame::Answer { id, result: <() as Message>::encode_to_vec(&()).into() })
+                    .send(Frame::Answer { id, result: <() as Message>::encode(&()).into() })
                     .await
                     .expect("publication admission acknowledged");
             }
@@ -383,7 +389,13 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
             outgoing,
             incoming,
             id,
-            WireCommand::Prepare { invocation: id, operation: Echo::ID.to_owned(), payload: request.encode_to_vec() },
+            WireCommand::Prepare {
+                invocation: id,
+                operation: format!("throughput_fixture.{}", EchoOperation::ID),
+                fingerprint: (harmos_domain::operations::Entry::of::<EchoOperation>().fingerprint)().unwrap().0,
+                generation: 1,
+                payload: request.encode(),
+            },
         )
         .await;
         phase(outgoing, incoming, id, WireCommand::Initialize { invocation: id, context: [0; 32] }).await;
@@ -403,13 +415,25 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
 }
 
 async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bool) {
-    let (operation, payload) = if initialize {
-        let request = Initialize { config_json: b"null".to_vec(), generation_context: vec![2; 32] };
-        (Initialize::ID, request.encode_to_vec())
+    let (operation, fingerprint, payload) = if initialize {
+        let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: vec![2; 32], assignments: Vec::new() };
+        (Initialize::ID, (harmos_domain::operations::Entry::of::<Initialize>().fingerprint)().unwrap().0, request.encode())
     } else {
-        (Shutdown::ID, Vec::new())
+        (Shutdown::ID, (harmos_domain::operations::Entry::of::<Shutdown>().fingerprint)().unwrap().0, Vec::new())
     };
-    phase(outgoing, incoming, id, WireCommand::Prepare { invocation: id, operation: operation.to_owned(), payload }).await;
+    phase(
+        outgoing,
+        incoming,
+        id,
+        WireCommand::Prepare {
+            invocation: id,
+            operation: harmos_domain::QualifiedId::qualify("throughput_fixture", operation).unwrap().as_str().to_owned(),
+            fingerprint,
+            generation: 1,
+            payload,
+        },
+    )
+    .await;
     phase(outgoing, incoming, id, WireCommand::Initialize { invocation: id, context: [1; 32] }).await;
     phase(outgoing, incoming, id, WireCommand::Attempt { invocation: id, context: [1; 32], values: Vec::new() }).await;
     phase(outgoing, incoming, id, WireCommand::Finalize { invocation: id }).await;

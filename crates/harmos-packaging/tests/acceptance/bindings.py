@@ -12,7 +12,6 @@
 
 # Standard Library Imports
 import copy
-import hashlib
 import importlib
 import json
 import os
@@ -53,7 +52,7 @@ def wire(target: Path, alpha: Path, beta: Path) -> None:
     encoded = sys.stdin.buffer.read()
     value = None
     for operation in _operations(package):
-        if operation.id.startswith("fixture."):
+        if operation.id.startswith("fixture_"):
             continue
         value = operation.request.FromString(encoded)
         assert value.text == "line\n∞"
@@ -76,33 +75,31 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
     }
     for operation in operations:
         assert issubclass(operation.request, Message)
-        if operation.id.startswith("fixture."):
+        if operation.id.startswith("fixture_"):
             assert operation.request is operation.response
         else:
-            # The Operation Is Its Own Request; Its Payload Response Is A Distinct
-            # Message Of The Same Shape
+            # The Request And Response Are Distinct Messages Of The Same Shape
             assert operation.request is not operation.response
             request = [field.name for field in operation.request.DESCRIPTOR.fields]
             response = [field.name for field in operation.response.DESCRIPTOR.fields]
             assert request == response
         assert operation.codec == "protobuf"
-        digest = hashlib.sha256(operation.contract.encode()).hexdigest()
-        assert digest == operation.fingerprint
+        assert json.loads(operation.contract)["fingerprint"] == operation.fingerprint
         if operation.input is not None:
             assert operation.input is operation.response
             assert operation.rpc_request.DESCRIPTOR.oneofs_by_name["value"]
         if operation.output is not None:
             assert operation.output is operation.response
             assert operation.rpc_response.DESCRIPTOR.oneofs_by_name["value"]
-        if operation.id == "fixture.checkpoint":
+        if operation.id == "fixture_checkpoint":
             schema = json.loads(operation.contract)["schema"]
             assert len(schema["definitions"]) == 165
             assert sum(map(len, schema["definitions"])) == 609
-            assert operation.version == 2
+            assert operation.generation == 0
             _graph(operation.request.DESCRIPTOR.file.pool, schema)
-        elif operation.id == "fixture.reserved":
+        elif operation.id == "fixture_reserved":
             _reserved(package, operation)
-        elif operation.id == "fixture.recursive":
+        elif operation.id == "fixture_recursive":
             descriptor = operation.request.DESCRIPTOR
             assert descriptor.fields_by_name["next"].message_type is descriptor
             value = operation.request()
@@ -221,11 +218,26 @@ def dynamic(target: Path, alpha: Path, beta: Path) -> None:
     _graph_projection(projector)
     _unary_projection(projector)
     _reserved_members(projector)
+    assert (
+        projector(_contract(), generation=18446744073709551615).generation
+        == 18446744073709551615
+    )
 
 
 def refusals(target: Path, alpha: Path, beta: Path) -> None:
     """Malformed Graphs, Exceeded Budgets And Foreign Codecs Are Refused."""
     loader = _projector(_imported(alpha, beta)[0])
+    legacy = _contract()
+    legacy["version"] = 1
+    del legacy["fingerprint"]
+    _raises(ValueError, loader, legacy)
+    wrong = _contract()
+    wrong["fingerprint"] = "ab" * 32
+    _raises(ValueError, loader, wrong)
+    for generation in (-1, True, 18446744073709551616):
+        _raises(
+            ValueError, lambda value: loader(_contract(), generation=value), generation
+        )
     for name, value in [("root", "0"), ("root", True), ("definitions", {})]:
         bad = _contract()
         bad["schema"][name] = value
@@ -279,8 +291,8 @@ assert Path(pkg.__file__).is_relative_to(Path(sys.argv[1]))
 ops = [value for value in vars(pkg).values() if isinstance(value, pkg.Operation)]
 assert len(ops) == 7
 for operation in ops:
-    assert (operation.request is operation.response) == operation.id.startswith('fixture.')
-    assert json.loads(operation.contract)['version'] == operation.version
+    assert (operation.request is operation.response) == operation.id.startswith('fixture_')
+    assert json.loads(operation.contract)["fingerprint"] == operation.fingerprint
     operation.request.FromString(operation.request().SerializeToString())
 import bindings_beta
 assert pkg.FIXTURE_RECURSIVE.request is not bindings_beta.FIXTURE_RECURSIVE.request
@@ -537,18 +549,18 @@ def _contract() -> dict[str, Any]:
     return copy.deepcopy(
         {
             "operation": {
-                "id": "external.exchange",
+                "id": "external_exchange",
+                "fingerprint": "01" * 32,
                 "description": "",
                 "policy": {
                     "timeout": {"secs": 1, "nanos": 0},
                     "attempt_timeout": {"secs": 1, "nanos": 0},
                     "retries": "never",
-                    "restart": "never",
                 },
                 "visibility": "shared",
                 "replay": "idempotent",
             },
-            "version": 1,
+            "fingerprint": "01" * 32,
             "codec": "postcard",
             "grpc": {
                 "package": "external.v1",

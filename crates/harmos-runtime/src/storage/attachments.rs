@@ -41,11 +41,6 @@ pub struct Payload<A: Application> {
     pub id: DefinitionId,
     pub version: u32,
     pub value: Recorded<A>,
-
-    // Spelled out rather than aliased: the census is the list of names an
-    // author learns, and this one belongs to a field rather than beside them.
-    #[allow(clippy::type_complexity)]
-    pub apply: Option<Box<dyn FnOnce(&mut A::State) + Send>>,
 }
 
 pub struct Recovery<A: Application> {
@@ -161,13 +156,10 @@ impl<A: Application> ReplayPayload<A> for Payload<A> {
         };
 
         let Some(catalog) = catalog else {
-            let Payload { value, apply, .. } = envelope.payload;
+            let Payload { value, .. } = envelope.payload;
             return Ok(match value {
                 Recorded::Transaction(transaction) => {
-                    match apply {
-                        Some(historical) => historical(state),
-                        None => transaction.apply(state),
-                    }
+                    transaction.apply(state);
                     Some(Recorded::Transaction(transaction))
                 }
                 Recorded::Record(record) => Some(Recorded::Record(record)),
@@ -497,14 +489,9 @@ pub(crate) fn declare<A: Application>(
 /* === Private Functions === */
 
 fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
-    let Payload { prepared, id, version, value, apply } = payload;
-
-    match (value, apply) {
-        (Recorded::Transaction(_), Some(historical)) => {
-            historical(state);
-            Ok(())
-        }
-        (Recorded::Transaction(transaction), None) => {
+    let Payload { prepared, id, version, value } = payload;
+    match value {
+        Recorded::Transaction(transaction) => {
             if let Some(prepared) = prepared {
                 crate::state::TransactionCatalog::replay(&*transaction, &prepared, state)
             } else {
@@ -512,8 +499,7 @@ fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<()
                 Ok(())
             }
         }
-        (Recorded::Record(_), _) => Err(mismatched(id, version)),
-        (Recorded::System(_), _) => Err(mismatched(id, version)),
+        Recorded::Record(_) | Recorded::System(_) => Err(mismatched(id, version)),
     }
 }
 

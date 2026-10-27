@@ -13,7 +13,6 @@ pub(crate) mod attachments;
 pub(crate) mod capture;
 pub(crate) mod consumer;
 mod manager;
-pub mod operations;
 pub mod state;
 pub mod writes;
 

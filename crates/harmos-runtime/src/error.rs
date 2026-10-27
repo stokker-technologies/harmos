@@ -31,6 +31,9 @@ use std::convert::Infallible;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
+    #[error(transparent)]
+    Dependency(#[from] harmos_sdk::DependencyError),
+
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
 

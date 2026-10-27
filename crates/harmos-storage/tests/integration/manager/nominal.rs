@@ -19,7 +19,6 @@
 use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
-use harmos_domain::operations::storage::{Query, ReadFile};
 use harmos_storage::Identifier;
 use harmos_storage::query::transform::{
     Transform,
@@ -30,6 +29,7 @@ use harmos_storage::query::transform::{
 };
 use harmos_storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_storage::*;
+use harmos_storage::{FileRead, Query};
 // Local Imports
 use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
@@ -146,7 +146,7 @@ async fn positions(storage: &StorageManager, query: Query) -> Vec<(u64, u64)> {
 
 async fn read_range(storage: &StorageManager, file: &FileReference, range: ByteRange) -> Vec<u8> {
     let mut reader = storage
-        .read_file(ReadFile { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
+        .read_file(FileRead { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
         .await
         .unwrap();
     let mut bytes = Vec::new();
@@ -292,7 +292,7 @@ async fn file_ranges_read() {
         assert!(end.is_empty());
         let beyond = n
             .storage
-            .read_file(ReadFile {
+            .read_file(FileRead {
                 source: harmos_domain::model::storage::files::FileSource::Stored(reference.clone()),
                 range: range(reference.length + 1, None),
             })

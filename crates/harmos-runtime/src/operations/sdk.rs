@@ -22,12 +22,12 @@ use std::sync::Arc;
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
-use super::{EncodedInvocation, OperationManager};
-use crate::operations::lifecycle::{Action, Initialize};
+use super::{EncodedInvocation, Manager};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
+use harmos_operations::lifecycle::InitializeRequest;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
@@ -45,7 +45,7 @@ pub(super) struct Encoded(pub(super) Vec<u8>);
 
 #[must_use = "retain SDK entries through original invocation settlement"]
 pub struct PluginSdkRegistration {
-    operations: OperationManager,
+    operations: Manager,
     entries: [Arc<Entry>; 2],
     kind: PluginKind,
 }
@@ -58,11 +58,12 @@ pub struct PluginSdkRegistration {
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl crate::Message for Encoded {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+    fn encode(&self) -> Vec<u8> {
         self.0.clone()
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.0.len()
     }
 
@@ -96,21 +97,20 @@ impl crate::MemorySize for Encoded {
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl OperationDeclaration for Encoded {
+    type Request = Self;
     type Response = Vec<u8>;
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
-    const VERSION: u32 = 1;
-    const ID: &'static str = "";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: std::time::Duration::ZERO,
-        attempt_timeout: std::time::Duration::ZERO,
+    const ID: &'static str = "harmos.encoded";
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 }
 
 impl PluginSdkRegistration {
-    pub(super) fn new(operations: OperationManager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {
+    pub(super) fn new(operations: Manager, scope: &PluginScope, mut entries: [Arc<Entry>; 2], kind: PluginKind) -> Result<Self> {
         scope.issue_generation_context()?;
         let pair = scope.lifecycle().ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "generation has no frozen SDK pair" })?;
         for (entry, descriptor) in entries.iter_mut().zip(pair) {
@@ -123,15 +123,8 @@ impl PluginSdkRegistration {
                 });
             }
             let action = descriptor.action();
-            let mut expected = descriptor.contract().operation().clone();
-            let suffix = match action {
-                Action::Initialize => "initialize",
-                Action::Shutdown => "shutdown",
-            };
-            expected.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
-                .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
-            if entry.declared() != &expected {
-                return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry is not the exact qualified SDK definition" });
+            if entry.declared() != descriptor.contract().operation() {
+                return Err(Error::InvalidInput { field: "SDK lifecycle", reason: "entry differs from the SDK definition" });
             }
             Arc::get_mut(entry).expect("new SDK entry has one owner").sdk = Some(action);
         }
@@ -150,13 +143,16 @@ impl PluginSdkRegistration {
             let peak = config_json
                 .len()
                 .checked_mul(2)
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Initialize>() + 64 + 20))
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<InitializeRequest>() + 64 + 30))
                 .ok_or(Error::ResourceExhausted { resource: "SDK encoding memory" })?;
             if peak > allowance {
                 return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
             }
-            let request = Initialize { config_json: config_json.to_vec(), generation_context: generation_context.to_vec() };
-            Ok(request.encode_to_vec())
+            let scope = self.entries[0].plugin().expect("SDK retains its original scope");
+            let assignments = self.operations.encode_assignments(scope, allowance - peak)?;
+            let request =
+                InitializeRequest { config_json: config_json.to_vec(), generation_context: generation_context.to_vec(), assignments };
+            Ok(request.encode())
         })
     }
 

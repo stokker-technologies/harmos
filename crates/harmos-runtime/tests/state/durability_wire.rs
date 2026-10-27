@@ -36,7 +36,14 @@ mod other {
     #[derive(Clone, Copy, Debug)]
     pub struct Branch;
 
+    #[harmos_runtime::lanes]
+    pub enum BranchLanes {
+        #[default]
+        Open,
+    }
+
     impl Application for Branch {
+        type Lanes = BranchLanes;
         type State = Ledger;
         type Transaction = Movement;
         type Record = Observed;
@@ -65,19 +72,17 @@ mod other {
             kind: Kind, id: &DefinitionId, version: u32, payload: D,
         ) -> Result<Option<Payload<Self>>, D::Error> {
             Ok(match kind {
-                Kind::Transaction => Movement::restore(id, version, payload)?.map(|(change, apply)| Payload {
+                Kind::Transaction => Movement::restore(id, version, payload)?.map(|change| Payload {
                     prepared: None,
                     id: id.clone(),
                     version,
                     value: Recorded::Transaction(Arc::new(change)),
-                    apply,
                 }),
                 Kind::Record => Observed::restore(id, version, payload)?.map(|fact| Payload {
                     prepared: None,
                     id: id.clone(),
                     version,
                     value: Recorded::Record(fact),
-                    apply: None,
                 }),
             })
         }

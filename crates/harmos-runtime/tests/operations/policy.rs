@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, runtime};
 use harmos_runtime::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
+    Backoff, FailureKind, Jitter, Operation, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy,
 };
 use harmos_runtime::{Error, Refusal};
 
@@ -72,19 +72,21 @@ struct Policy<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, cons
     behavior: Behavior,
 }
 
-#[harmos_runtime::operation(
-    id = "policy.blocker",
-    version = 1,
+#[harmos_runtime::operation(request = Blocker, infer_request,
+    id = "policy_blocker",
+
     response = u64,
     policy = Policy::<30_000, 30_000, 0, 1, false>::POLICY
 )]
+struct BlockerDeclaration;
+
 struct Blocker {
     behavior: Behavior,
 }
 
-#[harmos_runtime::operation(
-    id = "policy.exponential",
-    version = 1,
+#[harmos_runtime::operation(request = Exponential, infer_request,
+    id = "policy_exponential",
+
     response = u64,
     policy = OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -97,16 +99,17 @@ struct Blocker {
                 jitter: Jitter::None,
             },
         },
-        restart: RestartPolicy::Never,
     }
 )]
+struct ExponentialDeclaration;
+
 struct Exponential {
     behavior: Behavior,
 }
 
-#[harmos_runtime::operation(
-    id = "policy.jittered",
-    version = 1,
+#[harmos_runtime::operation(request = Jittered, infer_request,
+    id = "policy_jittered",
+
     response = u64,
     policy = OperationPolicy {
         retries: RetryPolicy::OnTransient {
@@ -117,16 +120,18 @@ struct Exponential {
                 jitter: Jitter::Deterministic,
             },
         },
-        ..Exponential::POLICY
+        ..ExponentialDeclaration::POLICY
     }
 )]
+struct JitteredDeclaration;
+
 struct Jittered {
     behavior: Behavior,
 }
 
-#[harmos_runtime::operation(
-    id = "policy.empty",
-    version = 1,
+#[harmos_runtime::operation(request = EmptyRetries, infer_request,
+    id = "policy_empty",
+
     response = u64,
     policy = OperationPolicy {
         retries: RetryPolicy::OnTransient {
@@ -136,16 +141,18 @@ struct Jittered {
                 jitter: Jitter::None,
             },
         },
-        ..Blocker::POLICY
+        ..BlockerDeclaration::POLICY
     }
 )]
+struct EmptyRetriesDeclaration;
+
 struct EmptyRetries {
     behavior: Behavior,
 }
 
-#[harmos_runtime::operation(
-    id = "policy.inverted",
-    version = 1,
+#[harmos_runtime::operation(request = InvertedBackoff, infer_request,
+    id = "policy_inverted",
+
     response = u64,
     policy = OperationPolicy {
         retries: RetryPolicy::OnTransient {
@@ -156,9 +163,11 @@ struct EmptyRetries {
                 jitter: Jitter::None,
             },
         },
-        ..Blocker::POLICY
+        ..BlockerDeclaration::POLICY
     }
 )]
+struct InvertedBackoffDeclaration;
+
 struct InvertedBackoff {
     behavior: Behavior,
 }
@@ -189,20 +198,33 @@ enum Behavior {
 
 /* === Traits === */
 
-trait Behaves: OperationDeclaration<Response = u64> + From<Behavior> {
+trait Behaves:
+    harmos_runtime::Portable
+    + harmos_runtime::RequestFor<Operation: OperationDeclaration<Request = Self, Response = u64>>
+    + From<Behavior>
+    + Send
+    + Sync
+    + 'static
+{
     fn behavior(&mut self) -> &mut Behavior;
 }
 
 /* === Implementations === */
 
+impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> harmos_runtime::RequestFor
+    for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    type Operation = Self;
+}
+
 impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> OperationDeclaration
     for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
 {
+    type Request = Self;
     type Response = u64;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
-    const ID: &'static str = "policy.compute";
-    const VERSION: u32 = 1;
+    const ID: &'static str = "policy_compute";
     const REPLAY: ReplaySafety = if REPLAY { ReplaySafety::Idempotent } else { ReplaySafety::Unknown };
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_millis(OVERALL),
@@ -215,7 +237,6 @@ impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: 
                 backoff: Backoff::Fixed { delay: Duration::from_millis(DELAY), jitter: Jitter::None },
             }
         },
-        restart: RestartPolicy::Never,
     };
 }
 
@@ -224,10 +245,11 @@ behaves!(Blocker, Exponential, Jittered, EmptyRetries, InvertedBackoff);
 impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> harmos_runtime::Message
     for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
 {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "fixture.native";
+    fn encode(&self) -> Vec<u8> {
         unreachable!("in-process fixture values are never encoded")
     }
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         unreachable!("in-process fixture values are never encoded")
     }
     fn decoding_memory(_: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
@@ -278,18 +300,20 @@ struct Attempting<O> {
 
 impl<O: Behaves> Operation for Attempting<O> {
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = O;
-    type Resources = Owner;
+    type Request = O;
+    type Response = u64;
     type Error = std::io::Error;
-    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Owner>().expect("fixture registers its dependency");
         resources.0.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempt: 0, probe: Arc::clone(&resources.0) };
         Ok(Self { resources, state, _declaration: std::marker::PhantomData })
     }
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut O, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut O, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.state.attempt += 1;
             self.resources.0.attempts.fetch_add(1, Ordering::SeqCst);
@@ -339,19 +363,39 @@ fn waits(probe: &Probe) -> Vec<u64> {
 async fn bound<O: Behaves>() -> (harmos_runtime::Runtime<super::support::Bank>, Arc<Probe>) {
     let runtime = runtime().await;
     let probe = Arc::new(Probe::default());
-    runtime.operations.register_operation::<Attempting<O>>("policy", Lanes::Serial, Arc::new(Owner(Arc::clone(&probe)))).unwrap();
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(Arc::new(Owner(probe.clone()))).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new(dependencies).implementation::<O::Operation, Attempting<O>>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     (runtime, probe)
 }
 
 async fn invalid<O: Behaves>() {
     let runtime = runtime().await;
     let probe = Arc::new(Probe::default());
-    let error =
-        runtime.operations.register_operation::<Attempting<O>>("policy", Lanes::Serial, Arc::new(Owner(Arc::clone(&probe)))).unwrap_err();
+    let error = runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Owner(Arc::clone(&probe)))).unwrap();
+                dependencies
+            })
+            .implementation::<<O as harmos_runtime::RequestFor>::Operation, Attempting<O>>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap_err();
     assert!(matches!(error, Error::OperationDeclaration { .. }));
     assert_eq!(probe.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
-    assert!(runtime.operations.definition(O::ID).is_err());
+    assert!(runtime.operations.definition(<O::Operation as OperationDeclaration>::ID).is_err());
     runtime.stop().await.unwrap();
 }
 
@@ -362,12 +406,21 @@ async fn queued_deadline_starts() {
     let blocker_probe = Arc::new(Probe::default());
     runtime
         .operations
-        .register_operation::<Attempting<Blocker>>("policy", Lanes::Serial, Arc::new(Owner(Arc::clone(&blocker_probe))))
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Owner(Arc::clone(&blocker_probe)))).unwrap();
+                dependencies
+            })
+            .implementation::<<Blocker as harmos_runtime::RequestFor>::Operation, Attempting<Blocker>>(),
+            Lanes::Serial,
+        ))
+        .await
         .unwrap();
     let gate = Arc::new(Notify::new());
-    let blocker = runtime.operations.submit(Blocker { behavior: Behavior::Gate(Arc::clone(&gate)) }).unwrap();
+    let blocker = runtime.operation(Blocker { behavior: Behavior::Gate(Arc::clone(&gate)) }).start().await.unwrap();
     blocker_probe.started.notified().await;
-    let queued = runtime.operations.submit(failing::<Queued>(0)).unwrap();
+    let queued = runtime.operation(failing::<Queued>(0)).start().await.unwrap();
     tokio::time::advance(Duration::from_millis(100)).await;
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::TimedOut))));
     // An instance that expires while queued is never constructed.
@@ -384,7 +437,7 @@ async fn attempt_limits_backoff() {
     type Attempt = Policy<100, 2000, 0, 1, false>;
     let (runtime, probe) = bound::<Attempt>().await;
     let submitted = tokio::time::Instant::now();
-    let result = runtime.operations.call(Attempt { behavior: Behavior::Pending }).await;
+    let result = runtime.operation(Attempt { behavior: Behavior::Pending }).run().await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -394,7 +447,7 @@ async fn attempt_limits_backoff() {
     type Retrying = Policy<100, 1000, 10, 1000, false>;
     let (runtime, probe) = bound::<Retrying>().await;
     let submitted = tokio::time::Instant::now();
-    let result = runtime.operations.call(failing::<Retrying>(100)).await;
+    let result = runtime.operation(failing::<Retrying>(100)).run().await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -406,7 +459,7 @@ async fn attempt_limits_backoff() {
 async fn retry_reuses_state() {
     type Retrying = Policy<1000, 100, 2, 20, false>;
     let (runtime, probe) = bound::<Retrying>().await;
-    assert_eq!(*runtime.operations.call(failing::<Retrying>(2)).await.unwrap(), 3);
+    assert_eq!(*runtime.operation(failing::<Retrying>(2)).run().await.unwrap(), 3);
     assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
     assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
@@ -417,7 +470,7 @@ async fn retry_reuses_state() {
 #[tokio::test(start_paused = true)]
 async fn reaches_wait_ceiling() {
     let (runtime, probe) = bound::<Exponential>().await;
-    let result = runtime.operations.call(failing::<Exponential>(100)).await;
+    let result = runtime.operation(failing::<Exponential>(100)).run().await;
     let Err(Error::OperationFailed { source, .. }) = result else { panic!("the last typed attempt failure is retained") };
     assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().to_string(), "retained attempt failure");
     assert_eq!(waits(&probe), [200, 400, 800, 1000]);
@@ -431,7 +484,7 @@ async fn reaches_wait_ceiling() {
 async fn cancellation_skips_backoff() {
     type Retrying = Policy<10000, 100, 2, 1000, false>;
     let (runtime, probe) = bound::<Retrying>().await;
-    let invocation = runtime.operations.submit(failing::<Retrying>(100)).unwrap();
+    let invocation = runtime.operation(failing::<Retrying>(100)).start().await.unwrap();
     probe.started.notified().await;
     let cancelled = tokio::time::Instant::now();
     invocation.cancel();
@@ -446,14 +499,14 @@ async fn cancellation_skips_backoff() {
 async fn timeouts_require_replay() {
     type Unknown = Policy<1000, 5, 1, 1, false>;
     let (runtime, probe) = bound::<Unknown>().await;
-    let result = runtime.operations.call(Unknown { behavior: Behavior::Pending }).await;
+    let result = runtime.operation(Unknown { behavior: Behavior::Pending }).run().await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 
     type Replayable = Policy<1000, 5, 1, 1, true>;
     let (runtime, probe) = bound::<Replayable>().await;
-    let result = runtime.operations.call(Replayable { behavior: Behavior::Pending }).await;
+    let result = runtime.operation(Replayable { behavior: Behavior::Pending }).run().await;
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
@@ -476,9 +529,9 @@ async fn calls_settle_retry() {
     type Queued = Policy<1000, 1000, 0, 1, false>;
     let (runtime, probe) = bound::<Queued>().await;
     let gate = Arc::new(Notify::new());
-    let first = runtime.operations.submit(Queued { behavior: Behavior::Gate(gate) }).unwrap();
+    let first = runtime.operation(Queued { behavior: Behavior::Gate(gate) }).start().await.unwrap();
     probe.started.notified().await;
-    let second = runtime.operations.submit(failing::<Queued>(0)).unwrap();
+    let second = runtime.operation(failing::<Queued>(0)).start().await.unwrap();
     second.cancel();
     assert!(matches!(second.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
@@ -494,7 +547,7 @@ async fn calls_settle_retry() {
 #[tokio::test(start_paused = true)]
 async fn jitter_respects_ceiling() {
     let (runtime, probe) = bound::<Jittered>().await;
-    let result = runtime.operations.call(failing::<Jittered>(100)).await;
+    let result = runtime.operation(failing::<Jittered>(100)).run().await;
     assert!(matches!(result, Err(Error::OperationFailed { .. })));
     let waits = waits(&probe);
     assert_eq!(waits.len(), 4);

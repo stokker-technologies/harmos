@@ -27,7 +27,7 @@ use tokio::sync::{mpsc, watch};
 // Local Imports
 use super::{Arrival, SidecarError};
 use crate::observers::{ChildSettlement, ObserverActivation, ObserverBackend, ObserverDefinition, ObserverRegistration};
-use crate::operations::{OperationManager, OperationPhase};
+use crate::operations::{Manager, OperationPhase};
 use harmos_sidecar::inventory::observers::{Activation, Declaration};
 
 /* === Constants === */
@@ -39,7 +39,7 @@ use harmos_sidecar::inventory::observers::{Activation, Declaration};
 /* === Structs === */
 
 struct ControlContext {
-    operations: OperationManager,
+    operations: Manager,
     scope: crate::plugin::PluginScope,
     binding: OnceLock<crate::operations::PluginControl>,
 }
@@ -65,13 +65,13 @@ pub(super) struct Session {
 }
 
 struct Retirement {
-    operations: OperationManager,
+    operations: Manager,
     remote: Arc<Remote>,
 }
 
 struct Closing {
     remote: Arc<Remote>,
-    operations: OperationManager,
+    operations: Manager,
     scope: Option<Arc<Retirement>>,
     end: Option<harmos_sidecar::attach::Ending>,
     ending_failure: Option<String>,
@@ -108,7 +108,7 @@ impl Remote {
         Ok(())
     }
 
-    pub(super) fn configure(&self, operations: OperationManager, scope: crate::plugin::PluginScope) -> crate::Result<()> {
+    pub(super) fn configure(&self, operations: Manager, scope: crate::plugin::PluginScope) -> crate::Result<()> {
         self.control
             .set(ControlContext { operations, scope, binding: OnceLock::new() })
             .map_err(|_| crate::Error::InvalidInput { field: "observer control", reason: "original transport was already configured" })
@@ -129,7 +129,7 @@ impl Remote {
 
     // Submit the observe control for one activation, owned by its children.
     fn observe(
-        &self, children: &ChildSettlement, control: &harmos_domain::observers::Control,
+        &self, children: &ChildSettlement, control: &harmos_domain::observers::ControlRequest,
     ) -> crate::Result<crate::operations::EncodedInvocation> {
         let original = self.control.get().ok_or(crate::Error::NotReady { domain: "observer control" })?;
         original.scope.observe_contract().ok_or(crate::Error::NotReady { domain: "observer control" })?;
@@ -142,7 +142,7 @@ impl Remote {
             .and_then(|bytes| bytes.checked_add(64))
             .and_then(std::num::NonZeroUsize::new)
             .ok_or(crate::Error::ResourceExhausted { resource: "observer control encoding" })?;
-        children.submit(false, || binding.submit_with(bytes, |_| Ok(harmos_domain::Message::encode_to_vec(control))))
+        children.submit(false, || binding.submit_with(bytes, |_| Ok(harmos_domain::Message::encode(control))))
     }
 
     async fn fence(&self) {
@@ -173,7 +173,8 @@ impl ObserverBackend for Backend {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control = harmos_domain::observers::Control { observer: self.definition.id.clone(), generation: activation.id().value() };
+        let control =
+            harmos_domain::observers::ControlRequest { observer: self.definition.id.clone(), generation: activation.id().value() };
         let children = activation.child_settlement();
         let mut invocation = match remote.observe(&children, &control) {
             Ok(invocation) => invocation,
@@ -231,7 +232,7 @@ impl ObserverBackend for Backend {
 }
 
 impl Session {
-    pub(super) fn new(remote: Arc<Remote>, operations: OperationManager, end: Option<harmos_sidecar::attach::Ending>) -> Self {
+    pub(super) fn new(remote: Arc<Remote>, operations: Manager, end: Option<harmos_sidecar::attach::Ending>) -> Self {
         Self { closing: Some(Closing { remote, operations, scope: None, end, ending_failure: None }), outcome: None }
     }
 
@@ -328,7 +329,7 @@ impl Closing {
 /* === Public Functions === */
 
 pub(super) fn stage(
-    operations: &OperationManager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
+    operations: &Manager, remote: &Arc<Remote>, plugin: Option<&crate::plugin::PluginScope>, definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
 ) -> crate::Result<ObserverRegistration> {
     let backends = definitions.iter().map(|entry| Backend {
@@ -347,7 +348,7 @@ pub(super) fn stage(
 
 // Hold one activation lease per observer whose plugin or demand wants it.
 pub(super) async fn demand(
-    operations: OperationManager, remote: Arc<Remote>, plugin: Option<crate::plugin::PluginScope>, definitions: Vec<Declaration>,
+    operations: Manager, remote: Arc<Remote>, plugin: Option<crate::plugin::PluginScope>, definitions: Vec<Declaration>,
     mut changes: watch::Receiver<BTreeMap<String, bool>>, arrivals: mpsc::Sender<Arrival>,
 ) {
     if let Some(plugin) = plugin

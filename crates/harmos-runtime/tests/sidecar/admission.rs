@@ -27,7 +27,7 @@ use harmos_runtime::sidecar::{Registrar, Registration, RegistrationError};
 
 /* === Constants === */
 
-const NAME: &str = "admission-fixture";
+const NAME: &str = "admission_fixture";
 
 // `register` Takes No Configuration, So The Story's Witness Is Reached Here.
 static CURRENT: Mutex<Option<Arc<Witness>>> = Mutex::new(None);
@@ -35,11 +35,10 @@ static CURRENT: Mutex<Option<Arc<Witness>>> = Mutex::new(None);
 // Stories Sharing `CURRENT` Run One At A Time Under Any Runner.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-const POLICY: OperationPolicy = OperationPolicy {
+const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -61,13 +60,13 @@ struct Program {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Program {
+impl harmos_operations::lifecycle::Policy for Program {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Witnesses Registration And Initialization Separately.",
-    id = "admission-fixture",
+    id = "admission_fixture",
     provides = (),
     requires = (),
 )]
@@ -109,7 +108,7 @@ impl harmos_runtime::Plugin for Program {
         Arc::new(())
     }
 
-    fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, _: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         Ok(())
     }
 
@@ -148,9 +147,8 @@ fn expected() -> Vec<Registration> {
 async fn native(expected: &[Registration]) -> operations::Managed<Source> {
     let source = Source::new(NonZeroUsize::new(1).unwrap()).unwrap();
     let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
-    let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice)).expected_registrations(expected);
+    let resident = Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).expected_registrations(expected);
     let runtime = assembly()
-        .register(operations::Lanes::catalog())
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
             ..Default::default()
@@ -162,13 +160,13 @@ async fn native(expected: &[Registration]) -> operations::Managed<Source> {
         runtime,
         definitions,
         resident,
-        operations::Lanes::NativeOpen,
+        operations::Lanes::Open,
         NonZeroUsize::new(1).unwrap(),
         harmos_runtime::services::POLICY,
     )
 }
 
-fn notices(_: &Service<Bank>, _: Notice) {}
+fn notices(_: &ServiceContext<Bank>, _: Notice) {}
 
 #[tokio::test]
 async fn catalog_drift_refused() {
@@ -190,19 +188,16 @@ async fn catalog_drift_refused() {
         let registrations = fixture.resident().registrations();
 
         // The Frozen Catalog Differs, So Initialization Never Starts
-        assert!(fixture.initialize().await.is_err());
+        let failure = fixture.initialize().await.unwrap_err();
+        let reason = harmos_runtime::failure::Report(&failure).to_string();
+        assert!(reason.contains("expected catalog"), "{reason}");
         let runtime = &fixture.runtime;
-        let status =
-            service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
-        assert!(
-            matches!(status, ServiceStatus::Inactive { cause: ServiceExit::Application(ref reason), .. } if reason.contains("expected catalog")),
-            "{status:?}"
-        );
+        assert!(runtime.operations.residents().is_empty());
         assert!(marks.seen("registered"));
         assert!(!marks.seen("initialized"));
         assert!(!*ready.borrow());
         assert!(registrations.borrow().is_none());
-        assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+        runtime.stop().await.unwrap();
     }
 }
 
@@ -271,8 +266,8 @@ async fn restart_closes_admission() {
     let _serial = SERIAL.lock().await;
     let marks = install();
     marks.mark("release");
-    let policy = OperationPolicy {
-        restart: RestartPolicy::OnTransient {
+    let policy = harmos_runtime::ServicePolicy {
+        restart: RestartPolicy::OnFailure {
             credit: 1,
             sustained_health: Duration::from_secs(30),
             backoff: harmos_runtime::operations::Backoff::Exponential {
@@ -285,7 +280,7 @@ async fn restart_closes_admission() {
     };
     let source = Source::new(NonZeroUsize::new(1).unwrap()).unwrap();
     let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
-    let calls = Supervised::new(source, notices as fn(&Service<Bank>, Notice)).expected_registrations(&expected());
+    let calls = Supervised::new(source, notices as fn(&ServiceContext<Bank>, Notice)).expected_registrations(&expected());
     let ready = calls.ready();
     let registrations = calls.registrations();
     let runtime = assembly()
@@ -316,12 +311,12 @@ async fn restart_closes_admission() {
     // The Restarted Generation Registers A Changed Catalog And Is Refused
     marks.mark("catalog-changed");
     marks.mark("crash");
-    service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
+    let status = service_status(runtime.operations.watch_residents(), NAME, |value| matches!(value, ServiceStatus::Inactive { .. })).await;
     assert!(!*ready.borrow());
     assert!(registrations.borrow().is_none());
     assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
     assert_eq!(marks.count("initialized"), 1);
-    assert_eq!(marks.count("registered"), 2);
+    assert_eq!(marks.count("registered"), 2, "{status:?}");
     assert!(matches!(runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 

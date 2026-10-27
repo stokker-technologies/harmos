@@ -60,6 +60,18 @@ struct Grouped {
 
 /* === Enums === */
 
+#[harmos_runtime::lanes]
+pub enum Lanes {
+    #[default]
+    Open,
+    #[lane(serial)]
+    Serial,
+    #[lane(concurrent(2))]
+    Concurrent,
+    #[lane(unbounded)]
+    Unbounded,
+}
+
 #[harmos_runtime::streams]
 enum Catalog {
     Raw(Raw),
@@ -72,6 +84,7 @@ enum Catalog {
 /* === Implementations === */
 
 impl Application for Probe {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();

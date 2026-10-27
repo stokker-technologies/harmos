@@ -25,7 +25,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Operation, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::Position};
 
 /* === Constants === */
@@ -49,18 +49,20 @@ struct Read {
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = ReadContract, infer_request,
         response = Reading,
-        id = "resources.read",
-        version = 1,
-        policy = OperationPolicy {
+        id = "resources_read",
+
+        policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
         },
     )]
+struct ReadContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct ReadContract {
     nested: bool,
 }
@@ -74,7 +76,7 @@ struct Reading {
 
 #[harmos_runtime::catalog]
 enum Operations {
-    ReadContract(ReadContract),
+    ReadContract(ReadContractDeclaration),
 }
 
 /* === Traits === */
@@ -82,13 +84,15 @@ enum Operations {
 /* === Implementations === */
 
 impl Operation for Read {
-    type Declaration = ReadContract;
-    type Resources = Bench;
+    type Request = ReadContract;
+    type Response = <ReadContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(resources: Arc<Bench>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Bench>().expect("fixture registers its dependency");
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let constructed: Result<Self, Self::Error> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Error> = async {
@@ -103,13 +107,15 @@ impl Operation for Read {
         Ok(operation)
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reading>, Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reading, Self::Error> = async move {
             let seen = u64::try_from(self.resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
             if request.nested {
-                let child = context.submit(ReadContract { nested: false })?.await?;
+                let child = context.submit::<ReadContractDeclaration>(ReadContract { nested: false })?.await?;
                 assert_eq!(child.device, self.resources.device);
                 assert_eq!(child.seen, seen + 1);
             }
@@ -146,12 +152,24 @@ async fn child_own_resources() {
         finalized: AtomicUsize::new(0),
     });
     let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime.operations.register_operation::<Read>("app", Lanes::Open, resources.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(resources.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<ReadContractDeclaration, Read>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
 
-    let parent = runtime.operations.submit(ReadContract { nested: true }).unwrap().await.unwrap();
+    let parent = runtime.operation(ReadContract { nested: true }).start().await.unwrap().await.unwrap();
     assert_eq!(parent.device, "sim://rig-a");
     assert_eq!(parent.seen, 0);
-    let following = runtime.operations.submit(ReadContract { nested: false }).unwrap().await.unwrap();
+    let following = runtime.operation(ReadContract { nested: false }).start().await.unwrap().await.unwrap();
     assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
     assert_eq!(resources.initialized.load(Ordering::SeqCst), 3);
     assert_eq!(resources.finalized.load(Ordering::SeqCst), 3);

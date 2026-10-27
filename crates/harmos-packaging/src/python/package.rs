@@ -293,11 +293,11 @@ fn bindings(pool: &DescriptorPool, contracts: &[Contract], module: &str) -> Resu
         let rpc_request = message_expression(&method.input(), module, &mut imports)?;
         let rpc_response = message_expression(&method.output(), module, &mut imports)?;
         let encoded = serde_json::to_string(contract)?;
-        let fingerprint = crate::digest(encoded.as_bytes());
+        let fingerprint = contract.fingerprint().to_string();
         let input_type = input.map_or("Message", String::as_str);
         let output_type = output.map_or("Message", String::as_str);
         writeln!(stub_body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}]\n").expect("String writer");
-        writeln!(body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}] = Operation(\n    id={},\n    version={},\n    mode={},\n    codec=\"protobuf\",\n    request={request},\n    response={response},\n    input={},\n    output={},\n    grpc_path={},\n    rpc_request={rpc_request},\n    rpc_response={rpc_response},\n    contract={},\n    fingerprint={},\n)\n", quoted(contract.operation().id.as_str())?, contract.version(), quoted(mode)?, input.map_or("None", String::as_str), output.map_or("None", String::as_str), quoted(&grpc.path())?, quoted(&encoded)?, quoted(&fingerprint)?).expect("String writer");
+        writeln!(body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}] = Operation(\n    id={},\n    generation=0,\n    mode={},\n    codec=\"protobuf\",\n    request={request},\n    response={response},\n    input={},\n    output={},\n    grpc_path={},\n    rpc_request={rpc_request},\n    rpc_response={rpc_response},\n    contract={},\n    fingerprint={},\n)\n", quoted(contract.operation().id.as_str())?, quoted(mode)?, input.map_or("None", String::as_str), output.map_or("None", String::as_str), quoted(&grpc.path())?, quoted(&encoded)?, quoted(&fingerprint)?).expect("String writer");
     }
     let mut result = String::from(HEADER);
     result.push_str("\"\"\"Generated Operation Bindings From The Selected Producer Catalog\"\"\"\n\n# === Imports === #\n\n# Standard Library Imports\n\n# Third Party Imports\nfrom google.protobuf.message import Message\n\n# Local Imports\nfrom .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, ResponseStream as ResponseStream\n");

@@ -39,7 +39,7 @@ type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
 /* === Structs === */
 
 #[derive(Clone, Copy)]
-pub(super) struct Codec {
+pub(crate) struct Codec {
     pub(super) decode: Decode,
     pub(super) encode: Encode,
 
@@ -70,7 +70,7 @@ impl Codec {
     // Item Codec Of Each Direction It Streams.
     pub(crate) fn of<O: OperationDeclaration>() -> Self {
         Self {
-            decode: decode::<O>,
+            decode: decode::<O::Request>,
             encode: encode::<O::Response>,
             #[cfg(feature = "streaming")]
             input: direction::<O::Input>(),

@@ -48,53 +48,38 @@ pub struct Ledger {
     pub payouts: Vec<u64>,
 }
 
-#[harmos_runtime::transaction(id = "ledger.deposit", version = 1, inverse = Withdraw)]
+#[harmos_runtime::transaction(id = "ledger.deposit",  inverse = Withdraw)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Deposit {
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.withdraw", version = 1, inverse = Deposit)]
+#[harmos_runtime::transaction(id = "ledger.withdraw",  inverse = Deposit)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Withdraw {
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.pay", version = 1, irreversible)]
+#[harmos_runtime::transaction(id = "ledger.pay", irreversible)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(id = "ledger.bonus", version = 2, irreversible, history(BonusV1))]
+#[harmos_runtime::transaction(id = "ledger.bonus", irreversible)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
 
-#[harmos_runtime::transaction(version = 1)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct BonusV1 {
-    pub amount: i64,
-}
-
-#[harmos_runtime::transaction(id = "ledger.explode", version = 1, irreversible)]
+#[harmos_runtime::transaction(id = "ledger.explode", irreversible)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 
-#[harmos_runtime::record(id = "ledger.noted", version = 2, history(NotedV1))]
+#[harmos_runtime::record(id = "ledger.noted")]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Noted(pub String);
-
-#[harmos_runtime::record(version = 1)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct NotedV1 {
-    pub text: String,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Unreadable;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Bank;
@@ -109,6 +94,18 @@ pub struct Payouts {
 }
 
 /* === Enums === */
+
+#[harmos_runtime::lanes]
+pub enum Lanes {
+    #[default]
+    Open,
+    #[lane(serial)]
+    Serial,
+    #[lane(concurrent(2))]
+    Concurrent,
+    #[lane(unbounded)]
+    Unbounded,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -215,25 +212,6 @@ impl Transaction<Ledger> for Bonus {
     }
 }
 
-impl Transaction<Ledger> for BonusV1 {
-    type Error = Refusal;
-
-    fn check(&self, _ledger: &Ledger) -> Result<(), Self::Error> {
-        (self.amount > 0).then_some(()).ok_or(Refusal::NotPositive)
-    }
-
-    fn apply(&self, ledger: &mut Ledger) {
-        ledger.balance += 2 * self.amount;
-        ledger.applications += 1;
-    }
-}
-
-impl From<BonusV1> for Bonus {
-    fn from(old: BonusV1) -> Self {
-        Self { amount: old.amount }
-    }
-}
-
 impl Transaction<Ledger> for Explode {
     type Error = Refusal;
 
@@ -246,27 +224,8 @@ impl Transaction<Ledger> for Explode {
     }
 }
 
-impl TryFrom<NotedV1> for Noted {
-    type Error = Unreadable;
-
-    fn try_from(historical: NotedV1) -> Result<Self, Self::Error> {
-        if historical.text.is_empty() {
-            return Err(Unreadable);
-        }
-
-        Ok(Self(historical.text))
-    }
-}
-
-impl fmt::Display for Unreadable {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a note without text is not a note")
-    }
-}
-
-impl std::error::Error for Unreadable {}
-
 impl Application for Bank {
+    type Lanes = Lanes;
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
@@ -295,19 +254,17 @@ impl Wire for Bank {
         kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error> {
         Ok(match kind {
-            Kind::Transaction => Change::restore(id, version, payload)?.map(|(change, apply)| Payload {
+            Kind::Transaction => Change::restore(id, version, payload)?.map(|change| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
                 value: Recorded::Transaction(Arc::new(change)),
-                apply,
             }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
                 value: Recorded::Record(fact),
-                apply: None,
             }),
         })
     }

@@ -40,9 +40,8 @@ use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
 use crate::supervision::executor::InContext;
 use crate::{
-    Application, DefinitionId, Error, operations::LaneSet, operations::OperationPolicy, services::Resident, state::At,
-    state::CaptureLimits, state::DecodeError, state::Entry, state::JournalCapture, state::Kind, state::Position, state::StateManager,
-    storage::Cursor,
+    Application, DefinitionId, Error, operations::LaneSet, services::Resident, state::At, state::CaptureLimits, state::DecodeError,
+    state::Entry, state::JournalCapture, state::Kind, state::Position, state::StateManager, storage::Cursor,
 };
 
 /* === Constants === */
@@ -71,7 +70,7 @@ pub struct Runtime<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager,
+    pub operations: crate::operations::OperationManager<A::Lanes>,
 
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
@@ -92,7 +91,7 @@ pub struct Handle<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager,
+    pub operations: crate::operations::OperationManager<A::Lanes>,
 
     #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
     pub plugin: crate::plugin::PluginHost<A>,
@@ -455,34 +454,10 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn operation<T>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<T::Resources>) -> Self
-    where
-        T: for<'ctx> crate::operations::Operation<Context<'ctx> = crate::operations::Context<'ctx>>,
-    {
-        let binding = crate::operations::CatalogBinding::operation::<T>(owner.into(), lane, resources);
+    pub fn with_registration(self, registration: crate::operations::Registration<A::Lanes>) -> Self {
+        let binding = crate::operations::CatalogBinding::new(registration);
         self.bind_operations(binding)
     }
-
-    pub fn operations<C, R>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<R>) -> Self
-    where
-        C: crate::catalog::Catalog<crate::operations::AuthoredDeclarations>
-            + crate::catalog::Catalog<crate::operations::Implementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let binding = crate::operations::CatalogBinding::local::<C, R>(owner.into(), lane, resources);
-        self.bind_operations(binding)
-    }
-
-    pub fn wire_operations<C, R>(self, owner: impl Into<String>, lane: impl crate::operations::Lane, resources: Arc<R>) -> Self
-    where
-        C: crate::catalog::Catalog<crate::operations::AuthoredDeclarations>
-            + crate::catalog::Catalog<crate::operations::WireImplementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let binding = crate::operations::CatalogBinding::wire::<C, R>(owner.into(), lane, resources);
-        self.bind_operations(binding)
-    }
-
     pub fn operation_middleware(mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Self {
         #[cfg(feature = "simulation")]
         self.simulation.operation_middleware(middleware.clone());
@@ -511,7 +486,7 @@ impl<A: Application> Builder<A> {
         self.service_with(name, crate::services::POLICY, resident)
     }
 
-    pub fn service_with<R>(mut self, name: impl Into<String>, policy: OperationPolicy, resident: R) -> Self
+    pub fn service_with<R>(mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> Self
     where
         R: Resident<A>,
     {
@@ -600,7 +575,7 @@ impl<A: Application> Builder<A> {
     }
 
     #[cfg(feature = "simulation")]
-    pub fn simulated_service_with<R>(mut self, name: impl Into<String>, policy: OperationPolicy, resident: R) -> Self
+    pub fn simulated_service_with<R>(mut self, name: impl Into<String>, policy: crate::ServicePolicy, resident: R) -> Self
     where
         R: Resident<A> + Clone,
     {
@@ -834,7 +809,7 @@ impl<A: Application> Builder<A> {
                 return Err(Incompatible::work(duplicate));
             }
         }
-        let operations = crate::operations::OperationManager::new(instances, &operation_settings, reserved, boot.identity.clone());
+        let operations = crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone());
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }
@@ -872,7 +847,7 @@ impl<A: Application> Builder<A> {
             state: journal,
             records,
             streams,
-            operations,
+            operations: crate::operations::OperationManager::new(operations),
             #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
             plugin,
             #[cfg(feature = "grpc")]

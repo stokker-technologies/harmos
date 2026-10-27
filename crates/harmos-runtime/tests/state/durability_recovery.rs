@@ -103,17 +103,17 @@ async fn redelivery_forwards_stored() {
     let mirror = Store::default();
     let second_mirror = Store::default();
 
-    // One entry as a version-1 build stored it, written valid but
+    // One current entry, written valid but
     // non-canonical — a member order and spacing no serializer of this build
     // produces — so any re-encoding, of the payload or of the frame, fails
     // the byte comparison below.
-    let historical = r#"[{"kind":"Transaction","position":9,"id":"ledger.bonus","version":1,"metadata":{"principal":null,"correlation":9,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{ "amount":3 }}]"#;
+    let original = r#"[{"kind":"Transaction","position":9,"id":"ledger.bonus","version":1,"metadata":{"principal":null,"correlation":9,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{ "amount":3 }}]"#;
     // And one record this build has never heard of: it is skipped by the
     // fold, yet its line must still reach a durable copy whole.
     let unreadable = frame(10, Kind::Record, "ledger.audited", 1, serde_json::json!({ "note": "kept" }));
 
     seeded(&copy).await;
-    copy.push(historical);
+    copy.push(original);
     copy.push(unreadable.clone());
 
     // A fresh mirror lags behind everything, so boot redelivers it the whole
@@ -123,7 +123,7 @@ async fn redelivery_forwards_stored() {
     })
     .await;
 
-    assert_eq!(ledger(&recovered).await.balance, 16, "the version-1 bonus still applies through its own version");
+    assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
     assert_eq!(recovered.state.applied(), Position(10), "the unknown record was skipped, and its position was taken all the same");
     recovered.stop().await.unwrap();
 
@@ -135,7 +135,7 @@ async fn redelivery_forwards_stored() {
         "a lagging durable copy is redelivered history's own bytes, so the \
          mirror equals its source frame for frame"
     );
-    assert!(written.iter().any(|line| line == historical), "the historical entry arrived verbatim, spacing and member order intact");
+    assert!(written.iter().any(|line| line == original), "the original entry arrived verbatim, spacing and member order intact");
     assert!(written.contains(&unreadable), "a record this build cannot decode is still forwarded, not silently dropped");
 
     let source_allocations = copy.shared_lines();

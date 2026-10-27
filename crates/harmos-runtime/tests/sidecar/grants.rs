@@ -26,18 +26,17 @@ use super::operations::{Lanes, Managed};
 use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
-use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy, Visibility, WireTable};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
 const ALLOWED: &str = "fixture.remote.allowed";
 const REFUSED: &str = "fixture.remote.refused";
-const POLICY: OperationPolicy = OperationPolicy {
+const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
 static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Runs>>> = Mutex::new(std::collections::BTreeMap::new());
@@ -73,16 +72,18 @@ struct Fetch {
     value: u32,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "gated.remote",
-    version = 1,
+#[harmos_runtime::operation(request = RemoteFetch, infer_request,
+    id = "gated_remote",
+
     policy = POLICY,
     response = Fetch,
     visibility = Visibility::Host,
     grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
-    grant = |request: &RemoteFetch| scoped("gated.remote", request.value),
+    grant = |request: &RemoteFetch| scoped("gated_remote", request.value),
 )]
+struct RemoteFetchDeclaration;
+
+#[harmos_runtime::message]
 #[derive(Clone)]
 struct RemoteFetch {
     value: u32,
@@ -92,16 +93,18 @@ struct RemoteFetching {
     runs: Arc<Runs>,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "gated.local",
-    version = 1,
+#[harmos_runtime::operation(request = LocalFetch, infer_request,
+    id = "gated_local",
+
     policy = POLICY,
     response = Fetch,
     visibility = Visibility::Host,
     grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
-    grant = |request: &LocalFetch| scoped("gated.local", request.value),
+    grant = |request: &LocalFetch| scoped("gated_local", request.value),
 )]
+struct LocalFetchDeclaration;
+
+#[harmos_runtime::message]
 #[derive(Clone)]
 struct LocalFetch {
     value: u32,
@@ -115,7 +118,7 @@ struct LocalFetching {
 
 #[harmos_runtime::catalog]
 enum Gated {
-    Fetch(RemoteFetch),
+    Fetch(RemoteFetchDeclaration),
 }
 
 /* === Traits === */
@@ -168,7 +171,7 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
     }
 }
 
-impl harmos_runtime::operations::lifecycle::Policy for Provider {
+impl harmos_operations::lifecycle::Policy for Provider {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
@@ -194,8 +197,15 @@ impl harmos_runtime::Plugin for Provider {
     fn resources(&self) -> Arc<Runs> {
         self.runs.clone()
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<RemoteFetching>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<RemoteFetchDeclaration, RemoteFetching>(),
+        )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
@@ -206,16 +216,17 @@ impl harmos_runtime::Plugin for Provider {
 }
 
 impl Operation for RemoteFetching {
-    type Declaration = RemoteFetch;
-    type Resources = Runs;
+    type Request = <RemoteFetchDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <RemoteFetchDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(runs: Arc<Runs>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let runs = context.dependency::<Runs>().expect("fixture dependency");
         Ok(Self { runs })
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut RemoteFetch, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut RemoteFetch, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Fetch>, Refusal> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
         Ok(Fetch { value: request.value + 1 }.into())
@@ -223,16 +234,17 @@ impl Operation for RemoteFetching {
 }
 
 impl Operation for LocalFetching {
-    type Declaration = LocalFetch;
-    type Resources = Runs;
+    type Request = <LocalFetchDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <LocalFetchDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = harmos_runtime::Error;
     type Endpoints = ();
-    type Context<'a> = harmos_runtime::operations::Context<'a>;
-    async fn initialize<'ctx>(runs: Arc<Runs>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+        let runs = context.dependency::<Runs>().expect("fixture dependency");
         Ok(Self { runs })
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut LocalFetch, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut LocalFetch, _: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
         Ok(Fetch { value: request.value + 1 }.into())
@@ -297,9 +309,22 @@ async fn external_request_grants() {
     let capacity = std::num::NonZeroUsize::new(2).unwrap();
     let source = harmos_sidecar::PluginNative::<Provider>::new(capacity).unwrap();
     let mut fixture =
-        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
+        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
     fixture.initialize().await.unwrap();
-    fixture.runtime.operations.register_wire_operation::<LocalFetching>("app", Lanes::NativeOpen, local.clone()).unwrap();
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(local.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<LocalFetchDeclaration, LocalFetching>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     fixture.runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
     fixture.runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
     let settings = harmos_runtime::grpc::Settings {

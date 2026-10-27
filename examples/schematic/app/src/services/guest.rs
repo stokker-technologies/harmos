@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
@@ -24,13 +23,11 @@ use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos::config::PluginSettings;
 use harmos::guest::{Host, Loaded};
-use schematic_domain::operations::Operations;
+use schematic_operations::Operations;
 
 /* === Constants === */
 
-pub const NAME: &str = "schematic-tools";
-
-const SDK_ENCODING_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+pub const NAME: &str = "schematic_tools";
 
 /* === Macros === */
 
@@ -53,8 +50,7 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             reason: "the inspected component has a different owner",
         });
     }
-    let settings = PluginSettings { encoding_memory_bytes: SDK_ENCODING_MEMORY_BYTES, ..Default::default() };
-    runtime.plugin.register_guest::<Operations>(loaded, settings, Lanes::Open).await?;
+    runtime.plugin.register_guest::<Operations>(loaded, PluginSettings::default(), Lanes::Open).await?;
     runtime.plugin.initialize().await
 }
 

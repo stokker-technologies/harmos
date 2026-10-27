@@ -11,6 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -36,7 +37,7 @@ Mode = Literal["unary", "client_stream", "server_stream", "bidi"]
 @dataclass(frozen=True, slots=True)
 class Operation[Request: Message, Response: Message, Input: Message, Output: Message]:
     id: str
-    version: int
+    generation: int
     mode: Mode
     codec: Literal["protobuf"]
     request: type[Request]
@@ -48,6 +49,16 @@ class Operation[Request: Message, Response: Message, Input: Message, Output: Mes
     rpc_response: type[Message]
     contract: str
     fingerprint: str
+
+    def __post_init__(self) -> None:
+        if re.fullmatch(r"[0-9a-f]{64}", self.fingerprint) is None:
+            raise ValueError("contract fingerprint must be lowercase 64-hex text")
+        if (
+            not isinstance(self.generation, int)
+            or isinstance(self.generation, bool)
+            or not 0 <= self.generation <= 18446744073709551615
+        ):
+            raise ValueError("generation must be an unsigned 64-bit integer")
 
 
 class OperationError(RuntimeError):

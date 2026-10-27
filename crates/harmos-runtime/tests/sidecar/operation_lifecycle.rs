@@ -55,21 +55,15 @@ async fn catalog_mismatch_refused() {
             2 => operations[0].visibility = Visibility::Shared,
             3 => operations[0].replay = harmos_runtime::operations::ReplaySafety::Idempotent,
             4 => operations[0].description.push('!'),
-            5 => operations.push(Definition { id: harmos_runtime::Identifier::new("fixture.extra").unwrap(), ..operations[0].clone() }),
+            5 => operations.push(Definition { id: harmos_runtime::Identifier::new("fixture_extra").unwrap(), ..operations[0].clone() }),
             6 => operations.push(operations[0].clone()),
             _ => operations[0].policy.timeout = Duration::ZERO,
         }
         let mut source = source(Arc::clone(&counts));
         source.operations = operations;
-        let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
-        assert!(fixture.initialize().await.is_err());
-        let status = service_status(fixture.runtime.operations.watch_residents(), "operation-handshake", |status| {
-            matches!(status, ServiceStatus::Inactive { .. })
-        })
-        .await;
-        let ServiceStatus::Inactive { cause: ServiceExit::Application(reason), .. } = status else {
-            panic!("operation admission must fail before initialization: {status:?}");
-        };
+        let mut fixture = Managed::new(source, Lanes::Open).await;
+        let failure = fixture.initialize().await.unwrap_err();
+        let reason = harmos_runtime::failure::Report(&failure).to_string();
         let expected_reason = match change {
             6 => "appears more than once",
             7 => "operation deadlines must be positive",
@@ -80,7 +74,8 @@ async fn catalog_mismatch_refused() {
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 0);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 0);
         assert!(!*fixture.host.ready.as_ref().unwrap().borrow());
-        assert!(matches!(fixture.runtime.stop().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+        assert!(fixture.runtime.operations.residents().is_empty());
+        fixture.runtime.stop().await.unwrap();
     }
 }
 
@@ -89,7 +84,7 @@ async fn catalog_order_admission() {
     let counts = Arc::new(Counts::default());
     let mut source = source(Arc::clone(&counts));
     source.operations.reverse();
-    let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source, Lanes::Open).await;
     fixture.initialize().await.unwrap();
     (fixture.host.ready.as_mut().unwrap().wait_for(|ready| *ready)).await.unwrap();
     assert_eq!(counts.attached.load(Ordering::SeqCst), 1);
@@ -103,9 +98,9 @@ async fn catalog_order_admission() {
 #[tokio::test]
 async fn runner_retry_finalization() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
-    fixture.call(Read {}).await.unwrap();
+    fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await.unwrap();
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
@@ -119,13 +114,13 @@ async fn runner_retry_finalization() {
 #[tokio::test]
 async fn portable_call_context() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
-    fixture.call(Read {}).await.unwrap();
+    fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await.unwrap();
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal).unwrap();
     context.insert_portable(Tenant { name: "lab".into() }).unwrap();
-    fixture.call_in::<Read>(context, Read {}).await.unwrap();
+    fixture.call_in::<<Read as harmos_runtime::RequestFor>::Operation>(context, Read {}).await.unwrap();
     assert_eq!(
         *counts.tenants.lock().unwrap(),
         [None, None, Some("lab".to_owned()), Some("lab".to_owned())],
@@ -140,10 +135,18 @@ async fn submitted_child_controls() {
     let counts = Arc::new(Counts::default());
     counts.submit_child.store(true, Ordering::SeqCst);
     counts.refresh_hold.store(true, Ordering::SeqCst);
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
-    harmos_runtime::builtin::Catalog::register(&fixture.runtime.operations, "host", Lanes::NativeOpen).unwrap();
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_operations::Lifecycle::registration(harmos_runtime::Dependencies::new()),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     fixture.initialize().await.unwrap();
-    fixture.call(Read {}).await.unwrap();
+    fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await.unwrap();
     assert_eq!(counts.children.load(Ordering::SeqCst), 4);
     assert_eq!(counts.refresh_completed.load(Ordering::SeqCst), 2);
     assert_eq!(counts.refresh_cleaned.load(Ordering::SeqCst), 4);
@@ -156,16 +159,29 @@ async fn submitted_child_controls() {
 #[tokio::test]
 async fn cleanup_retry_once() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeSerial).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Serial).await;
     fixture.initialize().await.unwrap();
     let runtime = &fixture.runtime;
     counts.fail_cleanup.store(true, Ordering::SeqCst);
-    assert!(matches!(fixture.call(Read {}).await, Err(harmos_runtime::Error::OperationFinalization { .. })));
-    assert!(runtime.operations.unregister(Read::ID).await.is_err());
+    assert!(matches!(
+        fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await,
+        Err(harmos_runtime::Error::OperationFinalization { .. })
+    ));
+    assert!(
+        runtime
+            .operations
+            .unregister(&harmos_runtime::QualifiedId::qualify("operation_handshake", ReadDeclaration::ID).unwrap())
+            .await
+            .is_err()
+    );
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.finalized.load(Ordering::SeqCst), 0);
     counts.fail_cleanup.store(false, Ordering::SeqCst);
-    runtime.operations.unregister(Read::ID).await.unwrap();
+    runtime
+        .operations
+        .unregister(&harmos_runtime::QualifiedId::qualify("operation_handshake", ReadDeclaration::ID).unwrap())
+        .await
+        .unwrap();
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
@@ -178,10 +194,12 @@ async fn cleanup_retry_once() {
 #[tokio::test]
 async fn preparation_refusal_state() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     counts.fail_prepare.store(true, Ordering::SeqCst);
-    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await else {
+    let Err(harmos_runtime::Error::OperationFailed { source, .. }) =
+        fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await
+    else {
         panic!("preparation is refused before any attempt")
     };
     assert!(matches!(
@@ -200,10 +218,10 @@ async fn children_attempt_lifetime() {
     for serial in [false, true] {
         let counts = Arc::new(Counts::default());
         counts.call_child.store(true, Ordering::SeqCst);
-        let lane = if serial { Lanes::NativeSerial } else { Lanes::NativeOpen };
+        let lane = if serial { Lanes::Serial } else { Lanes::Open };
         let mut fixture = Managed::new(source(counts.clone()), lane).await;
         fixture.initialize().await.unwrap();
-        let result = fixture.call(Read {}).await;
+        let result = fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await;
         if serial {
             assert!(matches!(result, Err(harmos_runtime::Error::OperationFailed { .. })));
             assert_eq!(counts.children.load(Ordering::SeqCst), 0);
@@ -215,7 +233,7 @@ async fn children_attempt_lifetime() {
             assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
         }
         let saved = counts.saved.lock().unwrap().take().unwrap();
-        assert!(saved.call(Refresh {}).await.is_err());
+        assert!(saved.call::<<Refresh as harmos_runtime::RequestFor>::Operation>(Refresh {}).await.is_err());
         fixture.shutdown().await.unwrap();
         fixture.runtime.stop().await.unwrap();
     }
@@ -224,10 +242,12 @@ async fn children_attempt_lifetime() {
 #[tokio::test]
 async fn initialization_failure() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     counts.fail_initialize.store(true, Ordering::SeqCst);
-    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await else {
+    let Err(harmos_runtime::Error::OperationFailed { source, .. }) =
+        fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await
+    else {
         panic!("initialization returns the original failure")
     };
     assert!(matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
@@ -245,10 +265,10 @@ async fn initialization_failure() {
 #[tokio::test]
 async fn initialization_child_expires() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     counts.initialization_child.store(true, Ordering::SeqCst);
-    fixture.call(Read {}).await.unwrap();
+    fixture.call::<<Read as harmos_runtime::RequestFor>::Operation>(Read {}).await.unwrap();
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.children.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stale_refused.load(Ordering::SeqCst), 1);
@@ -261,10 +281,11 @@ async fn initialization_child_expires() {
 #[tokio::test]
 async fn cancelled_init_resources() {
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     fixture.initialize().await.unwrap();
     counts.block_initialize.store(true, Ordering::SeqCst);
-    let mut invocation = fixture.runtime.operations.submit_encoded(Read::ID, Vec::new()).unwrap();
+    let mut invocation =
+        fixture.runtime.operations.submit_encoded(&format!("operation_handshake.{}", ReadDeclaration::ID), Vec::new()).unwrap();
     (counts.initialization_entered.notified()).await;
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Running);
     invocation.cancel();
@@ -285,7 +306,7 @@ async fn cancelled_init_resources() {
 async fn grpc_original_owner() {
     use std::num::NonZeroUsize;
     let counts = Arc::new(Counts::default());
-    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::Open).await;
     assert!(fixture.runtime.grpc().methods().is_empty());
     fixture.initialize().await.unwrap();
     assert_eq!(fixture.runtime.grpc().methods().len(), 4);

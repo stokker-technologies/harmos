@@ -60,7 +60,7 @@ pub mod __private {
     pub use harmos_domain::__private::{
         MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, postcard_product,
     };
-    pub use harmos_domain::declare;
+
     pub use harmos_domain::inventory as PluginInventory;
     pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
     pub use harmos_sdk::plugin::{
@@ -90,6 +90,9 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+pub use harmos_domain::model;
+pub use harmos_operations as builtins;
+
 pub use application::Application;
 pub use error::{BackendFailure, Error};
 pub use harmos_domain::{DefinitionId, Identified};
@@ -97,8 +100,16 @@ pub use harmos_domain::{DefinitionId, Identified};
 #[cfg(feature = "signal")]
 pub use harmos_storage::signal;
 
+pub use harmos_domain::{
+    Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RequestFor,
+    RestartPolicy, RetryPolicy, ServicePolicy,
+};
+pub use harmos_sdk::operations::{EndpointSet, Response};
+pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Service};
 pub use operations::refusal::Refusal;
-pub use runtime::{Builder, Runtime};
+pub use operations::{Invocation, Lane, Registration, RegistrationExt, Running};
+pub use runtime::{Builder, Handle, Runtime};
+pub use services::{ServiceContext, ServiceManager};
 
 pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField,

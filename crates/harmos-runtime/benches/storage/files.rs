@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
+use harmos_operations::storage::ReadFileRequest;
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::ReadFile;
 use harmos_runtime::storage::{ByteRange, FileMetadata, FileReference, FileSource, StorageManager};
 use sha2::{Digest, Sha256};
 
@@ -128,7 +128,7 @@ fn expected_digest(chunk: &[u8], length: usize) -> [u8; 32] {
 async fn verify(storage: &StorageManager, reference: FileReference, length: usize, expected: [u8; 32]) -> Duration {
     assert_eq!(reference.length, length as u64);
     assert_eq!(reference.sha256, expected);
-    let request = ReadFile { source: FileSource::Stored(reference), range: ByteRange { offset: 0, limit: None } };
+    let request = ReadFileRequest { source: FileSource::Stored(reference), range: ByteRange { offset: 0, limit: None } };
     let started = Instant::now();
     let mut reader = storage.read_file(request).await.unwrap();
     let mut elapsed = started.elapsed();

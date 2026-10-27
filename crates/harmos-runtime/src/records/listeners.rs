@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::{RecordManager, Registry};
-use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
+use crate::operations::{EncodedInvocation, Manager, PluginCallback};
 use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
@@ -46,7 +46,7 @@ type Submit<A> = fn(&<A as Application>::Record, Context, &PluginCallback) -> Re
 pub struct PluginListenerBindings<'a, A: Application> {
     records: &'a RecordManager<A>,
     scope: &'a PluginScope,
-    operations: &'a OperationManager,
+    operations: &'a Manager,
     entries: Vec<Binding<A>>,
 }
 
@@ -75,7 +75,7 @@ pub(super) struct Listening {
 
 impl<A: Application> RecordManager<A> {
     pub fn stage_listeners(
-        &self, scope: &PluginScope, operations: &OperationManager, after: Position,
+        &self, scope: &PluginScope, operations: &Manager, after: Position,
         configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
     ) -> Result<PluginListenerRegistration> {
         if scope.is_closed() || scope.has_committed() {

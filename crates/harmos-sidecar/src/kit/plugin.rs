@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Third Party Imports
 use tokio::io::AsyncWriteExt;
 // Local Imports
-use super::{Opening, Supervisor, catalog, local};
+use super::{Opening, Serving, Supervisor, catalog, local};
 use crate::inventory::{Declaration, Facility};
 use crate::{Attach, Attached, PluginCatalog, Refusal, StreamDeclaration};
 use harmos_sdk::plugin::{Declared, Owner, Plugin};
@@ -56,8 +56,8 @@ impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
         let listeners = harmos_domain::listeners::Declarations::from_tree(P::LISTENERS).map_err(std::io::Error::other)?;
         harmos_domain::inventory::listeners::validate(&listeners, &provides).map_err(std::io::Error::other)?;
         let pair = [
-            crate::operations::lifecycle::Descriptor::of_initialize::<P>().map_err(std::io::Error::other)?,
-            crate::operations::lifecycle::Descriptor::of_shutdown::<P>().map_err(std::io::Error::other)?,
+            harmos_domain::model::operations::lifecycle::Descriptor::of_initialize::<P>().map_err(std::io::Error::other)?,
+            harmos_domain::model::operations::lifecycle::Descriptor::of_shutdown::<P>().map_err(std::io::Error::other)?,
         ];
         if manifest.owner != P::ID || manifest.provides != provides || manifest.requires != requires || manifest.lifecycle != pair {
             return Err(std::io::Error::other("plugin SDK manifest differs from its authored contracts"));
@@ -97,7 +97,7 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.streams.clone()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(self.declaration.operations.clone())
     }
 
@@ -109,7 +109,7 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_domain::model::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 
@@ -171,18 +171,27 @@ where
     let definitions = native.declaration.operations.clone();
     let contracts = native.declaration.contracts.provides.clone();
     let registrations = catalog::registrations::<P>().map_err(std::io::Error::other)?;
-    let (owner, table) =
-        Owner::<P>::new_with_observers(contracts, native.capacity, native.declaration.observers.clone()).map_err(std::io::Error::other)?;
-    let interrupted_owner = Arc::clone(&owner);
+    let capacity = native.capacity;
+    let observers = native.declaration.observers.clone();
     Ok(Opening {
-        operations: table,
-        retirement: Box::new(move || {
-            let owner = Arc::clone(&owner);
-            Box::pin(async move { owner.retire().await.map_err(Refusal::of) })
-        }),
-        quiescence: Box::new(move || {
-            let owner = Arc::clone(&interrupted_owner);
-            Box::pin(async move { owner.quiesce().await.map_err(Refusal::of) })
+        serving: None,
+        prepare: Box::new(move |assigned_owner| {
+            let (owner, table) =
+                Owner::<P>::new_with_observers(assigned_owner, contracts.clone(), capacity, observers.clone()).map_err(Refusal::of)?;
+            harmos_operations::lifecycle::bind(owner.clone(), &table).map_err(Refusal::of)?;
+            let interrupted_owner = Arc::clone(&owner);
+            Ok(Serving {
+                owner: assigned_owner.to_owned(),
+                operations: table,
+                retirement: Box::new(move || {
+                    let owner = Arc::clone(&owner);
+                    Box::pin(async move { owner.retire().await.map_err(Refusal::of) })
+                }),
+                quiescence: Box::new(move || {
+                    let owner = Arc::clone(&interrupted_owner);
+                    Box::pin(async move { owner.quiesce().await.map_err(Refusal::of) })
+                }),
+            })
         }),
         catalog: PluginCatalog { registrations, operations: definitions, observers: native.declaration.observers.clone() },
     })

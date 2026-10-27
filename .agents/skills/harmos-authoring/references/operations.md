@@ -1,77 +1,117 @@
 # Operations
 
-## Portable Declarations
+## Vertical Authoring
 
-Use `#[harmos_domain::message]` for portable messages and
-`#[harmos_domain::operation]` on the owning request. The domain declaration owns
-identity, request, final reply, streaming item types, version, policy and
-visibility. Host-side declarations can use the corresponding attributes
-through `harmos`.
-
-This fragment assumes a product-owned `POLICY`:
+A portable request is separate from its operation declaration. Put request,
+response, declaration and runtime implementation together in the operation's
+concern directory. Shared product values stay in the domain. This example assumes
+`device::Error` converts `harmos::DependencyError`:
 
 ```rust
-#[harmos_domain::message]
-pub struct Reading {
-    pub value: f64,
-}
+#[cfg(feature = "runtime")]
+use {device::{Device, Error}, harmos::{Operation, OperationContext, Response}, std::sync::Arc};
 
-#[harmos_domain::message]
-#[harmos_domain::operation(
-    id = "instrument.read",
-    response = Reading,
-    policy = POLICY,
-    version = 1,
-)]
+#[harmos::message]
+pub struct ReadRequest { pub channel: u32 }
+
+#[harmos::message]
+pub struct ReadResponse { pub value: f64 }
+
+#[harmos::operation(id = "read", request = ReadRequest, response = ReadResponse,
+    policy = crate::POLICY, infer_request)]
 pub struct Read {
-    pub channel: u32,
+    #[cfg(feature = "runtime")]
+    device: Arc<Device>,
 }
 
-#[harmos_domain::catalog]
-pub enum Operations {
-    Read(Read),
+#[cfg(feature = "runtime")]
+impl Operation for Read {
+    type Request = ReadRequest;
+    type Response = ReadResponse;
+    type Error = Error;
+    type Endpoints = ();
+
+    async fn initialize(context: OperationContext) -> Result<Self, Error> {
+        Ok(Self { device: context.dependency::<Device>()? })
+    }
+
+    async fn run(&mut self, _: OperationContext, request: &mut ReadRequest,
+        _: &mut ()) -> Result<Response<ReadResponse>, Error> {
+        Ok(ReadResponse { value: self.device.read(request.channel).await? }.into())
+    }
 }
 ```
 
-`response` names the final reply; `input` and `output` independently declare
-streamed item types. With neither endpoint the operation is unary; either or
-both directions can stream.
-Messages contain portable values such as scalars, strings, bytes, nested
-messages, optional values and sequences. `Box<T>` can break a recursive
-Rust representation without changing the nested message's wire identity.
-Live handles and reference-counted execution resources are not message fields.
+The operations crate uses `harmos` with `default-features = false` and
+`runtime = ["harmos/runtime", "dep:device"]`. Cargo feature unification can
+still enable execution elsewhere in a shared graph. Keep contracts usable in
+a separate build without runtime dependencies.
 
-In a reusable product this belongs in `product-domain/src/operations/`.
-In a self-contained crate the same declaration can share a vertical operation
-file with its handler. Shared models have their own owner instead of being
-copied between requests.
+Harmos's own built-ins follow this layout in
+`crates/harmos-operations/src/{host,lifecycle,storage,streams}/`, exposed as
+`harmos::builtins`. Runtime code supplies SDK-owned state access handles;
+operations never depend back on the runtime crate. Shared portable values and
+reserved lifecycle protocol schemas stay in the domain. The current wire and
+storage formats are v1, with no historical decoding or migration.
 
-## Implementations And Catalogs
+## Catalogs And Invocation
 
-A runtime handler implements the original request type using the applicable
-execution API. Carrier authoring attributes such as
-`#[harmos_sidecar::operation]` and `#[harmos_guest::operation]` generate
-handler machinery from the supported lifecycle and run signatures.
+```rust
+#[harmos::catalog]
+pub enum Operations { Read(temperature::read::Read) }
 
-A declaration catalog contains request types. A separate handler catalog
-contains implementation types. Both can use the catalog macro, but they serve
-different purposes. Binding selects the implementation and its resource owner;
-it does not redefine policy, identity or schemas.
+let definitions = Operations::catalog();
+let mut dependencies = harmos::Dependencies::new();
+dependencies.insert(device)?;
+use harmos::RegistrationExt;
+runtime.register(Operations::registration(dependencies).lane(Lane::Interactive)).await?;
+let reading = runtime.operation(ReadRequest { channel: 3 }).retry(retry).run().await?;
+let pending = runtime.operation_for::<Read>(ReadRequest { channel: 3 }).start().await?;
+let reading = pending.join().await?;
+runtime.unregister(&harmos::QualifiedId::parse("host.read")?).await?;
+```
 
-Keep application behavior in the runtime and device/client behavior in its
-resource owner. A plugin should not wrap each existing operation in another
-operation merely to reach the runtime. Concrete carrier contexts can differ:
-share portable behavior and use compatible handler bindings rather than
-assuming a native handler type implements a guest interface.
+`Application::Lanes` names the closed `Lane` enum. A batch can use
+`.defaults::<Lane>()` and `.default_lane_for::<Read>(lane)`. Invocation builders
+are inert until started. Dependency insertion changes only the caller's snapshot;
+shared resource values remain the same `Arc<T>`. Duplicate or missing types fail
+explicitly. Declare one `infer_request` per request type; omit it when requests
+are reused and select the operation with `operation_for::<O>`.
 
-## Policy And Outcomes
+## Messages And Streaming
 
-Declare timeout, retry, visibility and replay behavior with the operation.
-Choose retry semantics according to side effects and idempotency, not just
-transport errors. Preserve cancellation and stream completion through handler
-cleanup; an acknowledgement of admission is not necessarily durable completion.
+`Message` defines `CODEC`, `encode`, `encode_into`, `encoded_size`, `decode`
+and `decoding_memory`. `Portable` adds schema-aware `fingerprint()` and payload
+`digest()`. Manual operation versions are replaced by fingerprints; stored
+application schema and journal versions retain their own durable contracts.
+Invalid static declarations fail macro checks or registration validation.
 
-Cross-provider use requires shared visibility and compatible complete
-contracts. Matching names or a linked Rust request type alone grants no
-execution authority. Classify errors at the owner that understands them and
-preserve source failures for callers and diagnostics.
+`input` and `output` independently name streamed item types. Use `()` endpoints
+for unary operations, `StreamInput<T>` for input, `StreamOutput<T>` for output,
+and their pair for duplex behavior. Supply typed endpoints with `.endpoints(...)`.
+Retain bounded ownership and await final settlement when cancelling streams.
+Live handles and reference-counted resources are execution fields rather than
+portable request fields.
+
+## Policy And Lifecycle
+
+`OperationPolicy` has `timeout`, `attempt_timeout` and `retries`; per-call
+`.retry(RetryPolicy)` leaves the declaration unchanged. Grant and cache-key hooks
+inspect `&Self::Request`. Visibility and replay behavior remain declaration metadata.
+
+`initialize(OperationContext)` constructs one fallible instance, `run` returns
+`Response<T>`, and `stop` and `cleanup` settle its resources. Services implement
+`Service` with the same context and lifecycle verbs and use
+`ServicePolicy { stop_timeout, restart }`, including `RestartPolicy::OnFailure`.
+Classify request errors where their meaning is known. Keep retry semantics
+consistent with side effects and replay safety.
+
+Local operation IDs match `[a-z][a-z0-9_]*`. The host assigns owners and qualifies
+routing IDs once as `owner.local_id`. Registration validates a whole batch;
+withdrawal rejects new calls and awaits cleanup. Failed cleanup retains the
+closing owner; another `unregister` resumes it. Re-registration allocates a fresh
+generation, fencing stale frames.
+
+Built-in carrier kits enable `harmos-operations/lifecycle` for SDK initialization
+and shutdown. The full `runtime` feature includes this subset plus host and
+storage execution; consumer operation authoring keeps its `runtime` convention.

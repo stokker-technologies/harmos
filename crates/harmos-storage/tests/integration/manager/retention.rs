@@ -15,8 +15,8 @@
 
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, Objects};
-use harmos_domain::operations::storage::Query;
 use harmos_storage::Identifier;
+use harmos_storage::Query;
 use harmos_storage::query::transform::{
     Transform,
     project::{Project, Projection},

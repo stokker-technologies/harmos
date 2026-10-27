@@ -39,8 +39,8 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Barrier, Notify};
 // Local Imports
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
-use harmos_runtime::{Error, Runtime, services::Fault, services::Service, services::ServiceStatus};
+use harmos_runtime::operations::{Operation, RetryPolicy};
+use harmos_runtime::{Error, Runtime, services::ServiceContext, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
 
 /* === Constants === */
@@ -55,51 +55,46 @@ struct Ping;
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = PingContract, infer_request,
         response = u64,
-        id = "service.ping",
-        version = 1,
-        policy = OperationPolicy {
+        id = "service_ping",
+
+        policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(120),
             attempt_timeout: Duration::from_secs(120),
             retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
         },
     )]
+struct PingContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct PingContract {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    PingContract(PingContract),
+    PingContract(PingContractDeclaration),
 }
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-}
+use support::Lanes;
 
 /* === Traits === */
 
 /* === Implementations === */
 
 impl Operation for Ping {
-    type Declaration = PingContract;
-    type Resources = ();
+    type Request = PingContract;
+    type Response = <PingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let _resources = context.dependency::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, _request: &mut PingContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _request: &mut PingContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
         result.map(::core::convert::Into::into)
@@ -131,7 +126,7 @@ fn assembly() -> harmos_runtime::Builder<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog())
 }
 
-async fn resident(mut context: Service<Bank>) -> Result<(), Fault<&'static str>> {
+async fn resident(mut context: ServiceContext<Bank>) -> Result<(), std::io::Error> {
     context.ready();
     context.stopping().await;
     Ok(())
@@ -175,8 +170,20 @@ async fn shutdown_preserves_work() {
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
-    runtime.operations.register_operation::<Ping>("service", Lanes::Open, Arc::new(())).unwrap();
-    assert_eq!(*runtime.operations.call(PingContract {}).await.unwrap(), 42);
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(())).unwrap();
+                dependencies
+            })
+            .implementation::<PingContractDeclaration, Ping>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(*runtime.operations.call::<PingContractDeclaration>(PingContract {}).await.unwrap(), 42);
     runtime.stop().await.unwrap();
 }
 
@@ -216,14 +223,14 @@ async fn shutdown_join_started() {
                 move |_: Arc<()>| {
                     let entered = entered.clone();
                     let exited = exited.clone();
-                    move |mut context: Service<Bank>| {
+                    move |mut context: ServiceContext<Bank>| {
                         let entered = entered.clone();
                         let exited = exited.clone();
                         async move {
                             entered.fetch_add(1, Ordering::SeqCst);
                             context.stopping().await;
                             exited.fetch_add(1, Ordering::SeqCst);
-                            Ok::<(), Fault<&str>>(())
+                            Ok::<(), std::io::Error>(())
                         }
                     }
                 },
@@ -253,7 +260,7 @@ async fn concurrent_shutdowns_join() {
         .service("boot", {
             let stopping = stopping.clone();
             let release = release.clone();
-            move |mut context: Service<Bank>| {
+            move |mut context: ServiceContext<Bank>| {
                 let stopping = stopping.clone();
                 let release = release.clone();
                 async move {
@@ -261,7 +268,7 @@ async fn concurrent_shutdowns_join() {
                     context.stopping().await;
                     stopping.notify_one();
                     release.notified().await;
-                    Ok::<(), Fault<&str>>(())
+                    Ok::<(), std::io::Error>(())
                 }
             }
         })

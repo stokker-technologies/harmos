@@ -29,7 +29,6 @@ use super::operations::Lanes;
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
-use harmos_runtime::storage::operations::Query;
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::storage::{JsonStorage, JsonStorageSettings};
 use std::num::NonZeroUsize;
@@ -59,7 +58,7 @@ struct Reading {
 
 // Every Saved Record Of One Schema As (Item, Value), Through The Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
-    let query = Query {
+    let query = harmos_runtime::storage::Query {
         at: storage.cursor_saved(),
         source: Source::Records(RecordSelection { schema: schema.clone(), scope: None, item: None, source_start: None, source_end: None }),
         transforms: Vec::new(),
@@ -113,10 +112,17 @@ async fn runtime_baseline_walks() {
     assert!(storage.status().running);
 
     // Read The Catalog Before And After Serving Storage
-    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage.")), "nothing is served before the host registers it");
-    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
+    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let catalogue = served(&runtime);
-    for required in ["storage.query", "storage.write_records", "storage.read_file"] {
+    for required in ["storage_query", "storage_write_records", "storage_read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
     }
 
@@ -127,8 +133,8 @@ async fn runtime_baseline_walks() {
     storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("second").unwrap();
-    let low = Message::encode_to_vec(&Reading { value: -3 });
-    let high = Message::encode_to_vec(&Reading { value: 8 });
+    let low = Message::encode(&Reading { value: -3 });
+    let high = Message::encode(&Reading { value: 8 });
     let records = [record(&schema, &first, &low), record(&schema, &second, &high)];
     let written = storage.write_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();

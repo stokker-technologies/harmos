@@ -26,7 +26,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
 use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
-use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
+use crate::operations::{EncodedInvocation, Manager, PluginCallback};
 use crate::plugin::PluginScope;
 use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
@@ -50,7 +50,7 @@ type Submit = fn(&Row, Context, &PluginCallback) -> Result<EncodedInvocation>;
 pub struct PluginListenerBindings<'a, A: Application> {
     streams: &'a StreamManager<A>,
     scope: &'a PluginScope,
-    operations: &'a OperationManager,
+    operations: &'a Manager,
     sources: Vec<Captured>,
     entries: Vec<Binding>,
 }
@@ -95,7 +95,7 @@ struct Payload<'a>(&'a [u8]);
 
 impl<A: Application> StreamManager<A> {
     pub fn stage_listeners(
-        &self, scope: &PluginScope, operations: &OperationManager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
+        &self, scope: &PluginScope, operations: &Manager, configure: impl FnOnce(&mut PluginListenerBindings<'_, A>) -> Result<()>,
     ) -> Result<PluginListenerRegistration> {
         if scope.is_closed() || scope.has_committed() || self.closed.load(Ordering::Acquire) {
             return Err(Error::Closing { domain: "stream listener staging" });
@@ -353,7 +353,13 @@ impl Table {
 }
 
 impl Message for Payload<'_> {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.raw.v1";
+
+    fn decoding_memory(_: &[u8]) -> std::result::Result<usize, MessageError> {
+        Err(MessageError::borrowed("borrowed source payload is never decoded"))
+    }
+
+    fn encode(&self) -> Vec<u8> {
         self.0.to_vec()
     }
 
@@ -361,7 +367,7 @@ impl Message for Payload<'_> {
         bytes.extend_from_slice(self.0);
     }
 
-    fn encoded_len(&self) -> usize {
+    fn encoded_size(&self) -> usize {
         self.0.len()
     }
 

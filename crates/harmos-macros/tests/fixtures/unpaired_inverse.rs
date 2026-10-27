@@ -28,11 +28,11 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "sheet.place", version = 1, inverse = Remove)]
+#[harmos::transaction(id = "sheet.place",  inverse = Remove)]
 #[derive(Deserialize, Serialize)]
 struct Place;
 
-#[harmos::transaction(id = "sheet.remove", version = 1, inverse = Self)]
+#[harmos::transaction(id = "sheet.remove",  inverse = Self)]
 #[derive(Deserialize, Serialize)]
 struct Remove;
 

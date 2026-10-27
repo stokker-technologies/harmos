@@ -25,7 +25,7 @@ publish.workspace = true
 [features]
 default = []
 sidecar = []
-guest = ["dep:wit-component"]
+guest = ["dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
 generate-python = ["generate-proto"]
 
@@ -53,6 +53,8 @@ prost-reflect = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 wit-component = { workspace = true, optional = true, default-features = true }
+wasm-encoder = { workspace = true, optional = true, default-features = true, features = ["wasmparser"] }
+wasmparser = { workspace = true, optional = true, default-features = true }
 
 # Configuration
 

@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, Lanes, config};
+use harmos_operations::storage::{Query, WriteRecords};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
 use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
@@ -28,7 +29,6 @@ use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::storage::operations::{Query, WriteRecords};
 use harmos_runtime::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
@@ -52,7 +52,7 @@ type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
 /* === Structs === */
 
 struct Host {
-    operations: OperationManager,
+    operations: OperationManager<Lanes>,
     callers: BTreeMap<String, PluginCaller>,
 }
 
@@ -120,8 +120,8 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> Query {
-    Query {
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::QueryRequest {
+    harmos_operations::storage::QueryRequest {
         at: fixture.storage.cursor_saved(),
         source: Source::Records(RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None }),
         transforms: vec![Transform::Aggregate(AggregateTransform {
@@ -146,7 +146,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
         .await
         .unwrap();
     for (index, value) in values.iter().enumerate() {
-        let payload = value.encode_to_vec();
+        let payload = value.encode();
         let item = Identifier::new(format!("value{index}")).unwrap();
         fixture.storage.write_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
     }
@@ -158,7 +158,14 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let definitions = PluginDefinitions::new(
@@ -173,8 +180,13 @@ async fn write_grants_enforced() {
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
     super::writes::seed(&fixture).await;
-    let mut exchange =
-        writer.exchange::<WriteRecords>(WriteRecords { scope: None }, super::writes::settings(), super::writes::settings()).unwrap();
+    let mut exchange = writer
+        .exchange::<WriteRecords>(
+            harmos_operations::storage::WriteRecordsRequest { scope: None },
+            super::writes::settings(),
+            super::writes::settings(),
+        )
+        .unwrap();
     exchange.send(super::writes::batch(1, "bench")).await.unwrap();
     let cursor = loop {
         let receipt = exchange.next().await.unwrap().unwrap();
@@ -198,7 +210,11 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
-        bystander.exchange::<WriteRecords>(WriteRecords { scope: None }, super::writes::settings(), super::writes::settings()),
+        bystander.exchange::<WriteRecords>(
+            harmos_operations::storage::WriteRecordsRequest { scope: None },
+            super::writes::settings(),
+            super::writes::settings()
+        ),
         Err(Error::OperationUnauthorized { .. })
     ));
 
@@ -210,7 +226,14 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let schema = super::super::schema();

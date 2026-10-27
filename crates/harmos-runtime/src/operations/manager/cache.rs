@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     pub fn cache_capacity(&self) -> usize {
         self.registry.state.lock().expect("operation registry lock is healthy").cache_capacity
     }

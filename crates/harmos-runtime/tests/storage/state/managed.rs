@@ -38,19 +38,13 @@ type Refusal = &'static str;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "managed.add", version = 2, irreversible, history(OldAdd))]
+#[harmos_runtime::transaction(id = "managed.add", irreversible)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::transaction(version = 1)]
-#[derive(serde::Serialize, serde::Deserialize)]
-struct OldAdd {
-    amount: i64,
-}
-
-#[harmos_runtime::record(id = "managed.seen", version = 1)]
+#[harmos_runtime::record(id = "managed.seen")]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
@@ -79,7 +73,14 @@ enum Records {
 
 /* === Implementations === */
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl harmos_runtime::Application for Model {
+    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Transactions;
     type Record = Records;
@@ -104,25 +105,6 @@ impl harmos_runtime::state::Transaction<i64> for Add {
     }
     fn apply(&self, state: &mut i64) {
         *state += self.amount;
-    }
-}
-
-impl harmos_runtime::state::Transaction<i64> for OldAdd {
-    type Error = &'static str;
-    fn check(&self, _: &i64) -> Result<(), Self::Error> {
-        panic!("replay must not check")
-    }
-    fn records(&self, _: &i64, _: &mut harmos_runtime::state::Records) {
-        panic!("replay must not emit records")
-    }
-    fn apply(&self, state: &mut i64) {
-        *state += 2 * self.amount;
-    }
-}
-
-impl From<OldAdd> for Add {
-    fn from(old: OldAdd) -> Self {
-        Self { amount: old.amount }
     }
 }
 
@@ -306,10 +288,9 @@ async fn recovery_history_admission() {
         runtime.state.commit(deposit(1)).await.unwrap();
         runtime.stop().await.unwrap();
         let original = store.recovery.entries.lock().unwrap()[&1].payload.clone();
-        for field in ["version", "position", "id", "commit"] {
+        for field in ["position", "id", "commit"] {
             let mut group: serde_json::Value = serde_json::from_slice(&original).unwrap();
             match field {
-                "version" => group["version"] = 7.into(),
                 "position" => group["entries"][0]["position"] = 9.into(),
                 "id" => group["entries"][0]["id"] = "unknown.transaction".into(),
                 "commit" => group["entries"][0]["metadata"]["commit"] = serde_json::Value::Null,
@@ -428,46 +409,6 @@ async fn periodic_save_advances() {
     assert_eq!(runtime.state.stored(), receipt.frontier);
     assert_eq!(storage.status().saved.sequence, 0);
     assert_eq!(storage.status().recovery_saved.sequence, 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn replay_upcasts_history() {
-    let store = Store::new();
-    let storage = store.manager(config());
-    let builder = || {
-        Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
-            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots: None, journal_tail: 2 },
-        )
-    };
-    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    let receipt = runtime.state.commit(Add { amount: 3 }).await.unwrap();
-    assert_eq!(receipt.frontier, Position(3));
-    assert_eq!(storage.status().recovery_accepted.sequence, 1);
-    runtime.stop().await.unwrap();
-
-    {
-        let mut entries = store.recovery.entries.lock().unwrap();
-        let entry = entries.get_mut(&1).unwrap();
-        let mut group: serde_json::Value = serde_json::from_slice(&entry.payload).unwrap();
-        group["entries"][0]["version"] = 1.into();
-        group["entries"][0]["payload"]["amount"] = (-3).into();
-        entry.payload = serde_json::to_vec(&group).unwrap();
-    }
-    let storage = store.manager(config());
-    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, -6);
-    assert_eq!(runtime.state.applied(), Position(3));
-    assert_eq!(runtime.state.stored(), Position(3));
-    assert_eq!(storage.status().recovery_accepted.sequence, 1);
-    let facts: Vec<_> = runtime.state.query::<Records>(Position::ORIGIN).await.collect();
-    assert_eq!(facts.len(), 1);
-    assert!(facts[0].is_ok());
-    let system: Vec<_> = runtime.state.query::<harmos_runtime::state::SystemFact>(Position::ORIGIN).await.collect();
-    assert_eq!(system.len(), 1);
-    assert!(system[0].is_ok());
-    runtime.state.commit(Add { amount: 2 }).await.unwrap();
-    assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, -4);
     runtime.stop().await.unwrap();
 }
 

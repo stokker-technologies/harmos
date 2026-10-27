@@ -40,7 +40,14 @@ struct Plain;
 
 /* === Implementations === */
 
+#[harmos_runtime::lanes]
+pub enum PlainLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Plain {
+    type Lanes = PlainLanes;
     type State = State;
     type Transaction = Never;
     type Record = ();

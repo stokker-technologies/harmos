@@ -75,7 +75,7 @@ fn item<T: MemorySize + Message>(inner: &Arc<Inner>, held: &Held, value: T) -> R
 }
 
 fn retained_item<T: MemorySize + Message>(inner: &Arc<Inner>, value: T, mut memory: Reservation) -> Result<ReadBatch<T>> {
-    if value.encoded_len() > inner.settings.response.batch_bytes.get() {
+    if value.encoded_size() > inner.settings.response.batch_bytes.get() {
         return Err(Error::ResourceExhausted { resource: "directory response bytes" });
     }
     let bytes = value.memory_size().saturating_add(ENTRY_OVERHEAD);

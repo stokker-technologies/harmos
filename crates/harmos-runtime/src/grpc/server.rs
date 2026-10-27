@@ -28,8 +28,8 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
-use crate::operations::{OperationDeclaration, OperationInstance, StreamItem};
-use crate::{Error, Refusal, operations::OperationManager};
+use crate::operations::{OperationDeclaration, Running, StreamItem};
+use crate::{Error, Refusal, operations::Manager};
 
 /* === Constants === */
 
@@ -52,7 +52,7 @@ struct Endpoint<O> {
 
 #[derive(Clone)]
 pub enum Authority {
-    TrustedHost(OperationManager),
+    TrustedHost(Manager),
 
     Binding(crate::operations::GrpcBinding),
 
@@ -65,6 +65,10 @@ pub enum Authority {
 /* === Implementations === */
 
 impl Authority {
+    pub fn trusted_host<L: crate::operations::Lane>(operations: &crate::operations::OperationManager<L>) -> Self {
+        Self::TrustedHost(operations.execution())
+    }
+
     fn contextual<T>(&self, request: &Request<T>) -> Self {
         let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
             return self.clone();
@@ -78,8 +82,8 @@ impl Authority {
     }
 
     fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: StreamItem<O>, endpoints: P,
-    ) -> crate::Result<OperationInstance<O>> {
+        &self, request: StreamItem<O::Request>, endpoints: P,
+    ) -> crate::Result<Running<O>> {
         match self {
             Self::Binding(binding) => binding.submit(request, endpoints),
             Self::TrustedHost(operations) => operations.submit_external_charged::<O, P>(request, endpoints),
@@ -103,13 +107,13 @@ impl Settings {
     }
 }
 
-impl<O> tonic::server::UnaryService<StreamItem<O>> for Endpoint<O>
+impl<O> tonic::server::UnaryService<StreamItem<O::Request>> for Endpoint<O>
 where
     O: OperationDeclaration,
 {
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
-    fn call(&mut self, request: Request<StreamItem<O>>) -> Self::Future {
+    fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         Box::pin(async move {
             let instance = authority.submit_charged::<O, _>(request.into_inner(), ()).map_err(status)?;
@@ -117,14 +121,14 @@ where
         })
     }
 }
-impl<O> tonic::server::ServerStreamingService<StreamItem<O>> for Endpoint<O>
+impl<O> tonic::server::ServerStreamingService<StreamItem<O::Request>> for Endpoint<O>
 where
     O: crate::operations::OperationDeclaration,
 {
     type Response = Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>;
     type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
-    fn call(&mut self, request: Request<StreamItem<O>>) -> Self::Future {
+    fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
@@ -135,7 +139,7 @@ where
         })
     }
 }
-impl<O> tonic::server::ClientStreamingService<StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>>
+impl<O> tonic::server::ClientStreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
     for Endpoint<O>
 where
     O: crate::operations::OperationDeclaration,
@@ -143,7 +147,7 @@ where
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
     fn call(
-        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>>>,
+        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>>,
     ) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
@@ -157,7 +161,8 @@ where
         })
     }
 }
-impl<O> tonic::server::StreamingService<StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>> for Endpoint<O>
+impl<O> tonic::server::StreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
+    for Endpoint<O>
 where
     O: crate::operations::OperationDeclaration,
 {
@@ -165,7 +170,7 @@ where
     type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(
-        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>>>,
+        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>>,
     ) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
@@ -187,13 +192,13 @@ where
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: OperationDeclaration,
-    W: Wire<O> + Wire<O::Response>,
+    W: Wire<O::Request> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<W, O, crate::operations::Response<O::Response>>::new(settings.decode, settings.encode) {
+        let codec = match Codec::<W, O::Request, crate::operations::Response<O::Response>>::new(settings.decode, settings.encode) {
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
@@ -204,7 +209,7 @@ where
 pub fn download<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
-    W: Wire<O> + Wire<<O::Output as crate::operations::Direction>::Item> + Wire<O::Response>,
+    W: Wire<O::Request> + Wire<<O::Output as crate::operations::Direction>::Item> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
@@ -212,7 +217,7 @@ where
         }
         let codec = match Codec::<
             W,
-            O,
+            O::Request,
             Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
         >::new(settings.decode, settings.encode)
         {
@@ -226,7 +231,7 @@ where
 pub fn upload<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
-    W: Wire<O> + Wire<<O::Input as crate::operations::Direction>::Item> + Wire<O::Response>,
+    W: Wire<O::Request> + Wire<<O::Input as crate::operations::Direction>::Item> + Wire<O::Response>,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
@@ -234,7 +239,7 @@ where
         }
         let codec = match Codec::<
             W,
-            InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
+            InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>,
             crate::operations::Response<O::Response>,
         >::new(settings.decode, settings.encode)
         {
@@ -248,7 +253,7 @@ where
 pub fn exchange<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: crate::operations::OperationDeclaration,
-    W: Wire<O>
+    W: Wire<O::Request>
         + Wire<<O::Input as crate::operations::Direction>::Item>
         + Wire<<O::Output as crate::operations::Direction>::Item>
         + Wire<O::Response>,
@@ -259,7 +264,7 @@ where
         }
         let codec = match Codec::<
             W,
-            InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
+            InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>,
             Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
         >::new(settings.decode, settings.encode)
         {

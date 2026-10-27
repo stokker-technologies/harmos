@@ -64,6 +64,7 @@ impl Application for SchematicEditor {
     type Record = Records;
     type Streams = Streams;
     type Resources = ();
+    type Lanes = crate::lanes::Lanes;
 }
 
 /* === Public Functions === */

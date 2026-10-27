@@ -94,7 +94,6 @@ impl crate::model::storage::codec::Value for Encoding {
 
 fn encoding(value: u64) -> Result<crate::model::storage::PayloadEncoding, crate::MessageError> {
     match value {
-        0 => Ok(crate::model::storage::PayloadEncoding::ProtobufV1),
         1 => Ok(crate::model::storage::PayloadEncoding::PostcardV1),
         _ => Err(crate::MessageError::borrowed("unknown persisted payload encoding")),
     }

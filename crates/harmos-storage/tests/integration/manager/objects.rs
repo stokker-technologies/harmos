@@ -247,7 +247,7 @@ fn forged_values_refused() {
             0 => value.item = harmos_storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap()).unwrap(),
             1 => value.schema.id = Identifier::new("other").unwrap(),
             2 => value.payload = vec![0xff],
-            _ => value.payload = document("finished").encode_to_vec(),
+            _ => value.payload = document("finished").encode(),
         }
         if case == 3 {
             // A value update with the same logical identity is valid.
@@ -264,8 +264,8 @@ fn forged_values_refused() {
 #[test]
 fn payload_limit_bounds() {
     let source = document(&"x".repeat(100));
-    let exact = NonZeroUsize::new(source.encoded_len()).unwrap();
-    let small = NonZeroUsize::new(source.encoded_len() - 1).unwrap();
+    let exact = NonZeroUsize::new(source.encoded_size()).unwrap();
+    let small = NonZeroUsize::new(source.encoded_size() - 1).unwrap();
     assert!(Objects::encode(&source, small).is_err());
     let value = Objects::encode(&source, exact).unwrap();
     assert!(Objects::decode::<Document>(&value, small).is_err());

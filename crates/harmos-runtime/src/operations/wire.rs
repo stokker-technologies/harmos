@@ -25,10 +25,10 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::caller::Source;
 use super::manager::{Entry, Submission};
-use super::{OperationInstanceId, OperationManager};
+use super::{Manager, OperationInstanceId};
 use crate::operations::OperationDeclaration;
 use crate::supervision::executor;
-use crate::{Error, Message, Refusal, Result, operations::Scope};
+use crate::{Error, Refusal, Result, operations::Scope};
 
 /* === Constants === */
 
@@ -37,9 +37,11 @@ use crate::{Error, Message, Refusal, Result, operations::Scope};
 /* === Type Aliases === */
 
 type Outcome = Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>>;
-pub(super) type Dispatch = fn(&OperationManager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
+pub(super) type Dispatch = fn(&Manager, Submission, Source, Option<Parent<'_>>, EncodedInput) -> Result<EncodedInvocation>;
 
 /* === Structs === */
+
+struct Encoded;
 
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
@@ -52,7 +54,7 @@ pub(super) struct EncodedInput {
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[derive(Clone)]
 pub struct PluginCallback {
-    operations: OperationManager,
+    operations: Manager,
     entry: Arc<Entry>,
     contract: crate::operations::Contract,
 }
@@ -78,6 +80,19 @@ pub struct EncodedInvocation {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl OperationDeclaration for Encoded {
+    type Request = Vec<u8>;
+    type Response = Vec<u8>;
+    type Input = super::NoStream;
+    type Output = super::NoStream;
+    const ID: &'static str = "encoded";
+    const POLICY: super::OperationPolicy = super::OperationPolicy {
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
+        retries: super::RetryPolicy::Never,
+    };
+}
 
 impl EncodedInvocation {
     pub fn id(&self) -> OperationInstanceId {
@@ -115,7 +130,7 @@ impl Future for EncodedInvocation {
     }
 }
 
-impl OperationManager {
+impl Manager {
     pub fn submit_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<EncodedInvocation> {
         self.submit_encoded_as(operation, payload, Source::Host, None)
     }
@@ -127,16 +142,34 @@ impl OperationManager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now())
+        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), None)
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
     fn submit_encoded_at_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
+        expected: Option<([u8; 32], u64)>,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
-        let entry = self.entry_as(operation, &origin)?;
+        let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
+            field: "encoded operation",
+            reason: "routing requires an owner-qualified operation identity",
+        })?;
+        let (owner, local) = qualified.as_str().split_once('.').expect("validated qualified identity");
+        let entry = self.capture_routed(local, owner, &origin).map_err(|error| match error {
+            Error::NotRegistered { .. } => Error::NotRegistered { domain: "operation", name: operation.to_owned() },
+            error => error,
+        })?;
+        entry.available_to(&origin)?;
         entry.authorize(&origin)?;
+        if expected.is_some_and(|(fingerprint, generation)| {
+            entry.declared().fingerprint.0 != fingerprint || entry.generation.value() != generation
+        }) {
+            return Err(Error::InvalidInput {
+                field: "encoded operation identity",
+                reason: "fingerprint or generation differs from the assigned target",
+            });
+        }
         let dispatch = entry
             .wire
             .ok_or(Error::InvalidInput { field: "encoded operation", reason: "operation has no cross-boundary codec binding" })?;
@@ -157,7 +190,7 @@ impl OperationManager {
 }
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-impl OperationManager {
+impl Manager {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn capture_host_control(
         &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
@@ -188,7 +221,7 @@ impl OperationManager {
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 impl PluginCallback {
-    pub(super) fn from_entry(operations: OperationManager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
+    pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
             return Err(Error::InvalidInput {
                 field: "callback contract",
@@ -275,10 +308,18 @@ impl PluginControl {
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, payload: Vec<u8>, submitted: tokio::time::Instant, values: Vec<super::CallValue>,
+        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
-        self.operations.with_context(context).submit_encoded_at_as(operation, payload, Source::Plugin(self.source.clone()), None, submitted)
+        self.operations.with_context(context).submit_encoded_at_as(
+            operation,
+            payload,
+            Source::Plugin(self.source.clone()),
+            None,
+            submitted,
+            Some((fingerprint, generation)),
+        )
     }
 }
 
@@ -294,7 +335,8 @@ impl super::Context<'_> {
 
     #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn submit_encoded_at(
-        &self, operation: &str, payload: Vec<u8>, submitted: tokio::time::Instant, values: Vec<super::CallValue>,
+        &self, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -303,6 +345,7 @@ impl super::Context<'_> {
             self.source.clone(),
             Some(Parent { scope: &self.scope, ancestors: self.admission.held() }),
             submitted,
+            Some((fingerprint, generation)),
         )
     }
 
@@ -313,27 +356,25 @@ impl super::Context<'_> {
 
 /* === Public Functions === */
 
-pub(super) fn dispatch<O>(
-    operations: &OperationManager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
-) -> Result<EncodedInvocation>
-where
-    O: OperationDeclaration,
-{
+pub(super) fn dispatch_native(
+    operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
+) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(timeout, submitted)?;
-    if operations.preparation.is_none() {
-        return Err(Error::InvalidInput {
-            field: "operation preparation bytes",
-            reason: "encoded preparation requires an explicit preparation budget",
-        });
-    }
+    let factory = submission
+        .entry
+        .binding
+        .downcast_ref::<harmos_sdk::operations::OperationFactory>()
+        .ok_or(Error::InvalidInput { field: "native operation", reason: "entry does not own a native factory" })?;
+    let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
-        None => std::num::NonZeroUsize::new(input.payload.capacity()).map(|bytes| operations.claim_preparation(bytes)).transpose()?,
+        None => Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?),
     };
-    let decoding_bytes = codec::<O, _>(|| <O as crate::Message>::decoding_memory(&input.payload))?
-        .map_err(|source| Error::OperationPayload { operation: O::ID.to_owned(), source })?;
+    let decoding_bytes = catch_unwind(AssertUnwindSafe(|| factory.decoding_memory(&input.payload)))
+        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+        .map_err(|source| Error::OperationPayload { operation: name.clone(), source })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
         if let Some(original) = &mut submission.preparation {
@@ -342,13 +383,31 @@ where
             submission.preparation = Some(decoded);
         }
     }
-    budget(timeout, submitted)?;
-    let request = codec::<O, _>(|| <O as crate::Message>::decode(&input.payload))?
-        .map_err(|source| Error::OperationPayload { operation: O::ID.to_owned(), source })?;
+    let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(&input.payload)))
+        .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
+        .map_err(|source| Error::OperationFailed { operation: name, source: Arc::new(source) })?;
+    drop(input.payload);
+    dispatch_prepared(operations, submission, source, parent, prepared, super::binding::Request::from(Vec::new()))
+}
+
+pub(super) fn dispatch_prepared(
+    operations: &Manager, submission: Submission, source: Source, parent: Option<Parent<'_>>,
+    prepared: harmos_sdk::operations::registration::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
+) -> Result<EncodedInvocation> {
+    let submitted = submission.submitted;
+    let timeout = submission.entry.declared().policy.timeout;
+    let harmos_sdk::operations::registration::PreparedNative { instance, grant, key, .. } = prepared;
+    let instance = std::sync::Mutex::new(Some(instance));
+    let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
+        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
+    });
+    request.binding = Some(Arc::new(binding));
+    request.grant = grant;
+    request.key = key;
     let target = Arc::downgrade(&submission.entry);
     budget(timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
-    let invocation = operations.admit_entry::<O, ()>((request.into(), ()), scope, ancestors, &source, submission)?;
+    let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
@@ -357,13 +416,8 @@ where
         let response = invocation.await?;
         available(&target, &source)?;
         budget(timeout, submitted)?;
-        let payload = codec::<O, _>(|| response.encode_to_vec())?;
-        available(&target, &source)?;
-        budget(timeout, submitted)?;
-
-        Ok(payload)
+        Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
-
     Ok(EncodedInvocation { id, generation, outcome, control })
 }
 
@@ -381,8 +435,87 @@ pub(super) fn budget(timeout: Duration, submitted: tokio::time::Instant) -> Resu
 
 /* === Private Functions === */
 
-fn codec<O: OperationDeclaration, T>(run: impl FnOnce() -> T) -> Result<T> {
-    catch_unwind(AssertUnwindSafe(run)).map_err(|_| Error::OperationPanicked { operation: O::ID.to_owned() })
-}
-
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RegistrationExt;
+
+    #[crate::lanes]
+    enum Lanes {
+        #[default]
+        Default,
+    }
+
+    struct Model;
+    impl crate::Application for Model {
+        type Lanes = Lanes;
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+        type Streams = ();
+        type Resources = ();
+    }
+
+    struct Probe;
+    impl OperationDeclaration for Probe {
+        type Request = u64;
+        type Response = u64;
+        type Input = super::super::NoStream;
+        type Output = super::super::NoStream;
+        const ID: &'static str = "fenced_probe";
+        const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+            timeout: Duration::from_secs(1),
+            attempt_timeout: Duration::from_secs(1),
+            retries: crate::RetryPolicy::Never,
+        };
+    }
+
+    impl harmos_sdk::Operation for Probe {
+        type Request = u64;
+        type Response = u64;
+        type Error = std::io::Error;
+        type Endpoints = ();
+
+        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+            Ok(Self)
+        }
+
+        async fn run(&mut self, _: harmos_sdk::OperationContext, request: &mut u64, _: &mut ()) -> std::io::Result<crate::Response<u64>> {
+            Ok((*request).into())
+        }
+    }
+
+    #[tokio::test]
+    async fn assigned_identity_fences_before_decoding() {
+        let builder = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog());
+        let runtime = builder.runtime().await.unwrap();
+        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<Probe>();
+        runtime.register(batch.clone().defaults()).await.unwrap();
+        let entry = runtime.operations.entry(Probe::ID).unwrap();
+        let fingerprint = entry.declared().fingerprint.0;
+        let generation = entry.generation.value();
+        let mut wrong = fingerprint;
+        wrong[0] ^= 1;
+
+        let submit = |fingerprint, generation| {
+            runtime.operations.submit_encoded_at_as(
+                "host.fenced_probe",
+                Vec::new(),
+                Source::Host,
+                None,
+                executor::now(),
+                Some((fingerprint, generation)),
+            )
+        };
+        assert!(matches!(submit(wrong, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
+        assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
+
+        let id = crate::QualifiedId::parse("host.fenced_probe").unwrap();
+        runtime.unregister(&id).await.unwrap();
+        runtime.register(batch.defaults()).await.unwrap();
+        assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
+        runtime.stop().await.unwrap();
+    }
+}

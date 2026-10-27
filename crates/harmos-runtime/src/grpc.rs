@@ -25,6 +25,7 @@ mod input;
 mod listener;
 
 mod manager;
+pub(crate) mod native;
 
 mod origin;
 
@@ -90,7 +91,7 @@ pub struct ResponseStream<O: crate::operations::OperationDeclaration, T, E = cra
 }
 
 struct Pending<O: crate::operations::OperationDeclaration> {
-    instance: crate::operations::OperationInstance<O>,
+    instance: crate::operations::Running<O>,
     delivered: bool,
 }
 
@@ -274,16 +275,14 @@ impl Opening {
 /* === Public Functions === */
 
 pub fn stream<O: crate::operations::OperationDeclaration>(
-    instance: crate::operations::OperationInstance<O>,
-    items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
+    instance: crate::operations::Running<O>, items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
     ResponseStream { pending: Box::pin(response(instance)), items: Some(items.into_receiver()), result: None }
 }
 
 pub fn exchange<O, S>(
-    instance: crate::operations::OperationInstance<O>,
-    input: crate::operations::StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
-    output: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
+    instance: crate::operations::Running<O>, input: crate::operations::StreamOutput<<O::Input as crate::operations::Direction>::Item>,
+    incoming: S, output: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item, InputError>
 where
     O: crate::operations::OperationDeclaration,
@@ -295,7 +294,7 @@ where
 }
 
 pub fn response<O: crate::operations::OperationDeclaration>(
-    instance: crate::operations::OperationInstance<O>,
+    instance: crate::operations::Running<O>,
 ) -> impl std::future::Future<Output = crate::Result<crate::operations::Response<O::Response>>> + Send {
     let pending = Pending { instance, delivered: false };
     async move {

@@ -120,8 +120,8 @@ fn aggregate_protobuf_contract() {
 #[test]
 fn postcard_matches_serde() {
     for value in EVERY {
-        let encoded = Message::encode_to_vec(&value);
-        assert_eq!(encoded.len(), Message::encoded_len(&value));
+        let encoded = Message::encode(&value);
+        assert_eq!(encoded.len(), Message::encoded_size(&value));
         assert_eq!(encoded, postcard::to_allocvec(&value).unwrap(), "{value:?}");
         assert_eq!(<Aggregate as Message>::decode(&encoded).unwrap(), value);
         assert_eq!(<Aggregate as Message>::decoding_memory(&encoded).unwrap(), value.memory_size());
@@ -135,7 +135,7 @@ fn aggregate_message_field() {
     let value = Summary { aggregate: Aggregate::Percentile(95), optional: Some(Aggregate::Rms), aggregates: EVERY.to_vec() };
     let encoded = crate::encode(&value);
     assert!(grpc::decode::<Summary>(DecodeInput::new(&encoded)).unwrap() == value);
-    let encoded = Message::encode_to_vec(&value);
+    let encoded = Message::encode(&value);
     assert!(<Summary as Message>::decode(&encoded).unwrap() == value);
     let empty = grpc::decode::<Summary>(DecodeInput::new(&[])).unwrap();
     assert_eq!(empty.aggregate, Aggregate::Count);

@@ -46,6 +46,8 @@ pub(crate) struct Children {
 
 pub(crate) struct ChildRequest {
     pub(crate) operation: String,
+    pub(crate) fingerprint: [u8; 32],
+    pub(crate) generation: u64,
     pub(crate) payload: Vec<u8>,
     pub(crate) values: Vec<super::CallValue>,
     pub(crate) submitted: tokio::time::Instant,
@@ -68,7 +70,15 @@ impl Children {
         &self, call: WireChildCall, submitted: tokio::time::Instant, mut cancelled: oneshot::Receiver<()>,
     ) -> Result<Vec<u8>, Refusal> {
         let (answer, answered) = oneshot::channel();
-        let request = ChildRequest { operation: call.operation, payload: call.payload, values: call.values, submitted, answer };
+        let request = ChildRequest {
+            operation: call.operation,
+            fingerprint: call.fingerprint,
+            generation: call.generation,
+            payload: call.payload,
+            values: call.values,
+            submitted,
+            answer,
+        };
         let admission = async {
             self.requests.send(request).await.map_err(|_| Error::Closing { domain: "carrier attempt" })?;
             answered.await.map_err(|_| Error::Closing { domain: "carrier attempt" })?
@@ -85,7 +95,7 @@ impl Children {
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
-            return Ok(id.value().encode_to_vec());
+            return Ok(id.value().encode());
         }
         drained(invocation, cancelled).await
     }
@@ -102,8 +112,8 @@ impl Children {
                 if control.action == WireChildAction::Cancel {
                     invocation.cancel();
                 }
-                let state = harmos_domain::operations::lifecycle::InstanceState::from(invocation.control.status().portable());
-                Ok(state.encode_to_vec())
+                let state = harmos_operations::lifecycle::InstanceState::from(invocation.control.status().portable());
+                Ok(state.encode())
             }
             WireChildAction::Release => {
                 drop(take()?);

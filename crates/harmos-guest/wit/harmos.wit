@@ -1,4 +1,4 @@
-package harmos:guest@0.2.0;
+package harmos:guest@1.0.0;
 
 interface capabilities {
     /// A carrier refusal: its code beside the encoded Harmos failure it
@@ -29,5 +29,5 @@ world plugin {
     use capabilities.{registration, refusal as operation-refusal};
     /// Read-only metadata collection; never prepares lifecycle resources.
     export register: func() -> result<list<registration>, string>;
-    export operate: async func(command: list<u8>) -> result<list<u8>, operation-refusal>;
+    export operate: async func(owner: string, command: list<u8>) -> result<list<u8>, operation-refusal>;
 }

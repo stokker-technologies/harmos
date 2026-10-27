@@ -9,15 +9,11 @@
 
 /* === Modules === */
 
-#[path = "../../tests/support/app/minimal.rs"]
-mod app;
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -26,8 +22,7 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
-use app::App;
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Operation, RegistrationExt, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -53,6 +48,15 @@ struct Signals {
 // Waiting Dispatches Hold Their Run Until Cancelled And Report Each Stop.
 struct Waiting(Option<Arc<Signals>>);
 
+#[harmos_runtime::operation(
+        request = Dispatch, infer_request, response = u64,
+        id = "bench_dispatch",
+        policy = harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_secs(30),
+            retries: RetryPolicy::Never,
+        },
+    )]
 struct Dispatching {
     signals: Arc<Waiting>,
     waiting: bool,
@@ -67,24 +71,9 @@ enum Lanes {
 }
 
 #[harmos_runtime::message]
-#[harmos_runtime::operation(
-        response = u64,
-        id = "bench.dispatch",
-        version = 1,
-        policy = OperationPolicy {
-            timeout: Duration::from_secs(30),
-            attempt_timeout: Duration::from_secs(30),
-            retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
-        },
-    )]
+
 struct Dispatch {
     wait: bool,
-}
-
-#[harmos_runtime::catalog]
-enum Operations {
-    Dispatch(Dispatch),
 }
 
 /* === Traits === */
@@ -92,18 +81,17 @@ enum Operations {
 /* === Implementations === */
 
 impl Operation for Dispatching {
-    type Declaration = Dispatch;
-    type Resources = Waiting;
-    type Error = Infallible;
+    type Request = Dispatch;
+    type Response = u64;
+    type Error = harmos_runtime::DependencyError;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(signals: Arc<Waiting>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
-        Ok(Self { signals, waiting: false })
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        Ok(Self { signals: context.dependency::<Waiting>()?, waiting: false })
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Dispatch, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Dispatch, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.waiting = request.wait;
@@ -133,10 +121,22 @@ impl Operation for Dispatching {
 
 /* === Private Functions === */
 
+struct App;
+impl harmos_runtime::Application for App {
+    type State = ();
+    type Transaction = harmos_runtime::state::Never;
+    type Record = ();
+    type Streams = ();
+    type Resources = ();
+    type Lanes = Lanes;
+}
+
 async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
+    let mut dependencies = harmos_runtime::Dependencies::new();
+    dependencies.insert(Arc::new(Waiting(signals))).unwrap();
     Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
-        .operation::<Dispatching>("benchmark", Lanes::Open, Arc::new(Waiting(signals)))
+        .with_registration(harmos_runtime::RegistrationBatch::new(dependencies).operation::<Dispatching>().lane(Lanes::Open))
         .runtime()
         .await
         .unwrap()
@@ -147,7 +147,10 @@ async fn cancellation(load: u32) -> Cancellation {
     let (stopped, mut receipts) = mpsc::channel(load as usize);
     let signals = Arc::new(Signals { running: Semaphore::new(0), stopped });
     let runtime = runtime(Some(signals.clone())).await;
-    let instances: Vec<_> = (0..load).map(|_| runtime.operations.submit(Dispatch { wait: true }).unwrap()).collect();
+    let mut instances = Vec::new();
+    for _ in 0..load {
+        instances.push(runtime.operation(Dispatch { wait: true }).start().await.unwrap());
+    }
     signals.running.acquire_many(load).await.expect("all operations enter run before cancellation").forget();
 
     let requested = Instant::now();
@@ -174,7 +177,7 @@ fn benchmarks(c: &mut Criterion) {
             executor.block_on(async {
                 let started = Instant::now();
                 for _ in 0..iterations {
-                    let instance = runtime.operations.submit(Dispatch { wait: false }).unwrap();
+                    let instance = runtime.operation(Dispatch { wait: false }).start().await.unwrap();
                     let result = instance.join().await.unwrap();
                     assert_eq!(*std::hint::black_box(result), 42);
                 }

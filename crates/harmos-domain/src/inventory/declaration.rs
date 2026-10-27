@@ -21,7 +21,7 @@ use serde::Deserialize;
 // Local Imports
 use super::contributions::{self, Section};
 use super::{contracts, listeners, observers, publications};
-use crate::operations::{Contract, Definition};
+use crate::operations::{Contract, OperationDefinition};
 use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
 
 /* === Constants === */
@@ -55,7 +55,7 @@ pub struct Declaration {
     pub version: Version,
     pub description: String,
     pub config: String,
-    pub operations: Vec<Definition>,
+    pub operations: Vec<OperationDefinition>,
     pub contracts: contracts::Manifest,
     pub listeners: Vec<crate::listeners::Definition>,
     pub streams: Vec<StreamDeclaration>,
@@ -88,9 +88,6 @@ pub enum CarrierSection {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DeclarationError {
-    #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
-    IncompatiblePayload,
-
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
 
@@ -307,7 +304,6 @@ impl RestartPolicy {
 impl From<ScanError> for DeclarationError {
     fn from(error: ScanError) -> Self {
         match error {
-            ScanError::IncompatiblePayload => Self::IncompatiblePayload,
             ScanError::Budget => Self::Schema(crate::schema::graph::Error::Budget),
             ScanError::Oversized => Self::OversizedFragment,
             ScanError::Malformed { source } => Self::Malformed { source },

@@ -25,7 +25,7 @@ use crate::schema::graph::Schema;
 
 /* === Constants === */
 
-const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"publications\",\"facility\":";
+const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"publications\",\"facility\":";
 const OWNER: &[u8] = b",\"owner\":";
 const STREAMS: &[u8] = b",\"streams\":[";
 const ID: &[u8] = b"{\"id\":";

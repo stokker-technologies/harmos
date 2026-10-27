@@ -111,6 +111,7 @@ impl Calls {
     pub(super) fn new(registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>) -> Self {
         Self {
             live: Mutex::new(None),
+            announced_exit: Default::default(),
             ready: tokio::sync::watch::channel(false).0,
             staged: tokio::sync::watch::channel(Staging::Pending).0,
             registrations,
@@ -118,9 +119,9 @@ impl Calls {
     }
 
     pub(super) fn open(
-        &self, live: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>, operations: &[crate::operations::Definition],
-        contracts: &[crate::operations::Contract], ended: tokio::sync::watch::Receiver<bool>,
-        plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
+        &self, live: mpsc::UnboundedSender<Request>, arrivals: mpsc::Sender<Arrival>,
+        operations: &[crate::operations::OperationDefinition], contracts: &[crate::operations::Contract],
+        ended: tokio::sync::watch::Receiver<bool>, plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
     ) -> Arc<Endpoint> {
         let scope = plugin.as_ref().map(|(scope, _)| scope.clone());
         let endpoint = Endpoint::new(live, arrivals, operations, contracts, ended, scope);
@@ -146,12 +147,13 @@ impl Calls {
 
     // A new attempt starts from a closed surface that nobody has refused yet.
     pub(super) fn begin(&self) {
+        self.announced_exit.store(false, std::sync::atomic::Ordering::Release);
         self.close();
         self.staged.send_replace(Staging::Pending);
     }
 
-    pub(super) fn refuse(&self) {
-        self.staged.send_replace(Staging::Refused);
+    pub(super) fn refuse(&self, reason: String) {
+        self.staged.send_replace(Staging::Refused(reason));
     }
 
     pub(super) fn close(&self) {

@@ -53,12 +53,12 @@ struct Reading {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::lifecycle::Policy for Provider {
+impl harmos_operations::lifecycle::Policy for Provider {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(id = "process-provider", provides = Readings, requires = ())]
+#[harmos_runtime::plugin(id = "process_provider", provides = Readings, requires = ())]
 impl harmos_runtime::Plugin for Provider {
     type Context = Supervisor;
     type Config = String;
@@ -84,8 +84,15 @@ impl harmos_runtime::Plugin for Provider {
         Arc::clone(&self.resources)
     }
 
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Reading>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(self.resources()).unwrap();
+                dependencies
+            })
+            .implementation::<contract::ReadDeclaration, Reading>(),
+        )
     }
 
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -101,13 +108,14 @@ impl harmos_runtime::Plugin for Provider {
 }
 
 impl Operation for Reading {
-    type Declaration = Read;
-    type Resources = Resources;
+    type Request = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <contract::ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(resources: Arc<Resources>, _context: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+        let resources = context.dependency::<Resources>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources, phase: None }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
@@ -120,8 +128,8 @@ impl Operation for Reading {
         Ok(operation)
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Read, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Read, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.phase = Some(request.phase);

@@ -140,7 +140,7 @@ fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
     let output = directory.path().join("debug");
     std::fs::create_dir(&output).unwrap();
     let path = output.join("schematic-sidecar");
-    std::fs::write(&path, b"compiler-emitted bytes").unwrap();
+    std::fs::copy(std::env::current_exe().unwrap(), &path).unwrap();
     (directory, path)
 }
 
@@ -153,7 +153,9 @@ fn test_harnesses_excluded() {
         [artifact(Path::new("absent-test-harness"), true), artifact(&path, false), json!({"reason": "build-finished", "success": true})];
     let build = collect(&stream, selected()).unwrap();
     assert_eq!(build.artifacts.len(), 1);
-    assert_eq!(build.artifacts[0].path, path);
+    assert_ne!(build.artifacts[0].path, path);
+    assert_eq!(std::fs::read(&path).unwrap(), std::fs::read(std::env::current_exe().unwrap()).unwrap());
+    assert_eq!(build.artifacts[0].sha256, digest(&std::fs::read(&build.artifacts[0].path).unwrap()));
     assert_eq!(build.profile, BuildProfile::Dev);
     assert!(!build.artifacts[0].sha256.is_empty());
 }
@@ -170,7 +172,7 @@ fn test_profile_keeps_identity() {
     capture.receipt["command"] = json!(["cargo", "build", "--locked", "--profile", "test"]);
     let build = capture.collect().unwrap();
     assert_eq!(build.profile, profile);
-    assert_eq!(build.artifacts[0].path, path);
+    assert_ne!(build.artifacts[0].path, path);
 
     let mut mismatched = Captured::new(&messages, selected());
     mismatched.receipt["profile"] = json!("test");
@@ -232,9 +234,10 @@ fn snapshot_guards_bytes() {
 
     std::fs::write(&path, original).unwrap();
     let build = packaging.collect().unwrap();
-    std::fs::write(&path, b"replaced after the build").unwrap();
+    let shipped = &build.artifacts[0].path;
+    std::fs::write(shipped, b"replaced after the build").unwrap();
     let output = tempfile::tempdir().unwrap();
-    assert!(matches!(harmos_packaging::package(&build, output.path()), Err(Error::ArtifactChanged(changed)) if changed == path));
+    assert!(matches!(harmos_packaging::package(&build, output.path()), Err(Error::ArtifactChanged(changed)) if changed == *shipped));
     assert_eq!(std::fs::read_dir(output.path()).unwrap().count(), 0);
 }
 

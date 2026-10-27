@@ -24,7 +24,7 @@ mod staging;
 mod submission;
 
 mod discovery;
-pub(in crate::operations) use discovery::limits;
+
 mod residents;
 
 /* === Re-Exports === */
@@ -44,10 +44,10 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
 use super::caller::{Identity, Origin, Source};
-use super::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
+use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
-use crate::operations::{CacheKey, Definition, OperationDeclaration};
+use crate::operations::{CacheKey, OperationDeclaration, OperationDefinition};
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 use crate::plugin::PluginScope;
 use crate::supervision::executor;
@@ -67,16 +67,34 @@ type CachedResponse = harmos_sdk::__private::ErasedResponse;
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct OperationManager {
-    pub(super) registry: Arc<Registry>,
+pub struct OperationManager<L: Lane> {
+    inner: Manager,
+    lane: std::marker::PhantomData<fn() -> L>,
+}
+
+#[derive(Clone)]
+pub struct Manager {
+    pub(crate) registry: Arc<Registry>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
     pub(super) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
-    pub(super) resident: super::resident::Registry,
+    pub(crate) resident: super::resident::Registry,
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[derive(Clone)]
+pub(crate) struct WeakOperationManager {
+    registry: Weak<Registry>,
+    instances: Weak<Instances>,
+    lanes: Weak<Lanes>,
+    preparation: Option<Weak<Semaphore>>,
+    context: Weak<std::sync::OnceLock<super::CallContext>>,
+    resident: super::resident::WeakRegistry,
 }
 
 pub(crate) struct Registry {
+    pub(crate) service_runner: crate::services::ServiceRunner,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }
@@ -105,24 +123,24 @@ struct State {
 
 pub(super) struct Entry {
     owner: Identifier,
-    definition: Definition,
+    definition: OperationDefinition,
     pub(super) contract: Option<crate::operations::Contract>,
 
     #[cfg(feature = "grpc")]
     pub(super) grpc: Option<crate::grpc::routing::Handler>,
 
-    generation: OperationGeneration,
+    pub(super) generation: OperationGeneration,
     lane: &'static str,
-    bounded: bool,
 
     // A resident control runs until cancelled, even while its plugin retires.
     #[cfg(feature = "plugin-sidecar")]
     resident: bool,
 
     active: AtomicBool,
+    publication: Arc<AtomicBool>,
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
-    binding: Arc<dyn Any + Send + Sync>,
+    pub(in crate::operations) binding: Arc<dyn Any + Send + Sync>,
 
     #[cfg(feature = "plugin-sidecar")]
     pub(super) native_binding: Option<Arc<dyn Any + Send + Sync>>,
@@ -136,7 +154,7 @@ pub(super) struct Entry {
     plugin: Option<PluginScope>,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(super) sdk: Option<harmos_domain::operations::lifecycle::Action>,
+    pub(super) sdk: Option<harmos_operations::lifecycle::Action>,
 }
 
 pub(super) struct Submission {
@@ -182,6 +200,73 @@ enum Retirement {
 /* === Traits === */
 
 /* === Implementations === */
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl std::fmt::Debug for WeakOperationManager {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("WeakOperationManager").finish_non_exhaustive()
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl WeakOperationManager {
+    pub(crate) fn upgrade(&self) -> Option<Manager> {
+        Some(Manager {
+            registry: self.registry.upgrade()?,
+            instances: self.instances.upgrade()?,
+            lanes: self.lanes.upgrade()?,
+            preparation: match &self.preparation {
+                Some(budget) => Some(budget.upgrade()?),
+                None => None,
+            },
+            context: self.context.upgrade()?,
+            resident: self.resident.upgrade()?,
+        })
+    }
+}
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl Manager {
+    pub(crate) fn downgrade(&self) -> WeakOperationManager {
+        WeakOperationManager {
+            registry: Arc::downgrade(&self.registry),
+            instances: Arc::downgrade(&self.instances),
+            lanes: Arc::downgrade(&self.lanes),
+            preparation: self.preparation.as_ref().map(Arc::downgrade),
+            context: Arc::downgrade(&self.context),
+            resident: self.resident.downgrade(),
+        }
+    }
+}
+
+impl<L: Lane> OperationManager<L> {
+    pub(crate) fn new(inner: Manager) -> Self {
+        Self { inner, lane: std::marker::PhantomData }
+    }
+
+    pub(crate) fn execution(&self) -> Manager {
+        self.inner.clone()
+    }
+
+    pub async fn register(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+        self.inner.register_native(registration)
+    }
+
+    pub async fn unregister(&self, id: &harmos_domain::QualifiedId) -> Result<()> {
+        self.inner.unregister(id).await
+    }
+
+    pub fn with_context(&self, context: super::CallContext) -> Self {
+        Self::new(self.inner.with_context(context))
+    }
+}
+
+impl<L: Lane> std::ops::Deref for OperationManager<L> {
+    type Target = Manager;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
 
 /* === Public Functions === */
 

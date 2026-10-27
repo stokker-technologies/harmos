@@ -123,13 +123,13 @@ fn boxed_codec_parity() {
     let (plain, boxed) = holders();
     assert_eq!(crate::encode(&boxed), crate::encode(&plain));
     assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
-    assert_eq!(Message::encode_to_vec(&boxed), Message::encode_to_vec(&plain));
-    assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
+    assert_eq!(Message::encode(&boxed), Message::encode(&plain));
+    assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
     for (plain, boxed) in choices() {
         assert_eq!(crate::encode(&boxed), crate::encode(&plain));
         assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
-        assert_eq!(Message::encode_to_vec(&boxed), Message::encode_to_vec(&plain));
-        assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
+        assert_eq!(Message::encode(&boxed), Message::encode(&plain));
+        assert_eq!(Message::encoded_size(&boxed), Message::encoded_size(&plain));
     }
 
     // Both Representations Decode Default, Repeated And Segmented Fields.
@@ -157,13 +157,13 @@ fn boxed_codec_parity() {
         let bytes = crate::encode(&plain);
         let decoded = agree::<plain::Choice, heap::Choice>(&bytes, boxes).unwrap();
         assert_eq!(decoded, plain);
-        let postcard = Message::encode_to_vec(&plain);
+        let postcard = Message::encode(&plain);
         let decoded = <heap::Choice as Message>::decode(&postcard).unwrap();
         assert_eq!(plain::Choice::from(decoded), plain);
     }
 
     // Portable Preflight Includes The Box Pointee And Bounds Resident Memory.
-    let bytes = Message::encode_to_vec(&plain);
+    let bytes = Message::encode(&plain);
     let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
     let boxed_bound = <heap::Holder as Message>::decoding_memory(&bytes).unwrap();
     assert_eq!(
@@ -188,7 +188,7 @@ fn boxed_refuses_malformed() {
     for bytes in [&[0xff][..], &truncated[..], &wrong_wire[..], &deep_group[..]] {
         assert!(agree::<plain::Holder, heap::Holder>(bytes, 1).is_none());
     }
-    let postcard = Message::encode_to_vec(&holders().0);
+    let postcard = Message::encode(&holders().0);
     let trailing = [postcard.clone(), vec![0]].concat();
     for bytes in [&postcard[..postcard.len() - 1], &trailing[..]] {
         assert!(<plain::Holder as Message>::decode(bytes).is_err());

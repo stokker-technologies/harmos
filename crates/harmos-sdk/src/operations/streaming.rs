@@ -102,7 +102,11 @@ pub enum Error {
 
 /* === Implementations === */
 
-impl<T: Send + 'static> super::EndpointSet for StreamInput<T> {
+impl<T: Message + MemorySize + Send + 'static> super::EndpointSet for StreamInput<T> {
+    fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        <Self as super::WireEndpoints>::bind(limits)
+    }
+
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
     }
@@ -110,7 +114,11 @@ impl<T: Send + 'static> super::EndpointSet for StreamInput<T> {
         (Some(std::any::TypeId::of::<T>()), None)
     }
 }
-impl<T: Send + 'static, E: 'static> super::EndpointSet for StreamOutput<T, E> {
+impl<T: Message + MemorySize + Send + 'static, E: 'static> super::EndpointSet for StreamOutput<T, E> {
+    fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        <Self as super::WireEndpoints>::bind(limits)
+    }
+
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
     }
@@ -118,13 +126,21 @@ impl<T: Send + 'static, E: 'static> super::EndpointSet for StreamOutput<T, E> {
         (None, Some(std::any::TypeId::of::<T>()))
     }
 }
-impl<T: Send + 'static> super::InputEndpoint for StreamInput<T> {
+impl<T: Message + MemorySize + Send + 'static> super::InputEndpoint for StreamInput<T> {
+    fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        <Self as super::WireEndpoints>::bind(limits)
+    }
+
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
     }
     type Item = T;
 }
-impl<T: Send + 'static, E: 'static> super::OutputEndpoint for StreamOutput<T, E> {
+impl<T: Message + MemorySize + Send + 'static, E: 'static> super::OutputEndpoint for StreamOutput<T, E> {
+    fn bind_wire(limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
+        <Self as super::WireEndpoints>::bind(limits)
+    }
+
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
     }

@@ -107,17 +107,17 @@ impl StreamEndpoints for () {
         Ok(())
     }
 }
-impl<T: Message + 'static> StreamEndpoints for StreamInput<T> {
+impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamInput<T> {
     #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]
     async fn pump<P: StreamPeer>(
         &mut self, peer: &P, invocation: u64, epoch: u64, mut ended: watch::Receiver<bool>, _: &AtomicBool,
     ) -> Result<(), P::Error> {
         let sending = async {
             while let Some(item) = self.recv().await {
-                if item.encoded_len() > WireCommand::LIMIT {
+                if item.encoded_size() > WireCommand::LIMIT {
                     return Err(RemoteStreamError::Protocol("stream item exceeds frame limit").into());
                 }
-                let command = WireCommand::StreamSend { invocation, epoch, payload: item.encode_to_vec() };
+                let command = WireCommand::StreamSend { invocation, epoch, payload: item.encode() };
                 acknowledge(peer.stream_phase(command).await?).map_err(P::Error::from)?;
                 // The Original Item Claim Is Retained Until Provider Admission.
                 drop(item);
@@ -160,13 +160,13 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
             }
             // Actual Items Fence Retry Even If A Malformed Peer Omits Its Flag.
             transferred.store(true, Ordering::Release);
-            self.decode(&payload).await.map_err(RemoteStreamError::Output).map_err(P::Error::from)?;
+            self.decode(&payload).await.map_err(|error| RemoteStreamError::Output(error.into())).map_err(P::Error::from)?;
         }
     }
 }
 impl<I, O> StreamEndpoints for (StreamInput<I>, StreamOutput<O>)
 where
-    I: Message + 'static,
+    I: Message + MemorySize + 'static,
     O: Message + MemorySize + 'static,
 {
     #[tracing::instrument(target = "harmos::operations", name = "operations.pump", level = "debug", skip_all)]

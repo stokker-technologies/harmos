@@ -56,7 +56,7 @@ impl harmos::sidecar::ObserverHost<()> for Host {
     fn bind(_: std::sync::Arc<()>, _: harmos::sidecar::Supervisor) -> Self { Self }
 }
 
-impl harmos::operations::lifecycle::Policy for Bridge {
+impl harmos::builtins::lifecycle::Policy for Bridge {
     const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
 }

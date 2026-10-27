@@ -156,7 +156,7 @@ fn codecs(criterion: &mut Criterion) {
     group.sample_size(10);
     for bytes in [0, 102, 1024 * 1024 / 10] {
         let value = protocol::Payload { bytes: (0..bytes).map(|index| (index % 251) as u8).collect() };
-        let postcard = value.encode_to_vec();
+        let postcard = value.encode();
         let mut protobuf = Vec::new();
         harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
         let decoded =
@@ -164,7 +164,7 @@ fn codecs(criterion: &mut Criterion) {
         assert_eq!(decoded.bytes, value.bytes);
         group.throughput(if bytes == 0 { Throughput::Elements(1) } else { Throughput::Bytes(bytes as u64) });
         group.bench_function(BenchmarkId::new("postcard-encode", bytes), |bencher| {
-            bencher.iter(|| std::hint::black_box(&value).encode_to_vec());
+            bencher.iter(|| std::hint::black_box(&value).encode());
         });
         group.bench_function(BenchmarkId::new("postcard-decode", bytes), |bencher| {
             bencher.iter(|| protocol::Payload::decode(std::hint::black_box(&postcard)).unwrap());

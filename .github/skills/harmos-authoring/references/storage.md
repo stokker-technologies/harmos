@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/storage.md; sha256:b64427dde8c808aee04f1255eb1dfe52e83213b99bb0a77cac44667352988140 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/storage.md; sha256:f71ca1e72c0fcff5416d1248ca058c266afce0323f809a42d395d620a45c0f3d -->
 
 # Storage Integration
 
@@ -19,6 +19,10 @@ conversion. Refusal and cancellation must preserve the API's admitted-write,
 retry and completion guarantees.
 
 ## Queries And Live Data
+
+Direct storage APIs accept `harmos::storage::Query`, `FileRead`, `FileCapture`
+and `FileFollow`; hashing also accepts `FileRead`. Operation wire requests are
+separate contracts. Construct the resource input at the execution boundary.
 
 Use the shared `Query`, `StorageCursor`, source and transform vocabulary rather
 than implementing a different query engine in each interface. Ordered

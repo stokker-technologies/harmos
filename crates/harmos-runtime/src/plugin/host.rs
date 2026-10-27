@@ -42,11 +42,7 @@ use super::{
     PluginArtifact, PluginBackend, PluginCleanup, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginStatus, PluginTransition, Router,
 };
-use crate::catalog::Catalog;
-use crate::operations::{
-    AuthoredContracts, AuthoredDeclarations, Bindings, Contract, Definition, Implementations, Lane, OperationManager, PluginRegistration,
-    WireImplementations,
-};
+use crate::operations::{Bindings, Contract, Lane, Manager, OperationDefinition, PluginRegistration};
 use crate::supervision::Task;
 use crate::{Application, Error, Result};
 
@@ -79,7 +75,7 @@ struct Shared<A: Application> {
     closing: AtomicBool,
     stop_requests: tokio::sync::watch::Sender<Option<String>>,
     task: Task<std::result::Result<(), Arc<Error>>>,
-    operations: OperationManager,
+    operations: Manager,
     cleanup: PluginCleanup,
 
     #[cfg(feature = "plugin-sidecar")]
@@ -93,7 +89,7 @@ struct Shared<A: Application> {
 
 struct Lifecycle {
     driving: Driving,
-    operations: OperationManager,
+    operations: Manager,
     sources: BTreeMap<String, Source>,
 }
 
@@ -109,7 +105,7 @@ struct Progressing {
 }
 
 struct Embedded {
-    operations: OperationManager,
+    operations: Manager,
     bind: Bind,
     registration: Option<PluginRegistration>,
     endpoint: Option<super::PluginEndpoint>,
@@ -177,9 +173,7 @@ impl<A: Application> Clone for PluginHost<A> {
 }
 
 impl<A: Application> PluginHost<A> {
-    pub(crate) fn new(
-        operations: OperationManager, #[cfg(feature = "plugin-sidecar")] handles: crate::services::Handles<A>,
-    ) -> Result<Self> {
+    pub(crate) fn new(operations: Manager, #[cfg(feature = "plugin-sidecar")] handles: crate::services::Handles<A>) -> Result<Self> {
         let mut registry = Registry::new(PluginDefinitions::new([], [])?)?;
         let cleanup = registry.cleanup();
         let statuses: Snapshots = Arc::new(RwLock::new(BTreeMap::new()));
@@ -235,82 +229,42 @@ impl<A: Application> PluginHost<A> {
         self.shared.cleanup.clone()
     }
 
-    pub async fn register_embedded<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        self.embedded::<C, R>(definition, restart, lane, resources, false).await
+    pub async fn register_embedded<L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
+        registration: crate::operations::Registration<L>,
+    ) -> Result<()> {
+        self.embedded(definition, restart, registration, false).await
     }
 
-    pub async fn reload_embedded<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        self.embedded::<C, R>(definition, restart, lane, resources, true).await
+    pub async fn reload_embedded<L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
+        registration: crate::operations::Registration<L>,
+    ) -> Result<()> {
+        self.embedded(definition, restart, registration, true).await
     }
 
-    pub async fn register_embedded_wire<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<AuthoredContracts> + Catalog<WireImplementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        self.embedded_wire::<C, R>(definition, restart, lane, resources, false).await
-    }
-
-    pub async fn reload_embedded_wire<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<AuthoredContracts> + Catalog<WireImplementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        self.embedded_wire::<C, R>(definition, restart, lane, resources, true).await
-    }
-
-    async fn embedded<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>, replace: bool,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<Implementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let declarations = AuthoredDeclarations::of::<C>()
+    async fn embedded<L: Lane>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
+        registration: crate::operations::Registration<L>, replace: bool,
+    ) -> Result<()> {
+        let declarations = registration.batch.operations.iter().map(|factory| factory.definition.clone()).collect();
+        let contracts = registration
+            .batch
+            .operations
+            .iter()
+            .filter_map(|factory| match factory.contract() {
+                Ok(contract) => Some(Ok(contract)),
+                Err(crate::operations::ContractError::Codec { .. }) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
-        let bind: Bind = Arc::new(move |bindings| bindings.register_operations::<C, R>(lane.clone(), resources.clone()));
-        self.embedded_catalog(definition, declarations, Vec::new(), bind, restart, replace).await
-    }
-
-    async fn embedded_wire<C, R>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: impl Lane + Clone + Sync,
-        resources: Arc<R>, replace: bool,
-    ) -> Result<()>
-    where
-        C: Catalog<AuthoredDeclarations> + Catalog<AuthoredContracts> + Catalog<WireImplementations<R>>,
-        R: Send + Sync + 'static,
-    {
-        let declarations = AuthoredDeclarations::of::<C>()
-            .map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
-        let contracts = AuthoredContracts::of::<C>()
-            .map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
-        let bind: Bind = Arc::new(move |bindings| bindings.register_wire_operations::<C, R>(lane.clone(), resources.clone()));
+        let bind: Bind = Arc::new(move |bindings| bindings.register(registration.clone()));
         self.embedded_catalog(definition, declarations, contracts, bind, restart, replace).await
     }
 
     async fn embedded_catalog(
-        &self, mut definition: PluginDefinition, declarations: Vec<Definition>, mut contracts: Vec<Contract>, bind: Bind,
+        &self, mut definition: PluginDefinition, declarations: Vec<OperationDefinition>, mut contracts: Vec<Contract>, bind: Bind,
         restart: crate::config::PluginRestartSettings, replace: bool,
     ) -> Result<()> {
         if !matches!(definition.artifact, PluginArtifact::Embedded { .. }) || definition.contributions.lifecycle.is_some() {

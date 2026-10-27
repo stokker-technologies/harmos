@@ -28,7 +28,8 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 
 // Local Imports
-use crate::operations::{ServingError, WireTable, lifecycle};
+use crate::operations::{ServingError, WireTable};
+use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
 
@@ -43,6 +44,7 @@ use crate::operations::{ServingError, WireTable, lifecycle};
 /* === Traits === */
 
 pub trait Context: Clone + Send + Sync + 'static {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError>;
     fn with_generation(&self, token: [u8; 32]) -> Self;
 }
 
@@ -62,7 +64,7 @@ pub trait Plugin: lifecycle::Policy + Send + Sync + Sized + 'static {
 
     fn initialize(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
-    fn bind_operations(&self, table: &mut WireTable<Self::Context>) -> Result<(), ServingError>;
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError>;
 
     fn stop(&mut self, context: &Self::Context) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
@@ -82,6 +84,9 @@ pub trait Attachment<C>: Send + Sync + 'static {
 /* === Implementations === */
 
 impl Context for () {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), ServingError> {
+        if bytes.is_empty() { Ok(()) } else { Err(ServingError::Catalog) }
+    }
     fn with_generation(&self, _: [u8; 32]) -> Self {}
 }
 

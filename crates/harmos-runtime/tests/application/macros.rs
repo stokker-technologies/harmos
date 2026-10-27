@@ -23,32 +23,7 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(version = 1)]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-    pub struct RenameV1 {
-        pub to: String,
-    }
-
-    impl Transaction<Sheet> for RenameV1 {
-        type Error = Untitled;
-
-        fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        fn apply(&self, sheet: &mut Sheet) {
-            sheet.title.clone_from(&self.to);
-            sheet.applications += 1;
-        }
-    }
-
-    impl From<RenameV1> for Rename {
-        fn from(old: RenameV1) -> Self {
-            Self { to: old.to }
-        }
-    }
-
-    #[harmos_runtime::transaction(id = "sheet.rename", version = 2, inverse = Self, history(RenameV1))]
+    #[harmos_runtime::transaction(id = "sheet.rename",  inverse = Self,)]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
@@ -73,7 +48,7 @@ mod sheet {
         }
     }
 
-    #[harmos_runtime::transaction(id = "sheet.erase", version = 1, irreversible)]
+    #[harmos_runtime::transaction(id = "sheet.erase", irreversible)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
 
@@ -90,7 +65,7 @@ mod sheet {
         }
     }
 
-    #[harmos_runtime::record(id = "sheet.noted", version = 1)]
+    #[harmos_runtime::record(id = "sheet.noted")]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
 
@@ -110,7 +85,14 @@ mod sheet {
     #[derive(Clone, Copy, Debug)]
     pub struct Studio;
 
+    #[harmos_runtime::lanes]
+    pub enum StudioLanes {
+        #[default]
+        Open,
+    }
+
     impl harmos_runtime::Application for Studio {
+        type Lanes = StudioLanes;
         type State = Sheet;
         type Transaction = Change;
         type Record = Fact;
@@ -140,7 +122,7 @@ mod counter {
     #[error("the tally would go negative")]
     pub struct Underflow;
 
-    #[harmos_runtime::transaction(id = "tally.up", version = 1, inverse = Down)]
+    #[harmos_runtime::transaction(id = "tally.up",  inverse = Down)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Up(pub i64);
 
@@ -162,7 +144,7 @@ mod counter {
         }
     }
 
-    #[harmos_runtime::transaction(id = "tally.down", version = 1, inverse = Up)]
+    #[harmos_runtime::transaction(id = "tally.down",  inverse = Up)]
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Down(pub i64);
 
@@ -194,7 +176,14 @@ mod counter {
     #[derive(Clone, Copy, Debug)]
     pub struct Counter;
 
+    #[harmos_runtime::lanes]
+    pub enum CounterLanes {
+        #[default]
+        Open,
+    }
+
     impl harmos_runtime::Application for Counter {
+        type Lanes = CounterLanes;
         type State = Tally;
         type Transaction = Step;
         type Record = ();
@@ -208,16 +197,20 @@ mod unified_plugins {
     use std::convert::Infallible;
     use std::time::Duration;
 
+    use harmos_operations::lifecycle;
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy, ServingError, WireTable};
+
+    #[harmos_runtime::operation(request = Echo, infer_request, id = "fixture_unified_echo",  response = (), policy = POLICY)]
+    struct EchoDeclaration;
 
     #[harmos_runtime::message]
-    #[harmos_runtime::operation(id = "fixture.unified.echo", version = 3, response = (), policy = POLICY)]
+
     struct Echo {}
 
     #[harmos_runtime::catalog]
     enum Leaves {
-        Echo(Echo),
+        Echo(EchoDeclaration),
     }
     #[harmos_runtime::catalog]
     enum Selected {
@@ -239,11 +232,10 @@ mod unified_plugins {
     }
 
     const PROJECTED: &[PluginInventory::publications::Entry] = &[PluginInventory::publications::Entry::of::<Extra>()];
-    const POLICY: OperationPolicy = OperationPolicy {
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
 
     struct Native;
@@ -253,7 +245,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(description = "Native Authored Plugin",
-        id = "unified-native",
+        id = "unified_native",
         provides = Selected,
         requires = Selected,
         streams(Row),
@@ -274,7 +266,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -329,12 +321,12 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-sdk-projection",
+        id = "unified_sdk_projection",
         description = "Inert Product SDK Declaration",
         provides = ObserverOperations,
         requires(
-            harmos_runtime::operations::streams::Publish,
-            harmos_runtime::operations::lifecycle::Status: scope("reading", "power")
+            harmos_operations::streams::Publish,
+            harmos_operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
         context = harmos_runtime::sidecar::Supervisor,
@@ -371,19 +363,19 @@ mod unified_plugins {
         assert_eq!(required.len(), 2);
         assert_eq!(
             required[0].contract.operation().id.as_str(),
-            <harmos_runtime::operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
+            <harmos_operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
         );
         assert!(required[0].grants.is_empty());
         assert_eq!(
             required[1].grants,
             [
-                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
-                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
+                harmos_domain::plugin::Grant::of("host_operations_status", "reading"),
+                harmos_domain::plugin::Grant::of("host_operations_status", "power"),
             ]
         );
         // A grant names the operation it permits and, for a scoped
         // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
+        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host_operations_status","scope":"reading"}"#);
         assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
         assert_eq!(declaration.config, "SdkInitialization");
         let provides = Contracts::of::<ObserverOperations>().unwrap();
@@ -440,7 +432,6 @@ mod unified_plugins {
             let selected = declaration.listeners;
             assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
             assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-            assert_eq!(selected[0].callback().version(), 1);
             let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
             let guest =
                 harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
@@ -520,7 +511,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-guest",
+        id = "unified_guest",
         description = "Guest Authored Plugin",
         provides = Selected,
         requires = (),
@@ -541,7 +532,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -578,7 +569,7 @@ mod unified_plugins {
     }
 
     #[harmos_runtime::plugin(
-        id = "unified-contributing",
+        id = "unified_contributing",
         provides = (),
         requires = (),
         contributions(Catalog, Panels)
@@ -597,7 +588,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -621,7 +612,7 @@ mod unified_plugins {
     }
     #[harmos_runtime::catalog]
     enum Callbacks {
-        Heard(harmos_runtime::listeners::Delivery<RowListener>),
+        Heard(harmos_runtime::listeners::Callback<RowListener>),
     }
 
     struct Listening;
@@ -629,7 +620,7 @@ mod unified_plugins {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified-listening", provides = Callbacks, requires = (), listeners = Audience)]
+    #[harmos_runtime::plugin(id = "unified_listening", provides = Callbacks, requires = (), listeners = Audience)]
     impl harmos_runtime::Plugin for Listening {
         type Config = ();
         type Error = Infallible;
@@ -644,7 +635,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -660,7 +651,7 @@ mod unified_plugins {
         const INITIALIZATION_POLICY: OperationPolicy = POLICY;
         const SHUTDOWN_POLICY: OperationPolicy = POLICY;
     }
-    #[harmos_runtime::plugin(id = "unified-listening-guest", provides = Callbacks, requires = (), listeners = Audience)]
+    #[harmos_runtime::plugin(id = "unified_listening_guest", provides = Callbacks, requires = (), listeners = Audience)]
     impl harmos_runtime::Plugin for ListeningGuest {
         type Config = ();
         type Error = Infallible;
@@ -675,7 +666,7 @@ mod unified_plugins {
         async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
+        fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
             Ok(())
         }
         async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -808,10 +799,7 @@ async fn product_commits_refuses() {
 async fn catalog_declares_records() {
     {
         // The stamped identity is the permanent wire name, not the Rust type name.
-        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 2));
-        assert_eq!(Rename::HISTORY, [(Kind::Transaction, "sheet.rename", 1)]);
-        assert!(Erase::HISTORY.is_empty(), "a definition with no earlier version declares none");
-        assert_eq!(sheet::RenameV1::VERSION, 1);
+        assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 1));
 
         // The generated conversions and dispatch are ordinary Rust the application
         // could have written itself.
@@ -846,9 +834,8 @@ async fn catalog_declares_records() {
                 (("sheet.erase".to_owned(), 1), Kind::Transaction),
                 (("sheet.noted".to_owned(), 1), Kind::Record),
                 (("sheet.rename".to_owned(), 1), Kind::Transaction),
-                (("sheet.rename".to_owned(), 2), Kind::Transaction),
             ]),
-            "one variant per definition, plus every version its history declares"
+            "one variant per current definition"
         );
     }
     {
@@ -903,11 +890,11 @@ async fn derived_aggregate_writer() {
 
 #[test]
 fn catalog_projects_borrowed() {
-    #[harmos_runtime::record(id = "projection.first", version = 1)]
+    #[harmos_runtime::record(id = "projection.first")]
     #[derive(serde::Deserialize, serde::Serialize)]
     struct First(String);
 
-    #[harmos_runtime::record(id = "projection.second", version = 1)]
+    #[harmos_runtime::record(id = "projection.second")]
     #[derive(serde::Deserialize, serde::Serialize)]
     struct Second(String);
 

@@ -21,7 +21,8 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use super::{Stub, support};
 use harmos_guest::Message;
-use harmos_guest::operations::{WireAnswer, WireCommand, lifecycle::Initialize};
+use harmos_guest::operations::{WireAnswer, WireCommand};
+use harmos_operations::lifecycle::InitializeRequest;
 
 /* === Constants === */
 
@@ -78,16 +79,23 @@ impl Session {
         let payload = command.encode().unwrap();
         let bytes = self
             .store
-            .run_concurrent(async |accessor| self.bindings.call_operate(accessor, payload).await)
+            .run_concurrent(async |accessor| self.bindings.call_operate(accessor, "sandbox_guest".to_owned(), payload).await)
             .await
             .unwrap()
             .unwrap()
             .unwrap();
         WireAnswer::decode(&bytes).unwrap()
     }
-    async fn call(&mut self, invocation: u64, operation: &str, payload: Vec<u8>) -> Vec<u8> {
+    async fn call<D: harmos_domain::operations::OperationDeclaration>(&mut self, invocation: u64, payload: Vec<u8>) -> Vec<u8> {
         assert!(matches!(
-            self.phase(WireCommand::Prepare { invocation, operation: operation.to_owned(), payload }).await,
+            self.phase(WireCommand::Prepare {
+                invocation,
+                operation: harmos_domain::QualifiedId::qualify("sandbox_guest", D::ID).unwrap().as_str().to_owned(),
+                fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+                generation: 1,
+                payload
+            })
+            .await,
             WireAnswer::Ready { .. }
         ));
         for _ in 0..2 {
@@ -125,11 +133,21 @@ async fn sdk_lifecycle_retained() {
     let mut store = Store::new(&engine, Stub::default());
     let bindings = Plugin::instantiate_async(&mut store, &component, &linker).await.unwrap();
     let mut session = Session { store, bindings };
-    let route = || Request { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }.encode_to_vec();
+    let route = || Request { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }.encode();
 
     assert!(
         matches!(
-            session.phase(WireCommand::Prepare { invocation: 1, operation: "schematic.route".to_owned(), payload: route() }).await,
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 1,
+                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
+                        .unwrap()
+                        .0,
+                    generation: 1,
+                    payload: route()
+                })
+                .await,
             WireAnswer::Failed { .. }
         ),
         "ordinary handlers are absent before SDK initialization"
@@ -140,8 +158,17 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 7,
-                    operation: "harmos.initialize".to_owned(),
-                    payload: Initialize { config_json: br#""unexpected""#.to_vec(), generation_context: Vec::new() }.encode_to_vec(),
+                    operation: "sandbox_guest.harmos_initialize".to_owned(),
+                    fingerprint: (harmos_domain::operations::Entry::of::<harmos_operations::lifecycle::Initialize>().fingerprint)()
+                        .unwrap()
+                        .0,
+                    generation: 1,
+                    payload: InitializeRequest {
+                        config_json: br#""unexpected""#.to_vec(),
+                        generation_context: Vec::new(),
+                        assignments: Vec::new()
+                    }
+                    .encode(),
                 })
                 .await,
             WireAnswer::Ready { .. }
@@ -165,24 +192,47 @@ async fn sdk_lifecycle_retained() {
     assert!(registrations.is_empty(), "the schematic guest registers no catalog");
     assert!(
         matches!(
-            session.phase(WireCommand::Prepare { invocation: 8, operation: "schematic.route".to_owned(), payload: route() }).await,
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 8,
+                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
+                        .unwrap()
+                        .0,
+                    generation: 1,
+                    payload: route()
+                })
+                .await,
             WireAnswer::Failed { .. }
         ),
         "metadata collection does not initialize resources or ordinary handlers"
     );
-    let request = Initialize { config_json: b"null".to_vec(), generation_context: Vec::new() };
-    assert!(session.call(2, "harmos.initialize", request.encode_to_vec()).await.is_empty());
-    let routed = session.call(3, "schematic.route", route()).await;
+    let request = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new(), assignments: Vec::new() };
+    assert!(session.call::<harmos_operations::lifecycle::Initialize>(2, request.encode()).await.is_empty());
+    let routed = session.call::<schematic_operations::schematic::ProposeRoute>(3, route()).await;
     assert_eq!(Response::decode(&routed).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
-    assert!(session.call(4, "harmos.shutdown", vec![]).await.is_empty());
+    assert!(session.call::<harmos_operations::lifecycle::Shutdown>(4, vec![]).await.is_empty());
     assert!(
         matches!(
-            session.phase(WireCommand::Prepare { invocation: 5, operation: "schematic.route".to_owned(), payload: route() }).await,
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 5,
+                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
+                        .unwrap()
+                        .0,
+                    generation: 1,
+                    payload: route()
+                })
+                .await,
             WireAnswer::Failed { .. }
         ),
         "shutdown revokes ordinary admission"
     );
-    assert!(session.call(6, "harmos.shutdown", vec![]).await.is_empty(), "SDK shutdown is idempotent on the same closed owner");
+    assert!(
+        session.call::<harmos_operations::lifecycle::Shutdown>(6, vec![]).await.is_empty(),
+        "SDK shutdown is idempotent on the same closed owner"
+    );
 }
 
 /* === Tests === */

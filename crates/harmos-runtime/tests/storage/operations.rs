@@ -37,8 +37,8 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, config, write};
+use harmos_operations::storage::Storage;
 use harmos_runtime::operations::Contracts;
-use harmos_runtime::storage::operations::Operations;
 
 /* === Constants === */
 
@@ -50,11 +50,7 @@ use harmos_runtime::storage::operations::Operations;
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub(crate) enum Lanes {
-    #[default]
-    Open,
-}
+pub(crate) use super::support::Lanes;
 
 /* === Traits === */
 
@@ -64,12 +60,10 @@ pub(crate) enum Lanes {
 
 /* === Private Functions === */
 
-fn followed(
-    item: harmos_runtime::operations::StreamItem<harmos_runtime::storage::operations::Followed>,
-) -> harmos_runtime::storage::StoredRecord {
+fn followed(item: harmos_runtime::operations::StreamItem<harmos_operations::storage::Followed>) -> harmos_runtime::storage::StoredRecord {
     match &*item {
-        harmos_runtime::storage::operations::Followed::Record(record) => record.clone(),
-        harmos_runtime::storage::operations::Followed::Boundaries(_) => {
+        harmos_operations::storage::Followed::Record(record) => record.clone(),
+        harmos_operations::storage::Followed::Boundaries(_) => {
             panic!("boundaries are reported once, before records")
         }
     }
@@ -89,33 +83,40 @@ fn records() -> harmos_runtime::storage::query::RecordSelection {
 
 #[test]
 fn catalog_serves_operations() {
-    let contracts = Contracts::of::<Operations>().unwrap();
+    let contracts = Contracts::of::<Storage>().unwrap();
     let served: Vec<_> =
         contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
     for required in [
-        "storage.query",
-        "storage.read_file",
-        "storage.write_records",
-        "storage.write_streams",
-        "storage.write_objects",
-        "storage.write_file",
+        "storage_query",
+        "storage_read_file",
+        "storage_write_records",
+        "storage_write_streams",
+        "storage_write_objects",
+        "storage_write_file",
     ] {
         assert!(served.iter().any(|id| id == required), "missing {required}");
     }
-    for retired in ["storage.read_records", "storage.read_objects", "storage.query_stream", "storage.read_files", "storage.reductions"] {
+    for retired in ["storage_read_records", "storage_read_objects", "storage_query_stream", "storage_read_files", "storage_reductions"] {
         assert!(!served.iter().any(|id| id == retired), "retired {retired}");
     }
 }
 
 #[tokio::test]
 async fn record_follow_resumes() {
-    use harmos_runtime::storage::operations::{FollowRecords, Followed};
+    use harmos_operations::storage::{FollowRecords, Followed};
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     write(&fixture.storage, "historical").await;
     fixture.storage.flush().await.unwrap();
-    let request = harmos_runtime::storage::operations::FollowRecords { after: None, selection: records() };
+    let request = harmos_operations::storage::FollowRecordsRequest { after: None, selection: records() };
     let limits = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<Followed>(limits).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<FollowRecords, _>(request.clone(), sender).unwrap();
@@ -150,15 +151,22 @@ async fn record_follow_resumes() {
 
 #[tokio::test]
 async fn stream_follow_sequence() {
-    use harmos_runtime::storage::operations::FollowStream;
+    use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::{StoredRow, StreamInput};
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     let key = super::schema();
     let stream = harmos_runtime::Identifier::new("voltage").unwrap();
     let item = harmos_runtime::Identifier::new("row").unwrap();
-    let request = harmos_runtime::storage::operations::FollowStream {
+    let request = harmos_operations::storage::FollowStreamRequest {
         after: None,
         selection: harmos_runtime::storage::query::StreamSelection {
             schema: key.clone(),
@@ -189,14 +197,21 @@ async fn stream_follow_sequence() {
 
 #[tokio::test]
 async fn foreign_cursor_refused() {
+    use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::StoredRow;
-    use harmos_runtime::storage::operations::FollowStream;
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     let mut foreign = fixture.storage.cursor_accepted();
     foreign.history.epoch = harmos_runtime::Identifier::new("foreign").unwrap();
-    let request = harmos_runtime::storage::operations::FollowStream {
+    let request = harmos_operations::storage::FollowStreamRequest {
         after: Some(foreign),
         selection: harmos_runtime::storage::query::StreamSelection {
             schema: super::schema(),
@@ -218,10 +233,17 @@ async fn foreign_cursor_refused() {
 
 #[tokio::test(start_paused = true)]
 async fn following_spends_budget() {
-    use harmos_runtime::storage::operations::{FollowRecords, Followed};
+    use harmos_operations::storage::{FollowRecords, Followed};
     use std::time::Duration;
     let fixture = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     write(&fixture.storage, "first").await;
     let (sender, mut receiver) = harmos_runtime::operations::stream::<Followed>(harmos_runtime::operations::StreamSettings {
@@ -229,7 +251,7 @@ async fn following_spends_budget() {
         bytes: NonZeroUsize::new(4096).unwrap(),
     })
     .unwrap();
-    let request = harmos_runtime::storage::operations::FollowRecords { after: None, selection: records() };
+    let request = harmos_operations::storage::FollowRecordsRequest { after: None, selection: records() };
     let instance = fixture.runtime.operations.submit_endpoints::<FollowRecords, _>(request, sender).unwrap();
     drop(receiver.recv().await.unwrap());
     drop(receiver.recv().await.unwrap());

@@ -48,19 +48,27 @@ async fn values(stream: &harmos_runtime::streams::PluginStream) -> Vec<String> {
 async fn publications_survive_unload() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("publications").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.publication("progress", 1).unwrap();
-    assert_eq!(stream.definition().owner(), Some("sandbox-guest"));
+    assert_eq!(stream.definition().owner(), Some("sandbox_guest"));
     assert_eq!(stream.definition().schema().unwrap().root().unwrap().fields()[0].name, "said");
-    runtime.operations.call(wire::Echo { say: "publish:route".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish:route".into() })
+        .await
+        .unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(values(&stream).await, ["initialize", "route"], "shutdown cannot admit another publication after the fence");
     drop(manager);
     let mut replacement = Manager::new(lifecycle.candidate("idle").await).unwrap();
     replacement.initialize(&mut lifecycle).await.unwrap();
-    runtime.operations.call(wire::Echo { say: "publish:replacement".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish:replacement".into() })
+        .await
+        .unwrap();
     replacement.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(values(&stream).await, ["initialize", "route", "replacement"]);
     drop((replacement, lifecycle));
@@ -71,16 +79,24 @@ async fn publications_survive_unload() {
 async fn replacement_preserves_owner() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.publication("progress", 1).unwrap();
     let candidate = lifecycle.candidate("replacement").await;
     let plan = manager.plan_reload(candidate).unwrap();
-    runtime.operations.call(wire::Echo { say: "publish:original".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish:original".into() })
+        .await
+        .unwrap();
     assert_eq!(values(&stream).await, ["original"]);
     manager.apply_reload(plan, &mut lifecycle).await.unwrap();
-    runtime.operations.call(wire::Echo { say: "publish:replacement".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish:replacement".into() })
+        .await
+        .unwrap();
     assert_eq!(values(&stream).await, ["original", "replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -91,7 +107,7 @@ async fn replacement_preserves_owner() {
 async fn initialization_aborts_staging() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("failed-publications").await).unwrap();
     assert!(manager.initialize(&mut lifecycle).await.is_err());
     manager.shutdown(&mut lifecycle).await.unwrap();
@@ -100,7 +116,11 @@ async fn initialization_aborts_staging() {
     }
     manager.reload(lifecycle.candidate("idle").await, &mut lifecycle).await.unwrap();
     let stream = runtime.streams.publication("progress", 1).unwrap();
-    runtime.operations.call(wire::Echo { say: "publish:replacement".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish:replacement".into() })
+        .await
+        .unwrap();
     assert_eq!(values(&stream).await, ["replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -111,12 +131,16 @@ async fn initialization_aborts_staging() {
 async fn bounded_window_gaps() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.publication("progress", 1).unwrap();
     let mut rows = stream.watch();
-    runtime.operations.call(wire::Echo { say: "publish-many".into() }).await.unwrap();
+    runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "publish-many".into() })
+        .await
+        .unwrap();
     let gap = std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)).await;
     assert_eq!(gap, Some(harmos_runtime::streams::Item::Gap { missed: 4 }));
     let mut retained = Vec::new();
@@ -135,14 +159,22 @@ async fn bounded_window_gaps() {
 async fn saved_context_generation() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.publication("progress", 1).unwrap();
-    let published = runtime.operations.call(wire::Echo { say: "saved-publish:original".into() }).await.unwrap();
+    let published = runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "saved-publish:original".into() })
+        .await
+        .unwrap();
     assert_eq!(published.said, "published original");
     assert_eq!(values(&stream).await, ["original"]);
-    let dependency = runtime.operations.call(wire::Echo { say: "saved-dependency:original".into() }).await.unwrap();
+    let dependency = runtime
+        .operations
+        .call::<<wire::Echo as harmos_runtime::RequestFor>::Operation>(wire::Echo { say: "saved-dependency:original".into() })
+        .await
+        .unwrap();
     assert_eq!(dependency.said, "provider:original");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));

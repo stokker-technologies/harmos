@@ -50,6 +50,18 @@ pub(crate) struct Editor;
 
 /* === Enums === */
 
+#[harmos_runtime::lanes]
+pub enum Lanes {
+    #[default]
+    Open,
+    #[lane(serial)]
+    Serial,
+    #[lane(concurrent(2))]
+    Concurrent,
+    #[lane(unbounded)]
+    Unbounded,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refusal {
     #[error("the title must not be empty")]
@@ -126,6 +138,7 @@ impl From<Rename> for Change {
 }
 
 impl Application for Editor {
+    type Lanes = Lanes;
     type State = Sheet;
     type Transaction = Change;
     type Record = Note;

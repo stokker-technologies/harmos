@@ -135,13 +135,13 @@ enum Choice {
 impl harmos_domain::listeners::Listener for Selections {
     type Row = Selection;
     const CALLBACK: &'static str = "allocation.selections";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::host::POLICY;
+    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
 }
 
 impl harmos_domain::listeners::Listener for Leaves {
     type Row = Leaf;
     const CALLBACK: &'static str = "allocation.leaves";
-    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::operations::host::POLICY;
+    const POLICY: harmos_domain::operations::OperationPolicy = harmos_domain::model::operations::lifecycle::POLICY;
 }
 
 // A Pass-Through Allocator Measures Only This Test Thread's Encoding Buffers
@@ -245,8 +245,8 @@ fn peak_fits_preflight() {
     let (encoded, measured) = measure(|| harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap());
     assert_eq!(measured.allocations, 2, "{measured:?}");
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
-    assert_eq!(measured.peak, harmos_domain::Message::encoded_len(&row) + encoded.capacity());
-    assert_eq!(encoded, harmos_domain::Message::encode_to_vec(&Delivery::<Selections>::new(context, row).unwrap()));
+    assert_eq!(measured.peak, harmos_domain::Message::encoded_size(&row) + encoded.capacity());
+    assert_eq!(encoded, harmos_domain::Message::encode(&Delivery::<Selections>::new(context, row).unwrap()));
 }
 
 #[test]

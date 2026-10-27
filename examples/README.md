@@ -12,6 +12,6 @@ and reopens the result.
 Run `mise run build` first; it builds the example once beside the workspace.
 On Windows, use `windows-x86_64` and the `.exe` suffix for native executables.
 
-The portable contract, host app, CLI, guest, and sidecar have separate crates under
+Shared models, vertical operations, host app, CLI, guest and sidecar have separate crates under
 `schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed
 analysis and cancellation. The example's JSONL persistence adapter is `schematic/storage/`.

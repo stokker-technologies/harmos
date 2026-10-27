@@ -7,7 +7,6 @@
  * ***
  */
 
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -19,13 +18,12 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos::operations::{OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
-pub const POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), retries: RetryPolicy::Never, restart: RestartPolicy::Never
-};
+pub const POLICY: OperationPolicy =
+    OperationPolicy { timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), retries: RetryPolicy::Never };
 
 /* === Macros === */
 
@@ -38,7 +36,6 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Traits === */
 
 /* === Implementations === */
-
 
 /* === Public Functions === */
 

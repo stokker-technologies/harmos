@@ -24,7 +24,7 @@ use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use arrow_array::{StringArray, StructArray};
 use arrow_schema::{DataType, Field, Fields};
-use harmos_runtime::storage::operations::WriteObjects;
+use harmos_operations::storage::WriteObjects;
 use harmos_runtime::storage::writes::{DataBatch, WriteReceipt};
 use harmos_runtime::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject,
@@ -46,18 +46,11 @@ struct Document {
     text: String,
 }
 
-#[harmos_runtime::message]
-struct DocumentV2 {
-    id: String,
-    text: String,
-}
-
 /* === Enums === */
 
 #[harmos_runtime::catalog]
 enum Objects {
     Document(Document),
-    V2(DocumentV2),
 }
 
 /* === Traits === */
@@ -72,19 +65,6 @@ impl Identified for Document {
 impl StoredObject for Document {
     type Key = String;
     const RETENTION: ObjectRetention = ObjectRetention::Versions(NonZeroUsize::new(8).unwrap());
-    fn key(&self) -> &String {
-        &self.id
-    }
-}
-
-impl Identified for DocumentV2 {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("test.document"), 2)
-    }
-}
-impl StoredObject for DocumentV2 {
-    type Key = String;
-    const RETENTION: ObjectRetention = Document::RETENTION;
     fn key(&self) -> &String {
         &self.id
     }
@@ -113,7 +93,14 @@ async fn object_exchange_saves() {
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let first = value("a/b", "first");
     let second = value("second", "two");
     // Register Authored Schema Before Sending Its Typed Payload.
@@ -127,7 +114,7 @@ async fn object_exchange_saves() {
         None,
     );
     let data = super::writes::envelope(payload, &[first.item.as_str(), second.item.as_str()], &[0, 1]);
-    let request = WriteObjects { scope: None };
+    let request = harmos_operations::storage::WriteObjectsRequest { scope: None };
     let mut writer = runtime.operations.exchange::<WriteObjects>(request, super::writes::settings(), super::writes::settings()).unwrap();
     writer.send(DataBatch { sequence: 1, destination: first.schema.id.clone(), schema: first.schema, data: data.into() }).await.unwrap();
     writer.finish_input();
@@ -182,11 +169,12 @@ async fn object_batch_atomic() {
 
 #[tokio::test]
 async fn object_follow_resumes() {
-    use harmos_runtime::storage::{ObjectEntry, operations::FollowObjects, query::ObjectVersions};
+    use harmos_operations::storage::FollowObjects;
+    use harmos_runtime::storage::{ObjectEntry, query::ObjectVersions};
     let (runtime, storage, _) = query_fixture().await;
     let first = storage.write_object(&Document { id: "key".into(), text: "saved".into() }).await.unwrap();
     storage.flush().await.unwrap();
-    let mut request = FollowObjects {
+    let mut request = harmos_operations::storage::FollowObjectsRequest {
         after: None,
         selection: harmos_runtime::storage::query::ObjectSelection { schema: None, key: None, versions: ObjectVersions::Revisions },
     };
@@ -219,7 +207,8 @@ async fn object_follow_resumes() {
 
 #[tokio::test]
 async fn follow_reports_pruned() {
-    use harmos_runtime::storage::{ObjectEntry, operations::FollowObjects, query::ObjectVersions};
+    use harmos_operations::storage::FollowObjects;
+    use harmos_runtime::storage::{ObjectEntry, query::ObjectVersions};
     let (runtime, storage, data) = query_fixture().await;
     for index in 0..9 {
         storage.write_object(&Document { id: "key".into(), text: index.to_string() }).await.unwrap();
@@ -228,7 +217,7 @@ async fn follow_reports_pruned() {
     while data.objects.lock().unwrap().len() != 8 {
         data.control.pruned.notified().await;
     }
-    let request = FollowObjects {
+    let request = harmos_operations::storage::FollowObjectsRequest {
         after: None,
         selection: harmos_runtime::storage::query::ObjectSelection { schema: None, key: None, versions: ObjectVersions::Revisions },
     };
@@ -258,6 +247,13 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     (runtime, storage, data)
 }

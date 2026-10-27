@@ -61,21 +61,21 @@ pub enum EncodingError {
 // The Envelope Of One Delivered Row, Encoded Within A Memory Budget.
 pub fn encoding_memory_bytes<R: Message>(context: Context, row: &R) -> Result<usize, EncodingError> {
     context.validate()?;
-    let row_len = row.encoded_len();
+    let row_len = row.encoded_size();
     let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
     memory_bytes(row_len, encoded_len)
 }
 
 pub fn encode_borrowed<R: Message>(context: Context, row: &R, total_budget: usize) -> Result<Vec<u8>, EncodingError> {
     context.validate()?;
-    let row_len = row.encoded_len();
+    let row_len = row.encoded_size();
     let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
     let required = memory_bytes(row_len, encoded_len)?;
     if required > total_budget {
         return Err(EncodingError::Budget { required, budget: total_budget });
     }
 
-    let payload = row.encode_to_vec();
+    let payload = row.encode();
     validate_buffer("row", payload.len(), payload.capacity(), row_len)?;
     let payload_capacity = payload.capacity();
     let mut encoded = Vec::with_capacity(encoded_len);

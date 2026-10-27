@@ -58,10 +58,11 @@ pub use config::{StorageBudget, StorageFilesystemSettings, StorageRequestSetting
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};
 pub use file_batch::{FileReadBatch, FileReadEvent, FileReadSlice};
+pub use file_capture::FileCapture;
 pub use file_checkpoint::FileCheckpoint;
-pub use file_follow::FileFollower;
+pub use file_follow::{FileFollow, FileFollower};
 pub use file_production::ProductionFollower;
-pub use file_reads::FileReader;
+pub use file_reads::{FileRead, FileReader};
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
     ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FilePhase, FileProducer, FileProgress,
@@ -73,7 +74,7 @@ pub use harmos_domain::model::storage::{
 pub use json::{JsonStorage, JsonStorageSettings};
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;
-pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
+pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use read_session::ReadSession;
 pub use receipts::{MutationReceipt, MutationValue};

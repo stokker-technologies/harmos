@@ -38,7 +38,6 @@ use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::ArrowIpc;
-use harmos_domain::operations::storage::Query;
 
 /* === Constants === */
 
@@ -51,6 +50,14 @@ const PROTOBUF_FRAMING: usize = 30;
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct Query {
+    pub at: harmos_domain::model::storage::StorageCursor,
+    pub source: Source,
+    pub transforms: Vec<harmos_domain::model::storage::query::transform::Transform>,
+    pub slice: harmos_domain::model::storage::query::RowSlice,
+}
 
 pub struct QueryReader {
     context: crate::execution::Context,
@@ -92,6 +99,26 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Query {
+    pub fn validate(&self) -> harmos_domain::Result<()> {
+        self.source.validate()?;
+        if self.transforms.len() > 64 {
+            return Err(harmos_domain::model::storage::query::transform::invalid("too many query transforms"));
+        }
+        Ok(())
+    }
+}
+
+impl MemorySize for Query {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
+            .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
+    }
+}
 
 impl QueryArrow {
     /// Resident bound for the wire value, without converting or copying its IPC.
@@ -421,7 +448,7 @@ impl QueryReader {
             let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
             // Protobuf Frames This One-Variant Bytes Envelope With Two Keys And Two
             // Length Prefixes Beyond The Postcard Bytes; Bound Both Encodings.
-            let encoded = crate::Message::encoded_len(&envelope).saturating_add(PROTOBUF_FRAMING);
+            let encoded = crate::Message::encoded_size(&envelope).saturating_add(PROTOBUF_FRAMING);
             drop(envelope);
             if encoded <= settings.batch_bytes.get() {
                 self.pending_offset += rows;

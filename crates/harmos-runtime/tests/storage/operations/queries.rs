@@ -23,8 +23,8 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, config};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::operations::Query as Request;
+use harmos_operations::storage::Query;
+use harmos_operations::storage::QueryRequest as Request;
 use harmos_runtime::storage::query::scalar::ScalarValue;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -115,7 +115,14 @@ async fn query_operation_batches() {
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();
     let fixture = Fixture::new(settings).await;
-    harmos_runtime::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone()))
+    fixture
+        .runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(fixture.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
         .unwrap();
     let schema = SchemaKey {
         id: Identifier::new("query-reading").unwrap(),
@@ -130,7 +137,7 @@ async fn query_operation_batches() {
     fixture.storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
     let values = [9, 4, 7, 4, 1, 8];
     let items = (0..values.len()).map(|index| Identifier::new(format!("row-{index}")).unwrap()).collect::<Vec<_>>();
-    let payloads = values.iter().map(|value| Reading { value: *value }.encode_to_vec()).collect::<Vec<_>>();
+    let payloads = values.iter().map(|value| Reading { value: *value }.encode()).collect::<Vec<_>>();
     let records = items
         .iter()
         .zip(&payloads)
@@ -148,7 +155,7 @@ async fn query_operation_batches() {
 
     // A Later Durable Row Must Not Advance The Requested Query Boundary.
     let late_item = Identifier::new("later").unwrap();
-    let late_payload = Reading { value: 100 }.encode_to_vec();
+    let late_payload = Reading { value: 100 }.encode();
     fixture
         .storage
         .write_records(vec![RecordInput {
@@ -253,7 +260,7 @@ async fn query_heterogeneous_projection() {
 
     // Equal Graphs Under Distinct Logical Keys Retain Their Actual Identity.
     let mut matching = storage
-        .query(Request {
+        .query(harmos_runtime::storage::Query {
             at: at.clone(),
             source: selected(Some(ObjectKey::new("shared", NonZeroUsize::new(128).unwrap()).unwrap())),
             transforms: vec![],
@@ -274,7 +281,7 @@ async fn query_heterogeneous_projection() {
 
     // A Leading Projection Normalizes Common Fields Across Different Graphs.
     let mut projected = storage
-        .query(Request {
+        .query(harmos_runtime::storage::Query {
             at: at.clone(),
             source: selected(None),
             transforms: vec![Transform::Project(Project {
@@ -306,8 +313,10 @@ async fn query_heterogeneous_projection() {
     drop(projected);
 
     // Incompatible Unprojected Types Fail Before Publishing A Schema.
-    let mut incompatible =
-        storage.query(Request { at, source: selected(None), transforms: vec![], slice: RowSlice::default() }).await.unwrap();
+    let mut incompatible = storage
+        .query(harmos_runtime::storage::Query { at, source: selected(None), transforms: vec![], slice: RowSlice::default() })
+        .await
+        .unwrap();
     assert!(incompatible.next().await.is_err());
     drop(incompatible);
     storage.close().await.unwrap();
@@ -338,7 +347,7 @@ async fn ipc_admission_retains() {
             item: Identifier::new("row").unwrap(),
             source: None,
             source_time: None,
-            payload: Reading { value: 7 }.encode_to_vec(),
+            payload: Reading { value: 7 }.encode(),
         }])
         .await
         .unwrap();
@@ -346,7 +355,7 @@ async fn ipc_admission_retains() {
     for cancel in [true, false] {
         let mut reader = fixture
             .storage
-            .query(Request {
+            .query(harmos_runtime::storage::Query {
                 at: fixture.storage.cursor_saved(),
                 source: Source::Records(RecordSelection {
                     schema: schema.clone(),

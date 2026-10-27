@@ -141,10 +141,10 @@ impl ObjectVersionToken {
     }
 
     pub fn encode_bounded(&self, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
-        if self.encoded_len() > max_bytes.get() {
+        if self.encoded_size() > max_bytes.get() {
             return Err(invalid("object version encoding exceeds allowance"));
         }
-        Ok(self.encode_to_vec())
+        Ok(self.encode())
     }
 
     pub fn decode_bounded(bytes: &[u8], max_bytes: NonZeroUsize) -> Result<Self> {

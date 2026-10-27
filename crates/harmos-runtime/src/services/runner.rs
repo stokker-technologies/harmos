@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 // Third Party Imports
 
 // Local Imports
-use super::{Fault, Resident, Service, ServiceDefinition, ServiceExit};
+use super::{Resident, ServiceContext, ServiceDefinition, ServiceExit};
 use crate::operations::OperationPhase;
 use crate::operations::resident::{Completion, Outcome, Report, Resources, Runner, Settlement, Start};
 use crate::supervision::{self, Task, instance::Instance};
@@ -82,7 +82,7 @@ pub(super) struct Cleanup<A: Application> {
 pub(super) trait ErasedResident<A: Application>: Send {
     fn bind_lifecycle(&mut self, lifecycle: Arc<Instance>, report: Report);
 
-    fn run(&mut self, context: Service<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Fault<Failure>>> + Send + '_>>;
+    fn run(&mut self, context: ServiceContext<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>>;
 
     fn cleanup(&mut self) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>>;
 }
@@ -211,17 +211,12 @@ where
         self.report = Some(report);
     }
 
-    fn run(&mut self, context: Service<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Fault<Failure>>> + Send + '_>> {
+    fn run(&mut self, context: ServiceContext<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>> {
         Box::pin(async move {
             self.stopped = false;
-            Resident::run(&mut self.resident, context).await.map_err(|fault| match fault {
-                Fault::Environmental(error) => {
-                    Fault::Environmental(Failure { message: error.to_string(), source: Arc::new(Fault::Environmental(error)) })
-                }
-                Fault::Application(error) => {
-                    Fault::Application(Failure { message: error.to_string(), source: Arc::new(Fault::Application(error)) })
-                }
-            })
+            Resident::run(&mut self.resident, context)
+                .await
+                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
         })
     }
 
@@ -231,13 +226,11 @@ where
                 self.transition(OperationPhase::Stopping);
                 Resident::stop(&mut self.resident)
                     .await
-                    .map_err(|error| Failure { message: error.to_string(), source: Arc::new(Fault::Application(error)) })?;
+                    .map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })?;
                 self.stopped = true;
             }
             self.transition(OperationPhase::Finalizing);
-            Resident::cleanup(&mut self.resident)
-                .await
-                .map_err(|error| Failure { message: error.to_string(), source: Arc::new(Fault::Application(error)) })
+            Resident::cleanup(&mut self.resident).await.map_err(|error| Failure { message: error.to_string(), source: Arc::new(error) })
         })
     }
 }

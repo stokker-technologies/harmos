@@ -105,21 +105,15 @@ impl std::error::Error for Refusal {}
 /* === Public Functions === */
 
 pub const fn reserved(method: &str) -> bool {
-    let method = method.as_bytes();
-    let prefix = RESERVED.as_bytes();
-    if method.len() < prefix.len() {
-        return false;
-    }
-
-    let mut index = 0;
-    while index < prefix.len() {
-        if method[index] != prefix[index] {
-            return false;
-        }
-        index += 1;
-    }
-
-    true
+    let bytes = method.as_bytes();
+    bytes.len() >= 7
+        && bytes[0] == b'h'
+        && bytes[1] == b'a'
+        && bytes[2] == b'r'
+        && bytes[3] == b'm'
+        && bytes[4] == b'o'
+        && bytes[5] == b's'
+        && (bytes[6] == b'.' || bytes[6] == b'_')
 }
 
 /* === Private Functions === */

@@ -292,15 +292,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                 let grants = entry.scopes.iter().map(|scope| {
                     quote!(#harmos::__private::PluginGrant {
                         operation: ::std::borrow::Cow::Borrowed(
-                            <<#member as #harmos::operations::Declares>::Declaration
-                                as #harmos::operations::OperationDeclaration>::ID,
+                            <#member as #harmos::OperationDeclaration>::ID,
                         ),
                         scope: ::core::option::Option::Some(::std::borrow::Cow::Borrowed(#scope)),
                     })
                 });
                 quote! {
                     #harmos::catalog::Node::Leaf(#requirement::of::<
-                        <#member as #harmos::operations::Declares>::Declaration
+                        #member
                     >(&[#(#grants),*]))
                 }
             });
@@ -329,8 +328,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let entry = quote!(#inventory::publications::Entry);
     let lifecycle = quote! {
         [
-            <#name as #harmos::operations::lifecycle::Policy>::INITIALIZATION_POLICY,
-            <#name as #harmos::operations::lifecycle::Policy>::SHUTDOWN_POLICY,
+            <#name as #harmos::model::operations::lifecycle::Policy>::INITIALIZATION_POLICY,
+            <#name as #harmos::model::operations::lifecycle::Policy>::SHUTDOWN_POLICY,
         ]
     };
     let restart_name = format_ident!("__HARMOS_PLUGIN_RESTART_{symbol}");
@@ -340,7 +339,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             "policy": { "credit": policy.credit, "sustained_health_ms": policy.sustained_health_ms,
                 "backoff_base_ms": policy.backoff_base_ms, "backoff_cap_ms": policy.backoff_cap_ms }
         });
-        let encoded = format!("\0HARMOS:ARTIFACT:V6:{value}\0").into_bytes();
+        let encoded = format!("\0HARMOS:ARTIFACT:V1:{value}\0").into_bytes();
         let length = encoded.len();
         let bytes = syn::LitByteStr::new(&encoded, id.span());
         (

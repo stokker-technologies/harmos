@@ -27,7 +27,7 @@ use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
-use crate::operations::{Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand};
+use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
 
 /* === Constants === */
@@ -47,6 +47,7 @@ struct ComponentState {
     payload: Option<Vec<u8>>,
     invocation: Option<u64>,
     operation: Identifier,
+    fingerprint: [u8; 32],
 }
 
 pub struct ComponentOperation<O: OperationDeclaration, E = ()> {
@@ -66,7 +67,7 @@ struct SdkOperation {
 
 struct SdkBinding {
     component: Arc<Component>,
-    definition: Definition,
+    definition: OperationDefinition,
 }
 
 /* === Enums === */
@@ -79,6 +80,9 @@ enum Phase {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentError {
+    #[error(transparent)]
+    Dependency(#[from] harmos_sdk::DependencyError),
+
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
 
@@ -158,21 +162,23 @@ where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
 {
-    type Declaration = O;
-    type Resources = Component;
+    type Request = <O as OperationDeclaration>::Request;
+    type Response = <O as OperationDeclaration>::Response;
     type Error = ComponentError;
     type Endpoints = E;
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(component: Arc<Component>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+        let component = context.dependency::<Component>()?;
         Ok(Self { component, state: None, epoch: 0, transferred: AtomicBool::new(false), _operation: PhantomData })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut O, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
                 let component = &self.component;
@@ -180,15 +186,16 @@ where
                 if !component.endpoint.accepts() {
                     return Err(ComponentError::Unavailable);
                 }
-                let definition = Definition::of::<O>()?;
+                let definition = OperationDefinition::of::<O>()?;
                 if !component.endpoint.definitions().contains(&definition) {
                     return Err(ComponentError::Catalog { operation: O::ID });
                 }
                 let state = ComponentState {
                     initialized: false,
-                    payload: Some(crate::Message::encode_to_vec(request)),
+                    payload: Some(crate::Message::encode(request)),
                     invocation: None,
                     operation: definition.id,
+                    fingerprint: definition.fingerprint.0,
                 };
 
                 self.state = Some(state);
@@ -276,7 +283,11 @@ impl Component {
             state.invocation = Some(invocation);
             tracing::Span::current().record("invocation", invocation);
             let payload = state.payload.take().expect("one inert request is owned");
-            let command = WireCommand::Prepare { invocation, operation: state.operation.to_string(), payload };
+            let scope = self.scope().ok_or(ComponentError::Unavailable)?;
+            let operation = format!("{}.{}", scope.owner(), state.operation);
+            let fingerprint = state.fingerprint;
+            let generation = context.generation.value();
+            let command = WireCommand::Prepare { invocation, operation, fingerprint, generation, payload };
             let answer = self.endpoint.phase(command, None).await?;
             let answer = match answer {
                 WireAnswer::Failed { failure } => {
@@ -322,7 +333,7 @@ impl Component {
                 answer = &mut running => break answer?,
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, request.payload, request.submitted, request.values);
+                    let child = context.submit_encoded_at(&request.operation, request.fingerprint, request.generation, request.payload, request.submitted, request.values);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.cancel(); }
                 }
@@ -361,7 +372,7 @@ impl Component {
         self.endpoint.scope()
     }
 
-    pub fn stage_sdk(&self, operations: &super::OperationManager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
+    pub fn stage_sdk(&self, operations: &super::Manager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
         let scope = self
             .scope()
             .ok_or(Error::InvalidInput { field: "SDK lifecycle", reason: "guest endpoint has no original plugin generation" })?;
@@ -372,17 +383,15 @@ impl Component {
             .map(|descriptor| {
                 let handler =
                     Arc::new(SdkBinding { component: Arc::clone(&component), definition: descriptor.contract().operation().clone() });
-                let mut definition = descriptor.contract().operation().clone();
-                let suffix = match descriptor.action() {
-                    harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
-                    harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
-                };
-                definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
-                    .map_err(|source| Error::OperationDeclaration { source: harmos_domain::Error::from(source) })?;
-                let mut entry = operations.binding_owned_definition::<SdkOperation>(
+                let definition = descriptor.contract().operation().clone();
+                let mut entry = operations.bind_native::<super::sdk::Encoded, SdkOperation>(
                     scope.owner(),
                     lane.name(),
-                    handler,
+                    {
+                        let mut dependencies = harmos_sdk::Dependencies::new();
+                        dependencies.insert(handler)?;
+                        dependencies
+                    },
                     definition,
                     Some(sdk_dispatch),
                     Some(scope.clone()),
@@ -398,21 +407,23 @@ impl Component {
 }
 
 impl Operation for SdkOperation {
-    type Declaration = super::sdk::Encoded;
-    type Resources = SdkBinding;
+    type Request = <super::sdk::Encoded as OperationDeclaration>::Request;
+    type Response = <super::sdk::Encoded as OperationDeclaration>::Response;
     type Error = ComponentError;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize<'ctx>(binding: Arc<SdkBinding>, _: Self::Context<'ctx>) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+        let binding = context.dependency::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_sdk::OperationContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
+        let host = context.dependency::<super::HostContext>()?;
+        let context = host.borrow();
         let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
             if self.state.is_none() {
                 let binding = &self.binding;
@@ -433,6 +444,7 @@ impl Operation for SdkOperation {
                     payload: Some(std::mem::take(&mut payload.0)),
                     invocation: None,
                     operation: binding.definition.id.clone(),
+                    fingerprint: binding.definition.fingerprint.0,
                 };
 
                 self.state = Some(state);
@@ -476,16 +488,18 @@ where
     use crate::operations::Direction;
     type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
     type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies.insert(component)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => bindings.register_owned_wire_at::<ComponentOperation<O, ()>>(lane, component),
-        (true, false) => bindings.register_owned_wire_at::<ComponentOperation<O, In<O>>>(lane, component),
-        (false, true) => bindings.register_owned_wire_at::<ComponentOperation<O, Out<O>>>(lane, component),
-        (true, true) => bindings.register_owned_wire_at::<ComponentOperation<O, (In<O>, Out<O>)>>(lane, component),
+        (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),
+        (true, false) => bindings.stage_implementation::<O, ComponentOperation<O, In<O>>>(lane, dependencies),
+        (false, true) => bindings.stage_implementation::<O, ComponentOperation<O, Out<O>>>(lane, dependencies),
+        (true, true) => bindings.stage_implementation::<O, ComponentOperation<O, (In<O>, Out<O>)>>(lane, dependencies),
     }
 }
 
 fn sdk_dispatch(
-    operations: &super::OperationManager, mut submission: super::manager::Submission, source: super::caller::Source,
+    operations: &super::Manager, mut submission: super::manager::Submission, source: super::caller::Source,
     parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> crate::Result<super::EncodedInvocation> {
     submission.preparation = input.preparation;

@@ -56,7 +56,7 @@ pub struct Host<A: Application> {
     engine: WasmEngine,
     epochs: Arc<Epochs>,
     streams: StreamManager<A>,
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
     max_component: usize,
     limits: StoreLimits,
     fuel: u64,
@@ -68,7 +68,7 @@ pub struct Loaded<A: Application> {
     component: InstancePre<Bridge<A>>,
     sdk: sdk::PluginIndices,
     streams: StreamManager<A>,
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
     epochs: Arc<Epochs>,
     fuel: u64,
     limits: StoreLimits,
@@ -95,7 +95,7 @@ struct Active<A: Application> {
 struct Bridge<A: Application> {
     declaration: Declaration,
     streams: StreamManager<A>,
-    operations: crate::operations::OperationManager,
+    operations: crate::operations::Manager,
     publications: BTreeMap<String, Arc<crate::streams::PublicationLease>>,
     registration: Option<crate::streams::StreamRegistration>,
     scope: Option<crate::plugin::PluginScope>,
@@ -186,11 +186,11 @@ impl<A: Application> Host<A> {
     }
 
     pub fn with_settings(runtime: &Runtime<A>, settings: PluginGuestSettings) -> Result<Self, Error> {
-        Self::from_parts(runtime.streams.clone(), runtime.operations.clone(), settings)
+        Self::from_parts(runtime.streams.clone(), runtime.operations.execution(), settings)
     }
 
     pub(crate) fn from_parts(
-        streams: StreamManager<A>, operations: crate::operations::OperationManager, settings: PluginGuestSettings,
+        streams: StreamManager<A>, operations: crate::operations::Manager, settings: PluginGuestSettings,
     ) -> Result<Self, Error> {
         let mut config = Config::new();
         // Fuel bounds computation and the epoch bounds time, and neither
@@ -226,7 +226,7 @@ impl<A: Application> Host<A> {
             .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
         let mut linker: Linker<Bridge<A>> = Linker::new(&self.engine);
         linker
-            .instance("harmos:guest/operation-context@0.2.0")
+            .instance("harmos:guest/operation-context@1.0.0")
             .and_then(|mut interface| {
                 interface.func_wrap_concurrent("child", |accessor, (payload,): (Vec<u8>,)| {
                     Box::pin(async move {

@@ -21,6 +21,7 @@
 
 // Local Imports
 use super::*;
+#[cfg(feature = "grpc")]
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
@@ -56,13 +57,13 @@ async fn callbacks_guard_admission() {
         let mut manager = PluginManager::new(candidate()).unwrap();
         let mut host = host(runtime.operations.clone());
         manager.initialize(&mut host).await.unwrap();
-        let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
+        let contract = WireDeclaration::of::<super::super::cases::EchoDeclaration>().contract().unwrap();
         let target: harmos_runtime::operations::PluginCallback =
             runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
         let encoded = AtomicBool::new(false);
         let refused = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             encoded.store(true, Ordering::SeqCst);
-            Ok(Text::from("value").encode_to_vec())
+            Ok(Text::from("value").encode())
         });
         assert!(matches!(refused, Err(Error::InvalidInput { field: "operation preparation bytes", .. })));
         assert!(!encoded.load(Ordering::SeqCst));
@@ -74,7 +75,7 @@ async fn callbacks_guard_admission() {
         let mut manager = PluginManager::new(candidate()).unwrap();
         let mut host = host(runtime.operations.clone());
         manager.initialize(&mut host).await.unwrap();
-        let contract = WireDeclaration::of::<super::super::cases::Echo>().contract().unwrap();
+        let contract = WireDeclaration::of::<super::super::cases::EchoDeclaration>().contract().unwrap();
         let target = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
         assert!(matches!(
             target.submit_with(NonZeroUsize::new(64).unwrap(), |_| panic!("fixture encoder panicked")),
@@ -83,15 +84,17 @@ async fn callbacks_guard_admission() {
         let charge = NonZeroUsize::new(64).unwrap();
         let recovering = target.submit_with(charge, |_| {
             let request = Text::from("released");
-            Ok(request.encode_to_vec())
+            Ok(request.encode())
         });
         let bytes = recovering.unwrap().await.unwrap();
         assert_eq!(String::decode(&bytes).unwrap(), "released:1");
         assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 1);
         drop(bytes);
 
-        let mut changed = WireDeclaration::of::<super::super::cases::Echo>();
-        changed.version = 2;
+        #[harmos_runtime::operation(request = super::super::cases::Echo, response = u32, id = "fixture_echo",
+            visibility = Visibility::Shared, policy = super::super::cases::EchoDeclaration::POLICY)]
+        struct Changed;
+        let changed = WireDeclaration::of::<Changed>();
         assert!(matches!(
             runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &changed.contract().unwrap()),
             Err(Error::InvalidInput { field: "callback contract", .. })
@@ -104,7 +107,7 @@ async fn callbacks_guard_admission() {
         let refused = target.submit_with(charge, |_| {
             encoded.store(true, Ordering::SeqCst);
             let request = Text::from("stale");
-            Ok(request.encode_to_vec())
+            Ok(request.encode())
         });
         assert!(refused.is_err());
         assert!(!encoded.load(Ordering::SeqCst));
@@ -112,7 +115,7 @@ async fn callbacks_guard_admission() {
         let replacement = runtime.operations.capture_callback(host.scope.as_ref().unwrap(), &contract).unwrap();
         let submitted = replacement.submit_with(charge, |_| {
             let request = Text::from("live");
-            Ok(request.encode_to_vec())
+            Ok(request.encode())
         });
         let bytes = submitted.unwrap().await.unwrap();
         assert_eq!(String::decode(&bytes).unwrap(), "live:1");
@@ -124,7 +127,7 @@ async fn callbacks_guard_admission() {
 #[tokio::test]
 async fn preparation_credit_held() {
     let credit = Credit::start(false).await;
-    let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("block").encode_to_vec())).unwrap();
+    let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("block").encode())).unwrap();
     credit.cleanup.started.notified().await;
     credit.assert_held();
     invocation.cancel();
@@ -146,7 +149,7 @@ async fn plugin_catalog_lifecycle() {
     assert_eq!(runtime.operations.definitions().len(), 8);
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
     assert!(matches!(runtime.operations.stage_plugin(host.scope.as_ref().unwrap(), |_| Ok(())), Err(Error::InvalidInput { .. })));
-    assert_eq!(runtime.operations.call(request()).await.unwrap().value, 7);
+    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
 
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operations.definitions().is_empty());
@@ -163,12 +166,11 @@ async fn staging_releases_names() {
     assert!(manager.initialize(&mut host).await.is_err());
     assert!(runtime.operations.definitions().is_empty());
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), 0);
-    assert!(runtime.operations.register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default())).is_ok());
-
     host.fail_start = false;
-    assert!(manager.initialize(&mut host).await.is_err());
-    // The second binding was never reserved when the complete candidate collided.
-    assert!(runtime.operations.register_operation::<SlowCall>("fixture", Lanes::Open, Arc::new(Owner::default())).is_ok());
+    manager.initialize(&mut host).await.unwrap();
+    assert_eq!(runtime.operations.definitions().len(), 8);
+    assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
+    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }
@@ -178,18 +180,17 @@ async fn dropped_receipt_defers() {
     let running = Running::start().await;
     let runtime = &running.runtime;
     let mut manager = running.manager;
-    let mut host = running.host;
-    manager.shutdown(&mut host).await.unwrap();
+    let mut original = running.host;
+    manager.shutdown(&mut original).await.unwrap();
     assert!(runtime.operations.definitions().is_empty());
-    assert!(matches!(
-        runtime.operations.register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default())),
-        Err(Error::AlreadyRegistered { .. })
-    ));
-
+    let mut replacement = PluginManager::new(candidate()).unwrap();
+    let mut next = host(runtime.operations.clone());
+    assert_registration_conflict(replacement.initialize(&mut next).await);
     running.gate.notify_one();
     assert_eq!(running.invocation.await.unwrap().value, 7);
-    runtime.operations.register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default())).unwrap();
+    replacement.initialize(&mut next).await.unwrap();
     assert_eq!(runtime.operations.owner(Compute::ID).unwrap().as_str(), "fixture");
+    replacement.shutdown(&mut next).await.unwrap();
     running.runtime.stop().await.unwrap();
 }
 
@@ -198,23 +199,29 @@ async fn unregister_cancel_retained() {
     let running = Running::start().await;
     let runtime = &running.runtime;
     let mut manager = running.manager;
-    let mut host = running.host;
+    let mut original = running.host;
+    let id = harmos_runtime::QualifiedId::qualify("fixture", Compute::ID).unwrap();
     {
-        // The gated invocation holds retirement, so the first poll cannot finish it.
-        let mut unregister = std::pin::pin!(runtime.operations.unregister(Compute::ID));
+        let mut unregister = std::pin::pin!(runtime.operations.unregister(&id));
         assert!(futures_util::poll!(&mut unregister).is_pending());
     }
-    manager.shutdown(&mut host).await.unwrap();
-
+    manager.shutdown(&mut original).await.unwrap();
     running.gate.notify_one();
-    assert_eq!(running.invocation.await.unwrap().value, 7);
-    assert!(matches!(
-        runtime.operations.register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default())),
-        Err(Error::AlreadyRegistered { .. })
-    ));
-    runtime.operations.unregister(Compute::ID).await.unwrap();
-    runtime.operations.register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default())).unwrap();
+    assert!(matches!(running.invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    let mut replacement = PluginManager::new(candidate()).unwrap();
+    let mut next = host(runtime.operations.clone());
+    assert_registration_conflict(replacement.initialize(&mut next).await);
+    runtime.operations.unregister(&id).await.unwrap();
+    replacement.initialize(&mut next).await.unwrap();
+    assert_eq!(runtime.operation(request()).run().await.unwrap().value, 7);
+    replacement.shutdown(&mut next).await.unwrap();
     running.runtime.stop().await.unwrap();
+}
+
+fn assert_registration_conflict(result: Result<()>) {
+    let error = result.unwrap_err();
+    let Error::PluginLifecycle { source } = error else { panic!("unexpected registration error: {error:?}") };
+    assert!(matches!(source.as_ref(), harmos_runtime::plugin::PluginFailure::Start { source: Error::AlreadyRegistered { .. }, .. }));
 }
 
 #[tokio::test]
@@ -225,9 +232,9 @@ async fn plugin_caller_authorization() {
     host.call_during_setup = true;
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(caller.call(Shared(request())).await.unwrap().value, 7);
+    assert_eq!(caller.call::<SharedDeclaration>(Shared(request())).await.unwrap().value, 7);
     // Parent is shared; its resource-owner context can call its private child.
-    assert_eq!(caller.call(Parent(request())).await.unwrap().value, 7);
+    assert_eq!(caller.call::<Parent>(ParentRequest(request())).await.unwrap().value, 7);
     let (requests, mut decoded) = harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
@@ -235,11 +242,12 @@ async fn plugin_caller_authorization() {
     .unwrap();
     requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert_eq!(caller.submit_charged::<Shared, _>(charged, ()).unwrap().await.unwrap().value, 7);
+    assert_eq!(caller.submit_charged::<SharedDeclaration, _>(charged, ()).unwrap().await.unwrap().value, 7);
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
-        let response = grpc_call::<super::super::cases::Echo>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
+        let response =
+            grpc_call::<super::super::cases::EchoDeclaration>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
         use http_body_util::BodyExt as _;
         let body = response.into_body().collect().await.unwrap();
         assert_eq!(body.trailers().unwrap()["grpc-status"], "0");
@@ -247,13 +255,14 @@ async fn plugin_caller_authorization() {
         assert_eq!(bytes[0], 0);
         assert_eq!(u32::from_be_bytes(bytes[1..5].try_into().unwrap()) as usize, bytes.len() - 5);
         assert_eq!(grpc::decode::<String>(DecodeInput::new(&bytes[5..])).unwrap(), "grpc:1");
-        let response = grpc_call::<super::super::cases::PrivateEcho>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
+        let response =
+            grpc_call::<super::super::cases::PrivateEchoDeclaration>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
         assert_eq!(response.headers()["grpc-status"], "7");
     }
     let prepared = host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst);
     for source in ["client", "transitive", "unrelated"] {
         let source = runtime.operations.caller(&host.callers[source]).unwrap();
-        assert!(matches!(source.submit(request()), Err(Error::OperationUnauthorized { .. })));
+        assert!(matches!(source.submit::<Compute>(request()), Err(Error::OperationUnauthorized { .. })));
         let (output, input) = harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
             items: NonZeroUsize::new(1).unwrap(),
             bytes: NonZeroUsize::new(4).unwrap(),
@@ -274,26 +283,27 @@ async fn plugin_caller_authorization() {
     }
     for source in ["transitive", "unrelated"] {
         let source = runtime.operations.caller(&host.callers[source]).unwrap();
-        assert!(matches!(source.submit(Shared(request())), Err(Error::OperationUnauthorized { .. })));
+        assert!(matches!(source.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
-    assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().call(request()).await.unwrap().value, 7);
+    assert_eq!(runtime.operations.caller(&host.callers["fixture"]).unwrap().call::<Compute>(request()).await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
-    assert!(matches!(caller.submit(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationCaller { .. })));
     let (output, input) = harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(4).unwrap(),
     })
     .unwrap();
-    assert!(matches!(caller.submit_endpoints::<Shared, _>(Shared(request()), input), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_endpoints::<SharedDeclaration, _>(Shared(request()), input), Err(Error::OperationCaller { .. })));
     assert!(output.is_closed());
     requests.send_with(4096, || Ok(Shared(request()))).await.unwrap();
     let charged = decoded.recv().await.unwrap();
-    assert!(matches!(caller.submit_charged::<Shared, _>(charged, ()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit_charged::<SharedDeclaration, _>(charged, ()), Err(Error::OperationCaller { .. })));
     drop(requests.reserve(4096).await.unwrap());
     #[cfg(feature = "grpc")]
     {
-        let response = grpc_call::<super::super::cases::Echo>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
+        let response =
+            grpc_call::<super::super::cases::EchoDeclaration>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
         assert_eq!(response.headers()["grpc-status"], "16");
     }
     runtime.stop().await.unwrap();
@@ -307,9 +317,9 @@ async fn operation_cache_partitioned() {
     manager.initialize(&mut host).await.unwrap();
     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
     let keyed = || Shared(Request { keyed: true, ..request() });
-    let host_response = runtime.operations.call(keyed()).await.unwrap();
-    let first = caller.call(keyed()).await.unwrap();
-    let again = caller.call(keyed()).await.unwrap();
+    let host_response = runtime.operation(keyed()).run().await.unwrap();
+    let first = caller.call::<SharedDeclaration>(keyed()).await.unwrap();
+    let again = caller.call::<SharedDeclaration>(keyed()).await.unwrap();
     assert!(!host_response.ptr_eq(&first));
     assert!(first.ptr_eq(&again));
     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -318,11 +328,11 @@ async fn operation_cache_partitioned() {
     let mut next = with_clients(true).definitions().cloned().collect::<Vec<_>>();
     next.iter_mut().find(|definition| definition.id == "client").unwrap().configuration = br#"{"revision":2}"#.to_vec();
     manager.reload(PluginDefinitions::new(next, []).unwrap(), &mut host).await.unwrap();
-    assert!(matches!(caller.submit(keyed()), Err(Error::OperationCaller { .. })));
+    assert!(matches!(caller.submit::<SharedDeclaration>(keyed()), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    let next = replacement.call(keyed()).await.unwrap();
+    let next = replacement.call::<SharedDeclaration>(keyed()).await.unwrap();
     assert!(!first.ptr_eq(&next));
-    assert!(host_response.ptr_eq(&runtime.operations.call(keyed()).await.unwrap()));
+    assert!(host_response.ptr_eq(&runtime.operation(keyed()).run().await.unwrap()));
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }
@@ -335,10 +345,10 @@ async fn requirement_revokes_operation() {
     manager.initialize(&mut host).await.unwrap();
     let old = runtime.operations.caller(&host.callers["client"]).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
-    assert!(matches!(old.submit(Shared(request())), Err(Error::OperationCaller { .. })));
+    assert!(matches!(old.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationCaller { .. })));
     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert!(matches!(replacement.submit(Shared(request())), Err(Error::OperationUnauthorized { .. })));
-    assert_eq!(runtime.operations.call(Shared(request())).await.unwrap().value, 7);
+    assert!(matches!(replacement.submit::<SharedDeclaration>(Shared(request())), Err(Error::OperationUnauthorized { .. })));
+    assert_eq!(runtime.operation(Shared(request())).run().await.unwrap().value, 7);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }
@@ -352,9 +362,9 @@ async fn queued_operations_recheck() {
     let source = runtime.operations.caller(&host.callers["client"]).unwrap();
     let opened = Arc::new(tokio::sync::Notify::new());
     let gate = Arc::new(tokio::sync::Notify::new());
-    let held = runtime.operations.submit(Shared(Request { gate: Some((opened.clone(), gate.clone())), ..request() })).unwrap();
+    let held = runtime.operation(Shared(Request { gate: Some((opened.clone(), gate.clone())), ..request() })).start().await.unwrap();
     opened.notified().await;
-    let queued = source.submit(Shared(request())).unwrap();
+    let queued = source.submit::<SharedDeclaration>(Shared(request())).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
 
     gate.notify_one();
@@ -378,7 +388,7 @@ async fn unmanaged_endpoint_refused() {
 
 #[tokio::test]
 async fn encoded_calls_authorized() {
-    use super::super::cases::{Echo, Nested, PrivateEcho};
+    use super::super::cases::{EchoDeclaration as Echo, Nested, NestedDeclaration, PrivateEchoDeclaration as PrivateEcho};
     use harmos_runtime::Message;
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
@@ -386,16 +396,22 @@ async fn encoded_calls_authorized() {
     manager.initialize(&mut host).await.unwrap();
     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
     let owner = runtime.operations.caller(&host.callers["fixture"]).unwrap();
-    assert_eq!(String::decode(&client.call_encoded(Echo::ID, Text::from("hello").encode_to_vec()).await.unwrap()).unwrap(), "hello:1");
-    assert_eq!(String::decode(&owner.call_encoded(PrivateEcho::ID, Text::from("own").encode_to_vec()).await.unwrap()).unwrap(), "own:1");
+    assert_eq!(
+        String::decode(&client.call_encoded(&format!("fixture.{}", Echo::ID), Text::from("hello").encode()).await.unwrap()).unwrap(),
+        "hello:1"
+    );
+    assert_eq!(
+        String::decode(&owner.call_encoded(&format!("fixture.{}", PrivateEcho::ID), Text::from("own").encode()).await.unwrap()).unwrap(),
+        "own:1"
+    );
     // The client's shared parent invokes its own private child as the bound owner.
-    assert_eq!(&*client.call(Nested::from("nested")).await.unwrap(), "nested:1");
+    assert_eq!(&*client.call::<NestedDeclaration>(Nested::from("nested")).await.unwrap(), "nested:1");
     let prepared = host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst);
     // Malformed payloads must not replace authorization failures with codec errors.
-    assert!(matches!(client.submit_encoded(PrivateEcho::ID, vec![0xff]), Err(Error::OperationUnauthorized { .. })));
+    assert!(matches!(client.submit_encoded(&format!("fixture.{}", PrivateEcho::ID), vec![0xff]), Err(Error::OperationUnauthorized { .. })));
     for source in ["transitive", "unrelated"] {
         let source = runtime.operations.caller(&host.callers[source]).unwrap();
-        assert!(matches!(source.submit_encoded(Echo::ID, vec![0xff]), Err(Error::OperationUnauthorized { .. })));
+        assert!(matches!(source.submit_encoded(&format!("fixture.{}", Echo::ID), vec![0xff]), Err(Error::OperationUnauthorized { .. })));
     }
     assert_eq!(host.owner.prepared.load(std::sync::atomic::Ordering::SeqCst), prepared);
     manager.shutdown(&mut host).await.unwrap();
@@ -471,7 +487,7 @@ async fn activation_refuses_incomplete() {
 #[tokio::test(start_paused = true)]
 async fn preparation_credit_expired() {
     let credit = Credit::start(true).await;
-    let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("expire").encode_to_vec())).unwrap();
+    let invocation = credit.target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(Text::from("expire").encode())).unwrap();
     credit.cleanup.finalizing.notified().await;
     assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 0);
     credit.assert_held();
@@ -492,41 +508,40 @@ async fn provider_selection_reload() {
     let mut host = SelectedHost { operations: runtime.operations.clone(), scopes: BTreeMap::new(), callers: BTreeMap::new() };
     let mut manager = PluginManager::new(selected_candidate("first", true)).unwrap();
     manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<Selected>().contract().unwrap();
+    let contract = WireDeclaration::of::<SelectedDeclaration>().contract().unwrap();
     let first = runtime.operations.capture_callback(&host.scopes["first"], &contract).unwrap();
     let second = runtime.operations.capture_callback(&host.scopes["second"], &contract).unwrap();
     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(old_client.call(Selected::from("before")).await.unwrap().as_str(), "first:before");
+    assert_eq!(old_client.call::<SelectedDeclaration>(Selected::from("before")).await.unwrap().as_str(), "first:before");
     assert!(matches!(
-        runtime.operations.call(Selected::from("ambiguous")).await,
+        runtime.operation(Selected::from("ambiguous")).run().await,
         Err(Error::InvalidInput { field: "operation provider", .. })
     ));
     let first_generation = host.scopes["first"].generation();
     let second_generation = host.scopes["second"].generation();
 
     manager.reload(selected_candidate("second", true), &mut host).await.unwrap();
-    assert!(matches!(old_client.submit(Selected::from("stale")), Err(Error::OperationCaller { .. })));
+    assert!(matches!(old_client.submit::<SelectedDeclaration>(Selected::from("stale")), Err(Error::OperationCaller { .. })));
     assert_eq!(host.scopes["first"].generation(), first_generation);
     assert_eq!(host.scopes["second"].generation(), second_generation);
     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
-    assert_eq!(client.call(Selected::from("after")).await.unwrap().as_str(), "second:after");
-    let first_payload =
-        first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("callback").encode_to_vec())).unwrap().await.unwrap();
+    assert_eq!(client.call::<SelectedDeclaration>(Selected::from("after")).await.unwrap().as_str(), "second:after");
+    let first_payload = first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("callback").encode())).unwrap().await.unwrap();
     assert_eq!(String::decode(&first_payload).unwrap(), "first:callback");
 
     manager.reload(selected_candidate("second", false), &mut host).await.unwrap();
     assert!(matches!(
-        first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("retired").encode_to_vec())),
+        first.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("retired").encode())),
         Err(Error::Closing { .. })
     ));
     let second_payload =
-        second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("surviving").encode_to_vec())).unwrap().await.unwrap();
+        second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("surviving").encode())).unwrap().await.unwrap();
     assert_eq!(String::decode(&second_payload).unwrap(), "second:surviving");
     assert_eq!(host.scopes["second"].generation(), second_generation);
-    assert_eq!(client.call(Selected::from("unchanged")).await.unwrap().as_str(), "second:unchanged");
+    assert_eq!(client.call::<SelectedDeclaration>(Selected::from("unchanged")).await.unwrap().as_str(), "second:unchanged");
     manager.shutdown(&mut host).await.unwrap();
     assert!(matches!(
-        second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("closed").encode_to_vec())),
+        second.submit_with(NonZeroUsize::new(128).unwrap(), |_| Ok(Text::from("closed").encode())),
         Err(Error::Closing { .. })
     ));
     drop((first, second, client, old_client, manager, host));

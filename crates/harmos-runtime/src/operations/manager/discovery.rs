@@ -21,18 +21,16 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 use serde::Serialize;
 // Local Imports
-use super::{Entry, OperationManager};
+use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::operations::host::{Catalog, CatalogPage};
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
+use harmos_operations::host::{CatalogPage, CatalogRequest};
 
 /* === Constants === */
 
-const MAX_ROWS: usize = 256;
-const MAX_BYTES: usize = 4 * 1024 * 1024;
-const CURSOR_BYTES: usize = MAX_BYTES;
+const CURSOR_BYTES: usize = 4 * 1024 * 1024;
 
 /* === Macros === */
 
@@ -77,10 +75,12 @@ impl Write for Bounded {
     }
 }
 
-impl OperationManager {
-    pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
+impl Manager {
+    pub(in crate::operations) fn discover(&self, source: &Source, request: &CatalogRequest) -> Result<CatalogPage> {
         let origin = source.check()?;
-        let (rows, bytes) = limits(request)?;
+        let (rows, bytes) = request
+            .limits()
+            .map_err(|_| Error::InvalidInput { field: "catalog limits", reason: "rows must be 1..=256 and bytes must be 2..=4194304" })?;
         let after: Option<(String, String)> = request
             .after
             .as_ref()
@@ -211,16 +211,6 @@ impl OperationManager {
 }
 
 /* === Public Functions === */
-
-// The Row And Byte Bounds Of One Catalog Page, Shared By Every Kind.
-pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)> {
-    let rows = request.rows.unwrap_or(64);
-    let bytes = request.bytes.unwrap_or(64 * 1024);
-    if rows == 0 || rows > MAX_ROWS || !(2..=MAX_BYTES).contains(&bytes) {
-        return Err(Error::InvalidInput { field: "catalog limits", reason: "rows must be 1..=256 and bytes must be 2..=4194304" });
-    }
-    Ok((rows, bytes))
-}
 
 /* === Private Functions === */
 

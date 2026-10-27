@@ -57,7 +57,8 @@ pub(crate) struct Lanes {
 
 /* === Traits === */
 
-pub trait Lane: Send + 'static {
+pub trait Lane: Copy + Eq + Send + Sync + 'static {
+    fn default_lane() -> Self;
     fn name(&self) -> &'static str;
     fn capacity(&self) -> Capacity;
 }

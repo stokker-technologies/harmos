@@ -32,6 +32,8 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+pub use harmos_sdk::{Dependencies, Operation, OperationContext, RegistrationBatch, Service};
+
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
@@ -64,8 +66,10 @@ const INCOMING_REQUESTS: usize = 128;
 
 /* === Type Aliases === */
 
+type Prepare = Box<dyn Fn(&str) -> Result<Serving, Refusal> + Send + Sync>;
+
 type Cancellations = Arc<Mutex<BTreeMap<u64, Option<oneshot::Sender<()>>>>>;
-type Table = Arc<Mutex<crate::operations::WireTable<Supervisor>>>;
+type Table = Arc<Mutex<crate::operations::WireTable>>;
 type SharedOpening = Arc<tokio::sync::Mutex<Opening>>;
 type Retirement = Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Refusal>> + Send>> + Send + Sync>;
 
@@ -82,10 +86,16 @@ struct ConnectionGuard(Supervisor);
 struct Worker(tokio::task::JoinHandle<Result<(), Refusal>>);
 
 pub(crate) struct Opening {
+    serving: Option<Serving>,
+    prepare: Prepare,
+    catalog: crate::PluginCatalog,
+}
+
+struct Serving {
+    owner: String,
     operations: Table,
     retirement: Retirement,
     quiescence: Retirement,
-    catalog: crate::PluginCatalog,
 }
 
 /* === Enums === */
@@ -114,10 +124,13 @@ impl Drop for Worker {
 
 impl Opening {
     async fn cleanup(&mut self) -> Result<(), Refusal> {
-        let settlement = self.operations.lock().map_err(Refusal::of)?.close();
+        let Some(serving) = &self.serving else {
+            return Ok(());
+        };
+        let settlement = serving.operations.lock().map_err(Refusal::of)?.close();
         settlement.await.map_err(Refusal::of)?;
-        (self.retirement)().await?;
-        let retired = self.operations.lock().map_err(Refusal::of)?.release().map_err(Refusal::of)?;
+        (serving.retirement)().await?;
+        let retired = serving.operations.lock().map_err(Refusal::of)?.release().map_err(Refusal::of)?;
         drop(retired);
         Ok(())
     }
@@ -452,7 +465,9 @@ async fn dispatch_requests(
     if abandoned {
         // A local double simulates process death but its native threads still
         // belong to this process. Join them before declaring the peer ended.
-        (opening.quiescence)().await?;
+        if let Some(serving) = &opening.serving {
+            (serving.quiescence)().await?;
+        }
     } else {
         opening.cleanup().await?;
     }
@@ -465,6 +480,25 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
         _ => return Answered::Nothing,
     };
     if method == Frame::REGISTER {
+        let owner = match <String as crate::Message>::decode(&params) {
+            Ok(owner) => owner,
+            Err(error) => {
+                return Answered::Frame(Frame::Refusal {
+                    id,
+                    refusal: Refusal::new(UNREADABLE, format!("invalid owner assignment: {error}")),
+                });
+            }
+        };
+        if let Some(serving) = &opening.serving {
+            if serving.owner != owner {
+                return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of("carrier owner assignment cannot change") });
+            }
+        } else {
+            match (opening.prepare)(&owner) {
+                Ok(serving) => opening.serving = Some(serving),
+                Err(error) => return Answered::Frame(Frame::Refusal { id, refusal: error }),
+            }
+        }
         return match serde_json::to_vec(&opening.catalog) {
             Ok(result) => Answered::Frame(Frame::Answer { id, result: result.into() }),
             Err(error) => Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) }),
@@ -477,7 +511,10 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
                 return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
             }
         };
-        let table = &opening.operations;
+        let Some(serving) = &opening.serving else {
+            return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of("carrier owner has not been assigned") });
+        };
+        let table = &serving.operations;
         let operation_host = match &command {
             crate::operations::WireCommand::Initialize { context, .. } => Ok(host.for_operation(*context)),
             crate::operations::WireCommand::Attempt { context, values, .. }
@@ -491,7 +528,15 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             }
         };
         let phase = match table.lock() {
-            Ok(mut table) => table.begin(command, Arc::new(operation_host)),
+            Ok(mut table) => {
+                let call = operation_host.context().clone();
+                let mut dependencies = crate::Dependencies::new();
+                if let Err(error) = dependencies.insert(Arc::new(operation_host)) {
+                    return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of(error) });
+                }
+                let context = crate::OperationContext::new(dependencies, call);
+                table.begin(command, Arc::new(context))
+            }
             Err(error) => {
                 return Answered::Frame(Frame::Refusal { id, refusal: Refusal::new(UNREADABLE, error.to_string()) });
             }

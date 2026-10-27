@@ -29,7 +29,7 @@ use super::context::Context;
 use crate::OperationRefusal;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
-use harmos_domain::operations::lifecycle::InstanceState;
+use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{
     CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction, WireChildCall,
     WireChildControl,
@@ -68,14 +68,17 @@ impl Context {
         })
     }
 
-    async fn child_call<O: OperationDeclaration>(&self, request: &O, submit: bool) -> Result<Vec<u8>, OperationRefusal> {
+    async fn child_call<O: OperationDeclaration>(&self, request: &O::Request, submit: bool) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
+        let target = self.assignments.resolve::<O>().map_err(OperationRefusal::of)?;
         let call = WireChildCall {
             context,
             generation_context: self.generation_context,
             values: self.call.portable(),
-            operation: O::ID.to_owned(),
-            payload: harmos_domain::Message::encode_to_vec(request),
+            operation: target.operation.clone(),
+            fingerprint: target.fingerprint,
+            generation: target.generation,
+            payload: harmos_domain::Message::encode(request),
             submit,
         };
         let payload = call.encode().map_err(OperationRefusal::of)?;
@@ -176,6 +179,26 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl Host for Context {
+    fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send
+    where
+        S::Row: harmos_domain::Message,
+    {
+        use harmos_domain::Message;
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+            stream: S::ID.to_owned(),
+            schema: S::VERSION,
+            sequence: None,
+            published_unix_micros: None,
+            context: None,
+            payload: row.encode(),
+            following: Vec::new(),
+        });
+        async move {
+            published.await?;
+            Ok(())
+        }
+    }
+
     type Error = OperationRefusal;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
@@ -187,20 +210,13 @@ impl Host for Context {
         Context::with_value(self, value)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>, OperationRefusal> {
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(&bytes).map_err(OperationRefusal::of)?;
         Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
-    // Resident resources live in the host process; a guest cannot lend them.
-    async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self, _: O, _: std::sync::Arc<R>,
-    ) -> Result<OperationInstance<O>, OperationRefusal> {
-        Err(OperationRefusal::of(format!("`{}` needs process-local resources a guest cannot carry", O::ID)))
-    }
-
-    async fn call<O: OperationDeclaration>(&self, request: O) -> Result<Response<O::Response>, OperationRefusal> {
+    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, false).await?;
         let response = O::Response::decode(&bytes).map_err(OperationRefusal::of)?;
         Ok(Response::new(response))

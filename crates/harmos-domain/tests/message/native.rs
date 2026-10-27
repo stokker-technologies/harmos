@@ -220,12 +220,12 @@ fn debug_preserves_wire() {
 #[test]
 fn composition_preserves_domain() {
     let value = Required { row: native(7), optional: Some(native(8)), rows: vec![native(9)], label: "postcard".into() };
-    let encoded = harmos_domain::Message::encode_to_vec(&value);
+    let encoded = harmos_domain::Message::encode(&value);
     let bound = <Required as harmos_domain::Message>::decoding_memory(&encoded).unwrap();
     let decoded = <Required as harmos_domain::Message>::decode(&encoded).unwrap();
     assert_eq!(decoded, value);
     assert!(decoded.memory_size() <= bound);
     let invalid = Wire { value: 0, payload: vec![1] };
-    let encoded = harmos_domain::Message::encode_to_vec(&invalid);
+    let encoded = harmos_domain::Message::encode(&invalid);
     assert!(<Native as harmos_domain::Message>::decode(&encoded).is_err());
 }

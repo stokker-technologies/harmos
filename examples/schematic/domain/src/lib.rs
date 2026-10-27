@@ -11,7 +11,6 @@
 
 mod error;
 pub mod model;
-pub mod operations;
 
 /* === Re-Exports === */
 

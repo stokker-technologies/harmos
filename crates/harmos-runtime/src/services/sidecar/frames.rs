@@ -37,7 +37,7 @@ use super::*;
 impl<A, H> Exchange<'_, A, H>
 where
     A: Application,
-    H: Fn(&Service<A>, Notice) + Send + Sync,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync,
 {
     pub(super) async fn absorb_frame(&mut self, arrival: Arrival) -> Absorbed {
         match arrival {
@@ -125,7 +125,16 @@ where
                                         self.plugin.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))
                                     }) {
                                         self.caller.as_ref().ok_or(crate::Error::Closing { domain: "native generation caller" }).and_then(
-                                            |caller| caller.submit_encoded_at(&call.operation, call.payload, submitted, call.values),
+                                            |caller| {
+                                                caller.submit_encoded_at(
+                                                    &call.operation,
+                                                    call.fingerprint,
+                                                    call.generation,
+                                                    call.payload,
+                                                    submitted,
+                                                    call.values,
+                                                )
+                                            },
                                         )
                                     } else {
                                         Err(crate::Error::Closing { domain: "native attempt or generation context" })
@@ -208,7 +217,7 @@ where
                 {
                     let _ = cancel.send(());
                 }
-                // Keep The Slot Until Its Original OperationInstance Physically Settles
+                // Keep The Slot Until Its Original Running Physically Settles
                 Absorbed::Carried
             }
             Arrival::Reply(frame, token) => {

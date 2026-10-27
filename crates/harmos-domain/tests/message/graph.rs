@@ -318,8 +318,8 @@ fn recursive_schema_validation() {
 /* === Private Functions === */
 
 fn wire_round_trip(schema: &Schema) {
-    let postcard = harmos_domain::Message::encode_to_vec(schema);
-    assert_eq!(postcard.len(), harmos_domain::Message::encoded_len(schema));
+    let postcard = harmos_domain::Message::encode(schema);
+    assert_eq!(postcard.len(), harmos_domain::Message::encoded_size(schema));
     assert!(<Schema as harmos_domain::Message>::decoding_memory(&postcard).unwrap() >= std::mem::size_of::<Schema>());
     assert_eq!(&<Schema as harmos_domain::Message>::decode(&postcard).unwrap(), schema);
     let protobuf = crate::encode(schema);

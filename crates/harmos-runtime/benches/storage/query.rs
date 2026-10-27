@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
-use harmos_runtime::storage::operations::Query;
+use harmos_operations::storage::QueryRequest;
 use harmos_runtime::storage::query::transform::{
     Transform,
     project::{Project, Projection},
@@ -68,7 +68,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                             let mut elapsed = Duration::ZERO;
                             let mut resources = super::metrics::Observed::default();
                             for _ in 0..iterations {
-                                let query = Query {
+                                let query = QueryRequest {
                                     at: fixture.storage.cursor_saved(),
                                     source: Source::Stream(StreamSelection {
                                         schema: waveforms::schema(),

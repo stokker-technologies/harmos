@@ -7,15 +7,13 @@
  * ***
  */
 
-// Bind Greeting Behavior To The Original SDK Runtime.
+// Greeting Contracts And Their Optional Execution.
 
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
-use crate::domain::operations::greeting::Greet;
-use std::sync::Arc;
 
 // Standard Library Imports
 
@@ -30,22 +28,36 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Greeting;
+#[harmos::message]
+pub struct GreetRequest {
+    pub name: String,
+}
+
+#[harmos::operation(id = "greet", request = GreetRequest,
+    response = crate::domain::model::greeting::Greeting, policy = super::POLICY, infer_request)]
+pub struct Greet {}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_sidecar::operation]
-impl Greeting {
-    async fn initialize(_: Arc<()>, _: &harmos_sidecar::Supervisor) -> Self {
-        Self
+
+#[cfg(feature = "runtime")]
+impl harmos::Operation for Greet {
+    type Request = GreetRequest;
+    type Response = crate::domain::model::greeting::Greeting;
+    type Error = std::io::Error;
+    type Endpoints = ();
+
+    async fn initialize(_: harmos::OperationContext) -> Result<Self, Self::Error> {
+        Ok(Self {})
     }
+
     async fn run(
-        &mut self, _: &harmos_sidecar::Supervisor, request: &mut Greet,
-    ) -> Result<crate::domain::model::greeting::Greeting, std::io::Error> {
-        Ok(crate::domain::model::greeting::Greeting::for_name(&request.name))
+        &mut self, _: harmos::OperationContext, request: &mut GreetRequest, _: &mut (),
+    ) -> Result<harmos::Response<Self::Response>, Self::Error> {
+        Ok(crate::domain::model::greeting::Greeting::for_name(&request.name).into())
     }
 }
 

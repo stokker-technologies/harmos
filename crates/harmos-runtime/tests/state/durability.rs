@@ -18,9 +18,6 @@ mod atomic_commit;
 #[path = "durability_delivery.rs"]
 mod delivery;
 
-#[path = "durability_evolution.rs"]
-mod evolution;
-
 #[path = "durability_history.rs"]
 mod history;
 

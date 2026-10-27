@@ -21,7 +21,6 @@ use std::sync::{Arc, atomic::Ordering};
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::ResumeFile;
 use harmos_runtime::storage::{MutationId, StorageManager};
 
 /* === Constants === */
@@ -72,20 +71,24 @@ async fn resume_receipt_replays() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        crate::storage::operations::Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
+    f.runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
+            crate::storage::operations::Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
+    let request = harmos_operations::storage::ResumeFileRequest {
+        mutation: identity(&f.storage, "resume"),
+        session: file.session().unwrap().clone(),
+    };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-    let first = f.runtime.operations.call(request.clone()).await.unwrap();
+    let first = f.runtime.operation(request.clone()).run().await.unwrap();
     assert_eq!(first.session.generation, 2);
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(*f.runtime.operations.call(request).await.unwrap(), *first);
+    assert_eq!(*f.runtime.operation(request).run().await.unwrap(), *first);
     f.finish().await;
 }
 
@@ -140,20 +143,24 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        crate::storage::operations::Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
+    f.runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
+            crate::storage::operations::Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
+    let request = harmos_operations::storage::ResumeFileRequest {
+        mutation: identity(&f.storage, "resume"),
+        session: file.session().unwrap().clone(),
+    };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operations.call(request.clone()).await.is_err());
+    assert!(f.runtime.operation(request.clone()).run().await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
-    assert_eq!(f.runtime.operations.call(request).await.unwrap().session.generation, 2);
+    assert_eq!(f.runtime.operation(request).run().await.unwrap().session.generation, 2);
     f.finish().await;
 }
 

@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::operations::{Lanes, Managed};
 use super::support::Pulse;
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::sidecar::inventory::publications;
 use harmos_runtime::sidecar::{
     Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost, ObserverPublisher, PublishError, Publisher, Supervisor,
@@ -109,19 +109,18 @@ impl Drop for Seed {
     }
 }
 
-const LIFECYCLE: OperationPolicy = OperationPolicy {
+const LIFECYCLE: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
-impl harmos_runtime::operations::lifecycle::Policy for Bridge {
+impl harmos_operations::lifecycle::Policy for Bridge {
     const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos_runtime::plugin(id = "custom-host", provides = (), requires(harmos_runtime::operations::streams::Publish),  observers = Observers, streams(Published))]
+#[harmos_runtime::plugin(id = "custom_host", provides = (), requires(harmos_operations::streams::Publish),  observers = Observers, streams(Published))]
 impl harmos_runtime::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;
@@ -149,9 +148,7 @@ impl harmos_runtime::Plugin for Bridge {
     fn resources(&self) -> Arc<Settings> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self, table: &mut harmos_runtime::operations::WireTable<Supervisor>,
-    ) -> Result<(), harmos_runtime::operations::ServingError> {
+    fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
@@ -240,8 +237,8 @@ async fn exercise(panic_first: bool) {
     assert_eq!(state.opened.load(Ordering::SeqCst), 0);
     assert!(SEEDS.lock().unwrap().contains_key(&seed.id));
     let mut fixture =
-        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::NativeOpen, capacity, vec![], std::convert::identity).await;
-    fixture.publication().unwrap();
+        Managed::attach(source, serde_json::to_vec(&seed.id).unwrap(), Lanes::Open, capacity, vec![], std::convert::identity).await;
+    fixture.publication().await.unwrap();
     fixture.initialize().await.unwrap();
     assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
     fixture.ready().wait_for(|ready| *ready).await.unwrap();

@@ -26,7 +26,7 @@ use arrow_array::{Float64Array, UInt64Array};
 use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
 use super::waveforms;
-use harmos_domain::operations::storage::Query;
+use harmos_storage::Query;
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_storage::query::transform::{
     Transform,

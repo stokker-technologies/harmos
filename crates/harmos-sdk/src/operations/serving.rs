@@ -12,7 +12,7 @@
 mod codec;
 mod owned;
 #[cfg(feature = "grpc")]
-mod protobuf;
+pub(crate) mod protobuf;
 #[cfg(feature = "streaming")]
 mod streams;
 
@@ -27,7 +27,6 @@ pub use streams::{WireEndpoints, WireStreamLimits, WireStreams};
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
@@ -36,8 +35,8 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
-use super::{AuthoredDeclarations, Contract, ContractError, Definition, FailureKind, Operation};
-use crate::catalog::{Catalog, Member, Projection, Visitor};
+use super::{Contract, ContractError, FailureKind, OperationContext, OperationDefinition, RegistrationBatch};
+use crate::QualifiedId;
 
 /* === Constants === */
 
@@ -52,8 +51,7 @@ pub const CHILD_METHOD: &str = "harmos.operation.child.v2";
 type Answer<'a> = Pin<Box<dyn Future<Output = Result<Vec<u8>, ServingError>> + Send + 'a>>;
 type Finished<'a> = Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'a>>;
 type Finalization<S> = Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)> + Send + 'static>>;
-type Prepare<C> = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared<C>>, ServingError> + Send + Sync>;
-type Install<H, C> = fn(&mut WireTable<C>, Arc<H>) -> Result<(), ServingError>;
+type Prepare = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared>, ServingError> + Send + Sync>;
 
 /* === Structs === */
 
@@ -74,6 +72,8 @@ pub struct WireChildCall {
     pub values: Vec<super::CallValue>,
 
     pub operation: String,
+    pub fingerprint: [u8; 32],
+    pub generation: u64,
     pub payload: Vec<u8>,
 
     // Submitted children answer their instance id at admission and remain
@@ -92,10 +92,13 @@ pub struct WireChildControl {
     pub action: WireChildAction,
 }
 
-pub struct WireTable<C> {
-    handlers: BTreeMap<String, Handler<C>>,
-    prepared: BTreeMap<u64, Arc<Slot<C>>>,
-    capacity: NonZeroUsize,
+pub struct WireTable {
+    owner: String,
+    handlers: BTreeMap<String, Handler>,
+    retired: BTreeMap<String, u64>,
+    services: BTreeMap<String, super::registration::ServiceFactory>,
+    prepared: BTreeMap<u64, Arc<Slot>>,
+    capacity: Option<NonZeroUsize>,
     closed: bool,
     ordinary_closed: bool,
 
@@ -103,29 +106,31 @@ pub struct WireTable<C> {
     stream_limits: Option<WireStreamLimits>,
 }
 
-struct Slot<C> {
+struct Slot {
+    operation: String,
     lifecycle: bool,
     resident: bool,
 
     #[cfg(feature = "streaming")]
     streams: Option<WireStreams>,
 
-    state: Mutex<SlotState<C>>,
+    state: Mutex<SlotState>,
 }
 
-struct SlotState<C> {
-    prepared: Option<Box<dyn Prepared<C>>>,
+struct SlotState {
+    prepared: Option<Box<dyn Prepared>>,
     finished: bool,
+    cancelled: bool,
     waiters: Vec<Weak<Mutex<Option<Waker>>>>,
 }
 
-struct Loan<C> {
-    slot: Arc<Slot<C>>,
-    prepared: Option<Box<dyn Prepared<C>>>,
+struct Loan {
+    slot: Arc<Slot>,
+    prepared: Option<Box<dyn Prepared>>,
     finished: bool,
 }
 
-struct Handler<C> {
+struct Handler {
     lifecycle: bool,
     // Lifecycle actions and the observe control are built in: they serve the
     // plugin's machinery and never appear in its declared catalog.
@@ -133,21 +138,17 @@ struct Handler<C> {
     // A resident control runs until cancelled and is not charged against the
     // ordinary invocation capacity.
     resident: bool,
-    definition: Definition,
+    definition: OperationDefinition,
+    generation: Option<u64>,
+    closing: bool,
     contract: Option<Contract>,
-    prepare: Prepare<C>,
-}
-
-pub struct Serves<H, C>(PhantomData<fn() -> (H, C)>);
-
-pub struct WireBinding<H, C> {
-    install: Install<H, C>,
+    prepare: Prepare,
 }
 
 /* === Enums === */
 
 // Answers: `Join` the child's response payload, `Status` and `Cancel` an
-// encoded `builtin::InstanceState`, `Release` and `Detach` an empty payload.
+// encoded instance state, `Release` and `Detach` an empty payload.
 // Releasing cancels the child; detaching leaves it running without a handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -168,7 +169,7 @@ pub enum WireChild {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
-    Prepare { invocation: u64, operation: String, payload: Vec<u8> },
+    Prepare { invocation: u64, operation: String, fingerprint: [u8; 32], generation: u64, payload: Vec<u8> },
     Initialize { invocation: u64, context: [u8; 32] },
     Attempt { invocation: u64, context: [u8; 32], values: Vec<super::CallValue> },
     Finalize { invocation: u64 },
@@ -176,7 +177,7 @@ pub enum WireCommand {
     StreamSend { invocation: u64, epoch: u64, payload: Vec<u8> },
     StreamFinish { invocation: u64, epoch: u64 },
     StreamReceive { invocation: u64, epoch: u64 },
-    PrepareGrpc { invocation: u64, operation: String, payload: Vec<u8> },
+    PrepareGrpc { invocation: u64, operation: String, fingerprint: [u8; 32], generation: u64, payload: Vec<u8> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -189,6 +190,12 @@ pub enum WireAnswer {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServingError {
+    #[error("caller may not invoke operation `{operation}` without a host assignment")]
+    Unassigned { operation: &'static str },
+
+    #[error("operation endpoint types differ from the declaration")]
+    EndpointTypes,
+
     #[error("carrier invocation does not support stream commands")]
     StreamUnsupported,
 
@@ -209,7 +216,7 @@ pub enum ServingError {
     StreamPhase,
 
     #[error(transparent)]
-    Lifecycle(#[from] crate::operations::lifecycle::Error),
+    Lifecycle(#[from] harmos_domain::model::operations::lifecycle::Error),
 
     #[error(transparent)]
     Contract(#[from] ContractError),
@@ -222,6 +229,9 @@ pub enum ServingError {
 
     #[error("operation `{operation}` requires streaming endpoints unsupported by this carrier binding")]
     Streaming { operation: String },
+
+    #[error("operation `{operation}` has a mismatched fingerprint or stale generation")]
+    Identity { operation: String },
 
     #[error("carrier invocation `{invocation}` is already prepared")]
     Duplicate { invocation: u64 },
@@ -256,6 +266,9 @@ pub enum ServingError {
     // The handler's failure, written once at its origin.
     #[error(transparent)]
     Handler(crate::Failure),
+
+    #[error("native handler failed: {0}")]
+    Native(#[source] std::sync::Arc<dyn std::error::Error + Send + Sync>),
 }
 
 /* === Traits === */
@@ -270,7 +283,7 @@ trait InContext: std::future::Future + Sized {
     }
 }
 
-trait Prepared<C>: Send {
+trait Prepared: Send {
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<WireStreams> {
         None
@@ -280,8 +293,8 @@ trait Prepared<C>: Send {
     fn grant(&self) -> Option<crate::plugin::Grant> {
         None
     }
-    fn initialize<'a>(&'a mut self, context: &'a C) -> Finished<'a>;
-    fn attempt<'a>(&'a mut self, context: &'a C) -> Answer<'a>;
+    fn initialize<'a>(&'a mut self, context: &'a OperationContext) -> Finished<'a>;
+    fn attempt<'a>(&'a mut self, context: &'a OperationContext) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
 
@@ -305,86 +318,105 @@ impl<F: std::future::Future> Drop for Contextual<F> {
     }
 }
 
-impl<C: Send + Sync + 'static> WireTable<C> {
-    pub fn new(capacity: NonZeroUsize) -> Self {
-        Self {
+impl WireTable {
+    pub fn new(owner: &str) -> Result<Self, ServingError> {
+        QualifiedId::qualify(owner, "validation").map_err(|_| ServingError::Catalog)?;
+        Ok(Self {
+            owner: owner.to_owned(),
+            services: BTreeMap::new(),
             handlers: BTreeMap::new(),
+            retired: BTreeMap::new(),
             prepared: BTreeMap::new(),
-            capacity,
+            capacity: None,
             closed: false,
             ordinary_closed: false,
             #[cfg(feature = "streaming")]
             stream_limits: None,
-        }
+        })
     }
 
-    pub fn of<T, R>(resources: Arc<R>, capacity: NonZeroUsize) -> Result<Self, ServingError>
-    where
-        T: Catalog<AuthoredDeclarations> + Catalog<Serves<R, C>>,
-        R: Send + Sync + 'static,
-    {
-        Self::project::<T, R>(Self::new(capacity), resources)
-    }
-
-    fn project<T, R>(mut table: Self, resources: Arc<R>) -> Result<Self, ServingError>
-    where
-        T: Catalog<AuthoredDeclarations> + Catalog<Serves<R, C>>,
-        R: Send + Sync + 'static,
-    {
-        let definitions = AuthoredDeclarations::of::<T>()?;
-        <T as Catalog<Serves<R, C>>>::ENTRIES.try_for_each(|binding| (binding.install)(&mut table, Arc::clone(&resources)))?;
-        table.validate(&definitions)?;
-        Ok(table)
-    }
-
-    pub fn bind_operations<T, R>(&mut self, resources: Arc<R>) -> Result<(), ServingError>
-    where
-        T: Catalog<AuthoredDeclarations> + Catalog<Serves<R, C>>,
-        R: Send + Sync + 'static,
-    {
-        if self.closed || self.ordinary_closed {
-            return Err(ServingError::Closing);
-        }
-        let staged = Self::of::<T, R>(resources, self.capacity)?;
-        self.extend(staged)
+    pub fn capacity(&mut self, capacity: NonZeroUsize) {
+        self.capacity = Some(capacity);
     }
 
     #[cfg(feature = "streaming")]
-    pub fn bind_streaming_operations<T, R>(&mut self, resources: Arc<R>, limits: WireStreamLimits) -> Result<(), ServingError>
-    where
-        T: Catalog<AuthoredDeclarations> + Catalog<Serves<R, C>>,
-        R: Send + Sync + 'static,
-    {
-        if self.closed || self.ordinary_closed {
-            return Err(ServingError::Closing);
-        }
+    pub fn stream_limits(&mut self, limits: WireStreamLimits) -> Result<(), ServingError> {
         limits.validate()?;
-        let mut staged = Self::new(self.capacity);
-        staged.stream_limits = Some(limits);
-        let staged = Self::project::<T, R>(staged, resources)?;
-        self.extend(staged)
-    }
-
-    fn extend(&mut self, mut staged: Self) -> Result<(), ServingError> {
-        for id in staged.handlers.keys() {
-            if self.handlers.contains_key(id) {
-                return Err(crate::Error::DuplicateOperation { id: id.clone() }.into());
-            }
-        }
-        self.handlers.append(&mut staged.handlers);
+        self.stream_limits = Some(limits);
         Ok(())
     }
 
-    pub fn definitions(&self) -> Vec<Definition> {
+    pub fn register(&mut self, batch: RegistrationBatch) -> Result<(), ServingError> {
+        if self.closed || self.ordinary_closed {
+            return Err(ServingError::Closing);
+        }
+        let mut staged = Self::new(&self.owner)?;
+        staged.capacity = self.capacity;
+        #[cfg(feature = "streaming")]
+        {
+            staged.stream_limits = self.stream_limits;
+        }
+        for factory in batch.operations {
+            factory.install(&mut staged)?;
+        }
+        for factory in batch.services {
+            factory.policy.validate().map_err(|_| ServingError::Catalog)?;
+            let id = QualifiedId::qualify(&self.owner, &factory.local_id).map_err(|_| ServingError::Catalog)?;
+            let id = id.as_str().to_owned();
+            if staged.handlers.contains_key(&id) || staged.services.insert(id, factory).is_some() {
+                return Err(ServingError::Catalog);
+            }
+        }
+        if staged.handlers.keys().chain(staged.services.keys()).any(|id| self.handlers.contains_key(id) || self.services.contains_key(id)) {
+            return Err(ServingError::Catalog);
+        }
+        self.handlers.append(&mut staged.handlers);
+        self.services.append(&mut staged.services);
+        Ok(())
+    }
+
+    pub async fn unregister(&mut self, id: &QualifiedId) -> Result<(), ServingError> {
+        let key = id.as_str();
+        if !self.handlers.contains_key(key) && !self.services.contains_key(key) {
+            return Err(ServingError::Unknown { operation: key.to_owned() });
+        }
+        if let Some(handler) = self.handlers.get_mut(key) {
+            handler.closing = true;
+        }
+        let slots: Vec<_> =
+            self.prepared.iter().filter(|(_, slot)| slot.operation == key).map(|(invocation, slot)| (*invocation, slot.clone())).collect();
+        for (_, slot) in &slots {
+            slot.cancel();
+        }
+        for (_, slot) in &slots {
+            slot.finalize().await?;
+        }
+        for (invocation, _) in slots {
+            self.prepared.remove(&invocation);
+        }
+        if let Some(handler) = self.handlers.remove(key)
+            && let Some(generation) = handler.generation
+        {
+            self.retired.insert(key.to_owned(), generation);
+        }
+        self.services.remove(key);
+        Ok(())
+    }
+
+    pub fn definitions(&self) -> Vec<OperationDefinition> {
         self.handlers.values().filter(|handler| !handler.builtin).map(|handler| handler.definition.clone()).collect()
     }
 
-    pub fn validate(&self, definitions: &[Definition]) -> Result<(), ServingError> {
+    pub fn validate(&self, definitions: &[OperationDefinition]) -> Result<(), ServingError> {
         if definitions.len() != self.handlers.values().filter(|handler| !handler.builtin).count() {
             return Err(ServingError::Catalog);
         }
         for definition in definitions {
-            if self.handlers.get(definition.id.as_str()).is_none_or(|bound| bound.builtin || bound.definition != *definition) {
+            if self
+                .handlers
+                .get(QualifiedId::qualify(&self.owner, definition.id.as_str()).map_err(|_| ServingError::Catalog)?.as_str())
+                .is_none_or(|bound| bound.builtin || bound.definition != *definition)
+            {
                 return Err(ServingError::Catalog);
             }
         }
@@ -403,7 +435,10 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         for contract in contracts {
             let id = &contract.operation().id;
             if !unique.insert(id)
-                || self.handlers.get(id.as_str()).is_none_or(|bound| bound.builtin || bound.contract.as_ref() != Some(contract))
+                || self
+                    .handlers
+                    .get(QualifiedId::qualify(&self.owner, id.as_str()).map_err(|_| ServingError::Catalog)?.as_str())
+                    .is_none_or(|bound| bound.builtin || bound.contract.as_ref() != Some(contract))
             {
                 return Err(ServingError::Catalog);
             }
@@ -412,11 +447,15 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     // Answers the request's grant as the Prepare payload.
-    pub fn prepare(&mut self, invocation: u64, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>, ServingError> {
-        self.prepare_codec(invocation, operation, payload, false)
+    pub fn prepare(
+        &mut self, invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>,
+    ) -> Result<Vec<u8>, ServingError> {
+        self.prepare_codec(invocation, operation, fingerprint, generation, payload, false)
     }
 
-    fn prepare_codec(&mut self, invocation: u64, operation: &str, payload: Vec<u8>, grpc: bool) -> Result<Vec<u8>, ServingError> {
+    fn prepare_codec(
+        &mut self, invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: Vec<u8>, grpc: bool,
+    ) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -424,14 +463,24 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         if self.prepared.contains_key(&invocation) {
             return Err(ServingError::Duplicate { invocation });
         }
-        let handler = self.handlers.get(operation).ok_or_else(|| ServingError::Unknown { operation: operation.to_owned() })?;
-        if self.ordinary_closed && !handler.lifecycle {
+        let handler = self.handlers.get_mut(operation).ok_or_else(|| ServingError::Unknown { operation: operation.to_owned() })?;
+        if handler.definition.fingerprint.0 != fingerprint
+            || generation == 0
+            || handler.generation.is_some_and(|bound| bound != generation)
+            || self.retired.get(operation).is_some_and(|retired| generation <= *retired)
+        {
+            return Err(ServingError::Identity { operation: operation.to_owned() });
+        }
+        // The authenticated host assigns a generation with its first preparation.
+        // Keep it through withdrawal so delayed preparations cannot bind a replacement.
+        handler.generation = Some(generation);
+        if handler.closing || (self.ordinary_closed && !handler.lifecycle) {
             return Err(ServingError::Closing);
         }
         let occupied = self.prepared.values().filter(|slot| slot.lifecycle == handler.lifecycle && !slot.resident).count();
         // One accounted reserved lifecycle slot remains available even when
         // ordinary admission is full. Failed SDK finalization retains that slot.
-        let capacity = if handler.lifecycle { 1 } else { self.capacity.get() };
+        let capacity = if handler.lifecycle { 1 } else { self.capacity.ok_or(ServingError::Capacity)?.get() };
         if occupied >= capacity && !handler.resident {
             return Err(ServingError::Capacity);
         }
@@ -439,11 +488,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             .map_err(|_| ServingError::Panicked)??;
         let answer = encode_prepared_grant(prepared.grant().as_ref());
         let slot = Slot {
+            operation: operation.to_owned(),
             lifecycle: handler.lifecycle,
             resident: handler.resident,
             #[cfg(feature = "streaming")]
             streams: prepared.streams(),
-            state: Mutex::new(SlotState { prepared: Some(prepared), finished: false, waiters: Vec::new() }),
+            state: Mutex::new(SlotState { prepared: Some(prepared), finished: false, cancelled: false, waiters: Vec::new() }),
         };
         self.prepared.insert(invocation, Arc::new(slot));
         Ok(answer)
@@ -459,7 +509,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    pub async fn initialize(&mut self, invocation: u64, context: &C) -> Result<(), ServingError> {
+    pub async fn initialize(&mut self, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -471,7 +521,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    pub async fn attempt(&mut self, invocation: u64, context: &C) -> Result<Vec<u8>, ServingError> {
+    pub async fn attempt(&mut self, invocation: u64, context: &OperationContext) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -526,7 +576,9 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         }
     }
 
-    pub fn begin(&mut self, command: WireCommand, context: Arc<C>) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
+    pub fn begin(
+        &mut self, command: WireCommand, context: Arc<OperationContext>,
+    ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
         let (invocation, phase) = command_identity(&command);
         let span = tracing::debug_span!(target: "harmos::carrier", "carrier.receive", invocation, phase, outcome = tracing::field::Empty);
         if command.is_stream_traffic() {
@@ -543,12 +595,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             }
         };
         let command = match command {
-            WireCommand::PrepareGrpc { invocation, operation, payload } => {
-                let result = span.in_scope(|| self.prepare_codec(invocation, &operation, payload, true));
+            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                let result = span.in_scope(|| self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
-            WireCommand::Prepare { invocation, operation, payload } => {
-                let result = span.in_scope(|| self.prepare(invocation, &operation, payload));
+            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                let result = span.in_scope(|| self.prepare(invocation, &operation, fingerprint, generation, payload));
                 return Box::pin(async move { wire_answer(result) }.instrument(span).in_current_context());
             }
             command => command,
@@ -593,11 +645,8 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     pub fn close_ordinary(&mut self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
         self.ordinary_closed = true;
         let slots: Vec<_> = self.prepared.values().filter(|slot| !slot.lifecycle).cloned().collect();
-        #[cfg(feature = "streaming")]
         for slot in &slots {
-            if let Some(streams) = &slot.streams {
-                streams.close();
-            }
+            slot.cancel();
         }
         Box::pin(async move {
             for slot in slots {
@@ -607,14 +656,15 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         })
     }
 
-    pub fn release_ordinary(&mut self) -> Result<impl Send + use<C>, ServingError> {
+    pub fn release_ordinary(&mut self) -> Result<impl Send + use<>, ServingError> {
         if !self.ordinary_closed || self.prepared.values().any(|slot| !slot.lifecycle && !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
         // Hand Off Retired Owners So The Caller Can Drop Them Outside Its Lock
         let retired_slots = self.prepared.extract_if(.., |_, slot| !slot.lifecycle).collect::<Vec<_>>();
         let retired_handlers = self.handlers.extract_if(.., |_, handler| !handler.lifecycle).collect::<Vec<_>>();
-        Ok((retired_slots, retired_handlers))
+        let retired_services = std::mem::take(&mut self.services);
+        Ok((retired_slots, retired_handlers, retired_services))
     }
 
     pub async fn settle_ordinary(&mut self) -> Result<(), ServingError> {
@@ -627,11 +677,8 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     pub fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + 'static>> {
         self.closed = true;
         let slots: Vec<_> = self.prepared.values().cloned().collect();
-        #[cfg(feature = "streaming")]
         for slot in &slots {
-            if let Some(streams) = &slot.streams {
-                streams.close();
-            }
+            slot.cancel();
         }
         Box::pin(async move {
             for slot in slots {
@@ -641,11 +688,11 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         })
     }
 
-    pub fn release(&mut self) -> Result<impl Send + use<C>, ServingError> {
+    pub fn release(&mut self) -> Result<impl Send + use<>, ServingError> {
         if !self.closed || self.prepared.values().any(|slot| !slot.is_finished()) {
             return Err(ServingError::Unsettled);
         }
-        Ok((std::mem::take(&mut self.prepared), std::mem::take(&mut self.handlers)))
+        Ok((std::mem::take(&mut self.prepared), std::mem::take(&mut self.handlers), std::mem::take(&mut self.services)))
     }
 
     pub async fn settle(&mut self) -> Result<(), ServingError> {
@@ -664,7 +711,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "carrier.answer", level = "debug", skip_all, fields(invocation = command_identity(&command).0, phase = command_identity(&command).1))]
-    pub async fn answer(&mut self, command: WireCommand, context: &C) -> WireAnswer {
+    pub async fn answer(&mut self, command: WireCommand, context: &OperationContext) -> WireAnswer {
         if command.is_stream_traffic() {
             return self.traffic(command).await;
         }
@@ -678,8 +725,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             return wire_answer(slot.attempt(invocation, context, Some(epoch)).await);
         }
         let result = match command {
-            WireCommand::PrepareGrpc { invocation, operation, payload } => self.prepare_codec(invocation, &operation, payload, true),
-            WireCommand::Prepare { invocation, operation, payload } => self.prepare(invocation, &operation, payload),
+            WireCommand::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
+                self.prepare_codec(invocation, &operation, fingerprint, generation, payload, true)
+            }
+            WireCommand::Prepare { invocation, operation, fingerprint, generation, payload } => {
+                self.prepare(invocation, &operation, fingerprint, generation, payload)
+            }
             WireCommand::Initialize { invocation, .. } => self.initialize(invocation, context).await.map(|()| Vec::new()),
             WireCommand::Attempt { invocation, .. } => self.attempt(invocation, context).await,
             WireCommand::StreamAttempt { .. }
@@ -694,12 +745,52 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     }
 }
 
-impl<C> Slot<C> {
+impl Slot {
+    fn cancel(&self) {
+        let waiters = {
+            let mut state = self.state.lock().expect("invocation state lock");
+            state.cancelled = true;
+            std::mem::take(&mut state.waiters)
+        };
+        #[cfg(feature = "streaming")]
+        if let Some(streams) = &self.streams {
+            streams.close();
+        }
+        for waiter in waiters {
+            if let Some(waiter) = waiter.upgrade() {
+                let wake = waiter.lock().expect("invocation waiter lock").take();
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            }
+        }
+    }
+
+    async fn active<T>(&self, future: impl Future<Output = Result<T, ServingError>>) -> Result<T, ServingError> {
+        let mut future = std::pin::pin!(future);
+        let waiter = Arc::new(Mutex::new(None));
+        std::future::poll_fn(|context| {
+            {
+                let mut state = self.state.lock().expect("invocation state lock");
+                if state.cancelled {
+                    return Poll::Ready(Err(ServingError::Closing));
+                }
+                *waiter.lock().expect("invocation waiter lock") = Some(context.waker().clone());
+                state.waiters.retain(|entry| entry.strong_count() != 0);
+                if !state.waiters.iter().any(|entry| entry.ptr_eq(&Arc::downgrade(&waiter))) {
+                    state.waiters.push(Arc::downgrade(&waiter));
+                }
+            }
+            future.as_mut().poll(context)
+        })
+        .await
+    }
+
     fn is_finished(&self) -> bool {
         self.state.lock().expect("invocation state lock").finished
     }
 
-    async fn borrow(self: &Arc<Self>) -> Option<Loan<C>> {
+    async fn borrow(self: &Arc<Self>) -> Option<Loan> {
         let waiter = Arc::new(Mutex::new(None));
         std::future::poll_fn(|context| {
             let mut state = self.state.lock().expect("invocation state lock");
@@ -720,15 +811,15 @@ impl<C> Slot<C> {
     }
 }
 
-impl<C: Send + Sync + 'static> Slot<C> {
+impl Slot {
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    async fn initialize(self: &Arc<Self>, invocation: u64, context: &C) -> Result<(), ServingError> {
+    async fn initialize(self: &Arc<Self>, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
-        loan.prepared.as_mut().expect("loaned invocation state").initialize(context).await
+        self.active(loan.prepared.as_mut().expect("loaned invocation state").initialize(context)).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    async fn attempt(self: &Arc<Self>, invocation: u64, context: &C, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
+    async fn attempt(self: &Arc<Self>, invocation: u64, context: &OperationContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
         #[cfg(feature = "streaming")]
         let attempt = match (&self.streams, epoch) {
@@ -740,7 +831,7 @@ impl<C: Send + Sync + 'static> Slot<C> {
         if epoch.is_some() {
             return Err(ServingError::StreamUnsupported);
         }
-        let result = loan.prepared.as_mut().expect("loaned invocation state").attempt(context).await;
+        let result = self.active(loan.prepared.as_mut().expect("loaned invocation state").attempt(context)).await;
         #[cfg(feature = "streaming")]
         if let Some(attempt) = attempt {
             attempt.end();
@@ -766,7 +857,7 @@ impl<C: Send + Sync + 'static> Slot<C> {
     }
 }
 
-impl<C> Drop for Loan<C> {
+impl Drop for Loan {
     fn drop(&mut self) {
         let waiters = {
             let mut state = self.slot.state.lock().expect("invocation state lock");
@@ -803,31 +894,6 @@ impl ServingError {
             _ => FailureKind::Permanent,
         }
     }
-}
-
-impl<C: Send + Sync + 'static, H: Send + Sync + 'static> Visitor for Serves<H, C> {
-    type Entry = WireBinding<H, C>;
-}
-
-#[cfg(not(feature = "streaming"))]
-impl<T, R, C> Member<T> for Serves<R, C>
-where
-    C: Send + Sync + 'static,
-    R: Send + Sync + 'static,
-    T: for<'a> Operation<Resources = R, Context<'a> = &'a C, Endpoints = ()>,
-{
-    const ENTRY: WireBinding<R, C> = WireBinding { install: WireTable::<C>::bind_operation::<T> };
-}
-
-#[cfg(feature = "streaming")]
-impl<T, R, C> Member<T> for Serves<R, C>
-where
-    C: Send + Sync + 'static,
-    R: Send + Sync + 'static,
-    T: for<'a> Operation<Resources = R, Context<'a> = &'a C>,
-    T::Endpoints: WireEndpoints,
-{
-    const ENTRY: WireBinding<R, C> = WireBinding { install: WireTable::<C>::bind_catalog_operation::<T> };
 }
 
 /* === Public Functions === */
@@ -881,3 +947,25 @@ async fn guarded<T>(future: impl Future<Output = Result<T, ServingError>>) -> Re
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn withdrawal_cancels_a_pending_active_future() {
+        let slot = Slot {
+            operation: "host.read".to_owned(),
+            lifecycle: false,
+            resident: false,
+            #[cfg(feature = "streaming")]
+            streams: None,
+            state: Mutex::new(SlotState { prepared: None, finished: false, cancelled: false, waiters: Vec::new() }),
+        };
+        let mut active = Box::pin(slot.active(std::future::pending::<Result<(), ServingError>>()));
+        let mut context = std::task::Context::from_waker(Waker::noop());
+        assert!(active.as_mut().poll(&mut context).is_pending());
+        slot.cancel();
+        assert!(matches!(active.as_mut().poll(&mut context), Poll::Ready(Err(ServingError::Closing))));
+    }
+}

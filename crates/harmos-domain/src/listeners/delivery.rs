@@ -75,6 +75,8 @@ context_shape!(DeliveryContext, CONTEXT_FIELDS);
 
 // One Delivered Row Of Listener `L`. Each Listener Is A Distinct Type, So Its
 // Delivery Is Its Callback Operation's Request.
+pub struct Callback<L: Listener>(std::marker::PhantomData<L>);
+
 pub struct Delivery<L: Listener> {
     context: Context,
     row: L::Row,
@@ -165,11 +167,12 @@ where
 }
 
 impl<L: Listener> Message for Delivery<L> {
-    fn encode_to_vec(&self) -> Vec<u8> {
+    const CODEC: &'static str = "harmos.postcard.v1";
+    fn encode(&self) -> Vec<u8> {
         encoding::encode_borrowed(self.context, &self.row, usize::MAX).expect("validated delivery and cooperative message encoder")
     }
-    fn encoded_len(&self) -> usize {
-        encoding::envelope_len(self.context, self.row.encoded_len()).unwrap_or(usize::MAX)
+    fn encoded_size(&self) -> usize {
+        encoding::envelope_len(self.context, self.row.encoded_size()).unwrap_or(usize::MAX)
     }
     fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
         let mut input = PostcardReader::new(bytes);
@@ -186,15 +189,19 @@ impl<L: Listener> Message for Delivery<L> {
     }
 }
 
-impl<L: Listener> crate::operations::OperationDeclaration for Delivery<L> {
+impl<L: Listener> crate::operations::OperationDeclaration for Callback<L> {
+    type Request = Delivery<L>;
     type Response = ();
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
     const ID: &'static str = L::CALLBACK;
-    const VERSION: u32 = 1;
     const POLICY: crate::operations::OperationPolicy = L::POLICY;
     // Every Listener Callback Is Shared: The Definition Refuses Any Other
     const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
+}
+
+impl<L: Listener> crate::RequestFor for Delivery<L> {
+    type Operation = Callback<L>;
 }
 
 impl PostcardValue for Context {

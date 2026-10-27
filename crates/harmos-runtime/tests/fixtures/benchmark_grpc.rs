@@ -21,7 +21,6 @@ mod protocol;
 // Standard Library Imports
 use std::io::{Read, Write};
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 // Third Party Imports
 
@@ -60,7 +59,15 @@ fn main() {
             .runtime()
             .await
             .unwrap();
-        runtime.operations.register_wire_operation::<protocol::Echoing>("benchmark", protocol::Lanes::Open, Arc::new(())).unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new())
+                    .implementation::<protocol::EchoDeclaration, protocol::Echoing>(),
+                protocol::Lanes::Open,
+            ))
+            .await
+            .unwrap();
         let attached = runtime.grpc().attach(protocol::settings()).await.unwrap();
         println!("{}", attached.local_addr());
         std::io::stdout().flush().unwrap();

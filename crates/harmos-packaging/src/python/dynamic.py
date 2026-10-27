@@ -11,7 +11,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -83,11 +82,16 @@ SCALARS = {
 def from_contract(
     contract: Mapping[str, Any],
     *,
+    generation: int = 0,
     max_bytes: int = 4 * 1024 * 1024,
     max_work: int = 1024 * 1024,
     max_definitions: int = 65536,
 ) -> Operation[Message, Message, Message, Message]:
     """Use The Same Row, Presence And Stream Projection As Harmos Reflection"""
+    if "version" in contract:
+        raise ValueError(
+            "version-only peers are unsupported; contract fingerprint required"
+        )
     if min(max_bytes, max_work, max_definitions) <= 0:
         raise ValueError("operation projection requires positive limits")
     chunks: list[str] = []
@@ -101,7 +105,7 @@ def from_contract(
         chunks.append(chunk)
     encoded = "".join(chunks)
     if (
-        set(contract) != {"operation", "version", "codec", "schema", "grpc"}
+        set(contract) != {"operation", "fingerprint", "codec", "schema", "grpc"}
         or contract.get("codec") != "postcard"
     ):
         raise ValueError("invalid canonical operation contract")
@@ -328,17 +332,19 @@ def from_contract(
         key: GetMessageClass(pool.FindMessageTypeByName(value))
         for key, value in direction_types.items()
     }
-    operation, version = contract.get("operation"), contract.get("version")
+    operation, fingerprint = contract.get("operation"), contract.get("fingerprint")
     if (
         not isinstance(operation, Mapping)
         or not isinstance(operation.get("id"), str)
-        or not operation["id"]
+        or re.fullmatch(r"[a-z][a-z0-9_]*", operation["id"]) is None
         or len(operation["id"].encode("utf-8")) > 256
-        or not isinstance(version, int)
-        or isinstance(version, bool)
-        or not 0 < version <= 4294967295
+        or not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+        or operation.get("fingerprint") != fingerprint
     ):
-        raise ValueError("invalid operation identity or version")
+        raise ValueError(
+            "invalid operation identity or fingerprint; version-only peers are unsupported"
+        )
     mode: Mode = (
         "bidi"
         if "input" in classes and "output" in classes
@@ -350,7 +356,7 @@ def from_contract(
     )
     return Operation(
         id=operation["id"],
-        version=version,
+        generation=generation,
         mode=mode,
         codec="protobuf",
         request=classes["request"],
@@ -361,7 +367,7 @@ def from_contract(
         rpc_request=GetMessageClass(pool.FindMessageTypeByName(rpc_request)),
         rpc_response=GetMessageClass(pool.FindMessageTypeByName(rpc_response)),
         contract=encoded,
-        fingerprint=hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        fingerprint=fingerprint,
     )
 
 

@@ -29,11 +29,13 @@ use harmos_runtime::sidecar::Executable;
 use harmos_runtime::streams::Item;
 use schematic_domain::model::schematic::progress::AnalysisProgress;
 use schematic_domain::model::{Connection, Point, Snapshot};
-use schematic_domain::operations::{AnalyzeExchange, AnalyzeUpload, ListDirectories, Native, ProposeRoute};
+use schematic_operations::{
+    AnalyzeExchange, AnalyzeExchangeRequest, AnalyzeUpload, AnalyzeUploadRequest, ListDirectoriesRequest, Native, ProposeRouteRequest,
+};
 
 /* === Constants === */
 
-const PLUGIN: &str = "schematic-tools";
+const PLUGIN: &str = "schematic_tools";
 const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 
 /* === Macros === */
@@ -58,6 +60,7 @@ enum Lanes {
 /* === Implementations === */
 
 impl harmos_runtime::Application for Host {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -81,7 +84,7 @@ fn plugin_settings() -> PluginSidecarSettings {
     PluginSidecarSettings {
         plugin: PluginSettings {
             configuration: b"null".to_vec(),
-            host_operations: vec![harmos_runtime::Identifier::new("host.publish").unwrap()],
+            host_operations: vec![harmos_runtime::Identifier::new("host_publish").unwrap()],
             ..Default::default()
         },
         ..Default::default()
@@ -144,7 +147,7 @@ async fn sidecar_composition_walks() {
     assert_eq!(failed.attempts, 1);
     assert!(failed.last_failure.is_some());
     assert!(failed.next_retry.is_none());
-    assert!(runtime.operations.call(ListDirectories {}).await.is_err());
+    assert!(runtime.operation(ListDirectoriesRequest {}).run().await.is_err());
     runtime.plugin.stop(PLUGIN).await.unwrap();
     runtime.plugin.stop(PLUGIN).await.unwrap();
     let settled = runtime.plugin.status(PLUGIN).unwrap();
@@ -156,26 +159,29 @@ async fn sidecar_composition_walks() {
     let ready = runtime.plugin.status(PLUGIN).unwrap();
     assert_ne!(ready.generation, failed.generation);
     assert_eq!(ready.state, PluginState::Ready);
-    let directories = runtime.operations.call(ListDirectories {}).await.unwrap();
+    let directories = runtime.operation(ListDirectoriesRequest {}).run().await.unwrap();
     assert_eq!(directories.directories, ["boards"]);
 
     // Scene 3: A Unary Operation Crosses The Same Native Transport
-    let routed = runtime.operations.call(ProposeRoute { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }).await.unwrap();
+    let routed = runtime.operation(ProposeRouteRequest { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }).run().await.unwrap();
     assert_eq!(routed.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
 
     // Scene 4: Upload Progress Proves The Child Holds Its Shared Analysis Permit
     let published = runtime.streams.publication("schematic.analysis_progress", 1).expect("the ready sidecar owns its progress stream");
     assert_eq!(published.definition().owner(), Some(PLUGIN));
     let mut progress = published.watch();
-    let upload = runtime.operations.upload(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();
+    let upload =
+        runtime.operations.upload::<AnalyzeUpload>(AnalyzeUploadRequest { title: "Held Upload".into() }, stream_settings()).unwrap();
     upload.send(snapshot()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
     let row = <AnalysisProgress as harmos_runtime::Message>::decode(&row.value.payload).unwrap();
     assert_eq!((row.title.as_str(), row.checked), ("Held Upload", 1));
 
     // Scene 5: A Bidirectional Call Waits For That Permit Until Cancellation Settles
-    let mut exchange =
-        runtime.operations.exchange(AnalyzeExchange { title: "Waiting Exchange".into() }, stream_settings(), stream_settings()).unwrap();
+    let mut exchange = runtime
+        .operations
+        .exchange::<AnalyzeExchange>(AnalyzeExchangeRequest { title: "Waiting Exchange".into() }, stream_settings(), stream_settings())
+        .unwrap();
     exchange.send(snapshot()).await.unwrap();
     {
         let next = exchange.next();
@@ -192,11 +198,12 @@ async fn sidecar_composition_walks() {
     assert_eq!((row.title.as_str(), row.checked), ("Waiting Exchange", 1));
 
     // Scene 6: Upload EOF Returns Its Final Count And Invalid Input Stays Typed
-    let mut completed = runtime.operations.upload(AnalyzeUpload { title: "Completed Upload".into() }, stream_settings()).unwrap();
+    let mut completed =
+        runtime.operations.upload::<AnalyzeUpload>(AnalyzeUploadRequest { title: "Completed Upload".into() }, stream_settings()).unwrap();
     completed.send(snapshot()).await.unwrap();
     completed.finish_input();
     assert_eq!(completed.join().await.unwrap().checked, 1);
-    let mut invalid = runtime.operations.upload(AnalyzeUpload { title: String::new() }, stream_settings()).unwrap();
+    let mut invalid = runtime.operations.upload::<AnalyzeUpload>(AnalyzeUploadRequest { title: String::new() }, stream_settings()).unwrap();
     invalid.finish_input();
     let error = invalid.join().await.unwrap_err();
     assert_eq!(error.failure().unwrap().code(), FailureKind::Invalid);
@@ -207,12 +214,12 @@ async fn sidecar_composition_walks() {
     let reloaded = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(ready.generation, reloaded.generation);
-    assert_eq!(runtime.operations.call(ListDirectories {}).await.unwrap().directories, ["boards"]);
+    assert_eq!(runtime.operation(ListDirectoriesRequest {}).run().await.unwrap().directories, ["boards"]);
 
     // Scene 8: Shutdown Reaps The Owned Child And Withdraws Its Operations
     runtime.plugin.stop(PLUGIN).await.unwrap();
     runtime.plugin.stop(PLUGIN).await.unwrap();
     assert!(!runtime.plugin.status(PLUGIN).unwrap().cleanup_pending);
-    assert!(runtime.operations.call(ListDirectories {}).await.is_err());
+    assert!(runtime.operation(ListDirectoriesRequest {}).run().await.is_err());
     runtime.stop().await.unwrap();
 }

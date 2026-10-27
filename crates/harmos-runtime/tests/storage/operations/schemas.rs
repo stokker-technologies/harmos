@@ -19,11 +19,11 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 
 // Third Party Imports
+use harmos_operations::storage::Query;
+use harmos_operations::storage::QueryRequest;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
-use harmos_runtime::storage::operations::Query as QueryRequest;
-use harmos_runtime::storage::operations::{Query, WriteSchema};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos_runtime::storage::{MutationId, SchemaInput, SchemaKey};
 
@@ -78,15 +78,22 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
-fn request(f: &Fixture, name: &str) -> WriteSchema {
-    WriteSchema {
+fn request(f: &Fixture, name: &str) -> harmos_operations::storage::WriteSchemaRequest {
+    harmos_operations::storage::WriteSchemaRequest {
         mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new(name).unwrap() },
         schema: schema(name),
     }
 }
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
+    f.runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::builtin::storage_registration(Arc::new(f.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     f
 }
 
@@ -96,13 +103,13 @@ async fn setup() -> Fixture {
 async fn schema_registry_roundtrip() {
     let f = setup().await;
     let request = request(&f, "nested");
-    let accepted = f.runtime.operations.call(request.clone()).await.unwrap();
-    let repeated = f.runtime.operations.call(request.clone()).await.unwrap();
+    let accepted = f.runtime.operation(request.clone()).run().await.unwrap();
+    let repeated = f.runtime.operation(request.clone()).run().await.unwrap();
     assert_eq!(*accepted, *repeated);
     assert_eq!(f.storage.cursor_accepted(), *accepted);
     let mut conflict = request.clone();
     conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-    assert!(f.runtime.operations.call(conflict).await.is_err());
+    assert!(f.runtime.operation(conflict).run().await.is_err());
     let at = f.storage.flush().await.unwrap();
     let query = QueryRequest {
         at: at.clone(),

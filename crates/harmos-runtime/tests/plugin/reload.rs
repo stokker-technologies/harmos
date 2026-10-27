@@ -72,18 +72,18 @@ async fn preflight_preserves_activation() {
     host.control.lock().unwrap().events.clear();
     let next = plan();
     let mut inventory = inventories(&next);
-    inventory[1].1[0].id = inventory[0].1[0].id.clone();
+    let duplicate = inventory[1].1[0].clone();
+    inventory[1].1.push(duplicate);
     assert!(matches!(
         session.reload_parts(next.clone(), inventory, [], &mut host).await.map_err(failure),
-        Err(PluginFailure::Plan(harmos_runtime::plugin::Error::OperationConflict { .. }))
+        Err(PluginFailure::Plan(harmos_runtime::plugin::Error::Definition { .. }))
     ));
     assert!(host.control.lock().unwrap().events.is_empty());
     let mut inventory = inventories(&next);
-    inventory.iter_mut().find(|(id, _)| id == "provider").unwrap().1[0].policy = OperationPolicy {
+    inventory.iter_mut().find(|(id, _)| id == "provider").unwrap().1[0].policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_millis(200),
         attempt_timeout: Duration::from_millis(200),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     session.reload_parts(next, inventory, [], &mut host).await.unwrap();
     assert_eq!(

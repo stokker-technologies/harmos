@@ -34,18 +34,18 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
-    pub fn definition(&self, id: &str) -> Result<Definition> {
+impl Manager {
+    pub fn definition(&self, id: &str) -> Result<OperationDefinition> {
         self.entry(id).map(|entry| entry.definition.clone())
     }
 
-    pub fn definition_from(&self, owner: &str, id: &str) -> Result<Definition> {
+    pub fn definition_from(&self, owner: &str, id: &str) -> Result<OperationDefinition> {
         let entry = self.capture_provider(id, Some(owner))?;
         entry.available()?;
         Ok(entry.definition.clone())
     }
 
-    pub fn submit_from<O: OperationDeclaration>(&self, owner: &str, request: O) -> Result<OperationInstance<O>> {
+    pub fn submit_from<O: OperationDeclaration>(&self, owner: &str, request: O::Request) -> Result<Running<O>> {
         let submitted = executor::now();
         let entry = self.capture_provider(O::ID, Some(owner))?;
         self.admit_entry::<O, ()>(
@@ -57,7 +57,7 @@ impl OperationManager {
         )
     }
 
-    pub fn definitions(&self) -> Vec<Definition> {
+    pub fn definitions(&self) -> Vec<OperationDefinition> {
         self.registry.state.lock().expect("operation registry lock is healthy").definitions()
     }
 

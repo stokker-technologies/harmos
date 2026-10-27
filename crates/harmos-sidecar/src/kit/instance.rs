@@ -26,8 +26,8 @@ use std::marker::PhantomData;
 // Local Imports
 use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
-use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::{Message, StreamSpec};
+use harmos_operations::lifecycle::InstanceState;
 use harmos_sdk::operations::{CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response, WireChildAction};
 
 /* === Constants === */
@@ -121,6 +121,15 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl Host for Supervisor {
+    async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
+    where
+        S::Row: Message,
+    {
+        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
+            super::PublishError::Publication(error) => CallError::Publication(error),
+            super::PublishError::Call(error) => error,
+        })
+    }
     type Error = CallError;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
@@ -132,34 +141,18 @@ impl Host for Supervisor {
         Supervisor::with_value(self, value)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>, CallError> {
+    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, CallError> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed { method: O::ID, message: error.to_string() })?;
         Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
-    // Resident resources live in the host process; a sidecar cannot lend them.
-    async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self, _: O, _: std::sync::Arc<R>,
-    ) -> Result<OperationInstance<O>, CallError> {
-        Err(CallError::LocalResources { method: O::ID })
-    }
-
-    async fn call<O: OperationDeclaration>(&self, request: O) -> Result<Response<O::Response>, CallError> {
+    async fn call<O: OperationDeclaration>(&self, request: O::Request) -> Result<Response<O::Response>, CallError> {
         let bytes = self.child_call::<O>(&request, false).await?;
         decode_response::<O>(&bytes)
     }
 
     // Sequence and timestamp each row as the stream publisher does.
-    async fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> Result<(), CallError>
-    where
-        S::Row: Message,
-    {
-        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None).await.map_err(|error| match error {
-            super::PublishError::Publication(error) => CallError::Publication(error),
-            super::PublishError::Call(error) => error,
-        })
-    }
 }
 
 /* === Public Functions === */

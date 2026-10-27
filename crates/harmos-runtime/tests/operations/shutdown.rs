@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Operation, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -62,25 +62,27 @@ enum Mode {
     Sleep,
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = WaitContract, infer_request,
         response = (),
-        id = "shutdown.wait",
-        version = 1,
-        policy = OperationPolicy {
+        id = "shutdown_wait",
+
+        policy = harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
         },
     )]
+struct WaitContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct WaitContract {
     mode: Mode,
 }
 
 #[harmos_runtime::catalog]
 enum Operations {
-    WaitContract(WaitContract),
+    WaitContract(WaitContractDeclaration),
 }
 
 /* === Traits === */
@@ -88,19 +90,21 @@ enum Operations {
 /* === Implementations === */
 
 impl Operation for Wait {
-    type Declaration = WaitContract;
-    type Resources = Trace;
+    type Request = WaitContract;
+    type Response = <WaitContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let trace = context.dependency::<Trace>().expect("fixture registers its dependency");
         Ok(Self { holding: false, released: false, trace })
     }
 
-    async fn run<'ctx>(
-        &mut self, _context: Self::Context<'ctx>, request: &mut WaitContract, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _context: harmos_runtime::OperationContext, request: &mut WaitContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
+        let host = _context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let _context = host.borrow();
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.holding = matches!(request.mode, Mode::Hold);
             match request.mode {
@@ -147,7 +151,19 @@ impl Drop for Wait {
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    runtime.operations.register_operation::<Wait>("app", Lanes::Serial, trace.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<WaitContractDeclaration, Wait>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     (runtime, trace)
 }
 
@@ -156,16 +172,16 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 #[tokio::test]
 async fn cancellation_observable_queued() {
     let (runtime, trace) = runtime().await;
-    let first = runtime.operations.submit(WaitContract { mode: Mode::Hold }).unwrap();
+    let first = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    let queued = runtime.operations.submit(WaitContract { mode: Mode::Count }).unwrap();
+    let queued = runtime.operation(WaitContract { mode: Mode::Count }).start().await.unwrap();
     queued.cancel();
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
     trace.release.notify_one();
     first.await.unwrap();
 
-    let running = runtime.operations.submit(WaitContract { mode: Mode::Sleep }).unwrap();
+    let running = runtime.operation(WaitContract { mode: Mode::Sleep }).start().await.unwrap();
     trace.started.notified().await;
 
     running.cancel();
@@ -179,7 +195,7 @@ async fn cancellation_observable_queued() {
 #[tokio::test]
 async fn shutdown_retains_operation() {
     let (runtime, trace) = runtime().await;
-    let instance = runtime.operations.submit(WaitContract { mode: Mode::Hold }).unwrap();
+    let instance = runtime.operation(WaitContract { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
     {
         let stop = runtime.stop();

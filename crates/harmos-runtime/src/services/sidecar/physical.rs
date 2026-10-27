@@ -32,8 +32,8 @@ use tokio::sync::watch;
 // Local Imports
 use super::{Notice, Supervised};
 use crate::operations::resident::Lease;
-use crate::operations::{OperationManager, OperationPolicy, RestartPolicy};
-use crate::services::{Fault, Once, Resident, Service, ServiceDefinition};
+use crate::operations::{Manager, RestartPolicy};
+use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Result};
 use harmos_sidecar::Attach;
 
@@ -45,7 +45,7 @@ static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /* === Type Aliases === */
 
-type Outcome = std::result::Result<(), Fault<String>>;
+type Outcome = std::result::Result<(), String>;
 type Running = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 type Ending = Pin<Box<dyn Future<Output = std::result::Result<(), String>> + Send>>;
 type Owner<A, S, H> = std::marker::PhantomData<fn() -> (A, S, H)>;
@@ -135,24 +135,24 @@ impl<A, S, H> Resident<A> for Connection<A, S, H>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
-    type Error = String;
+    type Error = std::io::Error;
 
-    async fn run(&mut self, context: Service<A>) -> Outcome {
-        let mut stopping = context.shared_attempt();
+    async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
+        let mut stopping = context.clone();
         let mut end = self.end.clone();
         // Ending Drops The Connection Attempt; Its Cleanup Runs Afterwards
         let running = AssertUnwindSafe(self.supervised.run(context)).catch_unwind();
         let ended = tokio::select! {
             ended = running => Some(ended.unwrap_or_else(|_| {
-                Err(Fault::Application("native physical attempt panicked".into()))
+                Err(std::io::Error::other("native physical attempt panicked"))
             })),
             _ = end.wait_for(|ended| *ended) => None,
             () = stopping.stopping() => None,
         };
         if let Some(outcome) = ended {
-            self.outcome.send_replace(Some(outcome));
+            self.outcome.send_replace(Some(outcome.map_err(|error| error.to_string())));
             tokio::select! {
                 _ = end.wait_for(|ended| *ended) => {}
                 () = stopping.stopping() => {}
@@ -161,11 +161,11 @@ where
         Ok(())
     }
 
-    async fn stop(&mut self) -> std::result::Result<(), String> {
+    async fn stop(&mut self) -> std::result::Result<(), Self::Error> {
         self.supervised.stop().await
     }
 
-    async fn cleanup(&mut self) -> std::result::Result<(), String> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
         self.supervised.cleanup().await
     }
 }
@@ -174,24 +174,26 @@ impl<A, S, H> Physical<A, S, H>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
     // Start the connection as a service instance; the plugin manager restarts
     // plugins, so the instance itself never restarts.
-    pub(super) fn new(resident: Supervised<A, S, H>, operations: &OperationManager) -> Result<Self> {
+    pub(super) fn new(resident: Supervised<A, S, H>, operations: &Manager) -> Result<Self> {
         let number = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let definition = ServiceDefinition {
             id: format!("harmos.sidecar.{}.{number}", resident.attach.owner()),
-            policy: OperationPolicy { restart: RestartPolicy::Never, ..crate::services::POLICY },
+            policy: crate::ServicePolicy { restart: RestartPolicy::Never, ..crate::services::POLICY },
         };
         let (outcome, mut finished) = watch::channel(None);
         let (end, ending) = watch::channel(false);
+        // Clear The Previous Attempt's Refusal Before The New Task Is Scheduled.
+        resident.calls.begin();
         let connection = Connection { supervised: resident, outcome, end: ending };
         let lease = operations.start_service::<A>(Once::new(definition, connection), true, false)?;
         let running: Running = Box::pin(async move {
             match finished.wait_for(Option::is_some).await {
                 Ok(outcome) => outcome.clone().expect("a finished connection has an outcome"),
-                Err(_) => Err(Fault::Application("native physical attempt was interrupted".into())),
+                Err(_) => Err("native physical attempt was interrupted".into()),
             }
         });
         Ok(Self {
@@ -233,7 +235,7 @@ where
                 return Poll::Pending;
             }
             let Some(running) = original.running.take() else {
-                return Poll::Ready(Err(Fault::Application("native physical attempt was interrupted".into())));
+                return Poll::Ready(Err("native physical attempt was interrupted".into()));
             };
             original.running_busy = true;
             running
@@ -363,7 +365,7 @@ impl<A, S, H> Polling<A, S, H>
 where
     A: Application,
     S: Attach,
-    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+    H: Fn(&ServiceContext<A>, Notice) + Send + Sync + 'static,
 {
     pub(super) fn poll(&self, context: &mut Context<'_>) -> Poll<Outcome> {
         let Some(original) = self.original.upgrade() else {

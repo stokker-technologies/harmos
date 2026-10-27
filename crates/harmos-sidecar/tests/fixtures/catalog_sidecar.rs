@@ -19,8 +19,9 @@
 
 // Local Imports
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
-use harmos_domain::operations::lifecycle::Policy;
-use harmos_sdk::operations::{OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
+use harmos_operations::lifecycle;
+use harmos_operations::lifecycle::Policy;
+use harmos_sdk::operations::{OperationPolicy, RetryPolicy, ServingError, WireTable};
 use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
@@ -53,16 +54,19 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])]
 
 struct Catalog;
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
+#[derive(Clone, PartialEq)]
+struct Read {}
+
 #[harmos_sidecar::operation(
+    request = Read,
+    infer_request,
     harmos_path = ::harmos_sidecar,
     id = "read",
-    version = 1,
     response = (),
     policy = Catalog::INITIALIZATION_POLICY,
     grpc(package = "fixture.v1", service = "Native", method = "Read"),
 )]
-#[derive(Clone, PartialEq)]
-struct Read {}
+struct ReadOperation;
 
 /* === Enums === */
 
@@ -75,7 +79,6 @@ impl lifecycle::Policy for Catalog {
         timeout: std::time::Duration::from_secs(120),
         attempt_timeout: std::time::Duration::from_secs(120),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -99,7 +102,7 @@ impl Plugin for Catalog {
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         panic!("export must never initialize resources")
     }
-    fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
+    fn bind_operations(&self, _: &mut WireTable) -> Result<(), ServingError> {
         panic!("export must never bind authored handlers")
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -115,7 +118,7 @@ impl Declared for Catalog {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
     const PROVIDES: &'static [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>] =
-        &[harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<Read>())];
+        &[harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<ReadOperation>())];
     const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
     fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {

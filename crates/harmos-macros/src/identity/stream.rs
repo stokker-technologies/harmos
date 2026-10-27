@@ -41,7 +41,6 @@ struct Declaration {
     window: Option<LitInt>,
     track: Option<Tuple>,
     axis: Option<Ident>,
-    history: Vec<Path>,
     batch: Option<LitInt>,
     row: Option<Type>,
     harmos: HarmosPath,
@@ -49,7 +48,6 @@ struct Declaration {
 
 struct Tuple {
     fields: Vec<Ident>,
-    span: proc_macro2::Span,
 }
 
 /* === Enums === */
@@ -96,8 +94,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         let window = declared.window.as_ref().ok_or_else(|| Error::new(marker.span(), "a named stream requires id and window"))?;
         let name = &marker.ident;
         let harmos = &declared.harmos;
-        let version = declared.history.len() as u32 + 1;
-        let history = &declared.history;
+        let version = 1u32;
         return Ok(quote! {
             #item
             impl #harmos::StreamSpec for #name {
@@ -108,11 +105,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                 const METADATA_JSON: &'static str = #metadata;
                 const ROW_METADATA_JSON: &'static str = <#row as #harmos::RowMetadata>::ROW_METADATA_JSON;
             }
-            const _: () = {
-                fn historical_shapes() {
-                    #(let _ = <#history as #harmos::schema::Described>::FIELDS;)*
-                }
-            };
         });
     }
 
@@ -209,33 +201,13 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         quote! { fn batch_definition() -> Option<#harmos::__private::BatchDefinition> { Some(#harmos::__private::BatchDefinition::of::<Self>()) } }
     });
 
-    let Some(id) = &declared.id else {
-        if let Some(window) = &declared.window {
-            return Err(Error::new(window.span(), "a current stream row declares `id = \"…\"` and `window = …`"));
-        }
-        if let Some(coordinate) = declared.track.as_ref().map(|track| track.span).or_else(|| declared.axis.as_ref().map(Spanned::span)) {
-            return Err(Error::new(coordinate, "a historical stream row carries no track or axis; the current row owns both coordinates"));
-        }
-        if !declared.history.is_empty() {
-            return Err(Error::new(
-                parsed.span(),
-                "a historical stream row carries no history of its own; the current row owns the catalog",
-            ));
-        }
-
-        return Ok(item.clone());
-    };
-
+    let id = declared.id.as_ref().ok_or_else(|| Error::new(parsed.span(), "a stream requires id and window"))?;
     let Some(window) = &declared.window else {
         return Err(Error::new(id.span(), "a current stream row declares `id = \"…\"` and `window = …`"));
     };
-    let count = declared.history.len();
-    let version = LitInt::new(&(count + 1).to_string(), parsed.span());
+    let version = LitInt::new("1", parsed.span());
     let encoded_id: String = id.value().bytes().map(|byte| format!("{byte:02x}")).collect();
     let id_guard = format_ident!("__HARMOS_STREAM_ID_{}", encoded_id);
-    let historical_versions: Vec<LitInt> = (1..=count).map(|version| LitInt::new(&version.to_string(), parsed.span())).collect();
-    let history = declared.history.iter().zip(&historical_versions).map(|(_, version)| quote!((#id, #version)));
-    let historical = &declared.history;
     let harmos = &declared.harmos;
     let tracked = match &declared.track {
         Some(track) => {
@@ -325,7 +297,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             }
 
 
-            pub const HISTORY: [(&'static str, u32); #count] = [#(#history),*];
 
 
 
@@ -337,24 +308,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             where
                 D: #harmos::__private::serde::Deserializer<'de> + ::core::marker::Copy,
             {
-                if version == #version {
-                    return ::core::result::Result::Ok(::core::option::Option::Some(
-                        #harmos::__private::serde::Deserialize::deserialize(payload)?,
-                    ));
-                }
-                #(
-                    if version == #historical_versions {
-                        let historical: #historical =
-                            #harmos::__private::serde::Deserialize::deserialize(payload)?;
-
-                        return ::core::result::Result::Ok(::core::option::Option::Some(
-                            ::core::convert::TryFrom::try_from(historical)
-                                .map_err(#harmos::__private::serde::de::Error::custom)?,
-                        ));
-                    }
-                )*
-
-                ::core::result::Result::Ok(::core::option::Option::None)
+                let _ = version;
+                Ok(Some(#harmos::__private::serde::Deserialize::deserialize(payload)?))
             }
         }
 
@@ -391,7 +346,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let mut window = None;
     let mut track = None;
     let mut axis = None;
-    let mut history = Vec::new();
     let mut batch = None;
     let mut row = None;
     let mut harmos_path: Option<Path> = None;
@@ -423,16 +377,10 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             Meta::List(listed) if listed.path.is_ident("batch") => {
                 set_once(&mut batch, super::batch::samples(listed)?, listed.span(), "batch")?;
             }
-            Meta::List(listed) if listed.path.is_ident("history") => {
-                if !history.is_empty() {
-                    return Err(Error::new(listed.span(), "`history` is declared only once"));
-                }
-                history = super::catalogued(listed)?;
-            }
             other => {
                 return Err(Error::new(
                     other.span(),
-                    "a stream declares `id = \"…\"`, `window = …`, and optionally `track = (field, …)`, `axis = field`, `history(…)`, and `harmos_path = …`",
+                    "a stream declares `id = \"…\"`, `window = …`, and optionally `track = (field, …)`, `axis = field`, `harmos_path = …`",
                 ));
             }
         }
@@ -453,7 +401,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
         ));
     }
 
-    Ok(Declaration { id, presentation, window, track, axis, history, batch, row, harmos: HarmosPath::resolve(harmos_path) })
+    Ok(Declaration { id, presentation, window, track, axis, batch, row, harmos: HarmosPath::resolve(harmos_path) })
 }
 
 fn tuple(value: &Expr) -> Result<Tuple, Error> {
@@ -478,7 +426,7 @@ fn tuple(value: &Expr) -> Result<Tuple, Error> {
         }
     }
 
-    Ok(Tuple { fields, span })
+    Ok(Tuple { fields })
 }
 
 fn component(value: &Expr) -> Result<Ident, Error> {

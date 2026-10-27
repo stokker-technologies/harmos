@@ -25,7 +25,9 @@ use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput};
 // Local Imports
 use super::fixture::Fixture;
 use harmos_runtime::operations::StreamSettings;
-use schematic_domain::operations::transfer::{Batch, Download, Put, Receipt, Record, Sample, Take, Upload};
+use schematic_operations::transfer::{
+    Batch, Download, DownloadRequest, PutRequest, Receipt, Record, Sample, TakeRequest, Upload, UploadRequest,
+};
 
 /* === Constants === */
 
@@ -98,14 +100,14 @@ async fn upload(fixture: &Fixture, batches: Vec<Batch>, mode: &str, transfer: u6
     if mode == "unary" {
         let mut total = Receipt { records: 0, samples: 0, bytes: 0 };
         for (index, batch) in batches.into_iter().enumerate() {
-            let receipt = fixture.runtime.operations.call(Put { transfer, first: index == 0, batch }).await.unwrap();
+            let receipt = fixture.runtime.operation(PutRequest { transfer, first: index == 0, batch }).run().await.unwrap();
             total.records += receipt.records;
             total.samples += receipt.samples;
             total.bytes += receipt.bytes;
         }
         return total;
     }
-    let mut session = fixture.runtime.operations.upload(Upload { transfer }, settings()).unwrap();
+    let mut session = fixture.runtime.operations.upload::<Upload>(UploadRequest { transfer }, settings()).unwrap();
     for batch in batches {
         session.send(batch).await.unwrap();
     }
@@ -118,7 +120,7 @@ async fn download(fixture: &Fixture, mode: &str, count: usize, transfer: u64) ->
         let mut batches = Vec::with_capacity(count);
         let mut total = Receipt { records: 0, samples: 0, bytes: 0 };
         for _ in 0..count {
-            let batch = fixture.runtime.operations.call(Take { transfer }).await.unwrap().into_owned();
+            let batch = fixture.runtime.operation(TakeRequest { transfer }).run().await.unwrap().into_owned();
             total.records += batch.records.len() as u64;
             total.samples += batch.samples.len() as u64;
             total.bytes += batch.bytes.len() as u64;
@@ -126,7 +128,7 @@ async fn download(fixture: &Fixture, mode: &str, count: usize, transfer: u64) ->
         }
         return (batches, total);
     }
-    let mut session = fixture.runtime.operations.download(Download { transfer }, settings()).unwrap();
+    let mut session = fixture.runtime.operations.download::<Download>(DownloadRequest { transfer }, settings()).unwrap();
     let mut batches = Vec::new();
     while let Some(item) = session.next().await.unwrap() {
         let (batch, _claims) = item.into_owned_request().unwrap();

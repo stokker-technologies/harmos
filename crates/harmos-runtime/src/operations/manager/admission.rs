@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub fn validate_requirements(&self, candidate: &crate::plugin::PluginDefinitions) -> Result<()> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -50,6 +50,12 @@ impl OperationManager {
     }
 
     pub(in crate::operations) fn reserve(&self, entries: &[Arc<Entry>]) -> Result<()> {
+        let mut identities = std::collections::BTreeSet::new();
+        for entry in entries {
+            if !identities.insert((entry.id(), entry.owner.as_str())) {
+                return Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() });
+            }
+        }
         #[cfg(feature = "grpc")]
         for entry in entries {
             let Some(contract) = &entry.contract else {
@@ -66,19 +72,17 @@ impl OperationManager {
             let retired = state.retired();
             let result = if state.closing || !self.instances.is_accepting() {
                 Err(Error::Closing { domain: "operations" })
-            } else if let Some(entry) = entries.iter().find(|entry| state.owned(entry.id(), entry.owner.as_str()).is_some()) {
+            } else if let Some(entry) = entries.iter().find(|entry| {
+                state.owned(entry.id(), entry.owner.as_str()).is_some()
+                    || self.resident.contains(&format!("{}.{}", entry.owner, entry.id()))
+            }) {
                 Err(Error::AlreadyRegistered { domain: "operation", name: entry.id().to_owned() })
             } else {
                 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-                let gate = entries.iter().find_map(|entry| entry.plugin.as_ref()).map_or(Ok(()), |scope| {
-                    if scope.is_closed() {
-                        Err(Error::Closing { domain: "plugin scope" })
-                    } else if scope.has_committed() {
-                        Err(Error::InvalidInput { field: "operation catalog", reason: "plugin generation is already committed" })
-                    } else {
-                        Ok(())
-                    }
-                });
+                let gate = entries
+                    .iter()
+                    .find_map(|entry| entry.plugin.as_ref())
+                    .map_or(Ok(()), |scope| if scope.is_closed() { Err(Error::Closing { domain: "plugin scope" }) } else { Ok(()) });
                 #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
                 let gate: Result<()> = Ok(());
                 #[cfg(feature = "grpc")]

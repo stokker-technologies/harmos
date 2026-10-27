@@ -45,8 +45,8 @@ pub struct PluginDefinition {
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct PluginContributions {
-    pub lifecycle: Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>,
-    pub operations: Vec<harmos_domain::operations::Definition>,
+    pub lifecycle: Option<[harmos_operations::lifecycle::Descriptor; 2]>,
+    pub operations: Vec<harmos_domain::operations::OperationDefinition>,
     pub wire_contracts: Vec<harmos_domain::operations::Contract>,
     pub required_contracts: Option<Vec<harmos_domain::inventory::contracts::Required>>,
     pub observers: Vec<harmos_domain::inventory::observers::Declaration>,
@@ -262,7 +262,7 @@ impl PluginDefinition {
 
     pub(super) fn validate(&mut self) -> Result<(), PluginDefinitionError> {
         if let Some(pair) = &self.contributions.lifecycle {
-            use harmos_domain::operations::lifecycle::Action;
+            use harmos_operations::lifecycle::Action;
             if pair[0].action() != Action::Initialize || pair[1].action() != Action::Shutdown {
                 return Err(invalid("SDK lifecycle", "expected ordered initialize/shutdown descriptors"));
             }

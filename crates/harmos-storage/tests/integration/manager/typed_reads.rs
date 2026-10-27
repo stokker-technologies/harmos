@@ -25,8 +25,8 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{self, Experiment, Objects, Sample};
-use harmos_domain::operations::storage::Query;
 use harmos_storage::Error;
+use harmos_storage::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
 use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
 
@@ -520,7 +520,7 @@ async fn session_file_pressure() {
         .unwrap();
     let page = typed.next().await.unwrap().unwrap();
     let mut reader = session
-        .read_file(harmos_domain::operations::storage::ReadFile {
+        .read_file(harmos_storage::FileRead {
             source: harmos_storage::FileSource::Stored(file),
             range: harmos_storage::ByteRange { offset: 0, limit: None },
         })
@@ -615,7 +615,7 @@ async fn receipt_claim_preserves() {
     let object = harmos_storage::ObjectValue {
         schema: harmos_domain::model::storage::catalog::object_schema::<Experiment>().unwrap(),
         item: harmos_storage::ObjectKey::new("once", NonZeroUsize::new(128).unwrap()).unwrap(),
-        payload: harmos_storage::Message::encode_to_vec(&value),
+        payload: harmos_storage::Message::encode(&value),
     };
     let bound = storage.object_receipts_memory(NonZeroUsize::MIN).unwrap();
     let first_claim = session.try_memory(NonZeroUsize::new(bound).unwrap()).unwrap();

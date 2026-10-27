@@ -38,8 +38,8 @@ use tonic::transport::server::{Connected, TcpConnectInfo};
 // Local Imports
 use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
 use crate::operations::resident::Activation;
-use crate::operations::{OperationInstance, OperationManager, OperationPolicy, RestartPolicy};
-use crate::services::{Fault, Resident, Service, ServiceDefinition};
+use crate::operations::{Manager, RestartPolicy, Running};
+use crate::services::{Resident, ServiceContext, ServiceDefinition};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -63,7 +63,7 @@ pub(super) struct Resources {
 }
 
 pub(super) struct Owner<A: Application> {
-    operations: OperationManager,
+    operations: Manager,
     application: std::marker::PhantomData<fn() -> A>,
     closing: AtomicBool,
     generation: AtomicU64,
@@ -75,7 +75,7 @@ pub(super) struct Owner<A: Application> {
 struct Current {
     service: String,
     resources: Arc<Resources>,
-    lease: Option<Arc<OperationInstance<Activation>>>,
+    lease: Option<Arc<Running<Activation>>>,
 }
 
 struct Starting<'a, A: Application> {
@@ -119,7 +119,7 @@ impl Resources {
 }
 
 impl<A: Application> Owner<A> {
-    pub(super) fn new(operations: OperationManager) -> Self {
+    pub(super) fn new(operations: Manager) -> Self {
         Self {
             operations,
             application: std::marker::PhantomData,
@@ -185,11 +185,7 @@ impl<A: Application> Host for Owner<A> {
             self.operations.register_service::<A, _, _, _>(
                 ServiceDefinition {
                     id: service.clone(),
-                    policy: OperationPolicy {
-                        timeout: resources.settings.shutdown_timeout,
-                        restart: RestartPolicy::Never,
-                        ..crate::services::POLICY
-                    },
+                    policy: crate::ServicePolicy { stop_timeout: resources.settings.shutdown_timeout, restart: RestartPolicy::Never },
                 },
                 |resources: Arc<Resources>| Listener { resources, task: None },
             )?;
@@ -285,12 +281,12 @@ impl<A: Application> Host for Owner<A> {
 impl<A: Application> Resident<A> for Listener {
     type Error = Error;
 
-    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: ServiceContext<A>) -> std::result::Result<(), Error> {
         if *self.resources.stopping.borrow() {
             return Ok(());
         }
-        let listener = TcpListener::bind(self.resources.settings.address).await.map_err(|source| Fault::Application(failure(source)))?;
-        let address = listener.local_addr().map_err(|source| Fault::Application(failure(source)))?;
+        let listener = TcpListener::bind(self.resources.settings.address).await.map_err(failure)?;
+        let address = listener.local_addr().map_err(failure)?;
         let slots = Arc::new(Semaphore::new(self.resources.settings.connections.get()));
         let stopping = self.resources.stopping.subscribe();
         // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
@@ -324,7 +320,7 @@ impl<A: Application> Resident<A> for Listener {
             .concurrency_limit_per_connection(self.resources.settings.calls_per_connection.get())
             .max_concurrent_streams(Some(self.resources.settings.calls_per_connection.get() as u32));
         if let Some(tls) = &self.resources.settings.tls {
-            server = server.tls_config(tls.clone()).map_err(|source| Fault::Application(failure(source)))?;
+            server = server.tls_config(tls.clone()).map_err(failure)?;
         }
         let shutdown = async move {
             while !*stopping.borrow_and_update() {
@@ -355,7 +351,7 @@ impl<A: Application> Resident<A> for Listener {
         let completed = context.until_stopping(self.task.as_mut().expect("listener owns serving task")).await;
         if let Some(result) = completed {
             self.task.take();
-            result.map_err(|source| Fault::Application(failure(source)))?.map_err(Fault::Application)?;
+            result.map_err(failure)??;
         }
         Ok(())
     }

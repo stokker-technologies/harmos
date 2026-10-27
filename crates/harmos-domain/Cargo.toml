@@ -36,6 +36,7 @@ thiserror = { workspace = true, default-features = true }
 # Logging
 
 # Utilities
+sha2 = { workspace = true }
 semver = { workspace = true, default-features = true }
 time = { workspace = true, default-features = true }
 
@@ -69,6 +70,7 @@ memchr = { workspace = true, default-features = true }
 
 [dev-dependencies]
 # Downstream Crates Stay Path-Only So The Packaged Manifest Drops Them Instead Of Forming A Publish Cycle
+harmos-operations = { path = "../harmos-operations", default-features = false }
 harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
 
 # Local

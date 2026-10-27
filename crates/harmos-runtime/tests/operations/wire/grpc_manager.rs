@@ -39,16 +39,15 @@ use super::{Lanes, app::App};
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy, StreamSettings};
+use harmos_runtime::operations::{Operation, OperationPolicy, RetryPolicy, StreamSettings};
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
 
-const WHO_POLICY: OperationPolicy = OperationPolicy {
+const WHO_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 // A google.rpc.Status With One Typed Domain Rejection In An Any Envelope.
 const REJECTION_DETAILS: &[u8] = &[
@@ -64,40 +63,52 @@ const REJECTION_DETAILS: &[u8] = &[
 /* === Structs === */
 
 struct Principal(String);
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "grpc.guarded",
-    version = 1,
+#[harmos_runtime::operation(request = Guarded, infer_request,
+    id = "grpc_guarded",
+
     response = Reply,
     policy = WHO_POLICY,
-    grant = |_: &Guarded| Some(harmos_domain::plugin::Grant::of(Guarded::ID, "reading")),
+    grant = |_: &Guarded| Some(harmos_domain::plugin::Grant::of(GuardedDeclaration::ID, "reading")),
     key = |_: &Guarded| Some(harmos_runtime::operations::CacheKey::new(b"same-request".to_vec()).unwrap()),
 )]
+struct GuardedDeclaration;
+
+#[harmos_runtime::message]
+
 struct Guarded {}
 struct Guard;
+#[harmos_runtime::operation(request = Descendant, infer_request, id = "grpc_descendant",  response = Reply, policy = WHO_POLICY)]
+struct DescendantDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "grpc.descendant", version = 1, response = Reply, policy = WHO_POLICY)]
+
 struct Descendant {}
 struct Descend;
 struct ExternalAccess {
-    operations: std::sync::Weak<harmos_runtime::operations::OperationManager>,
+    operations: std::sync::Weak<harmos_runtime::operations::OperationManager<Lanes>>,
     mode: Arc<std::sync::atomic::AtomicUsize>,
 }
 struct Sessions;
 struct PendingAuthentication;
 struct DiscoveryAccess;
+#[harmos_runtime::operation(request = Who, infer_request, id = "grpc_who",  response = Reply, policy = WHO_POLICY)]
+struct WhoDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "grpc.who", version = 1, response = Reply, policy = WHO_POLICY)]
+
 struct Who {}
 struct Read;
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "grpc.download",
-    version = 1,
+#[harmos_runtime::operation(request = Download, infer_request,
+    id = "grpc_download",
+
     response = Reply,
     output = Reply,
     policy = WHO_POLICY
 )]
+struct DownloadDeclaration;
+
+#[harmos_runtime::message]
+
 struct Download {}
 struct Downloading;
 struct Reject;
@@ -108,25 +119,34 @@ struct RejectUpload;
 struct RejectExchange;
 struct CrashUpload;
 struct CrashExchange;
+#[harmos_runtime::operation(request = Upload, infer_request, id = "grpc_upload",  response = Reply, input = Reply, policy = WHO_POLICY)]
+struct UploadDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "grpc.upload", version = 1, response = Reply, input = Reply, policy = WHO_POLICY)]
+
 struct Upload {}
 struct Uploading {
     started: Arc<tokio::sync::Notify>,
 }
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "grpc.exchange",
-    version = 1,
+#[harmos_runtime::operation(request = Exchange, infer_request,
+    id = "grpc_exchange",
+
     response = Reply,
     input = Reply,
     output = Reply,
     policy = WHO_POLICY
 )]
+struct ExchangeDeclaration;
+
+#[harmos_runtime::message]
+
 struct Exchange {}
 struct Exchanging;
+#[harmos_runtime::operation(request = Hold, infer_request, id = "grpc_hold",  response = Reply, output = Reply, policy = WHO_POLICY)]
+struct HoldDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "grpc.hold", version = 1, response = Reply, output = Reply, policy = WHO_POLICY)]
+
 struct Hold {}
 struct Holding {
     stopped: Arc<tokio::sync::Semaphore>,
@@ -190,17 +210,18 @@ impl Middleware for Trace {
     }
 }
 impl Operation for Read {
-    type Declaration = Who;
-    type Resources = ();
+    type Request = Who;
+    type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Who, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Who, _: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> =
             async move { Ok(Reply { actor: context.context().require::<Principal>()?.0.clone() }) }.await;
         result.map(::core::convert::Into::into)
@@ -221,25 +242,25 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "host.catalog" | "grpc.descendant" => (),
-            "grpc.guarded" => {
+            "host_catalog" | "grpc_descendant" => (),
+            "grpc_guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
                         return Ok(Some(Authorization::Restricted(Required {
-                            contract: harmos_runtime::operations::WireDeclaration::of::<Descendant>().contract().unwrap(),
+                            contract: harmos_runtime::operations::WireDeclaration::of::<DescendantDeclaration>().contract().unwrap(),
                             grants,
                         })));
                     }
                     2 => panic!("authorizer panic fixture"),
                     3 => {
-                        let contract = harmos_runtime::operations::WireDeclaration::of::<Descendant>().contract().unwrap();
+                        let contract = harmos_runtime::operations::WireDeclaration::of::<DescendantDeclaration>().contract().unwrap();
                         return Ok(Some(Authorization::Full(contract)));
                     }
                     4 => return Ok(Some(Authorization::Full(provider.contract.clone()))),
                     _ => (),
                 }
                 match principal.0.as_str() {
-                    "alice" | "carol" => grants.push(Grant::of("grpc.guarded", "reading")),
+                    "alice" | "carol" => grants.push(Grant::of("grpc_guarded", "reading")),
                     "limited" => (),
                     _ => return Ok(None),
                 }
@@ -251,17 +272,18 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
 }
 
 impl Operation for Guard {
-    type Declaration = Guarded;
-    type Resources = ();
+    type Request = Guarded;
+    type Response = <GuardedDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _: &mut Guarded, _: &mut (),
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _: &mut Guarded, _: &mut (),
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             let principal = context.context().get::<Principal>().map_or("anonymous", |value| value.0.as_str());
             Ok(Reply { actor: format!("{}:{principal}", if context.is_host_call() { "host" } else { "external" }) })
@@ -271,19 +293,20 @@ impl Operation for Guard {
     }
 }
 impl Operation for Descend {
-    type Declaration = Descendant;
-    type Resources = ();
+    type Request = Descendant;
+    type Response = <DescendantDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _: &mut Descendant, _: &mut (),
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _: &mut Descendant, _: &mut (),
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let response = context.call(Guarded {}).await?;
+            let response = context.call::<GuardedDeclaration>(Guarded {}).await?;
             Ok(Reply { actor: response.actor.clone() })
         }
         .await;
@@ -306,11 +329,15 @@ impl Service<http::Request<Body>> for Endpoint {
         Box::pin(async move {
             Ok(match request.uri().path() {
                 "/fixture.Identity/Hold" => {
-                    harmos_runtime::grpc::server::download::<Hold, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::download::<HoldDeclaration, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Download" => {
-                    harmos_runtime::grpc::server::download::<Download, harmos_runtime::grpc::Transcoded>(
+                    harmos_runtime::grpc::server::download::<DownloadDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
                         request,
@@ -318,11 +345,15 @@ impl Service<http::Request<Body>> for Endpoint {
                     .await
                 }
                 "/fixture.Identity/Upload" => {
-                    harmos_runtime::grpc::server::upload::<Upload, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::upload::<UploadDeclaration, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Exchange" => {
-                    harmos_runtime::grpc::server::exchange::<Exchange, harmos_runtime::grpc::Transcoded>(
+                    harmos_runtime::grpc::server::exchange::<ExchangeDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
                         request,
@@ -330,15 +361,28 @@ impl Service<http::Request<Body>> for Endpoint {
                     .await
                 }
                 "/fixture.Identity/Guarded" => {
-                    harmos_runtime::grpc::server::unary::<Guarded, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::unary::<GuardedDeclaration, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Descendant" => {
-                    harmos_runtime::grpc::server::unary::<Descendant, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::unary::<DescendantDeclaration, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 _ => {
-                    harmos_runtime::grpc::server::unary::<Who, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await
+                    harmos_runtime::grpc::server::unary::<WhoDeclaration, harmos_runtime::grpc::Transcoded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
             })
         })
@@ -346,17 +390,18 @@ impl Service<http::Request<Body>> for Endpoint {
 }
 
 impl Operation for Downloading {
-    type Declaration = Download;
-    type Resources = ();
+    type Request = Download;
+    type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Download, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Download, output: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             let actor = context.context().require::<Principal>()?.0.clone();
             output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
@@ -367,96 +412,90 @@ impl Operation for Downloading {
     }
 }
 impl Operation for Reject {
-    type Declaration = Who;
-    type Resources = ();
+    type Request = Who;
+    type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Who, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Who, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for Crash {
-    type Declaration = Who;
-    type Resources = ();
+    type Request = Who;
+    type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Who, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Who, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectStream {
-    type Declaration = Download;
-    type Resources = ();
+    type Request = Download;
+    type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type Endpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Download, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Download, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for CrashStream {
-    type Declaration = Download;
-    type Resources = ();
+    type Request = Download;
+    type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Download, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Download, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectUpload {
-    type Declaration = Upload;
-    type Resources = ();
+    type Request = Upload;
+    type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type Endpoints = harmos_runtime::operations::StreamInput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Upload, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Upload, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectExchange {
-    type Declaration = Exchange;
-    type Resources = ();
+    type Request = Exchange;
+    type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Error> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Exchange, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Exchange, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             Err(Error::TaskFailed {
@@ -472,49 +511,49 @@ impl Operation for RejectExchange {
     }
 }
 impl Operation for CrashUpload {
-    type Declaration = Upload;
-    type Resources = ();
+    type Request = Upload;
+    type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = harmos_runtime::operations::StreamInput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Upload, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Upload, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for CrashExchange {
-    type Declaration = Exchange;
-    type Resources = ();
+    type Request = Exchange;
+    type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type Endpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, _: &mut Exchange, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut Exchange, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 impl Operation for Uploading {
-    type Declaration = Upload;
-    type Resources = tokio::sync::Notify;
+    type Request = Upload;
+    type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = harmos_runtime::operations::StreamInput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(started: Arc<Self::Resources>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+        let started = context.dependency::<tokio::sync::Notify>().expect("fixture registers its dependency");
         Ok(Self { started })
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Upload, input: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Upload, input: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             self.started.notify_one();
             while input.recv().await.is_some() {}
@@ -525,17 +564,18 @@ impl Operation for Uploading {
     }
 }
 impl Operation for Exchanging {
-    type Declaration = Exchange;
-    type Resources = ();
+    type Request = Exchange;
+    type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Exchange, endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Exchange, endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             let actor = context.context().require::<Principal>()?.0.clone();
             while endpoints.0.recv().await.is_some() {
@@ -549,17 +589,19 @@ impl Operation for Exchanging {
 }
 
 impl Operation for Holding {
-    type Declaration = Hold;
-    type Resources = tokio::sync::Semaphore;
+    type Request = Hold;
+    type Response = <HoldDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type Endpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    type Context<'a> = Context<'a>;
-    async fn initialize<'ctx>(stopped: Arc<Self::Resources>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+        let stopped = context.dependency::<tokio::sync::Semaphore>().expect("fixture registers its dependency");
         Ok(Self { stopped })
     }
-    async fn run<'a>(
-        &mut self, context: Self::Context<'a>, _request: &mut Hold, output: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, _request: &mut Hold, output: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             let actor = context.context().require::<Principal>()?.0.clone();
             output.send_with(128, || Ok(Reply { actor })).await?;
@@ -675,15 +717,15 @@ where
 
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
-) -> Result<Vec<harmos_runtime::operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_runtime::operations::host::{Catalog, CatalogKind, CatalogPage};
+) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
+    use harmos_operations::host::{CatalogKind, CatalogPage, CatalogRequest};
     let mut client = tonic::client::Grpc::new(channel);
     let mut entries = Vec::new();
     let mut after = None;
     // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
     loop {
         client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-        let page = Catalog { kind: CatalogKind::Operations, schema: None, after: after.take(), rows: None, bytes: Some(2048) };
+        let page = CatalogRequest { kind: CatalogKind::Operations, schema: None, after: after.take(), rows: None, bytes: Some(2048) };
         let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(page));
         if let Some(token) = token {
             request.metadata_mut().insert("authorization", token.parse().unwrap());
@@ -693,11 +735,13 @@ async fn external_catalog(
             .unary(
                 request,
                 http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
-                Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
+                Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<CatalogRequest>>::new(
+                    decode, encode,
+                )?,
             )
             .await?;
         let page = response.into_inner();
-        entries.extend(serde_json::from_slice::<Vec<harmos_runtime::operations::host::DiscoveredOperation>>(&page.entries).unwrap());
+        entries.extend(serde_json::from_slice::<Vec<harmos_operations::host::DiscoveredOperation>>(&page.entries).unwrap());
         match page.next.clone() {
             Some(next) => after = Some(next),
             None => return Ok(entries),
@@ -721,14 +765,16 @@ async fn web(address: std::net::SocketAddr, method: &str, path: &str, headers: &
     String::from_utf8_lossy(&response).to_ascii_lowercase()
 }
 
-async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationManager)) -> [tonic::Status; 4] {
+async fn failures<F: Future<Output = ()>>(
+    register: impl FnOnce(harmos_runtime::operations::OperationManager<Lanes>) -> F,
+) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
-    register(&runtime.operations);
+    register(runtime.operations.clone()).await;
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
-        .register_service(Endpoint { authority: harmos_runtime::grpc::server::Authority::TrustedHost(runtime.operations.clone()) })
+        .register_service(Endpoint { authority: harmos_runtime::grpc::server::Authority::trusted_host(&runtime.operations) })
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();

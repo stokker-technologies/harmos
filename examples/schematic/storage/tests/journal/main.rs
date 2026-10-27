@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod format;
+mod sidecar;
 mod source_scenarios;
 
 #[path = "../support/mod.rs"]
@@ -46,7 +48,7 @@ struct State {
     applications: usize,
 }
 
-#[harmos::record(id = "atomic.observed", version = 2, history(ObservedV1))]
+#[harmos::record(id = "atomic.observed")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
@@ -54,19 +56,19 @@ struct Observed {
     ordinal: usize,
 }
 
-#[harmos::record(id = "atomic.foreign", version = 1)]
+#[harmos::record(id = "atomic.foreign")]
 #[derive(Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos::record(id = "harmos:sidecar/my.sidecar-2/result", version = 1)]
+#[harmos::record(id = "harmos:sidecar/my.sidecar-2/result")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
-#[harmos::record(id = "atomic.broken", version = 1)]
+#[harmos::record(id = "atomic.broken")]
 #[derive(Deserialize)]
 struct Broken;
 
-#[harmos::transaction(id = "atomic.add", version = 2, inverse = Self, history(AddV1))]
+#[harmos::transaction(id = "atomic.add",  inverse = Self,)]
 #[derive(Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
@@ -79,33 +81,17 @@ struct Add {
 
 struct Model;
 
-#[harmos::transaction(version = 1)]
-#[derive(Clone, Serialize, Deserialize)]
-struct AddV1 {
-    amount: i64,
-}
-
-#[harmos::record(id = "atomic.large", version = 1)]
+#[harmos::record(id = "atomic.large")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
-#[harmos::record(version = 1)]
-#[derive(Serialize, Deserialize)]
-struct ObservedV1 {
-    before: i64,
-    amount: i64,
-    ordinal: usize,
-}
-
-#[harmos::record(id = "atomic.observed", version = 1)]
-#[derive(Serialize, Deserialize)]
-struct Obsolete {
-    before: i64,
-    amount: i64,
-    ordinal: usize,
-}
-
 /* === Enums === */
+
+#[harmos::lanes]
+pub enum TestLanes {
+    #[default]
+    Open,
+}
 
 #[harmos::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
@@ -168,7 +154,7 @@ impl Transaction<State> for Add {
             let _ = out.push_system(harmos::state::SystemFact {
                 source: harmos::state::FactSource::Sidecar(owner.to_owned()),
                 name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
-                version: 37,
+                version: 1,
                 payload: if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
             });
         }
@@ -179,9 +165,6 @@ impl Transaction<State> for Add {
             for _ in 0..2 {
                 let _ = out.push(Large("x".repeat(Records::MAX_BYTES / 2)));
             }
-        }
-        if self.mode == 9 {
-            let _ = out.push(Obsolete { before: state.balance, amount: self.amount, ordinal: 0 });
         }
         if self.mode == 4 {
             let _ = out.push(Broken);
@@ -211,6 +194,7 @@ impl Application for Model {
     type Record = Facts;
     type Streams = ();
     type Resources = ();
+    type Lanes = TestLanes;
 }
 
 impl Wire for Model {
@@ -232,47 +216,19 @@ impl Wire for Model {
         kind: harmos::state::Kind, id: &harmos::DefinitionId, version: u32, payload: D,
     ) -> Result<Option<harmos::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|(value, apply)| harmos::storage::Payload {
+            harmos::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
                 value: Recorded::Transaction(Arc::new(value)),
-                apply,
             }),
             harmos::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
                 value: Recorded::Record(value),
-                apply: None,
             }),
         })
-    }
-}
-
-impl Transaction<State> for AddV1 {
-    type Error = Refusal;
-    fn check(&self, _: &State) -> Result<(), Self::Error> {
-        panic!("historical check must not run")
-    }
-    fn records(&self, _: &State, _: &mut Records) {
-        panic!("historical records must not run")
-    }
-    fn apply(&self, state: &mut State) {
-        state.balance += 2 * self.amount;
-        state.applications += 1;
-    }
-}
-
-impl From<AddV1> for Add {
-    fn from(old: AddV1) -> Self {
-        add(old.amount, 1, 0)
-    }
-}
-
-impl From<ObservedV1> for Observed {
-    fn from(old: ObservedV1) -> Self {
-        Self { before: old.before, amount: old.amount, ordinal: old.ordinal }
     }
 }
 
@@ -326,46 +282,7 @@ fn contract_scenario() {
             });
         }
     }
-    {
-        {
-            let mut builder = tokio::runtime::Builder::new_current_thread();
-            builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    use harmos::storage::Source;
-    let directory = scratch("atomic-v2-migration");
-    let path = directory.join("journal.jsonl");
-    let legacy = concat!(
-        "{\"schema\":2,\"generation\":0,\"origin\":0}\n",
-        "{ \"position\":1,\"kind\":\"Transaction\",\"id\":\"atomic.add\",\"version\":1,\"metadata\":{\"principal\":null,\"correlation\":1,\"causation\":null,\"request\":null,\"link\":null,\"at_us\":0},\"payload\":{\"amount\":5}}"
-    );
-    std::fs::write(&path, legacy).unwrap();
-    let mut source = Jsonl::<Model>::open(&path).unwrap();
-    assert_eq!(source.load().await.unwrap().frontier, Position(1));
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), legacy);
-    drop(source);
-    let runtime = boot(&path, 1).await;
-    let written = runtime.state.commit(add(3, 1, 0)).await.unwrap();
-    runtime.state.wait_until_stored(written.frontier).await;
-    runtime.stop().await.unwrap();
-    let migrated = std::fs::read_to_string(&path).unwrap();
-    assert!(migrated.starts_with("{\"schema\":3,"));
-    assert!(migrated.contains(legacy.split_once('\n').unwrap().1));
-    let restarted = boot(&path, 1).await;
-    assert_eq!(
-        restarted
-            .state
-            .state()
-            .read(|s| (s.balance, s.applications))
-            .await
-            .unwrap()
-            .value,
-        (13, 2)
-    );
-    restarted.stop().await.unwrap();
-
-});
-        }
-    }
     {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();

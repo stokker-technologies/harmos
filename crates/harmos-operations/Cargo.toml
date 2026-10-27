@@ -1,0 +1,93 @@
+# === Package === #
+
+[package]
+name = "harmos-operations"
+description = "Portable Harmos built-in operations and optional execution."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+autotests = false
+
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+lifecycle = ["dep:harmos-sdk", "dep:thiserror"]
+runtime = ["lifecycle", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:serde_json", "dep:tracing"]
+
+# === Dependencies === #
+
+[dependencies]
+harmos-domain = { workspace = true, features = ["derive"] }
+harmos-storage = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+harmos-sdk = { workspace = true, features = ["streaming"], optional = true }
+tracing = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["sync", "macros", "time"], optional = true }
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

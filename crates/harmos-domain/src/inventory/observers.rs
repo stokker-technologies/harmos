@@ -225,7 +225,7 @@ pub const fn encode_tree<const N: usize>(facility: &str, owner: &str, entries: &
 
 const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry]) -> Encoder<N> {
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
-    out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
+    out.raw(b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
     out.quoted(owner);
@@ -279,7 +279,7 @@ const fn entry<const N: usize>(out: &mut Encoder<N>, entry: Entry) {
 
 const fn encoded_tree<const N: usize>(facility: &str, owner: &str, entries: &[Node<Entry>]) -> Encoder<N> {
     let mut out = Encoder { bytes: [0; N], cursor: 0 };
-    out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
+    out.raw(b"\0HARMOS:ARTIFACT:V1:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
     out.quoted(owner);

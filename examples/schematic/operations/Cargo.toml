@@ -1,0 +1,82 @@
+# === Package === #
+
+[package]
+publish = false
+name = "schematic-operations"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Vertical Operation Contracts And Optional Execution.
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+runtime = ["harmos/runtime", "dep:thiserror", "dep:tokio"]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos = { workspace = true, default-features = false }
+schematic-domain = { path = "../domain" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true, optional = true }
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, optional = true }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

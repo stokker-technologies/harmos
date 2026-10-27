@@ -34,14 +34,14 @@ use super::*;
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     pub(in crate::operations) fn track_staging(&self, scope: &Arc<PluginScope>) -> Result<()> {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || !self.instances.is_accepting() {
             return Err(Error::Closing { domain: "plugin operation staging" });
         }
-        scope.bind_operation_registry(&self.registry)?;
+        scope.bind_operation_registry(&self.registry, self.downgrade())?;
         state.staging.retain(|scope| scope.strong_count() != 0);
         state.staging.push(Arc::downgrade(scope));
         Ok(())

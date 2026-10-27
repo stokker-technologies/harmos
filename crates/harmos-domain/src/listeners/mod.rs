@@ -13,7 +13,7 @@ mod delivery;
 
 /* === Re-Exports === */
 
-pub use delivery::{Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
+pub use delivery::{Callback, Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
 
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::catalog::{Catalog, Projection, Visitor};
 use crate::config::SchemaSettings;
-use crate::operations::{Contract, ContractError, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration};
+use crate::operations::{Contract, ContractError, ReplaySafety, RetryPolicy, Visibility, WireDeclaration};
 use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::Schema;
 use crate::schema::{self};
@@ -177,7 +177,6 @@ impl Definition {
         let operation = callback.operation();
         if operation.visibility != Visibility::Shared
             || operation.policy.retries != RetryPolicy::Never
-            || operation.policy.restart != RestartPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {
             return Err(Error::Callback { reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety" });

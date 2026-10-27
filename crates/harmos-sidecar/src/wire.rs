@@ -42,7 +42,7 @@ pub struct FramePayload {
 pub struct PluginCatalog {
     pub registrations: Vec<crate::Registration>,
     pub observers: Vec<crate::inventory::observers::Declaration>,
-    pub operations: Vec<crate::operations::Definition>,
+    pub operations: Vec<crate::operations::OperationDefinition>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,8 +149,8 @@ impl Frame {
     /// Bounds a routed Prepare or child call with no portable context values.
     /// Uses maximal identifiers and includes a generation context for the child.
     /// Frame lengths exclude the four-byte physical packet prefix.
-    pub fn request_encoded_len<O: OperationDeclaration>(request: &O) -> usize {
-        Self::request_payload_encoded_len(O::ID, harmos_domain::Message::encoded_len(request))
+    pub fn request_encoded_len<O: OperationDeclaration>(request: &O::Request) -> usize {
+        Self::request_payload_encoded_len(O::ID, harmos_domain::Message::encoded_size(request))
     }
 
     /// Bounds a routed Prepare or empty-values child carrying this encoded payload.
@@ -159,14 +159,16 @@ impl Frame {
         if operation.len() > Self::LIMIT {
             return usize::MAX;
         }
-        let prepare = WireCommand::prepare_encoded_len(u64::MAX, operation, payload).unwrap_or(usize::MAX);
-        call_encoded_len(u64::MAX, WIRE_METHOD, prepare).max(Self::child_payload_encoded_len(operation, payload, true, &[]))
+        let prepare = WireCommand::prepare_encoded_len(u64::MAX, operation, [255; 32], u64::MAX, payload).unwrap_or(usize::MAX);
+        call_encoded_len(u64::MAX, WIRE_METHOD, prepare).max(Self::child_payload_encoded_len(operation, u64::MAX, payload, true, &[]))
     }
 
     /// Bounds a child call using its actual portable values and generation presence.
     /// Only the unknown outer identifier is bounded by its maximal encoded width.
-    pub fn child_payload_encoded_len(operation: &str, payload: usize, generation_context: bool, values: &[CallValue]) -> usize {
-        let child = WireChildCall::payload_encoded_len(operation, payload, generation_context, values).unwrap_or(usize::MAX);
+    pub fn child_payload_encoded_len(
+        operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[CallValue],
+    ) -> usize {
+        let child = WireChildCall::payload_encoded_len(operation, generation, payload, generation_context, values).unwrap_or(usize::MAX);
         call_encoded_len(u64::MAX, CHILD_METHOD, child)
     }
 
@@ -176,12 +178,12 @@ impl Frame {
     }
 
     /// Tests the routed Prepare or empty-values child bound; not an arbitrary child context.
-    pub fn request_fits<O: OperationDeclaration>(request: &O) -> bool {
+    pub fn request_fits<O: OperationDeclaration>(request: &O::Request) -> bool {
         Self::request_encoded_len::<O>(request) <= Self::LIMIT
     }
 
     pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize {
-        let payload = WireAnswer::ready_encoded_len(reply.encoded_len()).unwrap_or(usize::MAX);
+        let payload = WireAnswer::ready_encoded_len(reply.encoded_size()).unwrap_or(usize::MAX);
         answer_encoded_len(u64::MAX, payload)
     }
 
@@ -207,7 +209,7 @@ impl Frame {
 
     #[cfg(feature = "kit")]
     pub(crate) fn exiting(reason: String) -> Self {
-        Self::Push { method: Self::EXITING.to_owned(), params: reason.encode_to_vec().into() }
+        Self::Push { method: Self::EXITING.to_owned(), params: reason.encode().into() }
     }
 
     pub fn exiting_reason(params: &[u8]) -> Option<String> {
@@ -330,13 +332,21 @@ mod tests {
     fn request_sizes_match() {
         for size in [0, 127, 128, 16383, 16384, 2097151, 2097152] {
             let operation = "operation.測定";
-            let prepare = WireCommand::Prepare { invocation: u64::MAX, operation: operation.into(), payload: vec![255; size] };
+            let prepare = WireCommand::Prepare {
+                invocation: u64::MAX,
+                operation: operation.into(),
+                fingerprint: [255; 32],
+                generation: u64::MAX,
+                payload: vec![255; size],
+            };
             let prepare = Frame::Call { id: u64::MAX, method: WIRE_METHOD.into(), params: prepare.encode().unwrap().into() };
             let child = WireChildCall {
                 context: [255; 32],
                 generation_context: Some([255; 32]),
                 values: Vec::new(),
                 operation: operation.into(),
+                fingerprint: [1; 32],
+                generation: u64::MAX,
                 payload: vec![255; size],
                 submit: true,
             };
@@ -349,14 +359,18 @@ mod tests {
     #[test]
     fn typed_sizes_match() {
         use harmos_domain::model::storage::files::{ByteRange, FileCompletion, FileSource};
-        use harmos_domain::operations::storage::ReadFile;
-        let request = ReadFile { source: FileSource::Local("data/測定.bin".into()), range: ByteRange { offset: 127, limit: Some(128) } };
-        assert_eq!(Frame::request_encoded_len(&request), Frame::request_payload_encoded_len(ReadFile::ID, request.encode_to_vec().len()));
+        use harmos_operations::storage::{ReadFile, ReadFileRequest};
+        let request =
+            ReadFileRequest { source: FileSource::Local("data/測定.bin".into()), range: ByteRange { offset: 127, limit: Some(128) } };
+        assert_eq!(
+            Frame::request_encoded_len::<ReadFile>(&request),
+            Frame::request_payload_encoded_len(ReadFile::ID, request.encode().len())
+        );
         let reply = FileCompletion { bytes: u64::MAX };
-        let envelope = WireAnswer::Ready { payload: reply.encode_to_vec() }.encode().unwrap();
+        let envelope = WireAnswer::Ready { payload: reply.encode() }.encode().unwrap();
         let frame = Frame::Answer { id: u64::MAX, result: envelope.into() };
         assert_eq!(Frame::reply_encoded_len::<ReadFile>(&reply), frame.encoded_len());
-        assert!(Frame::request_fits(&request));
+        assert!(Frame::request_fits::<ReadFile>(&request));
         assert!(Frame::reply_fits::<ReadFile>(&reply));
     }
 
@@ -364,18 +378,20 @@ mod tests {
     fn child_growth_matches() {
         let values = vec![CallValue { key: "context.測定".into(), payload: vec![255; 16384] }];
         for generation in [false, true] {
-            let empty = WireChildCall::payload_encoded_len("op", 0, generation, &values).unwrap();
+            let empty = WireChildCall::payload_encoded_len("op", u64::MAX, 0, generation, &values).unwrap();
             for size in [0, 127, 128, 16383, 16384] {
                 let call = WireChildCall {
                     context: [255; 32],
                     generation_context: generation.then_some([255; 32]),
                     values: values.clone(),
                     operation: "op".into(),
+                    fingerprint: [1; 32],
+                    generation: u64::MAX,
                     payload: vec![0; size],
                     submit: false,
                 };
                 let frame = Frame::Call { id: u64::MAX, method: CHILD_METHOD.into(), params: call.encode().unwrap().into() };
-                assert_eq!(Frame::child_payload_encoded_len("op", size, generation, &values), frame.encoded_len());
+                assert_eq!(Frame::child_payload_encoded_len("op", u64::MAX, size, generation, &values), frame.encoded_len());
                 assert_eq!(Frame::child_encoded_from_empty(empty, size), frame.encoded_len());
             }
         }
@@ -387,7 +403,7 @@ mod tests {
         let mut high = Frame::LIMIT + 1;
         while low + 1 < high {
             let middle = low + (high - low) / 2;
-            if Frame::child_payload_encoded_len("op", middle, true, &[]) <= Frame::LIMIT {
+            if Frame::child_payload_encoded_len("op", u64::MAX, middle, true, &[]) <= Frame::LIMIT {
                 low = middle;
             } else {
                 high = middle;
@@ -398,6 +414,8 @@ mod tests {
             generation_context: Some([0; 32]),
             values: Vec::new(),
             operation: "op".into(),
+            fingerprint: [1; 32],
+            generation: u64::MAX,
             payload: vec![0; low],
             submit: true,
         };

@@ -23,8 +23,8 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::{StorageBackends, StorageSettings};
-use crate::operations::{OperationManager, resident::Lease};
-use crate::services::{Fault, Once, Resident, Service, ServiceDefinition};
+use crate::operations::{Manager, resident::Lease};
+use crate::services::{Once, Resident, ServiceContext, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Result};
 
@@ -86,6 +86,9 @@ impl<C> StorageManager<C> {
         self.engine.close().await.map_err(Into::into)
     }
 
+    pub(crate) fn engine_erased(&self) -> harmos_storage::StorageManager<ErasedCatalog> {
+        self.engine.erased()
+    }
     pub(crate) fn erased(&self) -> StorageManager<ErasedCatalog> {
         StorageManager { engine: self.engine.erased() }
     }
@@ -97,7 +100,7 @@ impl<C> StorageManager<C> {
         self.start_on::<A>(&runtime.operations).await
     }
     #[tracing::instrument(target = "harmos::storage", name = "storage.start_on", level = "debug", skip_all)]
-    pub(crate) async fn start_on<A: Application>(&self, operations: &OperationManager) -> Result<()> {
+    pub(crate) async fn start_on<A: Application>(&self, operations: &Manager) -> Result<()> {
         self.engine
             .start_with(operations.resident_identity(), |worker| {
                 let lease = operations
@@ -117,9 +120,9 @@ impl<A: Application> Resident<A> for Worker {
     async fn cleanup(&mut self) -> Result<()> {
         self.0.cleanup().await.map_err(Into::into)
     }
-    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: ServiceContext<A>) -> std::result::Result<(), Error> {
         context.ready();
-        context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| Fault::Environmental(error.into()))
+        context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| error.into())
     }
 }
 

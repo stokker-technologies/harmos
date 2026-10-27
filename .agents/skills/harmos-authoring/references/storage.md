@@ -18,6 +18,10 @@ retry and completion guarantees.
 
 ## Queries And Live Data
 
+Direct storage APIs accept `harmos::storage::Query`, `FileRead`, `FileCapture`
+and `FileFollow`; hashing also accepts `FileRead`. Operation wire requests are
+separate contracts. Construct the resource input at the execution boundary.
+
 Use the shared `Query`, `StorageCursor`, source and transform vocabulary rather
 than implementing a different query engine in each interface. Ordered
 transforms precede row slicing. Arrow schemas and record batches represent

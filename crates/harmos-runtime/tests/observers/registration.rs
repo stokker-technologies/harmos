@@ -42,10 +42,6 @@ fn backend(id: &'static str) -> Backend {
     Backend { id, mode: Mode::Cooperative }
 }
 
-fn fault(error: Error) -> harmos_runtime::services::Fault<String> {
-    harmos_runtime::services::Fault::Application(error.to_string())
-}
-
 #[tokio::test]
 async fn catalog_stays_inert() {
     let runtime = runtime().await;
@@ -163,18 +159,21 @@ async fn catalogs_share_runtime() {
     let (opened, mut scope_ready) = tokio::sync::mpsc::unbounded_channel();
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
-        .service("observer-owner", move |mut context: harmos_runtime::services::Service<Bank>| {
+        .service("observer-owner", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {
             let control = resident_control.clone();
             let opened = opened.clone();
             async move {
                 let manager = context.host();
-                manager.stage_observers(&control, [backend("service.watch")]).and_then(|candidate| candidate.commit()).map_err(fault)?;
-                let lease = manager.submit_with_resources_at("service.watch", control.clone()).await.map_err(fault)?;
+                manager
+                    .stage_observers(&control, [backend("service.watch")])
+                    .and_then(|candidate| candidate.commit())
+                    .map_err(std::io::Error::other)?;
+                let lease = manager.submit_with_resources_at("service.watch", control.clone()).await.map_err(std::io::Error::other)?;
                 opened.send(lease.id()).unwrap();
                 context.stopping().await;
-                manager.retire_resources(&control).await.map_err(fault)?;
-                lease.release().await.map_err(fault)?;
-                Ok::<(), harmos_runtime::services::Fault<String>>(())
+                manager.retire_resources(&control).await.map_err(std::io::Error::other)?;
+                lease.release().await.map_err(std::io::Error::other)?;
+                Ok::<(), std::io::Error>(())
             }
         })
         .runtime()

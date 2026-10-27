@@ -31,7 +31,7 @@ use harmos::state::Transaction;
 
 /* === Structs === */
 
-#[harmos::transaction(id = "symbol.place", version = 1, irreversible)]
+#[harmos::transaction(id = "symbol.place", irreversible)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PlaceSymbol {
     pub symbol: SymbolId,

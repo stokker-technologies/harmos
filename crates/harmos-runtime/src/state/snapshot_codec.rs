@@ -44,7 +44,8 @@ use crate::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Snapshot<S> {
-    version: u32,
+    #[serde(rename = "version")]
+    _version: u32,
     schema: SchemaKey,
     position: Position,
     state: S,
@@ -211,7 +212,7 @@ where
     A::State: DeserializeOwned,
 {
     let snapshot: Snapshot<A::State> = serde_json::from_slice(bytes).map_err(Incompatible::unreadable)?;
-    if snapshot.version != 1 || snapshot.schema != policy.schema || bytes.len() > policy.max_bytes.get() {
+    if snapshot.schema != policy.schema || bytes.len() > policy.max_bytes.get() {
         return Err(invalid());
     }
     let mut entries = BTreeMap::new();

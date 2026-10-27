@@ -26,8 +26,8 @@ use tokio::sync::watch;
 use super::super::caller::Identity;
 use super::super::handler::Outcome;
 use super::super::resident::{self, Activation, Definition, Key, Kind, Lease, Snapshot};
-use super::super::{OperationDeclaration, OperationInstance, OperationInstanceId, Response};
-use super::OperationManager;
+use super::super::{OperationDeclaration, OperationInstanceId, Response, Running};
+use super::Manager;
 use crate::observers::{Backend, ObserverBackend, ObserverRegistration};
 use crate::services::{Resident, ServiceDefinition};
 use crate::{Application, Result};
@@ -46,7 +46,45 @@ use crate::{Application, Result};
 
 /* === Implementations === */
 
-impl OperationManager {
+impl Manager {
+    pub(crate) fn stage_services(
+        &self, entries: Vec<(Definition, Arc<dyn resident::Runner>)>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+    ) -> Result<resident::Staged> {
+        let state = self.registry.state.lock().expect("operation registry lock is healthy");
+        if state.closing || !self.instances.is_accepting() {
+            return Err(crate::Error::Closing { domain: "operations" });
+        }
+        for (definition, _) in &entries {
+            let (owner, local) = definition.id().split_once('.').expect("validated service identity");
+            if state.owned(local, owner).is_some() {
+                return Err(crate::Error::AlreadyRegistered { domain: "service", name: definition.id().to_owned() });
+            }
+        }
+        let staged = self.resident.stage(
+            &self.resident.root(),
+            entries,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            plugin,
+        );
+        drop(state);
+        staged
+    }
+
+    pub(crate) async fn start_registered_service(&self, id: &str, owner: &crate::services::ServiceOwner) -> Result<()> {
+        let root = self.resident.root();
+        let identity = match owner {
+            crate::services::ServiceOwner::Host => Identity::Host,
+            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            crate::services::ServiceOwner::Plugin(scope) => {
+                Identity::Plugin { owner: scope.owner().into(), generation: scope.generation() }
+            }
+        };
+        let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), identity, false).await?;
+        self.resident.hold(lease);
+        Ok(())
+    }
+
     // Register an observer visible at once, activated over any resources of
     // its backend's resource type.
     pub fn register_observer<B: ObserverBackend>(&self, backend: B) -> Result<()> {
@@ -147,12 +185,12 @@ impl OperationManager {
         self.resident.hold(lease);
     }
 
-    pub(crate) fn resident_instance<O: OperationDeclaration<Response = ()>>(lease: Lease) -> OperationInstance<O> {
+    pub(crate) fn resident_instance<O: OperationDeclaration<Response = ()>>(lease: Lease) -> Running<O> {
         let id = lease.id();
         let generation = lease.generation();
         let control = lease.lifecycle();
         let settled = lease.settlement();
-        OperationInstance {
+        Running {
             id,
             generation,
             outcome: Outcome::Resident {
@@ -164,9 +202,7 @@ impl OperationManager {
         }
     }
 
-    pub(in crate::operations) async fn activate_resident<O, R>(
-        &self, id: &str, resources: Arc<R>, holder: Identity,
-    ) -> Result<OperationInstance<O>>
+    pub(in crate::operations) async fn activate_resident<O, R>(&self, id: &str, resources: Arc<R>, holder: Identity) -> Result<Running<O>>
     where
         O: OperationDeclaration<Response = ()>,
         R: Send + Sync + 'static,
@@ -178,14 +214,12 @@ impl OperationManager {
 
     // Activate the resident `id` over `resources`. Activations sharing the same
     // resources share its instance; each handle holds one lease.
-    pub async fn submit_with_resources_at<R: Send + Sync + 'static>(
-        &self, id: &str, resources: Arc<R>,
-    ) -> Result<OperationInstance<Activation>> {
+    pub async fn submit_with_resources_at<R: Send + Sync + 'static>(&self, id: &str, resources: Arc<R>) -> Result<Running<Activation>> {
         self.activate_resident::<Activation, R>(id, resources, Identity::Host).await
     }
 
     // Activate the resident `id` over the runtime's own resources.
-    pub async fn submit_resident(&self, id: &str) -> Result<OperationInstance<Activation>> {
+    pub async fn submit_resident(&self, id: &str) -> Result<Running<Activation>> {
         let root = self.resident.root();
         let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), Identity::Host, false).await?;
         Ok(Self::resident_instance(lease))

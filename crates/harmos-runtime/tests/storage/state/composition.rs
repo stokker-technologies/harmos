@@ -67,7 +67,7 @@ fn revision() -> Revision {
     // Decode The Published Native Codec; Keep The Token Opaque
     let version = ObjectVersionToken::decode(&[5, b's', b't', b'o', b'r', b'e', 5, b'e', b'p', b'o', b'c', b'h', 7]).unwrap();
     let file = FileReference {
-        position: StorageCursor::decode(&cursor.encode_to_vec()).unwrap(),
+        position: StorageCursor::decode(&cursor.encode()).unwrap(),
         metadata: FileMetadata {
             id: Identifier::new("file").unwrap(),
             scope: None,
@@ -86,13 +86,13 @@ fn revision() -> Revision {
 #[test]
 fn values_roundtrip_prost() {
     let value = revision();
-    let bytes = value.encode_to_vec();
-    assert_eq!(bytes.len(), value.encoded_len());
+    let bytes = value.encode();
+    assert_eq!(bytes.len(), value.encoded_size());
     assert_eq!(Revision::decode(&bytes).unwrap(), value);
     assert!(Revision::decode(&[]).is_err());
     let value = Source::Stored { cursor: value.cursor };
-    let bytes = value.encode_to_vec();
-    assert_eq!(bytes.len(), value.encoded_len());
+    let bytes = value.encode();
+    assert_eq!(bytes.len(), value.encoded_size());
     assert_eq!(Source::decode(&bytes).unwrap(), value);
     assert!(Source::decode(&[]).is_err());
     let empty = Seal::default();

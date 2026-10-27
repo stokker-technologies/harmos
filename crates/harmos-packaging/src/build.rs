@@ -141,7 +141,22 @@ impl Artifact {
     pub fn read(producer: String, name: String, path: PathBuf) -> Result<Self, Error> {
         safe_name(&producer)?;
         safe_name(&name)?;
-        let sha256 = digest(&read_artifact(&path)?);
+        use sha2::{Digest, Sha256};
+        if path.is_symlink() || !path.is_file() {
+            return Err(Error::Settings("artifact must be a regular file".into()));
+        }
+        let mut file = BufReader::new(std::fs::File::open(&path)?);
+        let mut hash = Sha256::new();
+        loop {
+            let bytes = file.fill_buf()?;
+            if bytes.is_empty() {
+                break;
+            }
+            hash.update(bytes);
+            let length = bytes.len();
+            file.consume(length);
+        }
+        let sha256 = hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
         Ok(Self { producer, name, path, sha256 })
     }
 }
@@ -321,6 +336,34 @@ fn finish_build(
     if artifacts.is_empty() {
         return Err(Error::Settings("selected packages contain no artifact for this backend".into()));
     }
+    // Preserve Compiler Outputs And Stamp Separate Shipping Bytes.
+    let mut shipping = BTreeMap::new();
+    for artifact in &mut artifacts {
+        cancellation.check()?;
+        let source = Artifact::read(artifact.producer.clone(), artifact.name.clone(), artifact.path.clone())?;
+        if source.sha256 != artifact.sha256 {
+            return Err(Error::ArtifactChanged(artifact.path.clone()));
+        }
+        let parent = artifact.path.parent().ok_or_else(|| Error::Settings("artifact has no parent directory".into()))?;
+        let file_name = artifact.path.file_name().ok_or_else(|| Error::Settings("artifact has no file name".into()))?;
+        let output = parent.join("harmos").join(&artifact.producer).join(file_name);
+        #[cfg(feature = "guest")]
+        let bytes = if backend == BuildBackend::Guest {
+            let module = std::fs::read(&artifact.path)?;
+            super::component::strip_debug(&module).map_err(Error::Component)?
+        } else {
+            native_shipping_bytes(&artifact.path, cancellation)?
+        };
+        #[cfg(not(feature = "guest"))]
+        let bytes = native_shipping_bytes(&artifact.path, cancellation)?;
+        if bytes.len() > crate::bundle::Limits::default().file_bytes {
+            return Err(Error::Settings("artifact exceeds bundle byte limit".into()));
+        }
+        let permissions = std::fs::metadata(&artifact.path)?.permissions();
+        artifact.sha256 = digest(&bytes);
+        shipping.insert(output.clone(), (bytes, permissions));
+        artifact.path = output;
+    }
     #[cfg(feature = "guest")]
     let mut components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     #[cfg(not(feature = "guest"))]
@@ -331,15 +374,15 @@ fn finish_build(
         if artifact.path.extension().is_none_or(|extension| extension != "wasm") {
             continue;
         }
-        let module = std::fs::read(&artifact.path)?;
-        if digest(&module) != artifact.sha256 {
+        let module = &shipping[&artifact.path].0;
+        if digest(module) != artifact.sha256 {
             return Err(Error::ArtifactChanged(artifact.path.clone()));
         }
-        super::Declaration::inspect(&module, super::Facility::Guest)?;
+        super::Declaration::inspect(module, super::Facility::Guest)?;
         if module.starts_with(b"\0asm\x0d\0\x01\0") {
             continue;
         }
-        let component = super::componentize(&module).map_err(Error::Component)?;
+        let component = super::componentize(module).map_err(Error::Component)?;
         super::Declaration::inspect(&component, super::Facility::Guest)?;
         let output = artifact.path.with_extension("component.wasm");
         artifact.sha256 = digest(&component);
@@ -394,6 +437,10 @@ fn finish_build(
         }
     }
     cancellation.check()?;
+    for (path, (bytes, permissions)) in shipping {
+        publish(&path, &bytes)?;
+        std::fs::set_permissions(path, permissions)?;
+    }
     for (path, bytes) in components {
         publish(&path, &bytes)?;
     }
@@ -401,6 +448,31 @@ fn finish_build(
 }
 
 /* === Private Functions === */
+
+fn native_shipping_bytes(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<u8>, Error> {
+    let mut rustc = Command::new("rustc");
+    rustc.args(["--print", "sysroot"]).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let sysroot = Process::spawn(rustc, cancellation)?.output()?;
+    if !sysroot.status.success() {
+        return Err(Error::Cargo("rustc sysroot discovery failed".into()));
+    }
+    let tools = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim()).join("lib/rustlib");
+    let executable = format!("llvm-objcopy{}", std::env::consts::EXE_SUFFIX);
+    let objcopy = std::fs::read_dir(tools)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("bin").join(&executable))
+        .find(|path| path.is_file())
+        .ok_or_else(|| Error::Settings("packaging requires the Rust llvm-tools component".into()))?;
+
+    let temporary = tempfile::NamedTempFile::new()?;
+    let mut command = Command::new(&objcopy);
+    command.arg("--strip-debug").arg(path).arg(temporary.path()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let result = Process::spawn(command, cancellation)?.output()?;
+    if !result.status.success() {
+        return Err(Error::Cargo(format!("debug separation failed: {}", String::from_utf8_lossy(&result.stderr))));
+    }
+    read_artifact(temporary.path())
+}
 
 pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
     let enabled = match settings.backend {

@@ -109,7 +109,7 @@ fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) 
             "at": Timestamp::UNIX_EPOCH,
         }))
         .unwrap(),
-        payload: Payload { prepared: None, id: DefinitionId::new(id), version: 1, value, apply: None },
+        payload: Payload { prepared: None, id: DefinitionId::new(id), version: 1, value },
     }
 }
 

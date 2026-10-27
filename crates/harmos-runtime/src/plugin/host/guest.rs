@@ -29,9 +29,7 @@ use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSettings;
 use crate::guest::{Loaded, Serving};
-use crate::operations::{
-    ComponentBindings, Declarations, EncodedInvocation, Lane, OperationManager, PluginRegistration, PluginSdkRegistration,
-};
+use crate::operations::{ComponentBindings, Declarations, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
 
@@ -53,7 +51,7 @@ struct Guest<A: Application, C, L> {
     shutting_down: Option<EncodedInvocation>,
     initialized: bool,
     shutdown_attempted: bool,
-    operations: OperationManager,
+    operations: Manager,
     initialization_timeout: Duration,
     shutdown_timeout: Duration,
     encoding_memory_bytes: NonZeroUsize,
@@ -68,21 +66,21 @@ struct Guest<A: Application, C, L> {
 /* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
-    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync) -> Result<()>
+    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, false).await
     }
 
-    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync) -> Result<()>
+    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, true).await
     }
 
-    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane + Clone + Sync, replace: bool) -> Result<()>
+    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane, replace: bool) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
@@ -114,7 +112,7 @@ impl<A: Application> PluginHost<A> {
                 initialization_timeout,
                 shutdown_timeout,
                 encoding_memory_bytes,
-                lane: lane.clone(),
+                lane,
                 catalog: PhantomData,
             }))
         });
@@ -126,7 +124,7 @@ impl<A, C, L> Execution for Guest<A, C, L>
 where
     A: Application,
     C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-    L: Lane + Clone + Sync,
+    L: Lane,
 {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
@@ -147,9 +145,9 @@ where
                 self.exited = Some(Box::pin(async move { exited.await.map_err(|source| failed(&owner, source)) }));
                 let component = Arc::new(serving.operations().map_err(|source| failed(&definition.id, source))?);
                 self.registration = Some(self.operations.stage_plugin(serving.scope().unwrap(), |bindings| {
-                    bindings.register_component_catalog::<C>(self.lane.clone(), component.clone())
+                    bindings.register_component_catalog::<C>(self.lane, component.clone())
                 })?);
-                self.sdk = Some(component.stage_sdk(&self.operations, self.lane.clone())?);
+                self.sdk = Some(component.stage_sdk(&self.operations, self.lane)?);
                 self.initializing =
                     Some(self.sdk.as_ref().unwrap().submit_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?);
                 let result = self.initializing.as_mut().unwrap().await;

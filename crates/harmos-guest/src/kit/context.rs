@@ -39,6 +39,7 @@ type Child =
 pub struct Context {
     pub(super) context: Option<[u8; 32]>,
     pub(super) generation_context: Option<[u8; 32]>,
+    pub(super) assignments: harmos_sdk::operations::OperationAssignments,
     pub(super) call: std::sync::Arc<crate::operations::CallContext>,
 }
 
@@ -49,8 +50,12 @@ pub struct Context {
 /* === Implementations === */
 
 impl harmos_sdk::plugin::Context for Context {
+    fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_sdk::operations::ServingError> {
+        self.assignments.install(bytes)
+    }
+
     fn with_generation(&self, token: [u8; 32]) -> Self {
-        Self { context: self.context, generation_context: Some(token), call: self.call.clone() }
+        Self { context: self.context, generation_context: Some(token), assignments: self.assignments.clone(), call: self.call.clone() }
     }
 }
 

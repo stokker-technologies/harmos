@@ -29,7 +29,7 @@ use tonic_reflection::pb::v1::{
 };
 
 // Local Imports
-use crate::operations::OperationManager;
+use crate::operations::Manager;
 
 /* === Constants === */
 
@@ -44,7 +44,7 @@ const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
 pub(crate) struct Reflection {
-    operations: OperationManager,
+    operations: Manager,
 }
 
 /* === Enums === */
@@ -54,7 +54,7 @@ pub(crate) struct Reflection {
 /* === Implementations === */
 
 impl Reflection {
-    pub(crate) fn service(operations: OperationManager) -> ServerReflectionServer<Self> {
+    pub(crate) fn service(operations: Manager) -> ServerReflectionServer<Self> {
         ServerReflectionServer::new(Self { operations })
             .max_decoding_message_size(MAX_REQUEST_BYTES)
             .max_encoding_message_size(MAX_RESPONSE_BYTES)

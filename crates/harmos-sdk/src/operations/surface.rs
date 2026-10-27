@@ -26,7 +26,6 @@ use std::future::Future;
 // Local Imports
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
-use crate::operations::streams::Publish;
 use crate::{Message, StreamSpec};
 
 /* === Constants === */
@@ -41,8 +40,7 @@ use crate::{Message, StreamSpec};
 
 /* === Traits === */
 
-// The host one authored body calls through wherever it runs. The request is
-// the operation, so `call` and `submit` infer the declaration from it.
+// The Carrier Host Preserves Authorization For Child Calls.
 pub trait Host: Send + Sync + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
@@ -52,37 +50,15 @@ pub trait Host: Send + Sync + Sized {
 
     fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError>;
 
-    fn submit<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+    fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
-    fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
+    fn call<O: OperationDeclaration>(&self, request: O::Request)
+    -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
-    // Activate a resident declaration (an observer or a service) over
-    // caller-owned resources. Activations sharing the same resources share one
-    // instance and each handle holds its own lease; releasing the last lease
-    // stops it. Bindings that cannot carry process-local resources refuse.
-    fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
-        &self, request: O, resources: std::sync::Arc<R>,
-    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
-
-    // Publish one row on a declared stream through the host's `host.publish`.
+    // Publish one row on a declared stream through the host's `host_publish`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
-        S::Row: Message,
-    {
-        let published = self.call(Publish {
-            stream: S::ID.to_owned(),
-            schema: S::VERSION,
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode_to_vec(),
-            following: Vec::new(),
-        });
-        async move {
-            published.await?;
-            Ok(())
-        }
-    }
+        S::Row: Message;
 
     fn publish<S: StreamSpec<Row = S> + Message>(&self, row: &S) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.publish_on::<S>(row)

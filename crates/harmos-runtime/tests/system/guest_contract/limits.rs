@@ -71,10 +71,11 @@ async fn host_resource_settings() {
 async fn memory_growth_bounded() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let refused = runtime.operations.call(Echo { say: "grow".into() }).await.unwrap_err();
+    let refused =
+        runtime.operations.call::<<Echo as harmos_runtime::RequestFor>::Operation>(Echo { say: "grow".into() }).await.unwrap_err();
     assert!(execution_error(&refused).root_cause().to_string().starts_with("forcing trap when growing memory to "), "{refused}");
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
@@ -85,10 +86,10 @@ async fn memory_growth_bounded() {
 async fn fuel_retains_cause() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let spun = runtime.operations.call(Spin {}).await.unwrap_err();
+    let spun = runtime.operations.call::<<Spin as harmos_runtime::RequestFor>::Operation>(Spin {}).await.unwrap_err();
     assert_eq!(execution_error(&spun).downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::OutOfFuel));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
@@ -100,10 +101,10 @@ async fn manager_bounds_wait() {
     let _report = crate::report::system();
     let runtime = runtime().await;
     // The Embedded Provider Never Answers The Waiting Probe
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let waited = runtime.operations.call(Wait {}).await.unwrap_err();
+    let waited = runtime.operations.call::<<Wait as harmos_runtime::RequestFor>::Operation>(Wait {}).await.unwrap_err();
     assert!(matches!(waited, harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut)), "{waited:?}");
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
@@ -114,13 +115,14 @@ async fn manager_bounds_wait() {
 async fn trap_discards_instance() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let trapped = runtime.operations.call(Fail {}).await.unwrap_err();
+    let trapped = runtime.operations.call::<<Fail as harmos_runtime::RequestFor>::Operation>(Fail {}).await.unwrap_err();
     assert_ne!(execution_error(&trapped).downcast_ref::<wasmtime::Trap>(), Some(&wasmtime::Trap::OutOfFuel));
     assert!(execution_error(&trapped).downcast_ref::<wasmtime::Trap>().is_some());
-    let after = runtime.operations.call(Echo { say: "anyone".into() }).await.unwrap_err();
+    let after =
+        runtime.operations.call::<<Echo as harmos_runtime::RequestFor>::Operation>(Echo { say: "anyone".into() }).await.unwrap_err();
     assert!(matches!(component_error(&after), harmos_runtime::operations::ComponentError::Unavailable));
     retire_failed_guest(&mut manager, &mut lifecycle).await;
     drop((manager, lifecycle));
@@ -131,15 +133,15 @@ async fn trap_discards_instance() {
 async fn refusal_keeps_classification() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let refused = runtime.operations.call(Decline {}).await.unwrap_err();
+    let refused = runtime.operations.call::<<Decline as harmos_runtime::RequestFor>::Operation>(Decline {}).await.unwrap_err();
     let harmos_runtime::operations::ComponentError::Remote(failure) = component_error(&refused) else {
         panic!("expected classified refusal, got {refused:?}");
     };
     assert_eq!(failure.cause(), "the probe declines");
-    let answered = runtime.operations.call(Echo { say: "two".into() }).await.unwrap();
+    let answered = runtime.operations.call::<<Echo as harmos_runtime::RequestFor>::Operation>(Echo { say: "two".into() }).await.unwrap();
     assert_eq!(answered.said, "heard two", "a declined call keeps the instance");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));

@@ -23,7 +23,7 @@ use futures_util::FutureExt;
 use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, runtime};
-use harmos_runtime::operations::{CacheKey, Context, Operation, OperationDeclaration, OperationOutcome, OperationPhase};
+use harmos_runtime::operations::{CacheKey, Operation, OperationDeclaration, OperationOutcome, OperationPhase};
 use harmos_runtime::{Error, Refusal};
 
 /* === Constants === */
@@ -36,21 +36,27 @@ type Request = Finish;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "aa.finish",
-    version = 1,
+#[harmos_runtime::operation(request = Finish, infer_request,
+    id = "aa_finish",
+
     response = u64,
     policy = super::Compute::POLICY,
     key = |request: &Finish| request.keyed.then(|| CacheKey::new([1]).unwrap()),
 )]
+struct FinishDeclaration;
+
+#[harmos_runtime::message]
+
 struct Finish {
     keyed: bool,
     fail_attempt: bool,
 }
 
+#[harmos_runtime::operation(request = Parent, infer_request, id = "zz_parent",  response = u64, policy = FinishDeclaration::POLICY)]
+struct ParentDeclaration;
+
 #[harmos_runtime::message]
-#[harmos_runtime::operation(id = "zz.parent", version = 1, response = u64, policy = Finish::POLICY)]
+
 struct Parent {
     keyed: bool,
     fail_attempt: bool,
@@ -96,18 +102,18 @@ struct Finishing {
 
 impl Operation for Finishing {
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = Finish;
-    type Resources = Owner;
+    type Request = Finish;
+    type Response = <FinishDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
 
-    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let resources = context.dependency::<Owner>().expect("fixture registers its dependency");
         let state = State { ran: false, counters: Arc::clone(&resources.0) };
         Ok(Self { resources, state })
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Request, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
@@ -144,22 +150,24 @@ struct ParentCall {
 
 impl Operation for ParentCall {
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = Parent;
-    type Resources = ParentOwner;
+    type Request = Parent;
+    type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
 
-    async fn initialize<'ctx>(resources: Arc<ParentOwner>, _: Self::Context<'ctx>) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+        let resources = context.dependency::<ParentOwner>().expect("fixture registers its dependency");
         let state = State { ran: false, counters: Arc::clone(&resources.0) };
         Ok(Self { _resources: resources, _state: state })
     }
 
-    async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut Parent, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, context: harmos_runtime::OperationContext, request: &mut Parent, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
+        let host = context.dependency::<harmos_runtime::operations::HostContext>().expect("native runtime context");
+        let context = host.borrow();
         let result: ::core::result::Result<u64, Self::Error> = async move {
             let request = Request { keyed: request.keyed, fail_attempt: request.fail_attempt };
-            let response = context.call(request).await?;
+            let response = context.call::<FinishDeclaration>(request).await?;
             Ok(*response)
         }
         .await;
@@ -200,8 +208,20 @@ async fn cleanup_preserves_outcome() {
         let counters = Arc::new(Counters::default());
         counters.fail.store(true, Ordering::SeqCst);
         let owner = Arc::new(Owner(Arc::clone(&counters)));
-        runtime.operations.register_operation::<Finishing>("app", lane, owner).unwrap();
-        let mut instance = runtime.operations.submit(request).unwrap();
+        runtime
+            .operations
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(owner).unwrap();
+                    dependencies
+                })
+                .implementation::<FinishDeclaration, Finishing>(),
+                lane,
+            ))
+            .await
+            .unwrap();
+        let mut instance = runtime.operation(request).start().await.unwrap();
         let id = instance.id();
         let generation = instance.generation();
 
@@ -272,14 +292,33 @@ async fn unregister_awaits_cleanup() {
     counters.block.store(true, Ordering::SeqCst);
     let owner = Owner(Arc::clone(&counters));
     let owner = Arc::new(owner);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-    let invocation = runtime.operations.submit(request()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(owner).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
+    let invocation = runtime.operation(request()).start().await.unwrap();
     counters.entering.notified().await;
-    assert!(runtime.operations.unregister(Finish::ID).now_or_never().is_none(), "physical cleanup is blocked");
+    assert!(
+        runtime
+            .operations
+            .unregister(&harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap())
+            .now_or_never()
+            .is_none(),
+        "physical cleanup is blocked"
+    );
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
     counters.release.notify_one();
-    runtime.operations.unregister(Finish::ID).await.unwrap();
-    assert_eq!(*invocation.await.unwrap(), 42);
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap()).await.unwrap();
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
@@ -291,19 +330,43 @@ async fn unregister_retries_child() {
     child.fail.store(true, Ordering::SeqCst);
     let child_owner = Owner(Arc::clone(&child));
     let child_owner = Arc::new(child_owner);
-    runtime.operations.register_operation::<Finishing>("child", Lanes::Serial, child_owner).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(child_owner).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     let parent = Arc::new(Counters::default());
     let parent_owner = ParentOwner(Arc::clone(&parent));
     let parent_owner = Arc::new(parent_owner);
-    runtime.operations.register_operation::<ParentCall>("parent", Lanes::Open, parent_owner).unwrap();
-    let invocation = runtime.operations.submit(Parent::from(request())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(parent_owner).unwrap();
+                dependencies
+            })
+            .implementation::<ParentDeclaration, ParentCall>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    let invocation = runtime.operation(Parent::from(request())).start().await.unwrap();
     child.entering.notified().await;
-    assert!(runtime.operations.unregister(Parent::ID).await.is_err());
+    assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", ParentDeclaration::ID).unwrap()).await.is_err());
     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);
 
     child.fail.store(false, Ordering::SeqCst);
-    runtime.operations.unregister(Parent::ID).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", ParentDeclaration::ID).unwrap()).await.unwrap();
     assert!(invocation.await.is_err());
     assert_eq!(child.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(parent.dropped.load(Ordering::SeqCst), 1);
@@ -317,18 +380,31 @@ async fn unregister_retries_cleanup() {
     counters.fail.store(true, Ordering::SeqCst);
     let owner = Owner(Arc::clone(&counters));
     let owner = Arc::new(owner);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-    let invocation = runtime.operations.submit(request()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(owner).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
+    let invocation = runtime.operation(request()).start().await.unwrap();
     assert!(invocation.await.is_err());
 
     // Failed Retry Refuses Unregister Without Dropping Retained State.
-    assert!(runtime.operations.unregister(Finish::ID).await.is_err());
+    assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap()).await.is_err());
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
     counters.fail.store(false, Ordering::SeqCst);
     counters.block.store(true, Ordering::SeqCst);
     {
-        let waiting = runtime.operations.unregister(Finish::ID);
+        let id = harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap();
+        let waiting = runtime.operations.unregister(&id);
         tokio::pin!(waiting);
         tokio::select! {
             biased;
@@ -343,7 +419,7 @@ async fn unregister_retries_cleanup() {
     }
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
     counters.release.notify_one();
-    runtime.operations.unregister(Finish::ID).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap()).await.unwrap();
     assert_eq!(counters.finished.load(Ordering::SeqCst), 3);
     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
@@ -357,8 +433,20 @@ async fn cleanup_panic_retained() {
     counters.panic_cleanup.store(true, Ordering::SeqCst);
     let owner = Owner(Arc::clone(&counters));
     let owner = Arc::new(owner);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Open, owner).unwrap();
-    let invocation = runtime.operations.submit(request()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(owner).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    let invocation = runtime.operation(request()).start().await.unwrap();
     let error = invocation.await.unwrap_err();
     assert!(matches!(error, Error::OperationFinalization { source, .. }
         if matches!(source.as_ref(), Error::OperationPanicked { .. })));
@@ -378,18 +466,30 @@ async fn finalization_past_deadline() {
     counters.block.store(true, Ordering::SeqCst);
     let owner = Owner(Arc::clone(&counters));
     let owner = Arc::new(owner);
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Open, owner).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(owner).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let first_request = Request { keyed: true, ..request() };
-    let first = runtime.operations.submit(first_request).unwrap();
+    let first = runtime.operation(first_request).start().await.unwrap();
     counters.entering.notified().await;
-    tokio::time::advance(Finish::POLICY.timeout).await;
+    tokio::time::advance(FinishDeclaration::POLICY.timeout).await;
     counters.release.notify_one();
     assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
 
     counters.block.store(false, Ordering::SeqCst);
     let second_request = Request { keyed: true, ..request() };
-    let second = runtime.operations.submit(second_request).unwrap();
+    let second = runtime.operation(second_request).start().await.unwrap();
     assert_eq!(*second.await.unwrap(), 42);
     assert_eq!(counters.runs.load(Ordering::SeqCst), 2);
     runtime.stop().await.unwrap();
@@ -406,8 +506,20 @@ async fn boot_retains_cleanup() {
         .initialize(std::time::Duration::from_secs(1), move |handle| {
             let owner = Arc::clone(&owner);
             async move {
-                handle.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-                let result = handle.operations.call(request()).await;
+                handle
+                    .operations
+                    .register(harmos_runtime::RegistrationExt::lane(
+                        harmos_runtime::RegistrationBatch::new({
+                            let mut dependencies = harmos_runtime::Dependencies::new();
+                            dependencies.insert(owner).unwrap();
+                            dependencies
+                        })
+                        .implementation::<FinishDeclaration, Finishing>(),
+                        Lanes::Serial,
+                    ))
+                    .await
+                    .unwrap();
+                let result = handle.operation(request()).run().await;
                 assert!(matches!(result, Err(Error::OperationFinalization { .. })));
                 Err::<(), _>(std::io::Error::other("startup failed after invocation"))
             }
@@ -458,8 +570,20 @@ async fn receipt_retains_cleanup() {
                 let owner = Arc::clone(&owner);
                 let ready = ready.clone();
                 async move {
-                    handle.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-                    assert!(matches!(handle.operations.call(request()).await, Err(Error::OperationFinalization { .. })));
+                    handle
+                        .operations
+                        .register(harmos_runtime::RegistrationExt::lane(
+                            harmos_runtime::RegistrationBatch::new({
+                                let mut dependencies = harmos_runtime::Dependencies::new();
+                                dependencies.insert(owner).unwrap();
+                                dependencies
+                            })
+                            .implementation::<FinishDeclaration, Finishing>(),
+                            Lanes::Serial,
+                        ))
+                        .await
+                        .unwrap();
+                    assert!(matches!(handle.operation(request()).run().await, Err(Error::OperationFinalization { .. })));
                     ready.send_replace(true);
                     std::future::pending::<Result<(), std::io::Error>>().await
                 }
@@ -521,9 +645,21 @@ async fn unpolled_startup_cleanup() {
 async fn reregister_renews_generation() {
     let runtime = runtime().await;
     let counters = Arc::new(Counters::default());
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let first = runtime.operations.submit(request()).unwrap();
-    let second = runtime.operations.submit(request()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Owner(Arc::clone(&counters)))).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
+    let first = runtime.operation(request()).start().await.unwrap();
+    let second = runtime.operation(request()).start().await.unwrap();
     assert_ne!(first.id(), second.id());
     assert_eq!(first.generation(), second.generation());
     let id = second.id();
@@ -531,9 +667,21 @@ async fn reregister_renews_generation() {
     assert_eq!(*first.join().await.unwrap(), 42);
     assert_eq!(*second.join().await.unwrap(), 42);
 
-    runtime.operations.unregister(Finish::ID).await.unwrap();
-    runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let replacement = runtime.operations.submit(request()).unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", FinishDeclaration::ID).unwrap()).await.unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Owner(Arc::clone(&counters)))).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
+    let replacement = runtime.operation(request()).start().await.unwrap();
 
     assert_ne!(replacement.generation(), generation);
     assert_ne!(replacement.id(), id);
@@ -546,10 +694,34 @@ async fn stop_retries_cleanup() {
     let runtime = runtime().await;
     let child = Arc::new(Counters::default());
     child.fail.store(true, Ordering::SeqCst);
-    runtime.operations.register_operation::<Finishing>("child", Lanes::Serial, Arc::new(Owner(child.clone()))).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(Owner(child.clone()))).unwrap();
+                dependencies
+            })
+            .implementation::<FinishDeclaration, Finishing>(),
+            Lanes::Serial,
+        ))
+        .await
+        .unwrap();
     let parent = Arc::new(Counters::default());
-    runtime.operations.register_operation::<ParentCall>("parent", Lanes::Open, Arc::new(ParentOwner(parent.clone()))).unwrap();
-    let invocation = runtime.operations.submit(Parent::from(request())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(Arc::new(ParentOwner(parent.clone()))).unwrap();
+                dependencies
+            })
+            .implementation::<ParentDeclaration, ParentCall>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    let invocation = runtime.operation(Parent::from(request())).start().await.unwrap();
     child.entering.notified().await;
     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);

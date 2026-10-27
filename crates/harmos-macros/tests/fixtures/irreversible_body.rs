@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 struct Sheet;
 
-#[harmos::transaction(id = "report.send", version = 1, irreversible)]
+#[harmos::transaction(id = "report.send",  irreversible)]
 #[derive(Deserialize, Serialize)]
 struct SendReport;
 

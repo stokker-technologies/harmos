@@ -84,6 +84,10 @@ pub(crate) struct Registry {
     shared: Arc<Shared>,
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[derive(Clone)]
+pub(crate) struct WeakRegistry(Weak<Shared>);
+
 pub(crate) struct Shared {
     identity: Arc<()>,
     root_resources: Arc<()>,
@@ -142,7 +146,7 @@ pub(crate) struct Start {
     pub(crate) lifecycle: Arc<Instance>,
     pub(crate) stopping: watch::Sender<bool>,
     pub(crate) report: Report,
-    pub(crate) operations: super::OperationManager,
+    pub(crate) operations: super::Manager,
 }
 
 #[derive(Clone)]
@@ -237,34 +241,18 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 
 /* === Implementations === */
 
-harmos_domain::postcard_product!(Activation {});
-
-impl crate::schema::Described for Activation {
-    const NAME: &'static str = "harmos::activation";
-    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
-    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
-        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
-}
-
-impl crate::MemorySize for Activation {
-    fn memory_size(&self) -> usize {
-        0
-    }
-}
-
-// The Resident Activation Of A Service; It Is Never Declared By Its Identity.
+// The Resident Activation Of A ServiceContext; It Is Never Declared By Its Identity.
 impl super::OperationDeclaration for Activation {
+    type Request = ();
     type Response = ();
     type Input = super::NoStream;
     type Output = super::NoStream;
-    const VERSION: u32 = 1;
+
     const ID: &'static str = "";
     const POLICY: super::OperationPolicy = super::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,
         attempt_timeout: harmos_domain::operations::UNBOUNDED,
         retries: super::RetryPolicy::Never,
-        restart: super::RestartPolicy::Never,
     };
 }
 
@@ -334,7 +322,19 @@ impl Registration {
     }
 }
 
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+impl WeakRegistry {
+    pub(crate) fn upgrade(&self) -> Option<Registry> {
+        self.0.upgrade().map(|shared| Registry { shared })
+    }
+}
+
 impl Registry {
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) fn downgrade(&self) -> WeakRegistry {
+        WeakRegistry(Arc::downgrade(&self.shared))
+    }
+
     pub(crate) fn new(index: &Arc<Instances>, reserved: BTreeSet<String>, identity: Arc<()>) -> Self {
         let root_resources = Arc::new(());
         let resources: Resources = Arc::clone(&root_resources) as Resources;
@@ -458,6 +458,10 @@ impl Registry {
         Ok(Staged { owner: Arc::downgrade(&self.shared), scope: Arc::clone(scope), entries: staged, published })
     }
 
+    pub(crate) fn contains(&self, id: &str) -> bool {
+        self.state().definitions.contains_key(id)
+    }
+
     pub(crate) fn definition(&self, id: &str) -> Option<Definition> {
         self.state().definitions.get(id).filter(|item| item.is_published()).map(|item| item.definition.clone())
     }
@@ -504,7 +508,7 @@ impl Registry {
     // A stopping instance is joined before its replacement starts.
     #[tracing::instrument(target = "harmos::operations", name = "operations.activate", level = "debug", skip_all)]
     pub(super) async fn activate(
-        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
+        &self, operations: &super::Manager, id: &str, scope: &Arc<Scope>, resources: TypeId, holder: Identity, internal: bool,
     ) -> Result<Lease> {
         let mut joined = None;
         loop {
@@ -524,7 +528,7 @@ impl Registry {
     #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
     fn acquire(
-        &self, operations: &super::OperationManager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
+        &self, operations: &super::Manager, id: &str, scope: &Arc<Scope>, resources: TypeId, joined: Option<OperationInstanceId>,
         internal: bool, holder: &Identity,
     ) -> Result<Acquisition> {
         self.check_scope(scope)?;
@@ -627,7 +631,7 @@ impl Registry {
     // Start a definition that can run once, owned by the registry until the
     // runtime shuts down.
     pub(crate) fn start_once(
-        &self, operations: &super::OperationManager, definition: Definition, runner: Arc<dyn Runner>, internal: bool, reserved: bool,
+        &self, operations: &super::Manager, definition: Definition, runner: Arc<dyn Runner>, internal: bool, reserved: bool,
     ) -> Result<Lease> {
         let id = definition.id().to_owned();
         let resources = runner.resources();
@@ -709,6 +713,40 @@ impl Registry {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) fn close_plugin(&self, scope: &crate::plugin::PluginScope) {
+        let mut state = self.state();
+        let ids: std::collections::BTreeSet<_> = state
+            .definitions
+            .iter()
+            .filter(|(_, entry)| {
+                // Observer Controls Retain Their Publication Lease Until Carrier Cleanup.
+                entry.definition.kind() == Kind::Service && entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope))
+            })
+            .map(|(id, entry)| {
+                entry.closing.store(true, Ordering::Release);
+                id.clone()
+            })
+            .collect();
+        state.stop(|key, _, _| ids.contains(&key.definition));
+        self.shared.publish(&state);
+    }
+
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    pub(crate) async fn shutdown_plugin(&self, scope: &crate::plugin::PluginScope) -> Result<()> {
+        let ids: Vec<_> = self
+            .state()
+            .definitions
+            .iter()
+            .filter(|(_, entry)| entry.plugin.as_ref().is_some_and(|owner| owner.same_activation(scope)))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.unregister(&id).await?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn unregister(&self, id: &str) -> Result<()> {
         let (registration, running) = {
             let mut state = self.state();
@@ -1175,6 +1213,10 @@ impl Drop for Lease {
 }
 
 impl Staged {
+    pub(crate) fn publication(&self) -> Arc<AtomicBool> {
+        self.published.clone()
+    }
+
     pub fn commit(self) -> Result<()> {
         let owner = self.owner.upgrade().ok_or(Error::Closing { domain: "resident" })?;
         let state = owner.state();

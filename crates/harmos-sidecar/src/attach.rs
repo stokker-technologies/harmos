@@ -125,7 +125,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Vec::new()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(Vec::new())
     }
 
@@ -137,7 +137,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Ok(None)
     }
 
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_domain::model::operations::lifecycle::Descriptor; 2]>> {
         Ok(None)
     }
 
@@ -330,7 +330,7 @@ impl Attach for Executable {
         self.declaration.observers.clone()
     }
 
-    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::OperationDefinition>> {
         Ok(self.declaration.operations.clone())
     }
 
@@ -342,7 +342,7 @@ impl Attach for Executable {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
-    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos_domain::model::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 

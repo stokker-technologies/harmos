@@ -40,7 +40,7 @@
 /* === Tests === */
 
 use harmos_runtime::operations::*;
-use harmos_runtime::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 use std::sync::Arc;
 use std::{sync::Mutex, time::Duration};
 
@@ -60,18 +60,17 @@ impl Drop for Request {
         self.events.lock().unwrap().push("request dropped");
     }
 }
-#[harmos_runtime::lanes]
-enum LifecycleLanes {
-    #[default]
-    Owned,
+
+impl harmos_runtime::RequestFor for Request {
+    type Operation = Self;
 }
 
 impl OperationDeclaration for Request {
+    type Request = Self;
     type Response = u32;
     type Input = NoStream;
     type Output = NoStream;
-    const ID: &'static str = "borrowed.request";
-    const VERSION: u32 = 1;
+    const ID: &'static str = "borrowed_request";
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -79,7 +78,6 @@ impl OperationDeclaration for Request {
             max_retries: 1,
             backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
         },
-        restart: RestartPolicy::Never,
     };
 }
 struct Read {
@@ -87,13 +85,13 @@ struct Read {
     address: Option<usize>,
 }
 impl Operation for Read {
-    type Declaration = Request;
-    type Resources = Mutex<Vec<&'static str>>;
+    type Request = <Request as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <Request as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
-    type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(events: Arc<Self::Resources>, _context: Self::Context<'ctx>) -> std::io::Result<Self> {
+    async fn initialize(_context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
+        let events = _context.dependency::<Mutex<Vec<&'static str>>>().expect("fixture registers its dependency");
         let constructed: std::io::Result<Self> = async move {
             events.lock().unwrap().push("new");
             Ok(Self { events, address: None })
@@ -109,8 +107,8 @@ impl Operation for Read {
         started?;
         Ok(operation)
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut Request, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _: &mut Self::Endpoints,
     ) -> std::io::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             self.events.lock().unwrap().push("run");
@@ -146,14 +144,26 @@ impl Operation for Read {
 #[tokio::test(start_paused = true)]
 async fn request_outlives_cleanup() {
     let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
-        .register(LifecycleLanes::catalog())
+        .register(crate::operations::probe::Lanes::catalog())
         .runtime()
         .await
         .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
-    runtime.operations.register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(events.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<Request, Read>(),
+            crate::operations::probe::Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let request = Request { value: 19, events: events.clone() };
-    let call = runtime.operations.submit(request).unwrap();
+    let call = runtime.operation(request).start().await.unwrap();
     assert_eq!(*call.join().await.unwrap(), 21);
     runtime.stop().await.unwrap();
     assert_eq!(*events.lock().unwrap(), ["new", "initialize", "run", "run", "stop", "finalize", "request dropped"]);
@@ -166,19 +176,34 @@ async fn transfer_blocks_retry() {
         sync::atomic::{AtomicUsize, Ordering},
     };
     let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
-        .register(LifecycleLanes::catalog())
+        .register(crate::operations::probe::Lanes::catalog())
         .runtime()
         .await
         .unwrap();
     let runs = Arc::new(AtomicUsize::new(0));
-    runtime.operations.register_operation::<Streaming>("owner", LifecycleLanes::Owned, runs.clone()).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(runs.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<StreamingDeclarationDeclaration, Streaming>(),
+            crate::operations::probe::Lanes::Open,
+        ))
+        .await
+        .unwrap();
     let settings =
         harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
     for mode in [0, 1, 2, 3] {
         runs.store(0, Ordering::SeqCst);
         let (send, input) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
         let (output, mut receive) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
-        let instance = runtime.operations.submit_endpoints(StreamingDeclaration { mode }, (input, output)).unwrap();
+        let instance = runtime
+            .operations
+            .submit_endpoints::<StreamingDeclarationDeclaration, _>(StreamingDeclaration { mode }, (input, output))
+            .unwrap();
         if mode == 2 {
             // The input item arrives while the failed attempt waits to retry.
             drop(
@@ -199,29 +224,35 @@ async fn transfer_blocks_retry() {
     runtime.stop().await.unwrap();
 }
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
+#[harmos_runtime::operation(request = StreamingDeclaration, infer_request,
     harmos_path = harmos_runtime,
     id = "streaming",
-    version = 1,
+
     response = (),
     policy = Request::POLICY,
     input = u32,
     output = u32
 )]
+struct StreamingDeclarationDeclaration;
+
+#[harmos_runtime::message]
+
 struct StreamingDeclaration {
     mode: u32,
 }
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
-#[harmos_runtime::operation(harmos_path = harmos_runtime)]
-impl Streaming {
-    async fn initialize(resources: Arc<std::sync::atomic::AtomicUsize>, _: Context<'_>) -> Self {
-        Self(resources, false)
+impl harmos_runtime::Operation for Streaming {
+    type Request = StreamingDeclaration;
+    type Response = ();
+    type Endpoints = (harmos_runtime::operations::StreamInput<u32>, harmos_runtime::operations::StreamOutput<u32>);
+    type Error = std::io::Error;
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        Ok(Self(context.dependency::<std::sync::atomic::AtomicUsize>().map_err(std::io::Error::other)?, false))
     }
     async fn run(
-        &mut self, _: Context<'_>, request: &mut StreamingDeclaration, _: &mut harmos_runtime::operations::StreamInput<u32>,
-        output: &mut harmos_runtime::operations::StreamOutput<u32>,
-    ) -> std::result::Result<(), std::io::Error> {
+        &mut self, _: harmos_runtime::OperationContext, request: &mut StreamingDeclaration, endpoints: &mut Self::Endpoints,
+    ) -> std::result::Result<harmos_runtime::Response<()>, std::io::Error> {
+        let (_, output) = endpoints;
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         // Provider Transfer May Be Known Before Any Local Item Is Delivered.
         self.1 = request.mode == 3;
