@@ -9,5 +9,5 @@
 
 ## Final Validation
 
-- [ ] 2.1 Targeted proof: harmos-domain, harmos-macros, the schematic example and harmos-sdk with `grpc`.
+- [x] 2.1 Targeted proof: harmos-domain, harmos-macros, the schematic example and harmos-sdk with `grpc`.
 - [ ] 2.2 Push, open the dev review and enable squash auto-merge.
