@@ -37,7 +37,7 @@ impl crate::operations::OperationDeclaration for Publish {
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
     const ID: &'static str = "host_publish";
-    const POLICY: crate::operations::OperationPolicy = crate::operations::host::POLICY;
+    const POLICY: crate::operations::OperationPolicy = crate::operations::lifecycle::POLICY;
     const VISIBILITY: crate::operations::Visibility = Visibility::Shared;
 }
 

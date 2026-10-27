@@ -86,6 +86,9 @@ impl<C> StorageManager<C> {
         self.engine.close().await.map_err(Into::into)
     }
 
+    pub(crate) fn engine_erased(&self) -> harmos_storage::StorageManager<ErasedCatalog> {
+        self.engine.erased()
+    }
     pub(crate) fn erased(&self) -> StorageManager<ErasedCatalog> {
         StorageManager { engine: self.engine.erased() }
     }

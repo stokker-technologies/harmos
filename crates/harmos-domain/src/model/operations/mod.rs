@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+pub mod discovery;
 pub mod policy;
 
 /* === Re-Exports === */

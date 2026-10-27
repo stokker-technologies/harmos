@@ -1123,6 +1123,9 @@ dependencies = [
  "criterion",
  "harmos-domain",
  "harmos-sdk",
+ "harmos-storage",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

@@ -189,7 +189,7 @@ async fn builtin_grpc_roundtrip() {
 #[tokio::test]
 async fn external_authority_parity() {
     use harmos_domain::plugin::Grant;
-    use harmos_runtime::operations::listing;
+
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime
         .operations
@@ -219,7 +219,7 @@ async fn external_authority_parity() {
         .unwrap();
     runtime
         .operations
-        .register(harmos_runtime::RegistrationExt::lane(listing::registration::<()>(None).unwrap(), Lanes::Open))
+        .register(harmos_runtime::RegistrationExt::lane(harmos_runtime::builtin::catalog_registration::<()>(None).unwrap(), Lanes::Open))
         .await
         .unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.

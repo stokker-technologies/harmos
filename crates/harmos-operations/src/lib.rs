@@ -10,6 +10,7 @@
 /* === Modules === */
 
 extern crate self as harmos;
+pub mod host;
 pub mod lifecycle;
 pub use harmos_domain::*;
 #[cfg(feature = "runtime")]

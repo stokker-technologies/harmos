@@ -482,3 +482,25 @@ impl harmos_sdk::operations::instances::InstanceChanges for InstanceChanges {
         Box::pin(async { self.0.changed().await.is_ok() })
     }
 }
+
+impl harmos_sdk::operations::access::Discovery for HostContext {
+    fn discover(
+        &self, after: Option<&str>, rows: usize, bytes: usize,
+    ) -> std::result::Result<harmos_sdk::operations::access::DiscoveryPage, harmos_sdk::operations::access::AccessError> {
+        let context = self.borrow();
+        let request = harmos_operations::host::CatalogRequest {
+            kind: harmos_operations::host::CatalogKind::Operations,
+            schema: None,
+            after: after.map(str::to_owned),
+            rows: Some(rows),
+            bytes: Some(bytes),
+        };
+        let page = context.operations.discover(&context.source, &request)?;
+        Ok((page.entries, page.next))
+    }
+}
+impl harmos_sdk::operations::access::GrantAuthority for HostContext {
+    fn admit(&self, grant: &harmos_domain::plugin::Grant) -> std::result::Result<(), harmos_sdk::operations::access::AccessError> {
+        self.borrow().admit_stream_grant(grant).map_err(Into::into)
+    }
+}

@@ -22,3 +22,12 @@ impl Catalog {
         harmos_operations::lifecycle::Lifecycle::registration(harmos_sdk::Dependencies::new())
     }
 }
+
+pub fn catalog_registration<C: 'static>(
+    storage: Option<std::sync::Arc<crate::storage::StorageManager<C>>>,
+) -> crate::Result<harmos_sdk::RegistrationBatch> {
+    let mut dependencies = harmos_sdk::Dependencies::new();
+    let storage = storage.map(|storage| std::sync::Arc::new(storage.engine_erased()));
+    dependencies.insert(std::sync::Arc::new(storage))?;
+    Ok(harmos_operations::host::Host::registration(dependencies))
+}

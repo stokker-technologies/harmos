@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+pub mod access;
 mod authored;
 mod dependencies;
 pub mod instance;

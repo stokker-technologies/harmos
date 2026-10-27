@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-pub mod host;
 pub mod lifecycle;
 pub mod storage;
 pub mod streams;
