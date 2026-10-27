@@ -210,7 +210,7 @@ impl Handler for ReadOperation {
     type Response = <ReadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let counts = context.resource::<Counts>().expect("fixture registers its dependency");
         let context = context.resource::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
         let constructed: Result<Self, Self::Error> = async move {
@@ -243,7 +243,7 @@ impl Handler for ReadOperation {
         Ok(operation)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let context = context.resource::<harmos_runtime::sidecar::Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -302,12 +302,12 @@ impl Handler for RefreshOperation {
     type Response = <RefreshDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let counts = context.resource::<Counts>().expect("fixture registers its dependency");
         Ok(Self(counts))
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _request: &mut RefreshDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _request: &mut RefreshDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.children.fetch_add(1, Ordering::SeqCst);

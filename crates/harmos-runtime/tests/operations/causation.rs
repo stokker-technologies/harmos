@@ -142,13 +142,13 @@ impl Handler for Note {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut NoteContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut NoteContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -167,13 +167,13 @@ impl Handler for Descend {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut DescendContractDeclaration,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut DescendContractDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
@@ -198,13 +198,13 @@ impl Handler for Family {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut FamilyContractDeclaration,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut FamilyContractDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

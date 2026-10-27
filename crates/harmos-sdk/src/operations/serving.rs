@@ -35,7 +35,7 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 // Local Imports
-use super::{Contract, ContractError, FailureKind, OperationContext, OperationDefinition, RegistrationBatch};
+use super::{Contract, ContractError, FailureKind, ExecutionContext, OperationDefinition, RegistrationBatch};
 use crate::QualifiedId;
 
 /* === Constants === */
@@ -298,8 +298,8 @@ trait Prepared: Send {
     fn grant(&self) -> Option<crate::plugin::Grant> {
         None
     }
-    fn initialize<'a>(&'a mut self, context: &'a OperationContext) -> Finished<'a>;
-    fn attempt<'a>(&'a mut self, context: &'a OperationContext) -> Answer<'a>;
+    fn initialize<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
+    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
 
@@ -557,7 +557,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    pub async fn initialize(&mut self, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
+    pub async fn initialize(&mut self, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -569,7 +569,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    pub async fn attempt(&mut self, invocation: u64, context: &OperationContext) -> Result<Vec<u8>, ServingError> {
+    pub async fn attempt(&mut self, invocation: u64, context: &ExecutionContext) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -629,7 +629,7 @@ impl WireTable {
     }
 
     pub fn begin(
-        &mut self, command: WireCommand, context: Arc<OperationContext>,
+        &mut self, command: WireCommand, context: Arc<ExecutionContext>,
     ) -> Pin<Box<dyn Future<Output = WireAnswer> + Send + 'static>> {
         let (invocation, phase) = command_identity(&command);
         let span = tracing::debug_span!(target: "harmos::carrier", "carrier.receive", invocation, phase, outcome = tracing::field::Empty);
@@ -775,7 +775,7 @@ impl WireTable {
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "carrier.answer", level = "debug", skip_all, fields(invocation = command_identity(&command).0, phase = command_identity(&command).1))]
-    pub async fn answer(&mut self, command: WireCommand, context: &OperationContext) -> WireAnswer {
+    pub async fn answer(&mut self, command: WireCommand, context: &ExecutionContext) -> WireAnswer {
         if command.is_stream_traffic() {
             return self.traffic(command).await;
         }
@@ -889,13 +889,13 @@ impl Slot {
 
 impl Slot {
     #[tracing::instrument(target = "harmos::streams", name = "streams.initialize", level = "trace", skip_all, fields(invocation))]
-    async fn initialize(self: &Arc<Self>, invocation: u64, context: &OperationContext) -> Result<(), ServingError> {
+    async fn initialize(self: &Arc<Self>, invocation: u64, context: &ExecutionContext) -> Result<(), ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
         self.active(loan.prepared.as_mut().expect("loaned invocation state").initialize(context)).await
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
-    async fn attempt(self: &Arc<Self>, invocation: u64, context: &OperationContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
+    async fn attempt(self: &Arc<Self>, invocation: u64, context: &ExecutionContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
         #[cfg(feature = "streaming")]
         let attempt = match (&self.streams, epoch) {

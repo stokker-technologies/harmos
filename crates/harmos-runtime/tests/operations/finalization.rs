@@ -99,7 +99,7 @@ impl Handler for Finishing {
     type Response = <FinishDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         let state = State {
             ran: false,
@@ -109,7 +109,7 @@ impl Handler for Finishing {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
@@ -150,7 +150,7 @@ impl Handler for ParentCall {
     type Response = <ParentDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         let resources = context.resource::<ParentOwner>().expect("fixture registers its dependency");
         let state = State {
             ran: false,
@@ -160,7 +160,7 @@ impl Handler for ParentCall {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ParentDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

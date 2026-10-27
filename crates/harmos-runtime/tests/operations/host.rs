@@ -80,13 +80,13 @@ impl Handler for Holding {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         let gate = context.resource::<Gate>().expect("fixture registers its dependency");
         Ok(Self(gate))
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut HoldDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut HoldDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
         self.0.started.notify_one();
         self.0.release.acquire().await.unwrap().forget();

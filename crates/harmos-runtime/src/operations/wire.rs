@@ -514,11 +514,11 @@ mod tests {
         type Error = std::io::Error;
         type StreamEndpoints = ();
 
-        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+        async fn initialize(_: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
             Ok(Self)
         }
 
-        async fn run(&mut self, _: harmos_sdk::OperationContext, request: &mut u64, _: &mut ()) -> std::io::Result<crate::Response<u64>> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext, request: &mut u64, _: &mut ()) -> std::io::Result<crate::Response<u64>> {
             Ok((*request).into())
         }
     }

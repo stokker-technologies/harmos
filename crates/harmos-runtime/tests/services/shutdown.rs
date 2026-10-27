@@ -92,13 +92,13 @@ impl Handler for Ordered {
     type Error = std::convert::Infallible;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let sequence = context.resource::<Sequence>().expect("fixture registers its dependency");
         Ok(Self { running: false, sequence })
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut OrderedContractDeclaration,
+        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut OrderedContractDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

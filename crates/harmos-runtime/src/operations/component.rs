@@ -168,7 +168,7 @@ where
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
         let component = context.resource::<Component>()?;
         Ok(Self {
             component,
@@ -181,7 +181,7 @@ where
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -447,14 +447,14 @@ impl Handler for SdkOperation {
     type StreamEndpoints = ();
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self, ComponentError> {
+    async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
         let binding = context.resource::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run(
-        &mut self, context: harmos_sdk::OperationContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_sdk::ExecutionContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();

@@ -21,7 +21,7 @@
 use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
 use crate::Message;
 use crate::QualifiedId;
-use crate::operations::{Dependencies, EndpointSet, Handler, OperationContext, OperationDeclaration};
+use crate::operations::{Dependencies, EndpointSet, Handler, ExecutionContext, OperationDeclaration};
 
 /* === Constants === */
 
@@ -267,7 +267,7 @@ impl<T: Handler> Prepared for State<T> {
         self.grant.clone()
     }
 
-    fn initialize<'a>(&'a mut self, context: &'a OperationContext) -> Finished<'a> {
+    fn initialize<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);
@@ -286,7 +286,7 @@ impl<T: Handler> Prepared for State<T> {
         })
     }
 
-    fn attempt<'a>(&'a mut self, context: &'a OperationContext) -> Answer<'a> {
+    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);

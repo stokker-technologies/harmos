@@ -872,7 +872,7 @@ The operations crate enables all built-in execution with `runtime`, which includ
 feature for the two SDK plugin controls, without linking host storage into a
 Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
 instance, discovery, publication, lifecycle and grant-access handles through
-`OperationContext`, along with the erased storage engine. State owners retain
+`ExecutionContext`, along with the erased storage engine. State owners retain
 authorization, generation fencing and resource lifecycle ownership.
 
 Protocol, artifact, envelope, journal and schema formats are v1. Only current

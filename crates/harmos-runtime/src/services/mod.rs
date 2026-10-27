@@ -266,7 +266,7 @@ impl<A: Application> Resident<A> for AuthoredService {
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
         }
-        let call = harmos_sdk::OperationContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
+        let call = harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::Host::context(&context.operations).clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -536,13 +536,13 @@ mod tests {
     impl harmos_sdk::Service for Worker {
         type Error = crate::Error;
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self> {
             let counts = context.resource::<Counts>()?;
             let attempt = counts.initialized.fetch_add(1, Ordering::SeqCst);
             Ok(Self { counts, attempt })
         }
 
-        async fn run(&mut self, context: harmos_sdk::OperationContext) -> Result<()> {
+        async fn run(&mut self, context: harmos_sdk::ExecutionContext) -> Result<()> {
             if self.attempt == 0 {
                 return Err(Error::InvalidInput {
                     field: "fixture",

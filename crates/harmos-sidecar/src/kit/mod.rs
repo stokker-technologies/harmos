@@ -32,7 +32,7 @@ pub mod __private {
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::{Dependencies, Operation, OperationContext, RegistrationBatch, Service};
+pub use harmos_sdk::{Dependencies, Operation, ExecutionContext, RegistrationBatch, Service};
 
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
@@ -555,7 +555,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
                 if let Err(error) = dependencies.insert(caller).and_then(|()| dependencies.insert(Arc::new(operation_host))) {
                     return Answered::Frame(Frame::Refusal { id, refusal: Refusal::of(error) });
                 }
-                let context = crate::OperationContext::new(dependencies, call);
+                let context = crate::ExecutionContext::new(dependencies, call);
                 table.begin(command, Arc::new(context))
             }
             Err(error) => {

@@ -378,12 +378,12 @@ impl harmos_runtime::operations::Handler for PublishingCall {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<()>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut PublishPulseDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut PublishPulseDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -496,12 +496,12 @@ impl harmos_runtime::operations::Handler for Amplifying {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Provider>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut AmplifyDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut AmplifyDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value == 0 {
@@ -525,13 +525,13 @@ impl harmos_runtime::operations::Handler for Retrying {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Provider>().expect("fixture dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut RetryDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RetryDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             self.resources.attempts.fetch_add(1, Ordering::SeqCst);
@@ -562,7 +562,7 @@ impl<F: Forwarded> harmos_runtime::operations::Handler for Forwarding<F> {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Forwarder>().expect("fixture dependency");
         Ok(Self {
             _resources: resources,
@@ -570,7 +570,7 @@ impl<F: Forwarded> harmos_runtime::operations::Handler for Forwarding<F> {
         })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut F, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut F, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<Amplified, Self::Error> = async move {

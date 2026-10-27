@@ -160,12 +160,12 @@ impl Handler for Consumption {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let state = context.resource::<State>().expect("fixture dependency");
         Ok(Self { state })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, row: &mut Delivery<Listener>, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, row: &mut Delivery<Listener>, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             if !matches!(row.context(), DeliveryContext::Stream { .. }) {
@@ -191,12 +191,12 @@ impl Handler for Reporting {
     type Response = <ProgressDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let state = context.resource::<State>().expect("fixture registers its dependency");
         Ok(Self { state })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProgressDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ProgressDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
         let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
             loop {

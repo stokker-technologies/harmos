@@ -82,13 +82,13 @@ impl Handler for Ping {
     type Error = std::convert::Infallible;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let _resources = context.resource::<()>().expect("fixture registers its dependency");
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _request: &mut PingContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _request: &mut PingContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
         result.map(::core::convert::Into::into)

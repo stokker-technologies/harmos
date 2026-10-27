@@ -15,7 +15,7 @@ pub mod __harmos {
         StreamField, StreamSpec,
     };
     #[cfg(feature = "runtime")]
-    pub use harmos::{Context, Dependencies, Dependent, Operation, OperationContext, RegistrationBatch, Resource, Response};
+    pub use harmos::{Context, Dependencies, Dependent, Operation, ExecutionContext, RegistrationBatch, Resource, Response};
     pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
 }
 

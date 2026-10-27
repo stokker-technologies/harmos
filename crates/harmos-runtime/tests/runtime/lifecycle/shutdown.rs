@@ -97,13 +97,13 @@ impl harmos_runtime::operations::Handler for PendingCall {
     type Error = std::convert::Infallible;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let trace = context.resource::<Cancellation>().expect("fixture registers its dependency");
         Ok(Self(trace))
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut PendingContractDeclaration, _: &mut (),
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut PendingContractDeclaration, _: &mut (),
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.started.notify_one();

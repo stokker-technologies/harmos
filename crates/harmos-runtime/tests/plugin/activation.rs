@@ -52,12 +52,12 @@ impl Handler for WireClient {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut WireCallDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut WireCallDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

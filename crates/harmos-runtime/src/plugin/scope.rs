@@ -761,13 +761,13 @@ mod tests {
         type Error = harmos_sdk::ResourceError;
         type StreamEndpoints = ();
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, Self::Error> {
             context.resource::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
             Ok(Self)
         }
 
         async fn run(
-            &mut self, _: harmos_sdk::OperationContext, _: &mut Read, _: &mut (),
+            &mut self, _: harmos_sdk::ExecutionContext, _: &mut Read, _: &mut (),
         ) -> std::result::Result<crate::Response<u64>, Self::Error> {
             Ok(7.into())
         }
@@ -776,7 +776,7 @@ mod tests {
     struct Worker(Arc<AtomicUsize>);
     impl harmos_sdk::services::Service for Worker {
         type Error = harmos_sdk::ResourceError;
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, Self::Error> {
             assert_eq!(context.resource::<PluginScope>()?.owner(), "worker");
             assert!(context.resource::<crate::services::ServiceContext<Model>>().is_err());
             let calls = context.resource::<AtomicUsize>()?;
@@ -784,7 +784,7 @@ mod tests {
             context.resource::<tokio::sync::Notify>()?.notify_one();
             Ok(Self(calls))
         }
-        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::result::Result<(), Self::Error> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::result::Result<(), Self::Error> {
             std::future::pending().await
         }
         async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {

@@ -114,7 +114,7 @@ impl Handler for Reading {
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Resources>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources, phase: None }) }.await;
         let mut operation = constructed?;
@@ -129,7 +129,7 @@ impl Handler for Reading {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ReadDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.phase = Some(request.phase);

@@ -194,12 +194,12 @@ impl<const FIRST: bool> Handler for Hearing<FIRST> {
     type Response = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Response;
 
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture dependency");
         Ok(Self { resources, wait_cleanup: false })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;

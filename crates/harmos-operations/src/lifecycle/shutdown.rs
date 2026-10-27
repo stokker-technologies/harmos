@@ -59,14 +59,14 @@ impl crate::Handler for Control {
     type Response = ();
     type Error = super::ControlError;
     type StreamEndpoints = ();
-    async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
         let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Shutdown),
         })
     }
     async fn run(
-        &mut self, context: crate::OperationContext, request: &mut Shutdown, _: &mut (),
+        &mut self, context: crate::ExecutionContext, request: &mut Shutdown, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
         let _ = &request;
         self.instance.run(context, &[], &[], &[]).await.map_err(super::ControlError::Access)?;

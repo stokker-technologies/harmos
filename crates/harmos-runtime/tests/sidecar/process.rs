@@ -211,14 +211,14 @@ impl Handler for Echoing {
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let marks = context.resource::<Witness>().expect("fixture dependency");
         marks.mark("echo-initialized");
         Ok(Self { marks, id: None, run_started: false })
     }
 
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut Echo, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut Echo, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("echo-prepared-{}", request.id));
@@ -258,14 +258,14 @@ impl Handler for Publishing {
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let marks = context.resource::<Witness>().expect("fixture dependency");
         marks.mark("nested-initialized");
         Ok(Self { marks, id: None })
     }
 
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut Nested, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut Nested, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Blob>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         self.id = Some(request.id);
@@ -300,7 +300,7 @@ impl Handler for CallbackPublication {
     type Error = harmos_runtime::Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let owner = context.resource::<Callback>().expect("fixture dependency");
         let publication = PublicationCall::initialize(context).await.map_err(|source| harmos_runtime::Error::OperationFailed {
             operation: "host.publish".into(),
@@ -310,7 +310,7 @@ impl Handler for CallbackPublication {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut harmos_operations::streams::Publish,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut harmos_operations::streams::Publish,
         endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

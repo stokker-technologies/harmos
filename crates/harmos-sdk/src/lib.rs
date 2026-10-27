@@ -25,7 +25,7 @@ pub mod __private {
 
 pub use harmos_domain::*;
 pub use operations::{
-    Context, Dependencies, Dependent, EndpointSet, Executable, Handler, InputEndpoint, Instance, Operation, OperationContext,
+    Context, Dependencies, Dependent, EndpointSet, Executable, Handler, InputEndpoint, Instance, Operation, ExecutionContext,
     OutputEndpoint, RegistrationBatch, Resource, ResourceError, Response, ServingError, WireTable,
 };
 pub use plugin::Plugin;

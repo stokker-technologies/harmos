@@ -107,11 +107,11 @@ where
     type Response = String;
     type Error = Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _: &mut Self::Request, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _: &mut Self::Request, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<String>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -141,11 +141,11 @@ where
     type Response = String;
     type Error = Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut Self::Request, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut Self::Request, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<String>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -493,14 +493,14 @@ impl Handler for Retrying {
     type Response = <RetryDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         Ok(Self { attempts: 0 })
     }
     fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
         harmos_runtime::operations::FailureKind::Transient
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut RetryDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut RetryDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Self::Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

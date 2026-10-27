@@ -42,14 +42,14 @@ macro_rules! serving {
 
             type Error = harmos_runtime::Error;
             type StreamEndpoints = $endpoints;
-            async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+            async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
                 let counts = context.resource::<Counts>().expect("fixture dependency");
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
                 counts.operation_initialized.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
             }
             async fn run(
-                &mut self, _: harmos_runtime::OperationContext, $request: &mut Self::Request, $ports: &mut Self::StreamEndpoints,
+                &mut self, _: harmos_runtime::ExecutionContext, $request: &mut Self::Request, $ports: &mut Self::StreamEndpoints,
             ) -> Result<harmos_runtime::operations::Response<u32>, Self::Error> {
                 let result: ::core::result::Result<u32, Self::Error> = async move {
                     self.0.runs.fetch_add(1, Ordering::SeqCst);

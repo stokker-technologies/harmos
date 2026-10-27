@@ -169,12 +169,12 @@ impl Handler for Observing {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Probe>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Delivery<Observed>, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             assert_eq!(

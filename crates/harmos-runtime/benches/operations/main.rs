@@ -85,7 +85,7 @@ impl Handler for Dispatching {
     type Error = harmos_runtime::ResourceError;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         Ok(Self {
             signals: context.resource::<Waiting>()?,
             waiting: false,
@@ -93,7 +93,7 @@ impl Handler for Dispatching {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Dispatch, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Dispatch, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let result: ::core::result::Result<u64, Self::Error> = async move {
             self.waiting = request.wait;

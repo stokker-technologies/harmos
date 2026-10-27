@@ -187,12 +187,12 @@ impl harmos_sidecar::operations::Handler for Echoing {
     type Response = EchoOperation;
     type Error = harmos_sidecar::Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_sidecar::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_sidecar::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_sidecar::OperationContext, request: &mut EchoOperation, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_sidecar::ExecutionContext, request: &mut EchoOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_sidecar::operations::Response<EchoOperation>, Self::Error> {
         let result: ::core::result::Result<EchoOperation, Self::Error> = async move { Ok(request.clone()) }.await;
         result.map(::core::convert::Into::into)
@@ -208,12 +208,12 @@ impl harmos_sidecar::operations::Handler for Starting {
     type Response = ();
     type Error = harmos_sidecar::Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_sidecar::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_sidecar::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Handler>().map_err(harmos_sidecar::Refusal::of)?;
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_sidecar::OperationContext, request: &mut StartOperation, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_sidecar::ExecutionContext, request: &mut StartOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.validate()?;

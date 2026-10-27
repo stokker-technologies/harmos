@@ -89,13 +89,13 @@ impl Handler for Wait {
     type Error = std::convert::Infallible;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         Ok(Self { holding: false, released: false, trace })
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut WaitContractDeclaration,
+        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut WaitContractDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

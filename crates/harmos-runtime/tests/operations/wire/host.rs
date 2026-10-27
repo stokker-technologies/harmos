@@ -95,13 +95,13 @@ impl harmos_runtime::operations::Handler for CorePublication {
 
     type Error = super::Failed;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Self::Error> {
         let owner = context.resource::<CoreOwner>().expect("fixture dependency");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self(owner))
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut harmos_operations::streams::Publish,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut harmos_operations::streams::Publish,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
@@ -137,13 +137,13 @@ impl Handler for Controlling {
     type Response = <ControlDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = super::Failed;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Self::Error> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ControlDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ControlDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Self::Error> {
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.value.clone()) }.await;
         result.map(::core::convert::Into::into)

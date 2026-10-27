@@ -21,7 +21,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::OperationContext;
+use crate::operations::ExecutionContext;
 
 /* === Constants === */
 
@@ -38,8 +38,8 @@ use crate::operations::OperationContext;
 pub trait Service: Send + Sized + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn initialize(context: OperationContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
-    fn run(&mut self, context: OperationContext) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn initialize(context: ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn run(&mut self, context: ExecutionContext) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }

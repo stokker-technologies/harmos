@@ -115,12 +115,12 @@ impl<const CHARGED: bool> Handler for Parent<CHARGED> {
     type Error = Error;
     type StreamEndpoints = ();
 
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ParentDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ParentDeclaration, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -232,7 +232,7 @@ where
     type Response = <Declaration<N> as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = StreamEndpoints;
-    async fn initialize(_context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let trace = _context.resource::<Trace>().expect("fixture registers its dependency");
         let constructed: harmos_runtime::Result<Self> = async move {
             trace.new.fetch_add(1, Ordering::SeqCst);
@@ -250,7 +250,7 @@ where
         Ok(operation)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Declaration<N>, endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Declaration<N>, endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             if !request.consume {

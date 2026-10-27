@@ -117,7 +117,7 @@ impl Handler for Read {
     type Error = std::io::Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Resources>().expect("fixture registers its dependency");
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -154,7 +154,7 @@ impl Handler for Read {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Answer>, Self::Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -535,12 +535,12 @@ mod listed {
         type Response = u32;
         type Error = harmos_runtime::Error;
         type StreamEndpoints = ();
-        async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self)
         }
 
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, request: &mut DoublingDeclaration, _: &mut (),
+            &mut self, _: harmos_runtime::ExecutionContext, request: &mut DoublingDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
             Ok((request.value * 2).into())
         }
@@ -553,11 +553,11 @@ mod listed {
         type Response = u32;
         type Error = harmos_runtime::Error;
         type StreamEndpoints = ();
-        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self(context.resource::<u32>()?))
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _: &mut InferredOwnedDeclaration, _: &mut (),
+            &mut self, _: harmos_runtime::ExecutionContext, _: &mut InferredOwnedDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
         }
@@ -570,11 +570,11 @@ mod listed {
         type Response = u32;
         type Error = harmos_runtime::Error;
         type StreamEndpoints = ();
-        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self(context.resource::<u32>()?))
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _: &mut DoublingDeclaration, _: &mut (),
+            &mut self, _: harmos_runtime::ExecutionContext, _: &mut DoublingDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
         }
@@ -606,11 +606,11 @@ mod listed {
         type Response = u32;
         type Error = harmos_runtime::Error;
         type StreamEndpoints = ();
-        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self(context.resource::<BorrowOwner>()?))
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _: &mut CachedOwnerDeclaration, _: &mut (),
+            &mut self, _: harmos_runtime::ExecutionContext, _: &mut CachedOwnerDeclaration, _: &mut (),
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             self.0.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))

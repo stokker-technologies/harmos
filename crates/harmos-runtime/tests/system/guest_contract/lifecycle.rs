@@ -106,12 +106,12 @@ impl Handler for Echo {
 
     type Error = harmos_runtime::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let resources = context.resource::<Domain>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut wire::ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut wire::ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<wire::Echoed>> {
         let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
             // The Waiting Probe Asks For An Answer That Never Comes Before Its Deadline
@@ -133,12 +133,12 @@ impl Handler for Publish {
 
     type Error = harmos_runtime::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let resources = context.resource::<Domain>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, row: &mut harmos_operations::streams::Publish,
+        &mut self, context: harmos_runtime::ExecutionContext, row: &mut harmos_operations::streams::Publish,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {

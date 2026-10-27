@@ -214,12 +214,12 @@ impl Handler for RemoteFetching {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let runs = context.resource::<Runs>().expect("fixture dependency");
         Ok(Self { runs })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut RemoteFetchDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RemoteFetchDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Fetch>, Refusal> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
         Ok(Fetch { value: request.value + 1 }.into())
@@ -232,12 +232,12 @@ impl Handler for LocalFetching {
 
     type Error = harmos_runtime::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let runs = context.resource::<Runs>().expect("fixture dependency");
         Ok(Self { runs })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut LocalFetchDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut LocalFetchDeclaration, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
         Ok(Fetch { value: request.value + 1 }.into())

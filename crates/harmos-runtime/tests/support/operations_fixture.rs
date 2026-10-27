@@ -270,14 +270,14 @@ impl Handler for ComputeCall {
     type Response = Response;
     type StreamEndpoints = ();
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let owner = context.resource::<Owner>().expect("fixture registers its owner");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { owner, state })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
             let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
@@ -296,13 +296,13 @@ impl Handler for SlowCall {
     type Response = Response;
     type StreamEndpoints = ();
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let owner = context.resource::<Owner>().expect("fixture registers its owner");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { owner })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Slow, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Slow, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let request = &request.0;
         let result: ::core::result::Result<Response, Self::Error> = async move {
@@ -321,12 +321,12 @@ impl Handler for ParentCall {
     type Response = Response;
     type StreamEndpoints = ();
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let owner = context.resource::<ParentOwner>().expect("fixture registers its owner");
         Ok(Self { _owner: owner })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Parent, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut Parent, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
             let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

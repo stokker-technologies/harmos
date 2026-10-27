@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 // Local Imports
 use super::{Attachment, Context as PluginContext, Error, Plugin};
-use crate::operations::{Contract, OperationContext, ServingError, WireTable};
+use crate::operations::{Contract, ExecutionContext, ServingError, WireTable};
 use harmos_domain::model::operations::lifecycle;
 
 /* === Constants === */
@@ -317,7 +317,7 @@ impl<P: Plugin> crate::operations::lifecycle::PluginLifecycle for Owner<P> {
 }
 impl<P: Plugin> crate::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
     fn run<'a>(
-        &'a mut self, context: OperationContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
+        &'a mut self, context: ExecutionContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
     ) -> crate::operations::lifecycle::Transition<'a> {
         Box::pin(async move {
             let result: Result<(), Error<P>> = async {

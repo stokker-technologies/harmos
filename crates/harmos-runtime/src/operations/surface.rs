@@ -415,12 +415,12 @@ mod tests {
         type Error = std::io::Error;
         type StreamEndpoints = ();
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+        async fn initialize(context: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
             context.resource::<AtomicUsize>().map_err(std::io::Error::other)?.fetch_add(1, Ordering::SeqCst);
             Ok(Self { value: 0 })
         }
 
-        async fn run(&mut self, _: harmos_sdk::OperationContext, request: &mut Probe, _: &mut ()) -> std::io::Result<Response<u64>> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext, request: &mut Probe, _: &mut ()) -> std::io::Result<Response<u64>> {
             if request.value != 0 {
                 request.value -= 1;
                 return Err(std::io::Error::other("retry this request"));
@@ -437,10 +437,10 @@ mod tests {
 
     impl harmos_sdk::Service for Idle {
         type Error = std::io::Error;
-        async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
+        async fn initialize(_: harmos_sdk::ExecutionContext) -> std::io::Result<Self> {
             Ok(Self)
         }
-        async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::io::Result<()> {
+        async fn run(&mut self, _: harmos_sdk::ExecutionContext) -> std::io::Result<()> {
             std::future::pending().await
         }
     }

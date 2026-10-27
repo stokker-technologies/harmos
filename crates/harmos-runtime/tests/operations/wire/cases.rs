@@ -243,14 +243,14 @@ impl Handler for Coding {
     type Response = <Codec as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut Codec, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut Codec, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Payload>, Failed> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
@@ -276,7 +276,7 @@ impl Handler for Echoing {
     type Response = String;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
@@ -284,7 +284,7 @@ impl Handler for Echoing {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, value: &mut EchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, value: &mut EchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -314,7 +314,7 @@ impl Handler for PrivateEchoing {
     type Response = String;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
@@ -322,7 +322,7 @@ impl Handler for PrivateEchoing {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, value: &mut PrivateEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, value: &mut PrivateEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -358,14 +358,14 @@ impl<const PLUGIN: bool> Handler for Nesting<PLUGIN> {
     type Response = String;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { _resources: resources })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut NestedDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut NestedDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -393,14 +393,14 @@ impl Handler for SameLaneCall {
     type Response = String;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { _resources: resources })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut SameLaneDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut SameLaneDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -423,13 +423,13 @@ impl Handler for Detaching {
     type Response = String;
     type Error = Failed;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Failed> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         Ok(Self { resources })
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut DetachedDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut DetachedDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

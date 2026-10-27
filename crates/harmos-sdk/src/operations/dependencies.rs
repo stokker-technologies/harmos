@@ -37,7 +37,7 @@ pub struct Dependencies {
 }
 
 #[derive(Clone)]
-pub struct OperationContext {
+pub struct ExecutionContext {
     dependencies: Dependencies,
     pub call: CallContext,
 }
@@ -96,7 +96,7 @@ impl Dependencies {
     }
 }
 
-impl OperationContext {
+impl ExecutionContext {
     pub fn new(dependencies: Dependencies, call: CallContext) -> Self {
         Self { dependencies, call }
     }

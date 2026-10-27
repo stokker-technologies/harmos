@@ -19,7 +19,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::{FailureKind, OperationContext, OperationDeclaration};
+use super::{FailureKind, ExecutionContext, OperationDeclaration};
 use crate::Portable;
 
 /* === Constants === */
@@ -81,10 +81,10 @@ pub trait Handler: Send + Sized + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
     type StreamEndpoints: EndpointSet;
 
-    fn initialize(context: OperationContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
+    fn initialize(context: ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: ExecutionContext, request: &mut Self::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> impl Future<Output = Result<super::Response<Self::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {

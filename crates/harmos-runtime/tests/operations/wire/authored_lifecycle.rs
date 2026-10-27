@@ -89,7 +89,7 @@ impl Handler for Read {
     type Error = std::io::Error;
     type StreamEndpoints = ();
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> std::io::Result<Self> {
         let events = _context.resource::<Mutex<Vec<&'static str>>>().expect("fixture registers its dependency");
         let constructed: std::io::Result<Self> = async move {
             events.lock().unwrap().push("new");
@@ -107,7 +107,7 @@ impl Handler for Read {
         Ok(operation)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Request, _: &mut Self::StreamEndpoints,
     ) -> std::io::Result<harmos_runtime::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             self.events.lock().unwrap().push("run");
@@ -242,11 +242,11 @@ impl harmos_runtime::Handler for Streaming {
     type Response = ();
     type StreamEndpoints = (harmos_runtime::operations::StreamInput<u32>, harmos_runtime::operations::StreamOutput<u32>);
     type Error = std::io::Error;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         Ok(Self(context.resource::<std::sync::atomic::AtomicUsize>().map_err(std::io::Error::other)?, false))
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut StreamingDeclarationDeclaration,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut StreamingDeclarationDeclaration,
         endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::Response<()>, std::io::Error> {
         let (_, output) = endpoints;

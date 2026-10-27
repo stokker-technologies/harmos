@@ -143,11 +143,11 @@ impl Handler for Publishing {
     type Response = <PublishDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         Ok(Self)
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, burst: &mut PublishDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, burst: &mut PublishDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<Timings, Self::Error> = async move {

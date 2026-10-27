@@ -16,7 +16,7 @@
 pub use crate::state::{Invert, Transaction};
 pub use crate::{Application, Builder, Error, Identifier, Message, Result, Runtime};
 pub use crate::{
-    Backoff, Context, Dependencies, EndpointSet, Invocation, Jitter, Lane, Operation, OperationContext, OperationDeclaration,
+    Backoff, Context, Dependencies, EndpointSet, Invocation, Jitter, Lane, Operation, ExecutionContext, OperationDeclaration,
     OperationDefinition, OperationPolicy, Portable, QualifiedId, Registration, RegistrationExt, Response, RestartPolicy, RetryPolicy,
     Running, Service, ServiceContext, ServicePolicy,
 };

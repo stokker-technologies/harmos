@@ -177,7 +177,7 @@ where
     let mut dependencies = crate::Dependencies::new();
     dependencies.insert(Arc::new(harmos_sdk::operations::Calls(context.clone()))).map_err(refusal)?;
     dependencies.insert(context).map_err(refusal)?;
-    let context = harmos_sdk::operations::OperationContext::new(dependencies, call);
+    let context = harmos_sdk::operations::ExecutionContext::new(dependencies, call);
     let phase = table.lock().map_err(refusal)?.begin(command, Arc::new(context));
     // The Original Slot Owns Work While Both Instance And Table Borrows Are Free
     let answer = phase.await;

@@ -30,7 +30,7 @@ mod surface;
 
 pub use authored::{EndpointSet, Executable, Handler, InputEndpoint, OutputEndpoint};
 pub use calls::{CallFuture, Caller, Calls, InvocationError, Target};
-pub use dependencies::{AssignedOperation, Dependencies, OperationAssignments, OperationContext, ResourceError};
+pub use dependencies::{AssignedOperation, Dependencies, OperationAssignments, ExecutionContext, ResourceError};
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{Authored, Context, Dependent, Operation, Resource, Shape, Streams};

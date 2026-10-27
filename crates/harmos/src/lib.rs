@@ -32,7 +32,7 @@ pub mod prelude {
         ServicePolicy, catalog, message, operation,
     };
     #[cfg(feature = "runtime")]
-    pub use harmos_sdk::{Context, Dependencies, Operation, OperationContext, RegistrationBatch, Response, Service};
+    pub use harmos_sdk::{Context, Dependencies, Operation, ExecutionContext, RegistrationBatch, Response, Service};
 }
 
 /* === Imports === */

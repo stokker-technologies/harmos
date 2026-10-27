@@ -85,7 +85,7 @@ impl Handler for Read {
     type Error = std::io::Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Resources>().expect("fixture registers its dependency");
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -107,7 +107,7 @@ impl Handler for Read {
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut ReadContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Text>, Self::Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -246,11 +246,11 @@ async fn registration_refuses_stream() {
         type Response = <StreamContract as harmos_runtime::OperationDeclaration>::Response;
         type Error = std::io::Error;
         type StreamEndpoints = ();
-        async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
             panic!("unsupported binding must not construct an operation")
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _request: &mut StreamContract, _endpoints: &mut Self::StreamEndpoints,
+            &mut self, _: harmos_runtime::ExecutionContext, _request: &mut StreamContract, _endpoints: &mut Self::StreamEndpoints,
         ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
             let result: ::core::result::Result<(), Self::Error> = async move { unreachable!() }.await;
             result.map(::core::convert::Into::into)

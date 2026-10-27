@@ -22,7 +22,7 @@ use std::pin::Pin;
 
 // Local Imports
 use super::{
-    Contract, Dependencies, Executable, Handler, OperationContext, OperationDeclaration, OperationDefinition, Resource, ServingError,
+    Contract, Dependencies, Executable, Handler, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ServingError,
     WireDeclaration, WireTable,
 };
 use crate::ServicePolicy;
@@ -36,7 +36,7 @@ use crate::services::Service;
 
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
 type Install = fn(&mut WireTable, Dependencies, Contract) -> Result<(), ServingError>;
-type InitializeService = fn(OperationContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
+type InitializeService = fn(ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
 type PrepareNative = fn(Dependencies, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
 type PrepareEncoded = fn(Dependencies, &[u8]) -> Result<PreparedNative, ServingError>;
 
@@ -111,15 +111,15 @@ struct NativeOperation<O: Handler> {
 /* === Traits === */
 
 pub trait ServiceInstance: Send {
-    fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, ()>;
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
     fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
 }
 
 pub trait NativeInstance: Send {
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind;
-    fn initialize(&mut self, context: OperationContext) -> ServiceFuture<'_, ()>;
-    fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
+    fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
     fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
     fn transferred(&self) -> bool;
@@ -357,7 +357,7 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
         error.downcast_ref::<O::Error>().map_or(crate::operations::FailureKind::Permanent, O::classify)
     }
 
-    fn initialize(&mut self, context: OperationContext) -> ServiceFuture<'_, ()> {
+    fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async move {
             if self.operation.is_none() {
                 let context = context.for_registration(self.dependencies.clone());
@@ -367,7 +367,7 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
         })
     }
 
-    fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, super::response::ErasedResponse> {
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse> {
         Box::pin(async move {
             let operation = self.operation.as_mut().ok_or(ServingError::Uninitialized)?;
             let context = context.for_registration(self.dependencies.clone());
@@ -427,13 +427,13 @@ impl<O: Handler> NativeInstance for NativeOperation<O> {
 }
 
 impl ServiceFactory {
-    pub fn initialize(&self, context: OperationContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>> {
+    pub fn initialize(&self, context: ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>> {
         (self.initialize)(context.for_registration(self.dependencies.clone()))
     }
 }
 
 impl<S: Service> ServiceInstance for InitializedService<S> {
-    fn run(&mut self, context: OperationContext) -> ServiceFuture<'_, ()> {
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async move { self.service.run(context.for_registration(self.dependencies.clone())).await.map_err(service_error) })
     }
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
@@ -500,14 +500,14 @@ mod tests {
         type Error = crate::ResourceError;
         type StreamEndpoints = ();
 
-        async fn initialize(context: OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(context: ExecutionContext) -> Result<Self, Self::Error> {
             Ok(Self {
                 value: context.resource::<u64>()?,
                 calls: 0,
             })
         }
 
-        async fn run(&mut self, _: OperationContext, _: &mut (), _: &mut ()) -> Result<crate::Response<u64>, Self::Error> {
+        async fn run(&mut self, _: ExecutionContext, _: &mut (), _: &mut ()) -> Result<crate::Response<u64>, Self::Error> {
             self.calls += 1;
             assert!(self.calls <= 2);
             Ok(crate::Response::from_owner(self.value.clone()))
@@ -561,7 +561,7 @@ mod tests {
         let factory = &batch.operations[0];
         assert!(factory.prepare_native(Box::new(7u64), Box::new(())).is_err());
         let mut invocation = factory.prepare_native(Box::new(()), Box::new(())).unwrap();
-        let context = OperationContext::new(Dependencies::new(), super::super::CallContext::default());
+        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
 
         ready(invocation.initialize(context.clone()));
         let first = ready(invocation.run(context.clone())).restore::<u64>().unwrap();
@@ -588,7 +588,7 @@ mod tests {
         let batch = RegistrationBatch::new(dependencies).operation::<Read>();
         let mut prepared = batch.operations[0].prepare_encoded(&().encode()).unwrap();
         assert_eq!(prepared.key, Read::key(&()));
-        let context = OperationContext::new(Dependencies::new(), super::super::CallContext::default());
+        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
         ready(prepared.instance.initialize(context.clone()));
         let response = ready(prepared.instance.run(context)).restore::<Vec<u8>>().unwrap();
         assert_eq!(u64::decode(&response).unwrap(), 42);
@@ -599,13 +599,13 @@ mod tests {
     impl Service for Worker {
         type Error = crate::ResourceError;
 
-        async fn initialize(context: OperationContext) -> Result<Self, Self::Error> {
+        async fn initialize(context: ExecutionContext) -> Result<Self, Self::Error> {
             let counter = context.resource::<AtomicUsize>()?;
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(Self(counter))
         }
 
-        async fn run(&mut self, _: OperationContext) -> Result<(), Self::Error> {
+        async fn run(&mut self, _: ExecutionContext) -> Result<(), Self::Error> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -652,7 +652,7 @@ mod tests {
         };
         let batch = RegistrationBatch::new(dependencies).service::<Worker>("worker", policy);
         let factory = &batch.services[0];
-        let context = OperationContext::new(Dependencies::new(), super::super::CallContext::default());
+        let context = ExecutionContext::new(Dependencies::new(), super::super::CallContext::default());
         let mut first = factory.initialize(context.clone());
         let mut second = factory.initialize(context);
         let mut task = std::task::Context::from_waker(std::task::Waker::noop());

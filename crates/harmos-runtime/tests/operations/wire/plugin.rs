@@ -159,12 +159,12 @@ impl harmos_runtime::operations::Handler for Selecting {
     type Response = <SelectedDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type StreamEndpoints = ();
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Failed> {
         let resources = context.resource::<SelectedOwner>().expect("fixture registers its dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut SelectedDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut SelectedDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> =
             async move { Ok(format!("{}:{}", self.resources.0, request.value)) }.await;
@@ -232,14 +232,14 @@ impl harmos_runtime::operations::Handler for SharedCall {
     type Request = Shared;
     type Response = <Shared as harmos_runtime::OperationDeclaration>::Response;
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Failed> {
         let owner = context.resource::<Owner>().expect("fixture registers its dependency");
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = super::State { attempts: 0 };
         Ok(Self { owner, state })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut Shared, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut Shared, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<Response>, Failed> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -259,7 +259,7 @@ impl harmos_runtime::operations::Handler for Cleaning {
     type Response = <CleanupDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type StreamEndpoints = ();
     type Error = Failed;
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::result::Result<Self, Failed> {
         let resources = context.resource::<CleanupOwner>().expect("fixture registers its dependency");
         // The Deadline Passes Before Construction Returns (Paused Clock Only).
         let wait_cleanup = resources.expire.load(Ordering::SeqCst);
@@ -269,7 +269,7 @@ impl harmos_runtime::operations::Handler for Cleaning {
         Ok(Self { resources, wait_cleanup })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut CleanupDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut CleanupDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             self.wait_cleanup |= request.value == "block";

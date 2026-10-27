@@ -187,11 +187,11 @@ impl Handler for Read {
     type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -256,11 +256,11 @@ impl Handler for Guard {
     type Response = <GuardedDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _: &mut GuardedDeclaration, _: &mut (),
+        &mut self, context: harmos_runtime::ExecutionContext, _: &mut GuardedDeclaration, _: &mut (),
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -279,11 +279,11 @@ impl Handler for Descend {
     type Response = <DescendantDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _: &mut DescendantDeclaration, _: &mut (),
+        &mut self, context: harmos_runtime::ExecutionContext, _: &mut DescendantDeclaration, _: &mut (),
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -376,11 +376,11 @@ impl Handler for Downloading {
     type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut DownloadDeclaration, output: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut DownloadDeclaration, output: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -398,11 +398,11 @@ impl Handler for Reject {
     type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
@@ -413,11 +413,11 @@ impl Handler for Crash {
     type Response = <WhoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = ();
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut WhoDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
@@ -428,11 +428,11 @@ impl Handler for RejectStream {
     type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type StreamEndpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut DownloadDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut DownloadDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
@@ -443,11 +443,11 @@ impl Handler for CrashStream {
     type Response = <DownloadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut DownloadDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut DownloadDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
@@ -458,11 +458,11 @@ impl Handler for RejectUpload {
     type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = tonic::Status;
     type StreamEndpoints = harmos_runtime::operations::StreamInput<Reply>;
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, tonic::Status> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut UploadDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut UploadDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, tonic::Status> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(authored_rejection()) }.await;
         result.map(::core::convert::Into::into)
@@ -473,11 +473,11 @@ impl Handler for RejectExchange {
     type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut ExchangeDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut ExchangeDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move {
             Err(Error::TaskFailed {
@@ -497,11 +497,11 @@ impl Handler for CrashUpload {
     type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = harmos_runtime::operations::StreamInput<Reply>;
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut UploadDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut UploadDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
@@ -512,11 +512,11 @@ impl Handler for CrashExchange {
     type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, std::io::Error> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _: &mut ExchangeDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _: &mut ExchangeDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Reply>, std::io::Error> {
         let result: ::core::result::Result<Reply, Self::Error> = async move { Err(std::io::Error::other("disk detail")) }.await;
         result.map(::core::convert::Into::into)
@@ -527,12 +527,12 @@ impl Handler for Uploading {
     type Response = <UploadDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = harmos_runtime::operations::StreamInput<Reply>;
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let started = context.resource::<tokio::sync::Notify>().expect("fixture registers its dependency");
         Ok(Self { started })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut UploadDeclaration, input: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut UploadDeclaration, input: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -552,11 +552,11 @@ impl Handler for Exchanging {
     type Response = <ExchangeDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = (harmos_runtime::operations::StreamInput<Reply>, harmos_runtime::operations::StreamOutput<Reply>);
-    async fn initialize(_: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(_: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         Ok(Self)
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut ExchangeDeclaration, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut ExchangeDeclaration, endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();
@@ -577,12 +577,12 @@ impl Handler for Holding {
     type Response = <HoldDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Error;
     type StreamEndpoints = harmos_runtime::operations::StreamOutput<Reply>;
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let stopped = context.resource::<tokio::sync::Semaphore>().expect("fixture registers its dependency");
         Ok(Self { stopped })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, _request: &mut HoldDeclaration, output: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, _request: &mut HoldDeclaration, output: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

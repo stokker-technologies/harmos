@@ -117,7 +117,7 @@ impl Handler for Probing {
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<Witness>().expect("fixture dependency");
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
@@ -132,7 +132,7 @@ impl Handler for Probing {
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProbeDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ProbeDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.resources.mark("probe-started");

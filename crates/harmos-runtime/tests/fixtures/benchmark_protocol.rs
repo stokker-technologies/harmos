@@ -81,12 +81,12 @@ impl Handler for Echoing {
     type Error = Infallible;
     type StreamEndpoints = ();
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut EchoDeclaration, _: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut EchoDeclaration, _: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
         let bytes = std::mem::take(&mut request.bytes);
         Ok(Payload { bytes }.into())

@@ -273,7 +273,7 @@ impl<O: Behaves> Handler for Attempting<O> {
     type Request = O;
     type Response = u64;
     type Error = std::io::Error;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Owner>().expect("fixture registers its dependency");
         resources.0.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State {
@@ -287,7 +287,7 @@ impl<O: Behaves> Handler for Attempting<O> {
         })
     }
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut O, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut O, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let context = host.borrow();

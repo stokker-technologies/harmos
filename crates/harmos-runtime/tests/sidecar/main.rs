@@ -512,12 +512,12 @@ impl harmos_runtime::operations::Handler for Measuring {
 
     type Error = MeasureError;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, MeasureError> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, MeasureError> {
         let resources = context.resource::<GaugeResources>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut GetMeasureDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut GetMeasureDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Measured>, MeasureError> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let _ = &request;
@@ -543,12 +543,12 @@ impl harmos_runtime::operations::Handler for Echoing {
     type Response = <RunEchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture registers its dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut RunEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RunEchoDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.clone()) }.await;
         result.map(::core::convert::Into::into)
@@ -560,12 +560,12 @@ impl harmos_runtime::operations::Handler for Uppercasing {
     type Response = <RunUppercaseDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture registers its dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut RunUppercaseDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut RunUppercaseDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
         let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.to_uppercase()) }.await;
         result.map(::core::convert::Into::into)
@@ -578,12 +578,12 @@ impl harmos_runtime::operations::Handler for StoppingSampling {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut StopSamplingDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut StopSamplingDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<StopSamplingResponse>, Refusal> {
         let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
             let _ = &request;
@@ -601,12 +601,12 @@ impl harmos_runtime::operations::Handler for ReadingFactor {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut GetFactorDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut GetFactorDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Measured>, Refusal> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let _ = &request;
@@ -623,12 +623,12 @@ impl harmos_runtime::operations::Handler for Amplifying {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut AmplifyDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut AmplifyDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value < 0 {
@@ -647,12 +647,12 @@ impl harmos_runtime::operations::Handler for Emitting {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut EmitDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut EmitDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> =
@@ -668,12 +668,12 @@ impl harmos_runtime::operations::Handler for PublishingPulse {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut PublishPulseDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut PublishPulseDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let host = host.resource::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<(), Self::Error> =
@@ -689,12 +689,12 @@ impl harmos_runtime::operations::Handler for Collapsing {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut CollapseDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut CollapseDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             let _ = (&request, &host);
@@ -712,12 +712,12 @@ impl harmos_runtime::operations::Handler for Finishing {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut FinishDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut FinishDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             let _ = (&request, &host);
@@ -735,12 +735,12 @@ impl harmos_runtime::operations::Handler for BudgetedCall {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<MeterHandler>().expect("fixture dependency");
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut BudgetedRouteDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut BudgetedRouteDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<BudgetedReply>, Refusal> {
         let result: ::core::result::Result<BudgetedReply, Self::Error> = async move {
             let _ = (&request, &host);
@@ -762,12 +762,12 @@ impl harmos_runtime::operations::Handler for Sampling {
 
     type Error = harmos_runtime::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> harmos_runtime::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> harmos_runtime::Result<Self> {
         let resources = context.resource::<SampleProjection>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut SampleDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut SampleDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.resources.streams.publish(support::pulse(request.value));

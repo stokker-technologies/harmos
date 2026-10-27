@@ -41,7 +41,7 @@ pub use harmos_sdk::operations;
 pub use harmos_sdk::operations::Host;
 pub use harmos_sdk::operations::{Backoff, CacheKey, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 pub use harmos_sdk::{
-    Context, Dependencies, Dependent, Handler, Operation, OperationContext, Plugin, RegistrationBatch, Resource, Service,
+    Context, Dependencies, Dependent, Handler, Operation, ExecutionContext, Plugin, RegistrationBatch, Resource, Service,
 };
 
 pub use harmos_domain::StreamDeclaration;

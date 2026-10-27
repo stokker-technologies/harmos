@@ -88,13 +88,13 @@ impl Handler for Measure {
     type Error = std::io::Error;
     type StreamEndpoints = ();
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<Gauge>().expect("fixture registers its dependency");
         Ok(Self(resources))
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, _request: &mut MeasureContractDeclaration,
+        &mut self, _context: harmos_runtime::ExecutionContext, _request: &mut MeasureContractDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

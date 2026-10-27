@@ -235,13 +235,13 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Handler for Run
     type Response = String;
     type Error = std::io::Error;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> std::io::Result<Self> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> std::io::Result<Self> {
         Ok(Self {
             _resources: context.resource::<Owner>().expect("fixture owner"),
         })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Self::Request, _: &mut (),
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Self::Request, _: &mut (),
     ) -> std::io::Result<harmos_runtime::Response<String>> {
         Ok(request.value.clone().into())
     }

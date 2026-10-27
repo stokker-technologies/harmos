@@ -169,13 +169,13 @@ impl harmos_runtime::operations::Handler for EmbeddedReading {
 
     type Error = harmos_domain::Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<ProviderOwner>().unwrap();
         resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self { resources, cleanup: false })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
             self.cleanup = request.say == "physical-cleanup";
@@ -229,13 +229,13 @@ impl harmos_runtime::operations::Handler for NativeReading {
 
     type Error = harmos_domain::Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<NativeProvider>().unwrap();
         resources.0.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self { resources, cleanup: false })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ProviderEchoOperation, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
             self.cleanup = request.say == "physical-cleanup";
@@ -255,12 +255,12 @@ impl harmos_runtime::operations::Handler for NativeForwarding {
 
     type Error = harmos_domain::Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let resources = context.resource::<NativeClient>().unwrap();
         Ok(Self { _resources: resources })
     }
     async fn run(
-        &mut self, host: harmos_runtime::OperationContext, request: &mut ForwardDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, host: harmos_runtime::ExecutionContext, request: &mut ForwardDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
             host.resource::<harmos_sidecar::Supervisor>()

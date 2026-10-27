@@ -288,7 +288,7 @@ pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
 
 /* === Private Functions === */
 
-fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContext> {
+fn execution_context(context: Context<'_>) -> Result<harmos_sdk::ExecutionContext> {
     let mut dependencies = harmos_sdk::Dependencies::new();
     dependencies.insert(Arc::new(harmos_sdk::operations::Calls(Arc::new(context.owned())))).map_err(|source| Error::OperationFailed {
         operation: "declared calls".into(),
@@ -323,7 +323,7 @@ fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContex
         operation: "host context".to_owned(),
         source: Arc::new(source),
     })?;
-    Ok(harmos_sdk::OperationContext::new(dependencies, context.context().clone()))
+    Ok(harmos_sdk::ExecutionContext::new(dependencies, context.context().clone()))
 }
 async fn guarded<O>(operation: &str, future: impl Future<Output = std::result::Result<O, harmos_sdk::ServingError>>) -> Result<O> {
     let mut future = std::pin::pin!(future);

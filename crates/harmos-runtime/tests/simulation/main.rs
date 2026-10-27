@@ -221,12 +221,12 @@ impl Handler for PendingDeclaration {
     type Response = <PendingDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<PendingDeclaration, Infallible> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<PendingDeclaration, Infallible> {
         Ok(Self {})
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, _request: &mut PendingDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _context: harmos_runtime::ExecutionContext, _request: &mut PendingDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Infallible> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
@@ -243,12 +243,12 @@ impl Handler for Answer {
     type Response = <AnsweringDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut AnsweringDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut AnsweringDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
@@ -295,12 +295,12 @@ impl Handler for Draw {
     type Response = <DrawingDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, _context: harmos_runtime::OperationContext, request: &mut DrawingDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _context: harmos_runtime::ExecutionContext, request: &mut DrawingDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
         let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");
         let _context = host.borrow();
@@ -363,12 +363,12 @@ impl Handler for TimeWait {
     type Response = <TimingItsOwnWaitDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
 
-    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
+    async fn initialize(_context: harmos_runtime::ExecutionContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
     async fn run(
-        &mut self, context: harmos_runtime::OperationContext, request: &mut TimingItsOwnWaitDeclaration,
+        &mut self, context: harmos_runtime::ExecutionContext, request: &mut TimingItsOwnWaitDeclaration,
         _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
         let host = context.resource::<harmos_runtime::operations::HostContext>().expect("native runtime context");

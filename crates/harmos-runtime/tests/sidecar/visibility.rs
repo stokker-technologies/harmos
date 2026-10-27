@@ -67,12 +67,12 @@ impl harmos_runtime::operations::Handler for ScalingPrivately {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut ScalePrivatelyDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut ScalePrivatelyDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Scale>, Refusal> {
         let result: ::core::result::Result<Scale, Self::Error> = async move {
             Ok(Scale {
@@ -93,12 +93,12 @@ impl harmos_runtime::operations::Handler for ScalingPublicly {
 
     type Error = Refusal;
     type StreamEndpoints = ();
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Refusal> {
         let resources = context.resource::<GaugeResources>().expect("fixture dependency");
         Ok(Self { resources })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, _request: &mut ScalePubliclyDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, _request: &mut ScalePubliclyDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<Scale>, Refusal> {
         let result: ::core::result::Result<Scale, Self::Error> = async move { Ok(Scale { value: self.resources.factor }) }.await;
         result.map(::core::convert::Into::into)

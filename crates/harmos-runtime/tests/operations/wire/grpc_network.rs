@@ -110,12 +110,12 @@ async fn builtin_grpc_roundtrip() {
         type Response = <ParkedContract as harmos_runtime::OperationDeclaration>::Response;
         type Error = Error;
         type StreamEndpoints = ();
-        async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Error> {
+        async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Error> {
             let release = context.resource::<tokio::sync::Notify>().expect("fixture registers its dependency");
             Ok(Self(release))
         }
         async fn run(
-            &mut self, _: harmos_runtime::OperationContext, _: &mut ParkedContract, _: &mut Self::StreamEndpoints,
+            &mut self, _: harmos_runtime::ExecutionContext, _: &mut ParkedContract, _: &mut Self::StreamEndpoints,
         ) -> Result<harmos_runtime::operations::Response<()>, Error> {
             self.0.notified().await;
             Ok(().into())

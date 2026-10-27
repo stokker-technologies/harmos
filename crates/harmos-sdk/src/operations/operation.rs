@@ -26,7 +26,7 @@ use std::sync::Arc;
 use super::Stream;
 use super::calls::{Calls, InvocationError, Target};
 use super::{
-    CallContext, EndpointSet, Executable, FailureKind, Handler, Invokes, NoStream, OperationContext, OperationDeclaration, Requires,
+    CallContext, EndpointSet, Executable, FailureKind, Handler, Invokes, NoStream, ExecutionContext, OperationDeclaration, Requires,
     Response,
 };
 
@@ -48,7 +48,7 @@ pub struct Resource {
 // One Attempt Of An Authored Operation: Call Metadata, Declared Resources,
 // Typed Stream Endpoints And Declared Child Operations.
 pub struct Context<'a, O: Streams> {
-    execution: &'a OperationContext,
+    execution: &'a ExecutionContext,
     streams: &'a O::StreamEndpoints,
 }
 
@@ -141,12 +141,12 @@ impl<O: Operation> Handler for Authored<O> {
     type Error = O::Error;
     type StreamEndpoints = O::StreamEndpoints;
 
-    async fn initialize(_: OperationContext) -> Result<Self, O::Error> {
+    async fn initialize(_: ExecutionContext) -> Result<Self, O::Error> {
         Ok(Self(PhantomData))
     }
 
     async fn run(
-        &mut self, context: OperationContext, request: &mut O, endpoints: &mut O::StreamEndpoints,
+        &mut self, context: ExecutionContext, request: &mut O, endpoints: &mut O::StreamEndpoints,
     ) -> Result<Response<O::Response>, O::Error> {
         request.clone().run(Context { execution: &context, streams: endpoints }).await
     }
@@ -252,7 +252,7 @@ mod tests {
         let factory = &batch.operations[0];
         factory.verify_resources(&[]).unwrap();
         let mut instance = factory.prepare_native(Box::new(Increment { value: 5 }), Box::new(())).unwrap();
-        let context = OperationContext::new(Dependencies::new(), CallContext::default());
+        let context = ExecutionContext::new(Dependencies::new(), CallContext::default());
         ready(instance.initialize(context.clone())).unwrap();
         for _ in 0..2 {
             let answer = ready(instance.run(context.clone())).unwrap().restore::<u64>().unwrap();

@@ -87,14 +87,14 @@ impl Handler for Hold {
     type StreamEndpoints = ();
     type Error = std::io::Error;
 
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let counts = context.resource::<Counts>().expect("fixture registers its dependency");
         counts.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { counts })
     }
 
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut HoldContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut HoldContractDeclaration, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.started.notify_one();

@@ -94,13 +94,13 @@ impl Handler for Production {
     type Response = <ProduceDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::io::Error;
     type StreamEndpoints = harmos_runtime::operations::StreamOutput<u32>;
-    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::ExecutionContext) -> Result<Self, Self::Error> {
         let trace = context.resource::<Trace>().expect("fixture registers its dependency");
         trace.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { trace })
     }
     async fn run(
-        &mut self, _: harmos_runtime::OperationContext, request: &mut Request, sender: &mut Self::StreamEndpoints,
+        &mut self, _: harmos_runtime::ExecutionContext, request: &mut Request, sender: &mut Self::StreamEndpoints,
     ) -> Result<harmos_runtime::operations::Response<u32>, Self::Error> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             for value in 0..request.count {

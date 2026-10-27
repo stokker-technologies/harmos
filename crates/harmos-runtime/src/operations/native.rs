@@ -391,7 +391,7 @@ where
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
+    async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let native = context.resource::<Native>()?;
         Ok(Self {
             native,
@@ -404,7 +404,7 @@ where
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
@@ -687,7 +687,7 @@ impl<E: super::StreamEndpoints + Shape> Handler for EncodedOperation<E> {
     type StreamEndpoints = E;
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, NativeError> {
+    async fn initialize(context: harmos_sdk::ExecutionContext) -> std::result::Result<Self, NativeError> {
         let binding = context.resource::<Binding>()?;
         Ok(Self {
             binding,
@@ -700,7 +700,7 @@ impl<E: super::StreamEndpoints + Shape> Handler for EncodedOperation<E> {
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn run(
-        &mut self, context: harmos_sdk::OperationContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_sdk::ExecutionContext, request: &mut Encoded<E>, endpoints: &mut Self::StreamEndpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();

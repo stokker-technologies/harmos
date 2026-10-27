@@ -31,7 +31,7 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_sdk::operations::{Dependencies, Handler, OperationContext, RegistrationBatch, ServingError, WireTable};
+use harmos_sdk::operations::{Dependencies, Handler, ExecutionContext, RegistrationBatch, ServingError, WireTable};
 use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
@@ -142,7 +142,7 @@ where
     type Error = Refusal;
     type StreamEndpoints = ();
 
-    async fn initialize(context: OperationContext) -> Result<Self, Refusal> {
+    async fn initialize(context: ExecutionContext) -> Result<Self, Refusal> {
         let attachment = context.resource::<ObserverAttachment<R, H>>().map_err(Refusal::of)?;
         Ok(Self {
             attachment,
@@ -152,7 +152,7 @@ where
     }
 
     async fn run(
-        &mut self, context: OperationContext, control: &mut Self::Request, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: ExecutionContext, control: &mut Self::Request, _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<()>, Refusal> {
         if self.running.is_none() {
             if self.attachment.closing.load(Ordering::Acquire) {
