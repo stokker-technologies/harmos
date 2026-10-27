@@ -196,10 +196,7 @@ pub(crate) fn structure(attribute: TokenStream, mut item: ItemStruct, sdk: &Harm
                 <Self as #sdk::OperationDeclaration>::definition()
             }
 
-            #[cfg(feature = "runtime")]
-            pub fn registration(dependencies: #sdk::Dependencies) -> #sdk::RegistrationBatch {
-                #sdk::RegistrationBatch::new(dependencies).operation::<Self>()
-            }
+
         }
         #(#invokes)*
         #[allow(unexpected_cfgs)]

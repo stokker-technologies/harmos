@@ -88,7 +88,7 @@ async fn guest_composition_walks() {
     assert_eq!(declaration.id, PLUGIN);
     let mut declared: Vec<_> = declaration.operations.iter().map(|operation| operation.id.to_string()).collect();
     declared.sort();
-    assert_eq!(declared, ["schematic_analyze", "schematic_route", "schematic_validate"]);
+    assert_eq!(declared, ["schematic.analyze", "schematic.route", "schematic.validate"]);
 
     // Scene 3: Registration And Initialization Make The Guest Ready
     let settings = harmos_runtime::config::PluginSettings {

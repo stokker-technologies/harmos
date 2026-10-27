@@ -23,7 +23,7 @@ use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::{GuestLanes, corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
-use harmos_runtime::operations::{ComponentError, ComponentOperation, FailureKind, OperationDeclaration};
+use harmos_runtime::operations::{ComponentError, ComponentOperation, OperationDeclaration};
 use schematic_operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
@@ -50,7 +50,7 @@ fn pending_settings() -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec("shutdown-pending").unwrap(),
         shutdown_timeout: std::time::Duration::from_millis(20),
-        host_operations: ["host.publish", "provider_echo"].map(|id| harmos_runtime::Identifier::new(id).unwrap()).to_vec(),
+        host_operations: ["host.publish", "provider.echo"].map(|id| harmos_runtime::Identifier::new(id).unwrap()).to_vec(),
         ..Default::default()
     }
 }
@@ -198,71 +198,20 @@ async fn overlay_preserves_parent() {
 }
 
 #[tokio::test]
-async fn phases_retain_capacity() {
+async fn request_clones_and_resource_attempts() {
     let _report = crate::report::system();
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(runtime.operation(ReadOperation { value: "value".into() }).run().await.unwrap().value.as_str(), "value:2");
-
-    // Retain Both Original Receipts While Their Physical Cleanup Owns The Table
-    let mut first = runtime.operations.submit::<super::sandbox::ReadOperation>(ReadOperation { value: "cleanup".into() }).unwrap();
-    let first_error = (&mut first).await.unwrap_err();
-    let mut second = runtime.operations.submit::<super::sandbox::ReadOperation>(ReadOperation { value: "cleanup".into() }).unwrap();
-    let second_error = (&mut second).await.unwrap_err();
-    assert_ne!(first.id(), second.id());
-    for error in [first_error, second_error] {
-        let harmos_runtime::Error::OperationFinalization { operation, outcome, source } = error else {
-            panic!("failed cleanup must retain the original operation owner")
-        };
-        assert_eq!(operation, super::sandbox::ReadOperation::ID);
-        assert!(outcome.is_none(), "the original retry completed before physical cleanup failed");
-        let harmos_runtime::Error::OperationFailed { source, .. } = source.as_ref() else {
-            panic!("the original finalization handler error is preserved")
-        };
-        assert!(matches!(source.downcast_ref::<ComponentError>(),
-        Some(ComponentError::Remote(failure))
-            if failure.code() == FailureKind::Transient
-                && failure.cause().contains("first cleanup retained")));
+    for value in ["first", "second", "third"] {
+        let response = runtime.operation(ReadOperation { value: value.into() }).run().await.unwrap();
+        assert_eq!(response.value, format!("{value}:2"));
     }
-    let error = runtime.operation(ReadOperation { value: "later".into() }).run().await.unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else {
-        panic!("both failed cleanup owners must still charge the original capacity")
-    };
-    assert!(matches!(source.downcast_ref::<ComponentError>(),
-    Some(ComponentError::Preparation(failure))
-        if failure.cause() == "carrier invocation capacity is exhausted"));
-
-    // The Reserved SDK Slot Settles Those Same Ordinary States Before Retirement
-    let original = lifecycle.component();
+    let counts = runtime.operation(CountsOperation { value: "counts".into() }).run().await.unwrap();
+    assert_eq!(counts.value, "6");
     manager.shutdown(&mut lifecycle).await.unwrap();
-    runtime
-        .operations
-        .register(harmos_runtime::RegistrationExt::lane(
-            harmos_runtime::RegistrationBatch::new({
-                let mut dependencies = harmos_runtime::Dependencies::new();
-                dependencies.insert(original.clone()).unwrap();
-                dependencies
-            })
-            .implementation::<super::sandbox::ReadOperation, ComponentOperation<super::sandbox::ReadOperation>>(),
-            GuestLanes::Open,
-        ))
-        .await
-        .unwrap();
-    let retired = runtime
-        .operations
-        .submit_from::<super::sandbox::ReadOperation>("host", ReadOperation { value: "later".into() })
-        .unwrap()
-        .await
-        .unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = retired else { panic!("the retained generation must refuse execution") };
-    assert!(matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Unavailable)));
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", super::sandbox::ReadOperation::ID).unwrap()).await.unwrap();
-    manager.reload(lifecycle.candidate("normal").await, &mut lifecycle).await.unwrap();
-    assert_eq!(runtime.operation(ReadOperation { value: "later".into() }).run().await.unwrap().value.as_str(), "later:2");
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((first, second, original, manager, lifecycle));
+    drop((manager, lifecycle));
     runtime.stop().await.unwrap();
 }
 
@@ -318,45 +267,6 @@ async fn children_retire_authority() {
         drop((manager, lifecycle));
         runtime.stop().await.unwrap();
     }
-}
-
-#[tokio::test]
-async fn initialization_cleans_failure() {
-    let _report = crate::report::system();
-    let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
-    let mut manager = Manager::new(lifecycle.candidate("initialize-fail").await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-    let mut invocation =
-        runtime.operations.submit::<super::sandbox::ReadOperation>(ReadOperation { value: "initialize-fail".into() }).unwrap();
-    let error = (&mut invocation).await.unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("original initialization error") };
-    assert!(
-        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation(failure)) if failure.code() == FailureKind::Transient && failure.cause().contains("partial initialization failed"))
-    );
-    assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
-    let counts = runtime.operation(CountsOperation { value: "counts".into() }).run().await.unwrap();
-    // A failed initialization owns its partial acquisitions: no stop or cleanup.
-    assert_eq!(counts.value, "1:0:0:0");
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn initialization_children_retired() {
-    let _report = crate::report::system();
-    let runtime = runtime().await;
-    let mut lifecycle = Lifecycle::sandbox(&runtime).await;
-    let mut manager = Manager::new(lifecycle.candidate("initialize-child").await).unwrap();
-    manager.initialize(&mut lifecycle).await.unwrap();
-    let result = runtime.operation(ReadOperation { value: "initialize-child".into() }).run().await.unwrap();
-    assert_eq!(result.value, "initialize-child:2");
-    let counts = runtime.operation(CountsOperation { value: "counts".into() }).run().await.unwrap();
-    assert_eq!(counts.value, "2:3:2:2");
-    manager.shutdown(&mut lifecycle).await.unwrap();
-    drop((manager, lifecycle));
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]

@@ -28,7 +28,7 @@
 /* === Structs === */
 
 #[harmos::operation(
-    id = "schematic_validate",
+    id = "schematic.validate",
     response = Validation,
     policy = crate::POLICY,
     visibility = Shared,

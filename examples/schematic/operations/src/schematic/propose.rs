@@ -28,7 +28,7 @@
 /* === Structs === */
 
 #[harmos::operation(
-    id = "schematic_route",
+    id = "schematic.route",
     response = Route,
     policy = crate::POLICY,
     visibility = Shared,

@@ -34,6 +34,10 @@ path = "src/lib.rs"
 
 # === Features === #
 
+[features]
+default = ["runtime"]
+runtime = []
+
 # === Dependencies === #
 
 [dependencies]

@@ -185,9 +185,9 @@ async fn missing_provider_refused() {
     let routed = planned
         .host_requirements()
         .map(|(definition, required)| (definition.id.clone(), required.contract.operation().id.to_string()))
-        .filter(|(_, operation)| operation == "provider_echo")
+        .filter(|(_, operation)| operation == "provider.echo")
         .collect::<Vec<_>>();
-    assert_eq!(routed, [("sandbox_guest".to_owned(), "provider_echo".to_owned())]);
+    assert_eq!(routed, [("sandbox_guest".to_owned(), "provider.echo".to_owned())]);
     assert!(matches!(
         runtime.operations.validate_requirements(&planned),
         Err(harmos_runtime::Error::NotRegistered { domain: "host provider", .. })

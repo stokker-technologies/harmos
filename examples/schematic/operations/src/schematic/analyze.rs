@@ -36,7 +36,7 @@ pub struct Finding {
 }
 
 #[harmos::operation(
-    id = "schematic_analyze",
+    id = "schematic.analyze",
     response = Analysis,
     output = Finding,
     policy = crate::POLICY,

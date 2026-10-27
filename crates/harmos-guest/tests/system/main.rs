@@ -109,7 +109,7 @@ impl Stub {
         };
         assert_ne!(call.context, [0; 32], "the SDK forwards the current finite calling context");
         match call.operation.as_str() {
-            "provider.provider_echo" => {
+            "provider.provider.echo" => {
                 let request = EchoOperation::decode(&call.payload).map_err(Refusal::of)?;
                 self.calls.push(Call::Provider { say: request.say.clone() });
                 let fallback = Ok(Echoed { said: request.say });
@@ -139,7 +139,7 @@ impl Stub {
 
 impl Stub {
     fn submit(&mut self, call: WireChildCall) -> Result<Vec<u8>, Refusal> {
-        assert_eq!(call.operation, "provider.provider_echo");
+        assert_eq!(call.operation, "provider.provider.echo");
         let request = EchoOperation::decode(&call.payload).map_err(Refusal::of)?;
         let instance = self.submitted.len() as u64 + 1;
         self.submitted.insert(instance, (request.say.clone(), false));
@@ -227,7 +227,7 @@ impl Session {
             generation_context: vec![2; 32],
             assignments: harmos_sdk::operations::AssignedOperation::encode(&[
                 harmos_sdk::operations::AssignedOperation {
-                    operation: "provider.provider_echo".into(),
+                    operation: "provider.provider.echo".into(),
                     fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
                         .fingerprint
                         .0,
@@ -308,7 +308,7 @@ async fn registration_precedes_init() {
             (operation.id.as_str(), required.grants.len())
         })
         .collect::<Vec<_>>();
-    assert_eq!(required, [("provider_echo", 0), ("host.publish", 0)]);
+    assert_eq!(required, [("provider.echo", 0), ("host.publish", 0)]);
 
     let mut session = instantiate(&guest, Stub::default()).await;
     let registrations = session
@@ -403,4 +403,62 @@ async fn unbound_operations_refused() {
         );
     }
     assert!(session.store.data().calls.is_empty());
+}
+
+#[tokio::test]
+async fn declared_operation_calls_provider() {
+    let _report = crate::report::system();
+    let mut session = instantiate(&support::sandbox(), Stub::default()).await;
+    session.initialize(r#""normal""#).await.unwrap();
+    let request = EchoOperation { say: "dependency:child".into() };
+    let bytes = session.call::<EchoOperation>(2, request.encode()).await.unwrap();
+    assert_eq!(Echoed::decode(&bytes).unwrap().said, "child");
+    assert_eq!(session.store.data().calls, [Call::Provider { say: "child".into() }]);
+}
+
+#[tokio::test]
+async fn missing_declared_resource_refuses_activation() {
+    let _report = crate::report::system();
+    let mut session = instantiate(&support::sandbox(), Stub::default()).await;
+    assert!(session.initialize(r#""missing-resource""#).await.is_err());
+    assert!(session.store.data().calls.is_empty());
+}
+
+#[tokio::test]
+async fn attempts_clone_request_and_share_resources() {
+    let _report = crate::report::system();
+    use harmos_guest::OperationDeclaration;
+    let mut session = instantiate(&support::sandbox(), Stub::default()).await;
+    session.initialize(r#""normal""#).await.unwrap();
+    let request = sandbox::ReadOperation { value: "original".into() };
+    let prepared = session
+        .phase(WireCommand::Prepare {
+            invocation: 2,
+            operation: harmos_guest::QualifiedId::qualify("sandbox_guest", sandbox::ReadOperation::ID).unwrap().as_str().into(),
+            fingerprint: sandbox::ReadOperation::definition().fingerprint.0,
+            generation: 1,
+            payload: request.encode(),
+        })
+        .await;
+    assert!(matches!(prepared, WireAnswer::Ready { .. }), "{prepared:?}");
+    let initialized = session.phase(WireCommand::Initialize { invocation: 2, context: [1; 32] }).await;
+    assert!(matches!(initialized, WireAnswer::Ready { .. }), "{initialized:?}");
+    for attempt in 1..=2 {
+        let answer = session
+            .phase(WireCommand::Attempt {
+                invocation: 2,
+                context: [attempt; 32],
+                values: Vec::new(),
+            })
+            .await;
+        if attempt == 1 {
+            assert!(matches!(answer, WireAnswer::Failed { failure } if failure.code() == harmos_guest::operations::FailureKind::Transient));
+        } else {
+            let WireAnswer::Ready { payload } = answer else { panic!("{answer:?}") };
+            assert_eq!(sandbox::Value::decode(&payload).unwrap().value, "original:2");
+        }
+    }
+    assert!(matches!(session.phase(WireCommand::Finalize { invocation: 2 }).await, WireAnswer::Ready { .. }));
+    let counts = session.call::<sandbox::CountsOperation>(3, sandbox::CountsOperation { value: "counts".into() }.encode()).await.unwrap();
+    assert_eq!(sandbox::Value::decode(&counts).unwrap().value, "2");
 }

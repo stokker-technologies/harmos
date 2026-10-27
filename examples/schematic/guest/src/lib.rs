@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos_guest::Context;
+use harmos_guest::kit::Context;
 use harmos_guest::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
 
 /* === Constants === */

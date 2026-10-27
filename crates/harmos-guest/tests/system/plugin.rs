@@ -152,7 +152,7 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 1,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,
@@ -213,7 +213,7 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 8,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,
@@ -239,7 +239,7 @@ async fn sdk_lifecycle_retained() {
             session
                 .phase(WireCommand::Prepare {
                     invocation: 5,
-                    operation: "sandbox_guest.schematic_route".to_owned(),
+                    operation: "sandbox_guest.schematic.route".to_owned(),
                     fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::schematic::ProposeRoute>().fingerprint)()
                         .unwrap()
                         .0,

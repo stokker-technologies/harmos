@@ -118,7 +118,7 @@ impl<A: Application> PluginHost<A> {
         }
         match self.shared.operations.definition(publish.operation().id.as_str()) {
             Err(Error::NotRegistered { .. }) => self.shared.operations.register_native(crate::operations::RegistrationExt::lane(
-                harmos_operations::streams::Publish::registration(harmos_sdk::Dependencies::new()),
+                harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<harmos_operations::streams::Publish>(),
                 lane,
             )),
             _ => Ok(()),

@@ -75,8 +75,8 @@ impl Builtins {
         batch.operations.extend(Lifecycle::registration(dependencies.clone()).operations);
         batch.operations.extend(Storage::registration(dependencies.clone()).operations);
         batch.operations.extend(Streams::registration(dependencies.clone()).operations);
-        batch.operations.extend(lifecycle::Initialize::registration(dependencies.clone()).operations);
-        batch.operations.extend(lifecycle::Shutdown::registration(dependencies).operations);
+        batch.operations.extend(harmos_sdk::RegistrationBatch::new(dependencies.clone()).operation::<lifecycle::Initialize>().operations);
+        batch.operations.extend(harmos_sdk::RegistrationBatch::new(dependencies).operation::<lifecycle::Shutdown>().operations);
         batch
     }
 }

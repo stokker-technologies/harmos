@@ -29,7 +29,7 @@ const PREFIX: &[u8] = b"\0HARMOS:ARTIFACT:V1:";
 
 const OWNED: [&str; 5] = ["contracts", "contributions", "publications", "listeners", "observers"];
 
-const SHARED: [&str; 3] = ["schematic_analyze", "schematic_route", "schematic_validate"];
+const SHARED: [&str; 3] = ["schematic.analyze", "schematic.route", "schematic.validate"];
 
 /* === Macros === */
 

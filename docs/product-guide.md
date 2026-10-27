@@ -49,7 +49,12 @@ features imply `runtime`.
 The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
 Applications compose the runtime through `harmos`. Shared portable declarations use `harmos-domain`. Async plugin and client execution
 uses `harmos-sdk`; native plugins add
-`harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools
+`harmos-sidecar` and guests add `harmos-guest`. Guest operations use the same
+`harmos_guest::{Operation, Context, Response}` types as the SDK: the operation is the request, and
+`async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>` is its only required method.
+Declare `resources` and `operations` on the operation; access them with `ctx.resource::<T>()` and `ctx.operation(request)`.
+`ctx.streams()` exposes the derived endpoints. Use dotted IDs and `visibility = Shared` or `Host` when needed; the default is `Private`.
+Plugin lifecycle hooks use `harmos_guest::kit::Context` and own shared resource initialization. Build scripts and development tools
 use `harmos-packaging`, which depends on the domain without hosting engines.
 `harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
 `harmos-runtime` composes that engine with host lifecycle and managed state.
