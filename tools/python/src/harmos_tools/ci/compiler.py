@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:e01f487e74f6bafbbda0fb35eea29cd4f3e70c3a36fcd71add9799ea7c744456
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:30ee338d94f1a792b811e63041d5b719eee190446a7845d4957138a8f591ba28
 # ***
 #
 # Harmos
@@ -123,6 +123,7 @@ def _execute(
 ) -> int:
     endpoint: queue.Queue[str] = queue.Queue(maxsize=1)
     write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
+    samples: dict[str, str] = {}
     tail: collections.deque[str] = collections.deque(maxlen=TAIL)
     diagnostics = os.environ.get("STKR_SCCACHE_DIAGNOSTICS") == "1"
     server_environment = environment | {
@@ -148,6 +149,7 @@ def _execute(
             for line in server.stderr:
                 if category := _write_error(line):
                     write_errors[category] += 1
+                    samples.setdefault(category, line.partition("Error executing cache write: ")[2].strip()[:300])
                 match = re.search(r"server started, listening on 127\.0\.0\.1:([1-9][0-9]*)\s*$", line)
                 if match and endpoint.empty():
                     endpoint.put(match[1])
@@ -277,6 +279,9 @@ def _execute(
                 server.kill()
                 server.wait(timeout=10)
             reader.join(timeout=1)
+            # One Redacted Native Reason Per Category Makes Dropped Cache Writes Actionable.
+            for category, sample in samples.items():
+                print(f"sccache write errors: {category} x{write_errors[category]}: {_redact(sample)}", flush=True)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
 
