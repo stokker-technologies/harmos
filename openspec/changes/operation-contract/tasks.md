@@ -42,8 +42,8 @@
 
 ## 4. Authorized Consolidation And Refresh
 
-- [ ] 4.1 Merge storage facilities into feat/operation-contract; preserve storage/sidecar behaviors and tests, migrate incoming operations, and reconcile affected guides and examples.
-- [ ] 4.2 Remove unused dependencies through check:rust, upgrade workspace dependencies including majors, and refresh project lockfiles.
+- [x] 4.1 Merge storage facilities into feat/operation-contract; preserve storage/sidecar behaviors and tests, migrate incoming operations, and reconcile affected guides and examples.
+- [x] 4.2 Remove unused dependencies through check:rust, upgrade workspace dependencies including majors, and refresh project lockfiles.
 - [x] 4.3 Upgrade mise tools and regenerate mise.lock with mise.
 - [ ] 4.4 Run the requested seven-package focused tests, Wasm/guest builds, consumer check and all formatters; repair failures.
 - [ ] 4.5 Push the combined candidate, verify remote SHA, open the authorized dev PR and enable squash auto-merge.
