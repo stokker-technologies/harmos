@@ -73,6 +73,13 @@ all = "warn"
 
 # === Profiles === #
 
+# Keep Full Guest Metadata Validation Within The Same Fuel Budget In Dev Builds.
+[profile.dev.package.harmos-domain]
+opt-level = 2
+
+[profile.dev.package.serde_json]
+opt-level = 2
+
 # === Patches === #
 
 # === Other === #
