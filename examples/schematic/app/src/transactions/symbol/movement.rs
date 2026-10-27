@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{Point, Schematic, SymbolId};
-use harmos::{state::Invert, state::Transaction};
+use harmos::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -56,8 +56,10 @@ impl Transaction<Schematic> for MoveSymbol {
     }
 }
 
-impl Invert<Schematic> for MoveSymbol {
-    fn invert(&self, before: &Schematic) -> Self {
+impl Invertible<Schematic> for MoveSymbol {
+    type Inverse = Self;
+
+    fn inverse(&self, before: &Schematic) -> Self::Inverse {
         Self {
             symbol: self.symbol,
             to: before.symbol(self.symbol).position,

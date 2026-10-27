@@ -10,7 +10,7 @@
 /* === Modules === */
 
 mod sheet {
-    use harmos_runtime::{state::Invert, state::Transaction};
+    use harmos_runtime::{state::Invertible, state::Transaction};
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -42,8 +42,10 @@ mod sheet {
         }
     }
 
-    impl Invert<Sheet> for Rename {
-        fn invert(&self, before: &Sheet) -> Self {
+    impl Invertible<Sheet> for Rename {
+        type Inverse = Self;
+
+        fn inverse(&self, before: &Sheet) -> Self::Inverse {
             Self { to: before.title.clone() }
         }
     }
@@ -106,7 +108,7 @@ mod sheet {
 }
 
 mod counter {
-    use harmos_runtime::{state::Invert, state::Transaction};
+    use harmos_runtime::{state::Invertible, state::Transaction};
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -138,8 +140,10 @@ mod counter {
         }
     }
 
-    impl Invert<Tally> for Up {
-        fn invert(&self, _before: &Tally) -> Down {
+    impl Invertible<Tally> for Up {
+        type Inverse = Down;
+
+        fn inverse(&self, _before: &Tally) -> Self::Inverse {
             Down(self.0)
         }
     }
@@ -160,8 +164,10 @@ mod counter {
         }
     }
 
-    impl Invert<Tally> for Down {
-        fn invert(&self, _before: &Tally) -> Up {
+    impl Invertible<Tally> for Down {
+        type Inverse = Up;
+
+        fn inverse(&self, _before: &Tally) -> Self::Inverse {
             Up(self.0)
         }
     }
@@ -807,7 +813,7 @@ async fn catalog_declares_records() {
         Transaction::apply(&change, &mut state);
         assert_eq!(state.title, "named");
         assert_eq!(
-            harmos_runtime::state::Invert::invert(&sheet::rename("named"), &Sheet::default()),
+            harmos_runtime::state::Invertible::inverse(&sheet::rename("named"), &Sheet::default()),
             Rename { to: String::new() },
             "the declared body answers against the state before the change"
         );

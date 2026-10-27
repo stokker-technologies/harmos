@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use crate::state::{Invert, Transaction};
+pub use crate::state::{Invertible, Transaction};
 pub use crate::{Application, Builder, Error, Identifier, Message, Result, Runtime};
 pub use crate::{
     Backoff, Context, Dependencies, EndpointSet, ExecutionContext, Invocation, Jitter, Lane, Operation, OperationDeclaration,

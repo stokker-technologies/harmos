@@ -63,7 +63,7 @@ pub mod __private {
     pub use crate::message::MessageError;
     pub use crate::message::allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
     pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
-    pub use crate::state::{Catalogued, Mutual};
+    pub use crate::state::{Catalogued, Mutual, Paired};
 }
 
 /* === Re-Exports === */

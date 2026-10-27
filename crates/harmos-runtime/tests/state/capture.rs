@@ -85,8 +85,10 @@ impl Transaction<i64> for Add {
     }
 }
 
-impl harmos_runtime::state::Invert<i64> for Add {
-    fn invert(&self, _: &i64) -> Self {
+impl harmos_runtime::state::Invertible<i64> for Add {
+    type Inverse = Self;
+
+    fn inverse(&self, _: &i64) -> Self::Inverse {
         Add(-self.0)
     }
 }

@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:c39080b267985fca8b30cf4051fcbc1b002a30f7739220b06d98d03be02daf5a -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/runtime.md; sha256:f27f5a1aeb4849603abca3432d9ea208585df5b77049d4aa8f6e0ba9ea150909 -->
 
 # Runtime Composition
 
@@ -54,6 +54,24 @@ Portable state and transaction definitions belong in the domain. The runtime
 assembles managed state, transaction execution, storage and replay using those
 definitions. Harmos's state manager owns live state and managed history; the
 configured storage backend supplies journal and snapshot persistence.
+
+Every transaction answers the undo question in its attribute: `inverse = Self`
+(the common case), `inverse = Other` for a paired change, or `irreversible`.
+A declared inverse is described by `Invertible`, whose `type Inverse` repeats
+the declared type:
+
+```rust
+#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]
+pub struct Deposit { pub amount: i64 }
+
+impl Invertible<Ledger> for Deposit {
+    type Inverse = Withdraw;
+
+    fn inverse(&self, _before: &Ledger) -> Self::Inverse {
+        Withdraw { amount: self.amount }
+    }
+}
+```
 
 Keep evidence cursors distinct from state journal positions. Do not invent
 a parallel persistence or undo mechanism simply to expose another interface.

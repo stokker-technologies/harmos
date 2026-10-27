@@ -97,7 +97,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Local Imports
 use harmos_runtime::{
     Application, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration, state::DecodeError, state::Entry,
-    state::Envelope, state::Invert, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction, state::Undoable,
+    state::Envelope, state::Invertible, state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
     storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Definition,
 };
 
@@ -288,12 +288,10 @@ impl Transaction<Ledger> for Deposit {
     }
 }
 
-impl Undoable for Deposit {
+impl Invertible<Ledger> for Deposit {
     type Inverse = Withdraw;
-}
 
-impl Invert<Ledger> for Deposit {
-    fn invert(&self, _before: &Ledger) -> Withdraw {
+    fn inverse(&self, _before: &Ledger) -> Self::Inverse {
         Withdraw {
             account: self.account,
             amount: self.amount,
@@ -317,12 +315,10 @@ impl Transaction<Ledger> for Withdraw {
     }
 }
 
-impl Undoable for Withdraw {
+impl Invertible<Ledger> for Withdraw {
     type Inverse = Deposit;
-}
 
-impl Invert<Ledger> for Withdraw {
-    fn invert(&self, _before: &Ledger) -> Deposit {
+    fn inverse(&self, _before: &Ledger) -> Self::Inverse {
         Deposit {
             account: self.account,
             amount: self.amount,
@@ -567,8 +563,8 @@ pub async fn quietly<T>(act: impl Future<Output = T>) -> T {
 
 fn inverses(change: &Change, ledger: &Ledger) -> Option<Change> {
     match change {
-        Change::Deposit(change) => Some(change.invert(ledger).into()),
-        Change::Withdraw(change) => Some(change.invert(ledger).into()),
+        Change::Deposit(change) => Some(change.inverse(ledger).into()),
+        Change::Withdraw(change) => Some(change.inverse(ledger).into()),
         Change::Freeze | Change::Explode => None,
     }
 }

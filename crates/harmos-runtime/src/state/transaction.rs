@@ -101,7 +101,7 @@ pub(crate) mod dispatch {
 
 /* === Re-Exports === */
 
-pub use harmos_domain::state::{Catalogued, DecodeError, Invert, Mutual, Never, Transaction, TransactionCatalog, Undoable};
+pub use harmos_domain::state::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
 
 /* === Imports === */
 

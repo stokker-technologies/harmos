@@ -19,7 +19,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::state::{Invert, Transaction, Undoable};
+use harmos_runtime::state::{Invertible, Transaction};
 use harmos_runtime::{Application, DefinitionId, state::Kind};
 
 /* === Constants === */
@@ -102,12 +102,10 @@ impl Transaction<Sheet> for Rename {
     }
 }
 
-impl Undoable for Rename {
+impl Invertible<Sheet> for Rename {
     type Inverse = Self;
-}
 
-impl Invert<Sheet> for Rename {
-    fn invert(&self, before: &Sheet) -> Self {
+    fn inverse(&self, before: &Sheet) -> Self::Inverse {
         Self { to: before.title.clone() }
     }
 }
@@ -198,7 +196,7 @@ pub(crate) fn named((kind, id, version): (Kind, &str, u32)) -> (Kind, Definition
 
 pub(crate) fn inverses(change: &Change, sheet: &Sheet) -> Option<Change> {
     match change {
-        Change::Rename(change) => Some(change.invert(sheet).into()),
+        Change::Rename(change) => Some(change.inverse(sheet).into()),
         Change::Seal | Change::Explode => None,
     }
 }

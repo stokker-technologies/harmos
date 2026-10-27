@@ -186,8 +186,10 @@ impl Transaction<State> for Add {
     }
 }
 
-impl harmos::state::Invert<State> for Add {
-    fn invert(&self, _: &State) -> Self {
+impl harmos::state::Invertible<State> for Add {
+    type Inverse = Self;
+
+    fn inverse(&self, _: &State) -> Self::Inverse {
         add(-self.amount, self.count, 0)
     }
 }

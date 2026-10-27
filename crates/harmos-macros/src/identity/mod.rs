@@ -104,7 +104,7 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
     match undo {
         Undo::Inverse(inverse) => quote! {
             #[automatically_derived]
-            impl #harmos::state::Undoable for #name {
+            impl #harmos::__private::Paired for #name {
                 type Inverse = #inverse;
             }
 
@@ -116,19 +116,21 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
                 fn mutual<A, B: #harmos::__private::Mutual<A>>() {}
 
                 fn pairs() {
-                    mutual::<#name, <#inverse as #harmos::state::Undoable>::Inverse>();
+                    mutual::<#name, <#inverse as #harmos::__private::Paired>::Inverse>();
                 }
             };
 
             impl #name {
 
+                // The Described Body Names The Declared Inverse In Its Header,
+                // So A Body That Returns Another Change Does Not Compile.
                 pub fn __harmos_inverse<S, C>(&self, before: &S) -> ::core::option::Option<C>
                 where
-                    Self: #harmos::state::Invert<S>,
+                    Self: #harmos::state::Invertible<S, Inverse = #inverse>,
                     #inverse: #harmos::__private::Catalogued<C>,
                 {
                     ::core::option::Option::Some(#harmos::__private::Catalogued::catalogued(
-                        #harmos::state::Invert::invert(self, before),
+                        #harmos::state::Invertible::inverse(self, before),
                     ))
                 }
             }

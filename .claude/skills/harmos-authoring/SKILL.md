@@ -1,9 +1,8 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:40cce2fadb33fa3cdc83a8c447b8c2188078fb6eeb2002b9eb7f779abd493672 -->
-
 ---
 name: harmos-authoring
 description: Implement consumer Harmos operations, runtime resources, storage integration, composed plugins and transport exposure.
 ---
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:5b7b882da16ec5709df9b0b144837fb6362dd4095ac95e4bf993057dd81d21c6 -->
 
 # Harmos Authoring
 

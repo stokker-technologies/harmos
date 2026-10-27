@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{NetId, NetName, Schematic};
-use harmos::{state::Invert, state::Transaction};
+use harmos::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -57,8 +57,10 @@ impl Transaction<Schematic> for RenameNet {
     }
 }
 
-impl Invert<Schematic> for RenameNet {
-    fn invert(&self, before: &Schematic) -> Self {
+impl Invertible<Schematic> for RenameNet {
+    type Inverse = Self;
+
+    fn inverse(&self, before: &Schematic) -> Self::Inverse {
         Self {
             net: self.net,
             to: before.net(self.net).name.clone(),

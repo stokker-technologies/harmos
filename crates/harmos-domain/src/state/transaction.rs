@@ -71,23 +71,27 @@ pub trait TransactionCatalog<S>: Transaction<S> + super::record::CatalogCodec {
 }
 
 #[diagnostic::on_unimplemented(
+    message = "`{Self}` declares an inverse but never describes it",
+    label = "declared without a body",
+    note = "write the body beside the change: `impl harmos::state::Invertible<{S}> for {Self} {{ type \
+            Inverse = …; fn inverse(&self, before: &{S}) -> Self::Inverse {{ … }} }}`"
+)]
+pub trait Invertible<S>: Transaction<S> {
+    type Inverse: Transaction<S>;
+
+    fn inverse(&self, before: &S) -> Self::Inverse;
+}
+
+// The Attribute's `inverse = …` Declaration, Readable Without A State Type So
+// The Pair Check Runs Where The Change Is Declared Rather Than Where It Is Used.
+#[diagnostic::on_unimplemented(
     message = "`{Self}` declares no inverse",
     note = "a change answers the undo question where it is defined: `inverse = …` names the \
             change that takes it back, `inverse = Self` says it is its own, and `irreversible` \
-            says it cannot be taken back — an irreversible change carries no invert body"
+            says it cannot be taken back"
 )]
-pub trait Undoable {
+pub trait Paired {
     type Inverse;
-}
-
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` declares an inverse but never describes it",
-    label = "declared without a body",
-    note = "write the body beside the change: `impl harmos::state::Invert<{S}> for {Self} {{ fn \
-            invert(&self, before: &{S}) -> … }}`"
-)]
-pub trait Invert<S>: Undoable + Transaction<S> {
-    fn invert(&self, before: &S) -> Self::Inverse;
 }
 
 #[diagnostic::on_unimplemented(
