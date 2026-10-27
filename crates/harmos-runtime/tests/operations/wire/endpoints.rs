@@ -93,9 +93,11 @@ struct Trace {
 
 struct AttemptGuard(Arc<Trace>);
 
+#[cfg(feature = "grpc")]
 #[derive(Default)]
 struct Gate(Notify);
 
+#[cfg(feature = "grpc")]
 #[harmos_runtime::operation(resources = [Gate], id = "endpoints.slow", response = u32, input = u32, policy = ForwardDeclaration::POLICY)]
 struct SlowDeclaration {}
 
@@ -141,6 +143,7 @@ impl harmos_runtime::Operation for ParentDeclaration {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl harmos_runtime::Operation for SlowDeclaration {
     type Error = Error;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
