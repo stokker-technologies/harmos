@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Operation Contract Specification
+
+## Purpose
+Define request-owned operations, declared dependencies, activation verification, and conditional catalogs.
+
+## Requirements
 
 ### Requirement: Operation Structs Are Requests
 The operation attribute SHALL define the request from the annotated named-field or unit struct. It SHALL default the response to `()`
