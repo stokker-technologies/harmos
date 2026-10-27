@@ -72,7 +72,7 @@ pub fn settings() -> StorageSettings {
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
             event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
         },
-        budget: StorageBudget { read_memory_bytes: super::nonzero(128 * 1024 * 1024) },
+
         request: StorageRequestSettings {
             max_active_queries: super::nonzero(4),
             max_active_file_operations: super::nonzero(4),

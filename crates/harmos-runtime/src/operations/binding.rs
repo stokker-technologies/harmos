@@ -50,7 +50,7 @@ type Prepare<O, P> = dyn Fn(
 pub(super) struct Request<T> {
     pub(super) value: T,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
-    pub(super) retention: Option<super::streaming::RequestClaims>,
+    pub(super) retention: Option<super::RequestClaims>,
 }
 
 pub(super) struct Typed<O: OperationDeclaration, P = ()> {
@@ -69,6 +69,10 @@ impl<T> From<T> for Request<T> {
     }
 }
 impl<T> Request<T> {
+    pub(super) fn owned(value: T, claims: super::RequestClaims) -> Self {
+        Self { value, retention: Some(claims), context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) }
+    }
+
     pub(super) fn charged(item: super::StreamItem<T>) -> Result<Self> {
         let (value, claims) = item.into_request()?;
         Ok(Self { value, retention: Some(claims), context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())) })

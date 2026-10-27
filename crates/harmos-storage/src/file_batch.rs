@@ -7,7 +7,7 @@
  * ***
  */
 
-// Native File Batches Retain Their Allocation Charge Through Every Shared View.
+// Native File Batches Share Their Original Allocation Through Every View.
 
 /* === Modules === */
 
@@ -24,7 +24,6 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::arrow::RetainedMemory;
 use crate::{Error, FileBatch, MemorySize, ReadBatch, Result};
 use harmos_domain::model::storage::files::FileEvent;
 
@@ -76,20 +75,18 @@ impl FileReadEvent {
 }
 
 impl FileReadBatch {
-    pub(crate) fn retained(batch: FileBatch, memory: RetainedMemory) -> Self {
-        Self { owner: ReadBatch::retained(batch, memory) }
+    pub(crate) fn new(batch: FileBatch) -> Self {
+        Self { owner: ReadBatch::new(batch) }
     }
 
-    /// Moves a unique file batch through an admitted projection.
-    /// Shared batches or slices refuse; allocation and escape rules match `ReadBatch::try_map`.
-    #[tracing::instrument(name = "storage.file_batch.try_map", level = "trace", skip_all, fields(additional_peak = additional_peak, outcome = "cancelled"))]
-    pub fn try_map<U, E>(
-        self, additional_peak: usize, map: impl FnOnce(FileBatch) -> std::result::Result<U, E>,
-    ) -> std::result::Result<ReadBatch<U>, E>
+    /// Moves a unique file batch through a fallible projection.
+    /// Shared batches or slices refuse, as with `ReadBatch::try_map`.
+    #[tracing::instrument(name = "storage.file_batch.try_map", level = "trace", skip_all, fields(outcome = "cancelled"))]
+    pub fn try_map<U, E>(self, map: impl FnOnce(FileBatch) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
     where
         E: From<Error>,
     {
-        let result: std::result::Result<ReadBatch<U>, E> = self.owner.try_map(additional_peak, map);
+        let result: std::result::Result<ReadBatch<U>, E> = self.owner.try_map(map);
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
     }

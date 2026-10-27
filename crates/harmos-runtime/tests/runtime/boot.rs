@@ -114,7 +114,7 @@ fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) 
 }
 
 fn renamed(position: u64, title: &str, link: Option<Link>) -> Envelope<Payload<Editor>> {
-    stored(position, RENAME.1, link, Recorded::Transaction(Arc::new(rename(title))))
+    stored(position, RENAME.1, link, Recorded::Transaction(harmos_runtime::operations::Response::new(rename(title))))
 }
 
 fn recovering(recorded: Vec<Envelope<Payload<Editor>>>) -> Replaying {
@@ -188,7 +188,12 @@ async fn boot_folds_state() {
 async fn boot_refuses_loudly() {
     let booted = Runtime::<Editor>::builder(Sheet::default(), ())
         .register(catalog())
-        .recover(recovering(vec![stored(1, "sheet.rotate", None, Recorded::Transaction(Arc::new(Change::Seal)))]))
+        .recover(recovering(vec![stored(
+            1,
+            "sheet.rotate",
+            None,
+            Recorded::Transaction(harmos_runtime::operations::Response::new(Change::Seal)),
+        )]))
         .runtime()
         .await;
 

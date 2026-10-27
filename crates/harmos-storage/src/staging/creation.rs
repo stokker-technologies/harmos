@@ -43,12 +43,8 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.staging.creation.create", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
         let result = async {
-            let (reference_bytes, base_bytes) = file_bytes(&metadata, self.inner.primary.history())?;
-            if base_bytes >= self.inner.settings.request.max_pending_write_bytes.get() {
-                return Err(Error::InvalidInput { field: "file metadata", reason: "metadata exceeds memory budget" });
-            }
-            // The charged envelope includes worst-case position, length and digest
-            // metadata. Refuse before creating bytes that cannot later be published.
+            let reference_bytes = file_bytes(&metadata, self.inner.primary.history())?;
+            // Bound The Finished Reference Before Creating Its Producer.
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(Error::InvalidInput { field: "file metadata", reason: "reference envelope exceeds max_batch_bytes" });
             }
@@ -68,7 +64,7 @@ impl<C> StorageManager<C> {
                     // Leave at least one byte for batch progress even with tiny policies.
                     if state.files.len() < crate::storage::config::MAX_FILES.get()
                         && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
-                        && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get() - base_bytes
+                        && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get()
                     {
                         let id =
                             NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
@@ -92,20 +88,20 @@ impl<C> StorageManager<C> {
                                 abandoned: false,
                                 in_flight: false,
                                 retrying: false,
-                                base_bytes,
+
                                 reference_bytes,
                             },
                         );
                         state.collect();
                         return Ok(Some(id));
                     }
-                    self.inner.relieve_pressure(state, base_bytes + 1, 1);
+                    self.inner.relieve_pressure(state, 1, 1);
                     Ok(None)
                 })
                 .await?;
             let mut cancel =
                 CancelProduction { manager: self.erased(), id, armed: true, generation: token.as_ref().map(|token| token.generation) };
-            let file = StorageFile { manager: self.erased(), id, progress, session: token };
+            let file = StorageFile { manager: self.erased(), id, progress, session: token, append: None };
             self.inner.notify();
             file.wait(Await::Ready).await?;
             cancel.armed = false;

@@ -215,38 +215,8 @@ async fn admitted_queries_progress() {
 }
 
 #[tokio::test]
-async fn expansion_exceeds_budget() {
-    // A Compact Repeated Payload Fits Its Encoded Page, But Not Its Expansion.
-    let mut settings = storage_settings();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-    let payload = compact();
-    assert!(Message::encode_to_vec(&payload[0]).len() < 16 * 1024);
-    let m = Mapped::new(settings.clone(), "expansion", &payload).await;
-    let query = m.query(Some("row-0"));
-    let mut reader = m.storage.query(query).await.unwrap();
-    assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
-    let failure = reader.next().await.unwrap_err();
-    assert!(
-        matches!(failure, harmos_storage::Error::ResourceExhausted { .. }),
-        "expanded row must be refused by memory admission: {failure:?}"
-    );
-    assert!(reader.completion().is_err());
-    assert!(m.storage.status().read_bytes <= settings.budget.read_memory_bytes.get());
-    drop(reader);
-
-    // Refusal Leaves Admission Usable And Does Not Publish A Partial Batch.
-    let query = m.query(Some("absent"));
-    let mut empty = m.storage.query(query).await.unwrap();
-    assert!(matches!(empty.next().await.unwrap(), Some(QueryArrow::Schema(_))));
-    assert!(empty.next().await.unwrap().is_none());
-    assert_eq!(empty.completion().unwrap().rows, 0);
-    drop(empty);
-    m.finish().await;
-}
-
-#[tokio::test]
-async fn conversion_grows_reservation() {
-    // Conversion Can Grow Beyond Its Initial Reservation Within The Shared Budget.
+async fn conversion_preserves_expansion() {
+    // Compact Payloads Expand Without A Shared Heap Budget.
     let settings = storage_settings();
     let m = Mapped::new(settings.clone(), "expansion", &compact()).await;
     let query = m.query(Some("row-0"));
@@ -265,15 +235,12 @@ async fn conversion_grows_reservation() {
     assert!(reader.next().await.unwrap().is_none());
     assert_eq!(reader.completion().unwrap().rows, 1);
 
-    // Zero-Copy Clones And Zero-Length Slices Still Own The Charged Allocation.
+    // Arrow Clones And Empty Slices Keep Their Original Buffers Alive.
     let empty = retained.column(0).slice(retained.num_rows(), 0);
     drop(values);
     drop(batch);
     drop(reader);
-    assert!(m.storage.status().read_bytes > 0);
-    assert!(m.storage.status().read_bytes <= settings.budget.read_memory_bytes.get());
     drop(retained);
-    assert!(m.storage.status().read_bytes > 0);
     drop(empty);
     m.finish().await;
 }

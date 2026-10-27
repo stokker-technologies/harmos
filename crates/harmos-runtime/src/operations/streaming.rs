@@ -11,7 +11,6 @@
 
 /* === Re-Exports === */
 
-pub(super) use harmos_sdk::operations::streaming::RequestClaims;
 pub use harmos_sdk::operations::streaming::{StreamInput, StreamItem, StreamSettings};
 
 /* === Imports === */

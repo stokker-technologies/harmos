@@ -28,6 +28,7 @@ use std::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 
 // Local Imports
+use super::RequestClaims;
 use crate::{MemorySize, Message};
 
 /* === Constants === */
@@ -57,11 +58,6 @@ pub struct StreamItem<T> {
     value: Payload<T>,
     _bytes: OwnedSemaphorePermit,
     delivery: Option<OwnedSemaphorePermit>,
-}
-
-pub struct RequestClaims {
-    _original: OwnedSemaphorePermit,
-    _delivery: Option<OwnedSemaphorePermit>,
 }
 
 pub struct StreamPermit<'a, T, E = Error> {
@@ -157,7 +153,7 @@ impl<T> StreamItem<T> {
         let Payload::Plain(value) = self.value else {
             return Err(Error::Ownership);
         };
-        Ok((value, RequestClaims { _original: self._bytes, _delivery: self.delivery }))
+        Ok((value, RequestClaims::retain(Arc::new((self._bytes, self.delivery)))))
     }
 }
 
@@ -178,7 +174,7 @@ impl<T: Clone + Send + Sync + 'static> StreamItem<T> {
             Payload::Plain(value) => value,
             Payload::Owned { response, .. } => response.restore::<T>().ok_or(Error::Ownership)?.into_owned(),
         };
-        let claims = RequestClaims { _original: self._bytes, _delivery: self.delivery };
+        let claims = RequestClaims::retain(Arc::new((self._bytes, self.delivery)));
         Ok((value, claims))
     }
 }
@@ -409,6 +405,20 @@ fn decoding(source: crate::MessageError) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_claim_clones_share_admission() {
+        let budget = Arc::new(Semaphore::new(64));
+        let permit = budget.clone().try_acquire_many_owned(64).unwrap();
+        let item = StreamItem::charged(String::from("payload"), permit).unwrap();
+        let (payload, claims) = item.into_request().unwrap();
+        let retained = claims.clone();
+        drop(payload);
+        drop(claims);
+        assert_eq!(budget.available_permits(), 0);
+        drop(retained);
+        assert_eq!(budget.available_permits(), 64);
+    }
 
     #[test]
     fn owned_requests() {

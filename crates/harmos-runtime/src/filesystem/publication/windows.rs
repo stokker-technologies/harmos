@@ -84,6 +84,14 @@ pub(super) fn install(source: &Path, destination: &Path) -> io::Result<()> {
     move_file(source, destination, false)
 }
 
+pub(super) fn install_opened(file: &File, source: &Path, destination: &Path) -> io::Result<()> {
+    let destination = wide(destination)?;
+    move_file_write_through(source, &destination, false)?;
+    // The Original Writable Handle Now Names The Destination. Flush Its
+    // Metadata After The Rename Just As The Handle-Based Install Does.
+    file.sync_all()
+}
+
 pub(super) fn replace(source: &Path, destination: &Path) -> io::Result<()> {
     move_file(source, destination, true)
 }

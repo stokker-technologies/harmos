@@ -236,7 +236,7 @@ impl Wire for Model {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(Arc::new(value)),
+                value: Recorded::Transaction(harmos::operations::Response::new(value)),
                 apply,
             }),
             harmos::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {

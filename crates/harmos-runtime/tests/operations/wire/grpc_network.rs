@@ -59,7 +59,7 @@ async fn filesystem_hash_roundtrip() {
     );
     let backends = primary.into_backends(harmos_runtime::storage::state::StorageStateSettings {
         max_entry_bytes: settings.request.max_pending_write_bytes,
-        max_checkpoint_bytes: settings.budget.read_memory_bytes,
+        max_checkpoint_bytes: settings.request.max_pending_write_bytes,
     });
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     storage.start(&runtime).await.unwrap();

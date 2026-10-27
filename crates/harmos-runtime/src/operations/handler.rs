@@ -78,6 +78,7 @@ pub struct Context<'a> {
     pub(crate) scope: Scope<'a>,
     pub(crate) operations: OperationManager,
     pub(super) admission: Admission,
+    pub(super) request_claims: Option<super::RequestClaims>,
     pub(super) source: Source,
     pub(super) origin: Origin,
 
@@ -340,6 +341,20 @@ impl Context<'_> {
 
     pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
+    }
+
+    pub fn request_claims(&self) -> Option<&super::RequestClaims> {
+        self.request_claims.as_ref()
+    }
+
+    pub fn submit_owned<O: OperationDeclaration>(&self, request: O, claims: super::RequestClaims) -> Result<OperationInstance<O>> {
+        self.operations.submit_scoped::<O, ()>(
+            (super::binding::Request::owned(request, claims), ()),
+            &self.scope,
+            &self.admission,
+            &self.source,
+            None,
+        )
     }
 
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O, endpoints: P) -> Result<OperationInstance<O>> {

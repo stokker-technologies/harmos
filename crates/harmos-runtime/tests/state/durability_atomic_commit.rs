@@ -234,7 +234,7 @@ impl Wire for Model {
                     prepared: None,
                     id: id.clone(),
                     version,
-                    value: Recorded::Transaction(Arc::new(value)),
+                    value: Recorded::Transaction(harmos_runtime::operations::Response::new(value)),
                     apply,
                 })
             }

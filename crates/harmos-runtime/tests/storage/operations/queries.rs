@@ -361,12 +361,9 @@ async fn ipc_admission_retains() {
             .await
             .unwrap();
         let item = reader.next().await.unwrap().unwrap();
-        // The Announced Schema Shares Its Claim With The Reader's Plan.
-        // Release That Peer So This Story Isolates The Pending Output Owner.
+        // Isolate The Pending Output From The Reader.
         drop(reader);
         fixture.data.snapshots_released().await;
-        let before = fixture.storage.status().read_bytes;
-        assert!(before > 0);
         let bytes = 4 * 1024 * 1024;
         let (sender, mut receiver) =
             harmos_runtime::operations::stream::<harmos_runtime::storage::query::QueryOutput>(harmos_runtime::operations::StreamSettings {
@@ -382,18 +379,15 @@ async fn ipc_admission_retains() {
         }));
         assert!(super::super::pending(sending.as_mut()).await);
         assert!(!converted.get());
-        assert_eq!(fixture.storage.status().read_bytes, before);
         drop(blocked);
         if cancel {
             drop(sending);
             assert!(!converted.get());
-            assert_eq!(fixture.storage.status().read_bytes, 0);
         } else {
             sending.await.unwrap();
             assert!(converted.get());
             let output = receiver.recv().await.unwrap();
             assert!(matches!(&*output, harmos_runtime::storage::query::QueryOutput::Schema(_)));
-            assert_eq!(fixture.storage.status().read_bytes, 0);
             // Destination Admission Now Covers The Wire Bytes Until Consumption.
             let mut next = Box::pin(sender.reserve(bytes));
             assert!(super::super::pending(next.as_mut()).await);
@@ -401,7 +395,6 @@ async fn ipc_admission_retains() {
             drop(next.await.unwrap());
             continue;
         }
-        assert_eq!(fixture.storage.status().read_bytes, 0);
     }
     fixture.finish().await;
 }

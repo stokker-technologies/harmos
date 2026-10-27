@@ -159,12 +159,8 @@ async fn budgets_never_multiply() {
 
 #[tokio::test]
 async fn ledger_evicts_receipts() {
-    // A Small Budget Makes The Ledger Evict Completed Receipts Long Before The Window Ends.
-    let mut settings = config();
-    settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(1024 * 1024).unwrap();
-    settings.response.batch_bytes = std::num::NonZeroUsize::new(64 * 1024).unwrap();
-    let budget = settings.budget.read_memory_bytes.get();
-    let f = Fixture::new(settings).await;
+    // Exceed The Receipt Count Bound Within One Retry Window.
+    let f = Fixture::new(config()).await;
     let window = f.storage.mutation_window().unwrap();
     let mut last = None;
     for index in 0..2048 {
@@ -174,10 +170,10 @@ async fn ledger_evicts_receipts() {
         let finish = identity(&f.storage, &format!("finish-{index}"));
         let reference = f.storage.finish_file_once(&finish, &producer.session).await.unwrap();
         assert_eq!(reference.length, 0);
+        f.storage.flush().await.unwrap();
         last = Some((finish, producer.session, reference));
     }
     assert_eq!(f.storage.mutation_window().unwrap().id, window.id);
-    assert!(f.storage.status().mutation_bytes < budget);
 
     // The Newest Receipt Still Answers Its Retry With The Original Outcome.
     let (finish, session, reference) = last.unwrap();

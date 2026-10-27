@@ -124,6 +124,10 @@ impl WireDeclaration {
     }
 
     pub fn contract(&self) -> Result<Contract, ContractError> {
+        self.contract_with_settings(&SchemaSettings::default())
+    }
+
+    pub fn contract_with_settings(&self, settings: &SchemaSettings) -> Result<Contract, ContractError> {
         let operation = self.operation.definition()?;
         if self.version == 0 {
             return Err(ContractError::Version { id: operation.id.to_string() });
@@ -135,22 +139,30 @@ impl WireDeclaration {
         if let Some(output) = self.output {
             roots.push(("output", output));
         }
-        let schema = Schema::from_declarations(&roots, &SchemaSettings::default()).map_err(|source| ContractError::Schema {
+        let schema = Schema::from_declarations(&roots, settings).map_err(|source| ContractError::Schema {
             id: operation.id.to_string(),
             direction: "contract",
             source: source.into(),
         })?;
-        Contract::new(operation, self.version, Codec::Postcard, schema)?.with_grpc(self.grpc.clone())
+        Contract::new_with_settings(operation, self.version, Codec::Postcard, schema, settings)?.with_grpc(self.grpc.clone())
     }
 }
 
 impl Contract {
     pub fn new(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
-        operation.validate()?;
-        Self::canonical(operation, version, codec, schema)
+        Self::new_with_settings(operation, version, codec, schema, &SchemaSettings::default())
     }
 
-    fn canonical(operation: Definition, version: u32, codec: Codec, schema: Schema) -> Result<Self, ContractError> {
+    pub fn new_with_settings(
+        operation: Definition, version: u32, codec: Codec, schema: Schema, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
+        operation.validate()?;
+        Self::canonical(operation, version, codec, schema, settings)
+    }
+
+    fn canonical(
+        operation: Definition, version: u32, codec: Codec, schema: Schema, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
         if version == 0 {
             return Err(ContractError::Version { id: operation.id.to_string() });
         }
@@ -159,7 +171,7 @@ impl Contract {
             direction: "contract",
             source: source.into(),
         };
-        schema.prepare(&SchemaSettings::default()).map_err(invalid)?;
+        schema.prepare(settings).map_err(invalid)?;
         let directions = schema.root().map_err(invalid)?;
         let fields = directions.fields();
         let valid = (2..=4).contains(&fields.len())
@@ -231,7 +243,7 @@ impl Contract {
             &SchemaSettings::default(),
         )
         .map_err(|source| ContractError::Schema { id: operation.id.to_string(), direction: "contract", source: source.into() })?;
-        Self::canonical(operation, O::VERSION, Codec::Postcard, schema)
+        Self::canonical(operation, O::VERSION, Codec::Postcard, schema, &SchemaSettings::default())
     }
 
     pub fn operation(&self) -> &Definition {
@@ -267,16 +279,19 @@ impl Contract {
     }
 
     pub fn compatible(&self, requirement: &Self) -> bool {
+        self.compatible_with_settings(requirement, &SchemaSettings::default())
+    }
+
+    pub fn compatible_with_settings(&self, requirement: &Self, settings: &SchemaSettings) -> bool {
         self.operation.id == requirement.operation.id
             && self.version == requirement.version
             && self.codec == requirement.codec
             && ["request", "response", "input", "output"].into_iter().all(|name| {
                 match (self.direction(name), requirement.direction(name)) {
                     (None, None) => true,
-                    (Some(left), Some(right)) => self
-                        .schema
-                        .equivalent(left.index(), &requirement.schema, right.index(), &SchemaSettings::default())
-                        .unwrap_or(false),
+                    (Some(left), Some(right)) => {
+                        self.schema.equivalent(left.index(), &requirement.schema, right.index(), settings).unwrap_or(false)
+                    }
                     _ => false,
                 }
             })

@@ -274,9 +274,9 @@ where
 
 fn transaction<A: Application>(
     value: &Prepared, catalog: &Dispatch<A, Payload<A>>,
-) -> std::result::Result<Arc<A::Transaction>, Incompatible> {
+) -> std::result::Result<crate::operations::Response<A::Transaction>, Incompatible> {
     let bytes = serde_json::to_vec(&value.payload).map_err(Incompatible::unreadable)?;
-    catalog.decode_transaction(&value.id, value.version, &bytes).map(Arc::new).map_err(Incompatible::unreadable)
+    catalog.decode_transaction(&value.id, value.version, &bytes).map(crate::operations::Response::new).map_err(Incompatible::unreadable)
 }
 
 fn invalid() -> Incompatible {

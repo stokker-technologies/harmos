@@ -163,3 +163,33 @@ async fn discovery_shares_producer() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn record_registration_uses_runtime_schema_settings() {
+    use harmos_runtime::schema::Described;
+    use std::num::{NonZeroU32, NonZeroUsize};
+
+    #[harmos_runtime::message]
+    struct ConfiguredRow {
+        value: String,
+    }
+
+    let defaults = harmos_runtime::config::SchemaSettings::default();
+    let graph = harmos_runtime::schema::graph::Schema::from_declaration(ConfiguredRow::DEFINITION, &defaults).unwrap();
+    let key = harmos_runtime::storage::SchemaKey {
+        payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
+        id: harmos_runtime::Identifier::new("configured.record").unwrap(),
+        version: NonZeroU32::new(1).unwrap(),
+    };
+    for accepted in [true, false] {
+        let mut settings = defaults;
+        if !accepted {
+            settings.preparation_bytes = NonZeroUsize::new(1).unwrap();
+        }
+        let runtime = Runtime::<Model>::builder((), ()).schema_settings(settings).runtime().await.unwrap();
+        let result = runtime.records.register("configured", key.clone(), graph.clone()).await;
+        assert_eq!(result.is_ok(), accepted);
+        assert_eq!(runtime.records.definition(&key).is_some(), accepted);
+        runtime.stop().await.unwrap();
+    }
+}

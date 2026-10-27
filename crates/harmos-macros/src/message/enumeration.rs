@@ -42,7 +42,7 @@ use crate::path::HarmosPath;
 // A Message Enum Is A Oneof: Each Variant Selects One Payload Shape Whose Fields
 // Are The Variant's Fields. Payload Shapes Are Unit Markers Carrying Only Their
 // Described Fields; Values Live In The Enum And Its Postcard Encoding.
-pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -> Result<TokenStream, Error> {
+pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, skip_default: bool) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() || item.variants.is_empty() {
         return Err(Error::new(item.span(), "a message enum requires non-generic variants"));
     }
@@ -151,7 +151,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -
         item.attrs.push(syn::parse_quote!(#[derive(Debug)]));
     }
     let default = &defaults[0];
-    let default_impl = (!has_default && defaultable).then(|| {
+    let default_impl = (!skip_default && !has_default && defaultable).then(|| {
         quote! {
             impl ::std::default::Default for #name { fn default() -> Self { #default } }
         }

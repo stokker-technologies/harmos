@@ -47,6 +47,7 @@ pub struct Definition {
 
 pub(crate) struct Registry {
     pub(super) storage: Option<StorageManager<ErasedCatalog>>,
+    pub(super) settings: Arc<crate::config::SchemaSettings>,
     state: Mutex<State>,
 
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
@@ -108,9 +109,10 @@ impl Definition {
 }
 
 impl Registry {
-    pub(crate) fn new(storage: Option<StorageManager<ErasedCatalog>>) -> Self {
+    pub(crate) fn new(storage: Option<StorageManager<ErasedCatalog>>, settings: Arc<crate::config::SchemaSettings>) -> Self {
         Self {
             storage,
+            settings,
             state: Mutex::new(State::default()),
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
             listeners: Mutex::new(BTreeMap::new()),
@@ -122,8 +124,8 @@ impl Registry {
         if !harmos_domain::artifact_subset(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
             return Err(Error::InvalidInput { field: "record schema", reason: "invalid or oversized identity" });
         }
-        let settings = harmos_domain::config::SchemaSettings::default();
-        graph.preparation(&settings).map_err(|_| limit())?;
+        let settings = self.settings.as_ref();
+        graph.preparation(settings).map_err(|_| limit())?;
         let fields_bytes = graph.memory_size().checked_add(2 * std::mem::size_of::<usize>()).ok_or_else(limit)?;
         {
             let state = self.state.lock().expect("record schema registry poisoned");
@@ -156,12 +158,12 @@ impl Registry {
         .into_iter()
         .try_fold(0usize, usize::checked_add)
         .ok_or_else(limit)?;
-        let compilation = Validator::construction_memory_bytes(&graph, &settings)
+        let compilation = Validator::construction_memory_bytes(&graph, settings)
             .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
         let construction_bytes = destination.checked_add(compilation).ok_or_else(limit)?;
         let mut construction = Construction::new(self, construction_bytes)?;
         // Compile Outside The Registry Lock Under The Original Shared Budget
-        let validation = Validator::from_schema(&graph, &settings)
+        let validation = Validator::from_schema(&graph, settings)
             .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
         let bytes = destination.checked_add(validation.memory_size()).ok_or_else(limit)?;
         if bytes > construction_bytes {

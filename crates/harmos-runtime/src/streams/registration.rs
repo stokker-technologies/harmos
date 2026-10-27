@@ -67,7 +67,7 @@ impl<A: Application> StreamManager<A> {
             .map(|definition| {
                 crate::schema::Validator::from_schema(
                     definition.schema().expect("plugin definitions own a row schema"),
-                    &harmos_domain::config::SchemaSettings::default(),
+                    &self.schema_settings,
                 )
                 .map_err(crate::schema::Error::from)
                 .map(Arc::new)

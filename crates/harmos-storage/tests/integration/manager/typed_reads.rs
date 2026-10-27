@@ -183,15 +183,12 @@ async fn typed_owner_retained() {
     let owner = page.owner();
     drop(reader);
     data.snapshots_released().await;
-    assert!(storage.status().read_bytes >= harmos_storage::MemorySize::memory_size(&page));
     drop(page);
     drop(alias);
-    assert!(storage.status().read_bytes > 0);
     let retained: &Vec<harmos_storage::StoredRecord<Sample>> = std::borrow::Borrow::borrow(owner.as_ref());
     assert_eq!(retained.as_ptr(), pointer);
     drop(owner);
     data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
     storage.close().await.unwrap();
 }
 
@@ -219,44 +216,6 @@ async fn unwritten_schema_empty() {
     let mut reader = storage.read_objects(read).await.unwrap();
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
-}
-
-#[tokio::test]
-async fn typed_budget_refuses() {
-    let mut settings = paged();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(128).unwrap();
-    settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "a", "one").await;
-    let objects = async {
-        storage
-            .read_objects(ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
-            .await?
-            .collect()
-            .await
-    };
-    assert!(matches!(objects.await, Err(Error::ResourceExhausted { .. })));
-    let records = async {
-        storage.read_records::<Sample>(RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 }).await?.collect().await
-    };
-    assert!(matches!(records.await, Err(Error::ResourceExhausted { .. })));
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
-
-    // An Admitted Reader Refuses A Page No Budget Split Can Hold.
-    let mut settings = paged();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
-    settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "large", &"x".repeat(16 * 1024)).await;
-    let mut reader = storage
-        .read_objects(ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
-        .await
-        .unwrap();
-    assert!(matches!(reader.next().await, Err(Error::ResourceExhausted { .. })));
-    drop(reader);
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
 }
 
 #[tokio::test]
@@ -298,87 +257,22 @@ async fn snapshot_reads_concurrent() {
 /* === Tests === */
 
 #[tokio::test]
-async fn session_slots_refuse() {
-    let mut settings = paged();
-    settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "a", "one").await;
-    write(&storage, "b", "two").await;
-    let session = storage.read_session();
-    let read = || ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest };
-    let mut first = session.read_objects(read()).await.unwrap();
-    let retained = first.next().await.unwrap().unwrap();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(1), session.read_objects(read())).await.unwrap();
-    assert!(matches!(result, Err(Error::ResourceExhausted { resource: "active storage queries" })));
-    // Point Reads Need No Active Reader Slot.
-    assert!(session.read_object::<Experiment>(&"a".to_owned(), ObjectVersion::Latest).await.unwrap().is_some());
-    assert!(first.next().await.unwrap().is_none());
-    let mut second = session.read_objects(read()).await.unwrap();
-    assert_eq!(second.next().await.unwrap().unwrap().len(), 2);
-    drop(second);
-    drop(first);
-    drop(session);
-    assert_eq!(retained[0].value.label, "one");
-    drop(retained);
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn session_pressure_refuses() {
-    let settings = paged();
-    let budget = settings.budget.read_memory_bytes.get();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "a", "one").await;
-    let session = storage.read_session();
-    let mut reader = session
-        .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
-        .await
-        .unwrap();
-    let page = reader.next().await.unwrap().unwrap();
-    let collection = session.collection::<Vec<String>>().unwrap();
-    let remaining = budget - storage.status().read_bytes;
-    let collection = collection.try_map(remaining, Ok::<_, Error>).unwrap();
-    assert_eq!(storage.status().read_bytes, budget);
-    let point =
-        tokio::time::timeout(std::time::Duration::from_secs(1), session.read_object::<Experiment>(&"a".to_owned(), ObjectVersion::Latest))
-            .await
-            .unwrap();
-    assert!(matches!(point, Err(Error::ResourceExhausted { .. })));
-    let next = tokio::time::timeout(std::time::Duration::from_secs(1), reader.next()).await.unwrap();
-    assert!(matches!(next, Err(Error::ResourceExhausted { .. })));
-    assert_eq!(page[0].value.label, "one");
-    drop(collection);
-    drop(page);
-    drop(reader);
-    drop(session);
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn session_collection_retains() {
+async fn collection_retains() {
     let mut settings = paged();
     settings.response.batch_rows = NonZeroUsize::new(1).unwrap();
     let (storage, data) = manager(settings).await;
     write(&storage, "a", "one").await;
     write(&storage, "b", "two").await;
-    let session = storage.read_session();
-    let mut collection = session.collection::<Vec<String>>().unwrap();
+    let session = storage.clone();
+    let mut collection = harmos_storage::ReadBatch::new(Vec::<harmos_storage::ReadBatch<Vec<String>>>::new());
     let mut reader = session
         .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
         .await
         .unwrap();
     while let Some(page) = reader.next().await.unwrap() {
-        let page = page
-            .try_map(4 * std::mem::size_of::<String>(), |rows| {
-                Ok::<_, Error>(rows.into_iter().map(|row| row.value.label).collect::<Vec<_>>())
-            })
-            .unwrap();
+        let page = page.try_map(|rows| Ok::<_, Error>(rows.into_iter().map(|row| row.value.label).collect::<Vec<_>>())).unwrap();
         collection = collection
-            .try_map(4 * std::mem::size_of_val(&page), |mut pages| {
+            .try_map(|mut pages| {
                 pages.push(page);
                 Ok::<_, Error>(pages)
             })
@@ -398,42 +292,7 @@ async fn session_collection_retains() {
     data.snapshots_released().await;
     drop(collection);
     assert_eq!(child[0].as_ptr(), pointer);
-    assert!(storage.status().read_bytes > 0);
     drop(child);
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn session_decode_refuses() {
-    let settings = paged();
-    let budget = settings.budget.read_memory_bytes.get();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "a", "one").await;
-    let session = storage.read_session();
-    let peer = session.clone();
-    let collection = session.collection::<Vec<String>>().unwrap();
-    data.control.block_read.store(true, Ordering::SeqCst);
-    let key = "a".to_owned();
-    let (point, collection) = tokio::join!(
-        tokio::time::timeout(std::time::Duration::from_secs(1), peer.read_object::<Experiment>(&key, ObjectVersion::Latest)),
-        async {
-            data.control.read_entered.notified().await;
-            // The Point Read Has Its Initial Claim; Its Decoded Growth Must
-            // Still See These Other Results In The Same Admission Group.
-            let remaining = budget - storage.status().read_bytes;
-            let collection = collection.try_map(remaining, Ok::<_, Error>).unwrap();
-            data.control.block_read.store(false, Ordering::SeqCst);
-            data.control.read_release.notify_one();
-            collection
-        }
-    );
-    assert!(matches!(point.unwrap(), Err(Error::ResourceExhausted { .. })));
-    drop(peer);
-    drop(session);
-    drop(collection);
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
     storage.close().await.unwrap();
 }
 
@@ -452,145 +311,14 @@ async fn standalone_reader_queues() {
     assert_eq!(second.next().await.unwrap().unwrap()[0].value.label, "one");
     drop(second);
     data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
     storage.close().await.unwrap();
 }
 
 #[tokio::test]
-async fn session_metadata_growth() {
-    let settings = paged();
-    let budget = settings.budget.read_memory_bytes.get();
-    let (storage, _) = manager(settings).await;
-    let session = storage.read_session();
-    let memory = session.try_memory(NonZeroUsize::new(4096).unwrap()).unwrap();
-    let initial = memory.bytes();
-    assert!(initial > 4096);
-    let alias = memory.clone();
-    let mut table = std::collections::BTreeMap::new();
-    table.insert(String::from("active"), String::from("retained"));
-    std::thread::scope(|scope| {
-        for _ in 0..2 {
-            let memory = memory.clone();
-            scope.spawn(move || {
-                for _ in 0..64 {
-                    memory.try_grow_by(1).unwrap();
-                }
-            });
-        }
-    });
-    assert_eq!(memory.bytes(), initial + 128);
-    memory.try_grow_by(budget - storage.status().read_bytes).unwrap();
-    let before = memory.bytes();
-    assert!(memory.try_grow_by(1).is_err());
-    assert_eq!(memory.bytes(), before);
-    assert_eq!(table.get("active").unwrap(), "retained");
-    assert!(session.try_memory(NonZeroUsize::new(usize::MAX).unwrap()).is_err());
-    drop(table);
-    drop(memory);
-    drop(session);
-    assert_eq!(storage.status().read_bytes, budget);
-    drop(alias);
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn session_file_pressure() {
-    let settings = paged();
-    let budget = settings.budget.read_memory_bytes.get();
-    let (storage, data) = manager(settings).await;
-    write(&storage, "a", "one").await;
-    let mut writer = storage
-        .create_file(harmos_storage::FileMetadata {
-            id: harmos_storage::Identifier::new("mixed").unwrap(),
-            scope: None,
-            media_type: "application/octet-stream".into(),
-            expected_length: Some(3),
-            expected_sha256: None,
-        })
-        .await
-        .unwrap();
-    writer.write_all(b"abc".to_vec()).await.unwrap();
-    let file = writer.finish().await.unwrap();
-    storage.flush().await.unwrap();
-    let session = storage.read_session();
-    let mut typed = session
-        .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
-        .await
-        .unwrap();
-    let page = typed.next().await.unwrap().unwrap();
-    let mut reader = session
-        .read_file(harmos_domain::operations::storage::ReadFile {
-            source: harmos_storage::FileSource::Stored(file),
-            range: harmos_storage::ByteRange { offset: 0, limit: None },
-        })
-        .await
-        .unwrap();
-    let memory = session.try_memory(NonZeroUsize::MIN).unwrap();
-    memory.try_grow_by(budget - storage.status().read_bytes).unwrap();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(1), reader.next()).await.unwrap();
-    assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
-    assert_eq!(page[0].value.label, "one");
-    drop(reader);
-    drop(typed);
-    drop(page);
-    drop(memory);
-    drop(session);
-    data.snapshots_released().await;
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn session_arrow_pressure() {
-    let mut settings = paged();
-    settings.request.max_active_queries = NonZeroUsize::MIN;
-    let budget = settings.budget.read_memory_bytes.get();
-    let (storage, data) = manager(settings).await;
-    storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
-    let input = waveforms::inputs(&waveforms::samples(1)).remove(0);
-    storage.write_records(vec![input.record]).await.unwrap();
-    storage.flush().await.unwrap();
-    let session = storage.read_session();
-    let mut query = session
-        .query(Query { at: storage.cursor_saved(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
-        .await
-        .unwrap();
-    assert!(query.next().await.unwrap().is_some());
-    let item = query.next().await.unwrap().unwrap();
-    let harmos_storage::query::QueryArrow::Batch(batch) = item else {
-        panic!("expected batch");
-    };
-    let projected = batch.try_map(0, |batch| Ok::<_, Error>(batch.num_rows())).unwrap();
-    let read = RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 };
-    assert!(matches!(session.read_records::<Sample>(read).await, Err(Error::ResourceExhausted { resource: "active storage queries" })));
-    drop(query);
-    data.snapshots_released().await;
-    let mut records =
-        session.read_records::<Sample>(RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 }).await.unwrap();
-    let memory = session.try_memory(NonZeroUsize::MIN).unwrap();
-    memory.try_grow_by(budget - storage.status().read_bytes).unwrap();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(1), records.next()).await.unwrap();
-    assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
-    assert_eq!(*projected, 1);
-    drop(records);
-    drop(memory);
-    drop(session);
-    data.snapshots_released().await;
-    assert!(storage.status().read_bytes > 0);
-    drop(projected);
-    assert_eq!(storage.status().read_bytes, 0);
-    storage.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn receipt_claim_preserves() {
-    use harmos_storage::MemorySize;
+async fn receipt_frontier_preserves() {
     let (storage, _) = manager(paged()).await;
-    let session = storage.read_session();
+    let session = storage.clone();
     let count = NonZeroUsize::new(2).unwrap();
-    let bound = storage.object_receipts_memory(count).unwrap();
-    let claim = session.try_memory(NonZeroUsize::new(bound).unwrap()).unwrap();
     let mut receipts = storage
         .write_object_group(storage.settings().request.max_pending_write_bytes, count, |group| {
             group.write(&Experiment { id: "a".into(), label: "one".into() })?;
@@ -599,14 +327,12 @@ async fn receipt_claim_preserves() {
         .await
         .unwrap();
     assert_eq!(receipts.capacity(), count.get());
-    assert_eq!(receipts.memory_size(), bound);
     let cursor = receipts.pop().unwrap().position;
     drop(receipts);
-    let pending = (cursor, claim);
-    assert!(storage.flush_until(&pending.0).await.unwrap().covers(&pending.0).unwrap());
-    assert!(storage.status().read_bytes > 0);
+    let pending = cursor;
+    assert!(storage.flush_until(&pending).await.unwrap().covers(&pending).unwrap());
     // Keeping The Accepted Receipt Reuses Its Frontier Rather Than Reissuing A Group.
-    assert_eq!(storage.cursor_accepted(), pending.0);
+    assert_eq!(storage.cursor_accepted(), pending);
     let mutation = harmos_storage::MutationId {
         window: storage.mutation_window().unwrap().id,
         key: harmos_storage::Identifier::new("receipts").unwrap(),
@@ -617,24 +343,16 @@ async fn receipt_claim_preserves() {
         item: harmos_storage::ObjectKey::new("once", NonZeroUsize::new(128).unwrap()).unwrap(),
         payload: harmos_storage::Message::encode_to_vec(&value),
     };
-    let bound = storage.object_receipts_memory(NonZeroUsize::MIN).unwrap();
-    let first_claim = session.try_memory(NonZeroUsize::new(bound).unwrap()).unwrap();
     let first = storage.write_objects_once(&mutation, vec![object.clone()]).await.unwrap();
     let accepted = storage.cursor_accepted();
-    let retry_claim = session.try_memory(NonZeroUsize::new(bound).unwrap()).unwrap();
     let replay = storage.write_objects_once(&mutation, vec![object]).await.unwrap();
     assert_eq!(first, replay);
     assert_eq!(first.capacity(), 1);
     assert_eq!(replay.capacity(), 1);
-    assert_eq!(first.memory_size(), bound);
-    assert_eq!(replay.memory_size(), bound);
     assert_eq!(storage.cursor_accepted(), accepted);
     drop(first);
     drop(replay);
-    drop(first_claim);
-    drop(retry_claim);
     drop(pending);
     drop(session);
-    assert_eq!(storage.status().read_bytes, 0);
     storage.close().await.unwrap();
 }

@@ -119,6 +119,7 @@ pub struct Builder<A: Application> {
     lanes: LaneSet,
     operations: Vec<crate::operations::CatalogBinding>,
     operation_settings: crate::operations::Settings,
+    schema_settings: Arc<crate::config::SchemaSettings>,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     services: Vec<DeclaredService<A>>,
     evidence: Option<Declaration>,
@@ -365,6 +366,7 @@ impl<A: Application> Runtime<A> {
             lanes: LaneSet::default(),
             operations: Vec::new(),
             operation_settings: crate::operations::Settings::default(),
+            schema_settings: Arc::new(crate::config::SchemaSettings::default()),
             operation_middleware: Vec::new(),
             services: Vec::new(),
             evidence: None,
@@ -436,6 +438,12 @@ impl<A: Application> Registration<A> for LaneSet {
 }
 
 impl<A: Application> Builder<A> {
+    /// Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
+    pub fn schema_settings(mut self, settings: crate::config::SchemaSettings) -> Self {
+        self.schema_settings = Arc::new(settings);
+        self
+    }
+
     pub fn register<C: Registration<A> + 'static>(mut self, catalog: C) -> Self {
         #[cfg(feature = "simulation")]
         self.simulation.register(catalog.clone());
@@ -746,6 +754,7 @@ impl<A: Application> Builder<A> {
             lanes,
             operations: bindings,
             operation_settings,
+            schema_settings,
             operation_middleware,
             services,
             evidence,
@@ -799,6 +808,7 @@ impl<A: Application> Builder<A> {
             Arc::clone(&catalog),
             attachments.capture.take(),
             boot.storage.clone(),
+            schema_settings.clone(),
             crate::state::Timestamp::now,
         );
         let journal_handles = journal.handle_probe();
@@ -813,7 +823,7 @@ impl<A: Application> Builder<A> {
         // attached below never misses a row published in the gap between the
         // two.
         let (tier, served) = Tier::channel(REQUESTS);
-        let streams = StreamManager::wired(windows, journal.progress(), tier);
+        let streams = StreamManager::wired(windows, journal.progress(), tier, schema_settings.clone());
         let delivery = streams.delivery();
         operation_settings.validate().map_err(|source| Incompatible { cause: Cause::Operations(source), cleanup: None })?;
         let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
@@ -834,7 +844,8 @@ impl<A: Application> Builder<A> {
                 return Err(Incompatible::work(duplicate));
             }
         }
-        let operations = crate::operations::OperationManager::new(instances, &operation_settings, reserved, boot.identity.clone());
+        let operations =
+            crate::operations::OperationManager::new(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings);
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }

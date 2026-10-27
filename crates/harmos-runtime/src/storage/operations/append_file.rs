@@ -67,7 +67,7 @@ impl<C: 'static> Operation for Handler<C> {
             let bytes = std::mem::take(&mut request.bytes);
             self.payload = Some(FileChunk::new(bytes));
         }
-        let payload = self.payload.as_ref().expect("retained file payload").clone();
+        let payload = self.payload.as_ref().expect("file payload").clone();
         let result: ::core::result::Result<FileProducer, Self::Error> = async move {
             self.storage.append_file_once(&request.mutation, &request.session, request.offset, payload).await.map_err(Into::into)
         }

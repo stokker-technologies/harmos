@@ -17,7 +17,6 @@
 // Standard Library Imports
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
 // Third Party Imports
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
@@ -287,7 +286,7 @@ impl Wire for Bank {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(Arc::new(change)),
+                value: Recorded::Transaction(harmos::operations::Response::new(change)),
                 apply,
             }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {

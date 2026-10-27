@@ -269,7 +269,7 @@ impl Worker {
                     let mut state = inner.state.lock().unwrap();
                     match &action {
                         Action::Write(entry, _) => (Some(entry.context.clone()), None),
-                        Action::Snapshot(SnapshotAction::Open(id, _, _) | SnapshotAction::Release(id, _, _)) => {
+                        Action::Snapshot(SnapshotAction::Open(id, _) | SnapshotAction::Release(id, _)) => {
                             state.snapshots.get_mut(id).map(|held| (Some(held.context.clone()), held.queued.take())).unwrap_or((None, None))
                         }
                         Action::File(file) => state
@@ -300,7 +300,7 @@ impl Worker {
                         Some(context) => context.scope(future).await,
                         None => future.await,
                     };
-                    // Reservation Destructors Must Run Outside The State Mutex.
+                    // Release Completed Work Outside The State Mutex.
                     if let Action::Write(_, batch) = &mut action {
                         batch.take();
                     }
@@ -350,7 +350,6 @@ impl Worker {
                     if let Some(id) = failure_id {
                         failures.remove(&id);
                     }
-                    let mut retired_snapshot = None;
                     let mut state = inner.state.lock().unwrap();
                     // A Peer Completion Cannot Clear Another Action's Failure.
                     state.status.failure = failures.values().next().map(|failure| Arc::clone(&failure.source));
@@ -374,9 +373,8 @@ impl Worker {
                                 None => publish(),
                             }
                         }
-                        (Action::Snapshot(SnapshotAction::Release(_, _, memory)), Completed::Released(id)) => {
+                        (Action::Snapshot(SnapshotAction::Release(_, _)), Completed::Released(id)) => {
                             state.snapshot_removed(id);
-                            retired_snapshot = Some(memory);
                         }
                         (Action::Write(_, _), Completed::Write { data, saved, recovery }) => {
                             if let Some(target) = data {
@@ -422,7 +420,6 @@ impl Worker {
                     }
                     state.collect();
                     drop(state);
-                    drop(retired_snapshot);
                 }
                 Err(error) => {
                     let attempts = if generation == retry_generation { attempts.saturating_add(1) } else { 1 };
@@ -584,22 +581,11 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
-        Action::Snapshot(SnapshotAction::Open(id, at, memory)) => {
-            let opened = async {
-                let snapshot = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at, memory.clone())).await?;
-                let bytes = snapshot
-                    .token
-                    .capacity()
-                    .checked_mul(3)
-                    .and_then(|bytes| bytes.checked_add(super::manager::ENTRY_OVERHEAD))
-                    .ok_or(Error::ResourceExhausted { resource: "snapshot token memory" })?;
-                memory.grow_to(bytes).await.map_err(crate::capacity::Refusal::into_error)?;
-                Ok(snapshot)
-            }
-            .await;
+        Action::Snapshot(SnapshotAction::Open(id, at)) => {
+            let opened = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
-        Action::Snapshot(SnapshotAction::Release(id, snapshot, _)) => {
+        Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
             if let Some(snapshot) = snapshot {
                 inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
             }

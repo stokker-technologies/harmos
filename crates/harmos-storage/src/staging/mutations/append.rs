@@ -61,15 +61,13 @@ impl<C> StorageManager<C> {
             let length = offset.checked_add(payload.len() as u64).ok_or_else(size_error)?;
             if file.metadata.expected_length.is_some_and(|expected| length > expected) { return Err(invalid("append exceeds expected file length")); }
             let ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
-            let outcome = MutationValue::Producer(FileProducer { session: token.clone(), length });
-            reserve(state, mutation, fingerprint, outcome.memory_size(), payload.capacity(), &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, payload.len(), &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.ticket = ticket;
             file.context = crate::execution::Context::current();
             file.queued = Some(tracing::debug_span!("storage.file.queue"));
             let payload = bytes.take().expect("unadmitted file payload");
-            let charge = crate::batch::WriteCharge::new(&self.inner, payload.allocation_bytes());
-            file.command = Some(Command::Write(payload.retained(charge)));
+            file.command = Some(Command::Write(payload));
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Append });
             Ok(true)
         }).await?.producer()

@@ -19,7 +19,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::future::Future;
+use std::{any::Any, future::Future, sync::Arc};
 
 // Third Party Imports
 
@@ -37,6 +37,12 @@ use crate::{Message, StreamSpec};
 
 /* === Structs === */
 
+// Native Ownership Is Never Part Of A Serialized Operation Declaration.
+#[derive(Clone)]
+pub struct RequestClaims {
+    owner: Arc<dyn Any + Send + Sync>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -53,6 +59,18 @@ pub trait Host: Send + Sync + Sized {
     fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError>;
 
     fn submit<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+
+    // The caller admits the owner before allocating the request payload. Native
+    // hosts retain it with accepted work; remote hosts refuse local ownership.
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O, claims: RequestClaims,
+    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+
+    fn call_owned<O: OperationDeclaration>(
+        &self, request: O, claims: RequestClaims,
+    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
+        async move { self.submit_owned(request, claims).await?.join().await }
+    }
 
     fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
@@ -90,6 +108,16 @@ pub trait Host: Send + Sync + Sized {
 }
 
 /* === Implementations === */
+
+impl RequestClaims {
+    pub fn retain(owner: Arc<dyn Any + Send + Sync>) -> Self {
+        Self { owner }
+    }
+
+    pub fn owner<T: Any + Send + Sync>(&self) -> Option<&T> {
+        self.owner.downcast_ref()
+    }
+}
 
 /* === Public Functions === */
 

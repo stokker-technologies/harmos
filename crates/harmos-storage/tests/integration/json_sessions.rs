@@ -71,7 +71,7 @@ async fn storage(root: &Path) -> StorageManager {
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
             event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
         },
-        budget: StorageBudget { read_memory_bytes: memory },
+
         request: StorageRequestSettings {
             max_pending_queries: NonZeroUsize::new(8).unwrap(),
             max_active_queries: NonZeroUsize::new(2).unwrap(),
@@ -136,14 +136,11 @@ async fn local_file_transfer() {
     let whole = ByteRange { offset: 0, limit: None };
     let mut reader = storage.read_file(ReadFile { source: source.clone(), range: whole }).await.unwrap();
     let batch = reader.next().await.unwrap().unwrap();
-    let backing_bytes = batch.bytes().len();
     let view = batch.slice(2..10);
     assert_eq!(view.bytes().as_ptr(), batch.bytes().as_ptr().wrapping_add(2));
     drop((reader, batch));
-    assert!(storage.status().read_bytes >= backing_bytes);
     assert_eq!(view.bytes(), &expected[2..10]);
     drop(view);
-    assert_eq!(storage.status().read_bytes, 0);
 
     let hash = storage.hash_file(HashFile { source: source.clone(), range: whole }).await.unwrap();
     assert_eq!(hash.bytes_read, expected.len() as u64);
@@ -411,4 +408,29 @@ async fn sessions_survive_reopen() {
     assert_eq!(fourth.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
     assert!(fourth.file_progress(&file).await.is_err());
     fourth.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn immutable_reader_survives_deletion_and_stops_after_snapshot_release() {
+    let root = tempfile::tempdir().unwrap();
+    let storage = storage(root.path()).await;
+    let bytes = (0..20_000).map(|i| (i % 251) as u8).collect::<Vec<_>>();
+    let mut producer = storage.create_file(metadata("leased-reader")).await.unwrap();
+    producer.write_all(bytes.clone()).await.unwrap();
+    let reference = producer.finish().await.unwrap();
+    storage.flush().await.unwrap();
+    let request = ReadFile { source: FileSource::Stored(reference.clone()), range: ByteRange { offset: 0, limit: None } };
+    let mut reader = storage.read_file(request.clone()).await.unwrap();
+    let file = StagedFile { history: reference.position.history.clone(), id: reference.metadata.id.clone() };
+    storage.delete_file_once(&mutation(&storage, "delete-leased"), &file).await.unwrap();
+    let mut actual = Vec::new();
+    while let Some(batch) = reader.next().await.unwrap() {
+        actual.extend_from_slice(batch.bytes());
+    }
+    assert_eq!(actual, bytes);
+    assert_eq!(reader.completion().unwrap().bytes, bytes.len() as u64);
+    drop(reader);
+    assert!(storage.read_file(request).await.is_err());
+    drop(producer);
+    storage.close().await.unwrap();
 }

@@ -310,6 +310,15 @@ Direct backend callers obtain a guard through `StorageManager::read_memory`
 and keep a clone for as long as they retain the returned data. Manager readers
 return shared owners that retain these charges automatically.
 
+Native primary-write batches also provide `batch.try_scratch(additional_peak)`.
+Admit new serialization, row and index buffers before allocating them, and move
+the returned write-pool claim into blocking work with the input batch. Clones
+share one claim; use `try_grow_by` for independent increments and `try_grow_to`
+for a single allocator's absolute high-water mark. Growth refuses without
+waiting and uses the existing pending-write budget. Direct backend callers
+supply `StorageManager::write_memory` through `batch.with_scratch(memory)`;
+a batch without a carrier refuses scratch allocation.
+
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
 `ReadFile` streams a selected byte range; `HashFile` returns its byte count and
 SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
@@ -321,6 +330,20 @@ boundaries, path-scoped grants or extra per-plugin allowlists for local sources.
 Normal operation exposure and existing stored-file scope grants still apply.
 Transport paths use UTF-8 and reject unrepresentable paths; native readers retain
 the host path representation. Symlink traversal is rejected.
+
+Native `read_opened_file(file, range)` reads the supplied process-local handle,
+preserving its original inode even when its pathname is replaced. On Windows,
+the handle must permit a separate read open; exclusive handles are rejected so
+native reads can keep the caller's cursor independent without reopening by path.
+The shared
+`ReadSession` supports this reader, `follow_file`, `follow_production` and
+`file_progress` alongside retained metadata. `capture_opened_file(file, target,
+range, consistency)` synchronously returns an `OpenedCapture` that owns the
+original handle and `StorageFile`. Its asynchronous `finish` retains setup,
+copy progress and exact pending bytes across errors and caller cancellation.
+Existing producer prefixes are compared before a suffix is appended;
+`acknowledged()` reports completed copy progress. Stable capture detects source
+changes but does not freeze concurrent writers into an atomic snapshot.
 
 `FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
@@ -437,6 +460,15 @@ claim including private scaffolding. Keep the claim with the table it covers and
 call `try_grow_by(additional_peak)` before allocating or mutating. Refusal preserves
 the existing claim and table. `bytes()` includes scaffolding; `try_grow_to(total)`
 is an absolute high-water operation, not an atomic increment across aliases.
+
+For native append requests, call `session.try_write_memory(payload_bytes)` before
+constructing the payload. Put that same `RetainedMemory` in
+`operations::RequestClaims::retain(Arc::new(memory))` and submit through
+`Host::call_owned` or `submit_owned`. The accepted request retains its claim after
+the initiating caller is cancelled; the file handler transfers that owner into
+the moved `FileChunk` through actual backend consumption. No second payload
+reservation is added. Process-local claims are refused by guest and sidecar
+bindings rather than serialized as portable wire data.
 
 `ArrowBatch::try_map` consumes its RecordBatch handle into a retained DTO result,
 admitting new allocations and scratch first. Immutable Arrow buffer aliases keep

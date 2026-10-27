@@ -24,7 +24,10 @@ use std::{
     fs::{File, OpenOptions},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 // Third Party Imports
 use tokio::sync::Mutex;
@@ -51,11 +54,19 @@ pub struct FileBackend {
     journal: Arc<Mutex<Option<StateLog>>>,
 }
 
+struct CancelOpen(Arc<AtomicBool>);
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for CancelOpen {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
 
 impl FileBackend {
     pub fn new(root: PathBuf, history: StoreHistory, settings: StorageStateSettings) -> Self {
@@ -93,21 +104,6 @@ impl FileBackend {
         .await
         .map_err(task)?
     }
-    async fn read<T: Send + 'static>(
-        &self, memory: crate::arrow::RetainedMemory, base: usize,
-        action: impl FnOnce(&mut StateLog, &crate::arrow::RetainedMemory) -> Result<T> + Send + 'static,
-    ) -> Result<T> {
-        memory.try_grow_to(base.saturating_add(8192))?;
-        let mut owner = tracing::Instrument::instrument(self.journal.clone().lock_owned(), tracing::trace_span!("storage.lock.wait")).await;
-        let (result, _memory) = read_task(memory, move |memory| {
-            let journal = owner.as_mut().ok_or_else(|| format::invalid("state backend is closed"))?;
-            journal.check()?;
-            action(journal, memory)
-        })
-        .await
-        .map_err(task)?;
-        result
-    }
 }
 
 impl StateBackend for FileBackend {
@@ -129,12 +125,20 @@ impl StateBackend for FileBackend {
                         let history = self.history.clone();
                         let settings = self.settings;
                         let opener = Arc::clone(&self.opener);
+                        let cancelled = Arc::new(AtomicBool::new(false));
+                        let _cancel = CancelOpen(Arc::clone(&cancelled));
                         {
                             let context = crate::execution::Context::current();
                             tokio::task::spawn_blocking(move || {
                                 context.blocking(|| {
                                     if owner.is_none() {
-                                        *owner = Some(StateLog::open(&root, history, settings, opener)?);
+                                        *owner = Some(StateLog::open(&root, history, settings, opener, &mut || {
+                                            if cancelled.load(Ordering::Acquire) {
+                                                Err(Error::Closing { domain: "cancelled state recovery" })
+                                            } else {
+                                                Ok(())
+                                            }
+                                        })?);
                                     }
                                     let journal = owner.as_ref().expect("opened journal");
                                     journal.check()?;
@@ -155,18 +159,12 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn read_snapshot(&self, maximum: NonZeroUsize, memory: crate::arrow::RetainedMemory) -> StorageFuture<'_, Option<RecoverySnapshot>> {
+    fn read_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let future = async move {
                 let span = tracing::debug_span!("storage.state.backend", method = "read_snapshot", outcome = "cancelled");
-                let result = tracing::Instrument::instrument(
-                    self.read(memory, crate::manager::ENTRY_OVERHEAD, move |journal, memory| {
-                        journal.snapshot_retained(maximum.get(), memory, crate::manager::ENTRY_OVERHEAD)
-                    }),
-                    span.clone(),
-                )
-                .await;
+                let result = tracing::Instrument::instrument(self.call(move |journal| journal.snapshot(maximum.get())), span.clone()).await;
                 span.record("outcome", if result.is_ok() { "completed" } else { "failed" });
                 result
             };
@@ -198,7 +196,7 @@ impl StateBackend for FileBackend {
     }
 
     fn read_entries<'a>(
-        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits, memory: crate::arrow::RetainedMemory,
+        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
@@ -208,13 +206,9 @@ impl StateBackend for FileBackend {
                     async move {
                         self.history.check(&after.history)?;
                         self.history.check(&through.history)?;
-                        let base = crate::manager::ENTRY_OVERHEAD
-                            .saturating_add(crate::MemorySize::memory_size(&after.history))
-                            .saturating_add(crate::MemorySize::memory_size(&through.history));
-                        memory.try_grow_to(base)?;
                         let after = after.clone();
                         let through = through.clone();
-                        self.read(memory, base, move |journal, memory| journal.page(&after, &through, limits, memory, base)).await
+                        self.call(move |journal| journal.page(&after, &through, limits)).await
                     },
                     span.clone(),
                 )
@@ -310,66 +304,8 @@ impl StateBackend for FileBackend {
 
 /* === Private Functions === */
 
-fn read_task<T: Send + 'static>(
-    memory: crate::arrow::RetainedMemory, action: impl FnOnce(&crate::arrow::RetainedMemory) -> Result<T> + Send + 'static,
-) -> tokio::task::JoinHandle<(Result<T>, crate::arrow::RetainedMemory)> {
-    let context = crate::execution::Context::current();
-    tokio::task::spawn_blocking(move || {
-        let result = context.blocking(|| action(&memory));
-        (result, memory)
-    })
-}
-
 fn task(error: tokio::task::JoinError) -> Error {
     Error::backend("state file task", BackendFailure::Permanent, error)
 }
 
 /* === Tests === */
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_backend::{Data, Recovery, history, storage_settings};
-
-    fn budget() -> crate::StorageManager {
-        crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
-            storage_settings(),
-        )
-        .unwrap()
-    }
-
-    #[tokio::test]
-    async fn detached_read_retained() {
-        let budget = budget();
-        let memory = budget.read_memory(NonZeroUsize::new(8192).unwrap()).await.unwrap();
-        let (entered, ready) = tokio::sync::oneshot::channel();
-        let (release, gate) = std::sync::mpsc::channel();
-        let task = read_task(memory, move |_| {
-            let bytes = vec![7u8; 4096];
-            entered.send(()).unwrap();
-            gate.recv().unwrap();
-            Ok(bytes)
-        });
-        ready.await.unwrap();
-        drop(task);
-        assert_eq!(budget.status().read_bytes, 8192);
-        let mut changed = budget.inner.changed.subscribe();
-        release.send(()).unwrap();
-        while budget.status().read_bytes != 0 {
-            changed.changed().await.unwrap();
-        }
-    }
-
-    #[tokio::test]
-    async fn completed_read_retained() {
-        let budget = budget();
-        let memory = budget.read_memory(NonZeroUsize::new(8192).unwrap()).await.unwrap();
-        let task = read_task(memory, |_| Ok(vec![7u8; 4096]));
-        while !task.is_finished() {
-            tokio::task::yield_now().await;
-        }
-        assert_eq!(budget.status().read_bytes, 8192);
-        drop(task);
-        assert_eq!(budget.status().read_bytes, 0);
-    }
-}

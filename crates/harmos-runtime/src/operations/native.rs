@@ -274,6 +274,12 @@ impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
         Ok(())
     }
 
+    fn encode_admitted(
+        value: &Encoded<E>, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> std::result::Result<(), tonic::Status>,
+    ) -> std::result::Result<(), tonic::Status> {
+        crate::grpc::encode_bytes(&value.payload, bytes, limit, admit)
+    }
+
     fn decode_admitted<C>(
         input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> std::result::Result<C, tonic::Status>,
     ) -> std::result::Result<(Encoded<E>, C), tonic::Status> {
@@ -291,6 +297,12 @@ impl crate::grpc::Wire<Opaque> for Forwarded {
     fn encode(value: &Opaque, bytes: &mut Vec<u8>) -> std::result::Result<(), crate::MessageError> {
         bytes.extend_from_slice(&value.0);
         Ok(())
+    }
+
+    fn encode_admitted(
+        value: &Opaque, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> std::result::Result<(), tonic::Status>,
+    ) -> std::result::Result<(), tonic::Status> {
+        crate::grpc::encode_bytes(&value.0, bytes, limit, admit)
     }
 
     fn decode_admitted<C>(

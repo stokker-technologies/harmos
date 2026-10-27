@@ -22,7 +22,7 @@ use super::{MessageError, decoding_add, decoding_multiply, decoding_vector};
 
 /* === Constants === */
 
-const MAX_DEPTH: usize = 32;
+pub(crate) const MAX_DEPTH: usize = 32;
 const MAX_VALUES: usize = 1_048_576;
 
 /* === Macros === */

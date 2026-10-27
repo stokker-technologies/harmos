@@ -88,14 +88,6 @@ impl HistogramExecution for Histogram {
 }
 
 impl Bins {
-    pub fn retained_bytes(&self) -> usize {
-        self.counts.len().saturating_mul(16).saturating_add(1024)
-    }
-
-    pub fn finish_bytes(&self) -> usize {
-        self.counts.len().saturating_mul(96).saturating_add(4096)
-    }
-
     pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
         let edges = &self.plan.edges;
         let mut counts = self.counts.clone();

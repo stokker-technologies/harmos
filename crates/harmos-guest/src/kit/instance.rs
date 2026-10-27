@@ -193,6 +193,12 @@ impl Host for Context {
         Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
+    async fn submit_owned<O: OperationDeclaration>(
+        &self, _: O, _: harmos_sdk::operations::RequestClaims,
+    ) -> Result<OperationInstance<O>, OperationRefusal> {
+        Err(OperationRefusal::of(format!("`{}` needs process-local request ownership a guest cannot carry", O::ID)))
+    }
+
     // Resident resources live in the host process; a guest cannot lend them.
     async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self, _: O, _: std::sync::Arc<R>,

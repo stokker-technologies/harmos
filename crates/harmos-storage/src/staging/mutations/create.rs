@@ -58,7 +58,7 @@ impl<C> StorageManager<C> {
             if !self.inner.primary.supports_file_sessions() {
                 return Err(invalid("backend does not support resumable production"));
             }
-            let (reference_bytes, base_bytes) = file_bytes(metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(metadata, self.inner.primary.history())?;
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
@@ -68,11 +68,8 @@ impl<C> StorageManager<C> {
             if state.files.len() >= crate::storage::config::MAX_FILES.get() {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
             }
-            let outcome_bytes = std::mem::size_of::<MutationValue>()
-                .saturating_add(self.inner.primary.history().memory_size())
-                .saturating_add(metadata.id.memory_size());
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
-            reserve(state, mutation, fingerprint, outcome_bytes, base_bytes.checked_add(1).ok_or_else(size_error)?, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
             state.files.insert(
                 id,
                 FileState {
@@ -91,7 +88,7 @@ impl<C> StorageManager<C> {
                     abandoned: false,
                     in_flight: false,
                     retrying: false,
-                    base_bytes,
+
                     reference_bytes,
                 },
             );

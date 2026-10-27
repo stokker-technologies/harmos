@@ -31,7 +31,7 @@ use super::{
     files::{Files, Production},
     format,
 };
-use crate::{FileCheckpoint, FilePhase, FileProgress, MemorySize, MutationReceipt, MutationValue, ReadLimits, Result};
+use crate::{FileCheckpoint, FilePhase, FileProgress, MutationReceipt, MutationValue, ReadLimits, Result};
 
 /* === Constants === */
 
@@ -65,6 +65,7 @@ impl Files {
         if expected.checked_add(1) != Some(next) {
             return Err(format::invalid("file generation must advance once"));
         }
+
         let mut production = self.load(key)?;
         if production.generation == 0 || production.phase != FilePhase::Producing {
             return Err(format::conflict("file session is not producing"));
@@ -90,7 +91,9 @@ impl Files {
     pub fn checkpoint(&self, key: &str, checkpoint: &FileCheckpoint) -> Result<()> {
         self.history.check(&checkpoint.session.history)?;
         let expected = checkpoint.sha256()?;
-        let production = self.load(key)?;
+
+        let production =
+            format::load::<Production>(&self.metadata_path(key), self.maximum)?.ok_or_else(|| format::invalid("unknown staged file"))?;
         if production.phase != FilePhase::Producing
             || production.generation != checkpoint.session.generation
             || production.metadata != checkpoint.metadata
@@ -109,7 +112,7 @@ impl Files {
         }
         let mut remaining = checkpoint.length - prior.length;
         file.seek(SeekFrom::Start(prior.length)).map_err(format::io)?;
-        let mut buffer = [0; 64 * 1024];
+        let mut buffer = vec![0; 1024 * 1024];
         let mut digest = prior.restore_hash()?;
         while remaining > 0 {
             let count = remaining.min(buffer.len() as u64) as usize;
@@ -132,7 +135,7 @@ impl Files {
         self.save(key, &production)
     }
 
-    pub fn progress(&self, key: &str, memory: &crate::arrow::RetainedMemory, base: usize) -> Result<FileProgress> {
+    pub fn progress(&self, key: &str) -> Result<FileProgress> {
         let path = self.metadata_path(key);
         format::regular(&path)?;
         let length = usize::try_from(fs::metadata(&path).map_err(format::io)?.len())
@@ -141,13 +144,6 @@ impl Files {
             return Err(format::corrupt("production metadata exceeds configured size"));
         }
 
-        // Admit Framing Scratch Before Reading; Ignored Metadata Is Not Materialized.
-        let scratch = length
-            .checked_mul(2)
-            .and_then(|bytes| bytes.checked_add(8192))
-            .ok_or_else(|| format::invalid("production metadata memory overflow"))?;
-        let charged = base.checked_add(scratch).ok_or_else(|| format::invalid("production metadata memory overflow"))?;
-        memory.try_grow_to(charged)?;
         let production = format::load::<Progress>(&path, length)?.ok_or_else(|| format::invalid("unknown staged file"))?;
         if production.deleted {
             return Err(format::conflict("file has been deleted"));
@@ -156,8 +152,7 @@ impl Files {
         Ok(FileProgress { length, phase: production.phase })
     }
 
-    pub fn recover(&self, limits: ReadLimits, memory: &crate::arrow::RetainedMemory) -> Result<Vec<FileCheckpoint>> {
-        let base = crate::manager::ENTRY_OVERHEAD;
+    pub fn recover(&self, limits: ReadLimits) -> Result<Vec<FileCheckpoint>> {
         let mut output = Vec::new();
         let mut bytes = 0usize;
         for entry in fs::read_dir(self.root.join("productions")).map_err(format::io)? {
@@ -165,11 +160,7 @@ impl Files {
             if path.extension().is_none_or(|extension| extension != "json") {
                 continue;
             }
-            let production =
-                format::load_admitted::<Production>(&path, self.maximum, memory, base.max(recovered_bytes(&output, bytes)?), |encoded| {
-                    format::flat_decoding_bytes(encoded, std::mem::size_of::<Production>())
-                })?
-                .ok_or_else(|| format::corrupt("production disappeared"))?;
+            let production = format::load::<Production>(&path, self.maximum)?.ok_or_else(|| format::corrupt("production disappeared"))?;
             if production.deleted || production.phase != FilePhase::Producing {
                 continue;
             }
@@ -178,15 +169,16 @@ impl Files {
             };
             drop(production.metadata);
             drop(production.finish);
-            bytes = bytes.checked_add(checkpoint.memory_size()).ok_or_else(|| format::invalid("production recovery size overflow"))?;
+            bytes = bytes
+                .checked_add(crate::manager::encoded_size(&checkpoint)?)
+                .ok_or_else(|| format::invalid("production recovery size overflow"))?;
             limits.check(output.len() + 1, bytes)?;
-            push_recovered(&mut output, checkpoint, bytes, memory, base)?;
+            push_recovered(&mut output, checkpoint)?;
         }
         Ok(output)
     }
 
-    pub fn receipts(&self, limits: ReadLimits, memory: &crate::arrow::RetainedMemory) -> Result<Vec<MutationReceipt>> {
-        let base = crate::manager::ENTRY_OVERHEAD;
+    pub fn receipts(&self, limits: ReadLimits) -> Result<Vec<MutationReceipt>> {
         let mut receipts = Vec::new();
         let mut bytes = 0usize;
         for entry in fs::read_dir(self.root.join("mutations")).map_err(format::io)? {
@@ -194,28 +186,16 @@ impl Files {
             if path.extension().is_none_or(|extension| extension != "json") {
                 continue;
             }
-            let receipt = format::load_admitted::<MutationReceipt>(
-                &path,
-                self.maximum,
-                memory,
-                base.max(recovered_bytes(&receipts, bytes)?),
-                |encoded| {
-                    format::flat_decoding_bytes(
-                        encoded,
-                        std::mem::size_of::<MutationReceipt>() + std::mem::size_of::<crate::FileReference>(),
-                    )
-                },
-            )?
-            .ok_or_else(|| format::corrupt("mutation disappeared"))?;
+            let receipt = format::load::<MutationReceipt>(&path, self.maximum)?.ok_or_else(|| format::corrupt("mutation disappeared"))?;
             if receipt.expires_at <= SystemTime::now() {
                 continue;
             }
-            let size = receipt.memory_size();
+            let size = crate::manager::encoded_size(&receipt)?;
             if size > limits.bytes.get().saturating_sub(bytes) || receipts.len() == limits.rows.get() {
                 break;
             }
             bytes += size;
-            push_recovered(&mut receipts, receipt, bytes, memory, base)?;
+            push_recovered(&mut receipts, receipt)?;
         }
         Ok(receipts)
     }
@@ -255,7 +235,8 @@ impl Files {
             }
             MutationValue::Producer(producer) => {
                 self.history.check(&producer.session.history)?;
-                let production = self.load(&super::files::key(&producer.session.id))?;
+                let production = format::load::<Production>(&self.metadata_path(&super::files::key(&producer.session.id)), self.maximum)?
+                    .ok_or_else(|| format::invalid("unknown staged file"))?;
                 let length = production
                     .finish
                     .as_ref()
@@ -268,7 +249,8 @@ impl Files {
             }
             MutationValue::Reference(reference) => {
                 self.history.check(&reference.position.history)?;
-                let production = self.load(&super::files::key(&reference.metadata.id))?;
+                let production = format::load::<Production>(&self.metadata_path(&super::files::key(&reference.metadata.id)), self.maximum)?
+                    .ok_or_else(|| format::invalid("unknown staged file"))?;
                 if reference.position.sequence > saved
                     || production.phase != FilePhase::Finished
                     || production.finish.as_ref() != Some(reference.as_ref())
@@ -286,29 +268,13 @@ impl Files {
 
 /* === Private Functions === */
 
-fn recovered_bytes<T>(output: &Vec<T>, bytes: usize) -> Result<usize> {
-    output
-        .capacity()
-        .saturating_sub(output.len())
-        .checked_mul(std::mem::size_of::<T>())
-        .and_then(|slack| bytes.checked_add(slack))
-        .and_then(|size| size.checked_add(std::mem::size_of::<Vec<T>>()))
-        .ok_or_else(|| format::invalid("recovery collection memory overflow"))
-}
-
-fn push_recovered<T>(output: &mut Vec<T>, value: T, bytes: usize, memory: &crate::arrow::RetainedMemory, base: usize) -> Result<()> {
+fn push_recovered<T>(output: &mut Vec<T>, value: T) -> Result<()> {
     if output.len() == output.capacity() {
         let capacity = output
             .len()
             .checked_add(1)
             .map(|required| required.max(output.capacity().saturating_mul(2)))
             .ok_or_else(|| format::invalid("recovery collection size overflow"))?;
-        let retained = recovered_bytes(output, bytes)?;
-        let peak = capacity
-            .checked_mul(std::mem::size_of::<T>())
-            .and_then(|bytes| bytes.checked_add(retained))
-            .ok_or_else(|| format::invalid("recovery collection memory overflow"))?;
-        memory.try_grow_to(base.max(peak))?;
         output.try_reserve_exact(capacity - output.len()).map_err(|_| format::invalid("recovery collection allocation failed"))?;
     }
     output.push(value);

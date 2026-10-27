@@ -240,7 +240,7 @@ impl Bindings<'_> {
         if self.entries.iter().any(|entry| entry.id() == id) {
             return Err(Error::AlreadyRegistered { domain: "operation", name: id.to_owned() });
         }
-        let mut projected = project::<T::Declaration>()?;
+        let mut projected = project::<T::Declaration>(&self.operations.schema_settings)?;
         if projected.declaration != std::any::TypeId::of::<T::Declaration>() {
             return Err(Error::InvalidInput {
                 field: "operation wire declaration",
@@ -256,9 +256,14 @@ impl Bindings<'_> {
                     reason: "an operation that binds a gRPC method keeps its declared identity",
                 });
             }
-            projected.contract =
-                crate::operations::Contract::new(definition.clone(), original.version(), original.codec(), original.schema().clone())
-                    .map_err(|source| Error::OperationFailed { operation: definition.id.to_string(), source: Arc::new(source) })?;
+            projected.contract = crate::operations::Contract::new_with_settings(
+                definition.clone(),
+                original.version(),
+                original.codec(),
+                original.schema().clone(),
+                &self.operations.schema_settings,
+            )
+            .map_err(|source| Error::OperationFailed { operation: definition.id.to_string(), source: Arc::new(source) })?;
         }
         let projected = Some(projected);
         let mut entry = self.operations.binding_owned_definition::<T>(
@@ -298,7 +303,7 @@ impl Bindings<'_> {
         T::Declaration: Message + Described,
     {
         let contract = WireDeclaration::of::<T::Declaration>()
-            .contract()
+            .contract_with_settings(&self.operations.schema_settings)
             .map_err(|source| Error::OperationFailed { operation: T::Declaration::ID.to_owned(), source: Arc::new(source) })?;
         self.register_wire_contract_at::<T>(&contract, lane, resources)
     }
@@ -322,7 +327,7 @@ impl Bindings<'_> {
         T::Declaration: crate::operations::OperationDeclaration,
         T::Declaration: Message + Described,
     {
-        let projected = project::<T::Declaration>()?;
+        let projected = project::<T::Declaration>(&self.operations.schema_settings)?;
         let declared = &projected.contract;
         let mut definition = declared.operation().clone();
         definition.id = contract.operation().id.clone();
@@ -338,10 +343,9 @@ impl Bindings<'_> {
             .into_iter()
             .all(|(left, right)| match (left, right) {
                 (None, None) => true,
-                (Some(left), Some(right)) => left
-                    .schema()
-                    .equivalent(left.index(), right.schema(), right.index(), &harmos_domain::config::SchemaSettings::default())
-                    .unwrap_or(false),
+                (Some(left), Some(right)) => {
+                    left.schema().equivalent(left.index(), right.schema(), right.index(), &self.operations.schema_settings).unwrap_or(false)
+                }
                 _ => false,
             })
             || declared.grpc() != contract.grpc()
@@ -446,9 +450,9 @@ impl Drop for PluginRegistration {
 
 // The manager's one projection of a declaration: its wire contract, its
 // unary dispatch and, when it binds a method, its gRPC handler.
-pub(super) fn project<O: crate::operations::OperationDeclaration>() -> Result<WireProjection> {
+pub(super) fn project<O: crate::operations::OperationDeclaration>(settings: &crate::config::SchemaSettings) -> Result<WireProjection> {
     let contract = WireDeclaration::of::<O>()
-        .contract()
+        .contract_with_settings(settings)
         .map_err(|source| Error::OperationFailed { operation: O::ID.to_owned(), source: Arc::new(source) })?;
     let streaming = contract.input().is_some() || contract.output().is_some();
     #[cfg(feature = "grpc")]

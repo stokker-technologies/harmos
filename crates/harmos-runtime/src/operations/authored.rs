@@ -47,7 +47,7 @@ struct Physical<T: Operation> {
     operation: Option<T>,
     request: T::Declaration,
     endpoints: T::Endpoints,
-    _request: Option<super::streaming::RequestClaims>,
+    _request: Option<super::RequestClaims>,
     stopped: bool,
 }
 
@@ -112,6 +112,7 @@ impl<T: Operation> Bound<T> {
             scope,
             operations: self.operations.clone(),
             admission: self.admission.clone(),
+            request_claims: self.physical._request.clone(),
             source: self.source.for_attempt(&self.entry, scope, &origin),
             #[cfg(feature = "plugin-sidecar")]
             retirement: self.entry.retirement_control() || origin.has_lifecycle_loan(),
@@ -202,12 +203,14 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
     let instances = operations.instances.clone();
     let lanes = operations.lanes.clone();
     let preparation_budget = operations.preparation.clone();
+    let schema_settings = Arc::clone(&operations.schema_settings);
     let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
             let super::binding::Request { value: request, retention, context } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
             let operations = OperationManager {
+                schema_settings: Arc::clone(&schema_settings),
                 registry,
                 context,
                 instances: instances.clone(),

@@ -113,7 +113,7 @@ impl<C: ObjectCatalog> Data<C> {
             }
             self.resumable_files.lock().unwrap().insert(metadata.id.to_string());
             self.file_generations.lock().unwrap().entry(metadata.id.to_string()).or_insert(1);
-            self.create_file(metadata).await
+            self.fixture_create_file(metadata).await
         })
     }
 

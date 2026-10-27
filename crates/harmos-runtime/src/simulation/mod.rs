@@ -528,7 +528,7 @@ impl<A: Application> Memory<A> {
         MemorySource { shared: Arc::clone(&self.shared), resume: Position::ORIGIN, strict }
     }
 
-    fn applied(&self, anchor: Position) -> Vec<(Position, Arc<A::Transaction>)> {
+    fn applied(&self, anchor: Position) -> Vec<(Position, crate::operations::Response<A::Transaction>)> {
         self.shared
             .entries
             .lock()
@@ -536,7 +536,7 @@ impl<A: Application> Memory<A> {
             .iter()
             .filter(|entry| entry.position > anchor)
             .filter_map(|entry| match &entry.value {
-                Recorded::Transaction(change) => Some((entry.position, Arc::clone(change))),
+                Recorded::Transaction(change) => Some((entry.position, change.clone())),
                 Recorded::Record(_) | Recorded::System(_) => None,
             })
             .collect()
@@ -651,7 +651,7 @@ where
         }
     };
     let value = match &entry.value {
-        Recorded::Transaction(transaction) => Recorded::Transaction(Arc::new((**transaction).clone())),
+        Recorded::Transaction(transaction) => Recorded::Transaction(transaction.clone()),
         Recorded::Record(record) => Recorded::Record(record.clone()),
         Recorded::System(fact) => Recorded::System(fact.clone()),
     };

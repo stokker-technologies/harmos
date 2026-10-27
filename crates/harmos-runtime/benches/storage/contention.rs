@@ -78,18 +78,16 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                             };
                             let mut reader = fixture.storage.query(query).await.unwrap();
                             let mut rows = 0;
-                            let mut peak = 0;
                             while let Some(output) = reader.next().await.unwrap() {
                                 let QueryArrow::Batch(page) = output else {
                                     continue;
                                 };
                                 rows += page.as_record_batch().num_rows();
-                                peak = peak.max(fixture.storage.status().read_bytes);
                                 // Retain Each Batch Across A Scheduling Boundary.
                                 tokio::task::yield_now().await;
                                 drop(page);
                             }
-                            (rows, peak)
+                            rows
                         });
                         let writer = async {
                             for inputs in inputs.chunks(192) {
@@ -104,9 +102,8 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                         elapsed += started.elapsed();
                         resources.merge(probe.finish());
                         assert!(written.sequence > at.sequence);
-                        for (rows, peak) in readers {
+                        for rows in readers {
                             assert_eq!(rows, samples.len());
-                            assert!(peak <= 128 * 1024 * 1024);
                         }
                         assert_eq!(fixture.storage.status().pending_bytes, 0);
                         fixture.finish().await;

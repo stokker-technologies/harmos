@@ -42,12 +42,18 @@ pub mod __private {
 
 /* === Re-Exports === */
 
+pub(crate) use codec::encode_bytes;
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
+pub use envelope::{
+    PreparedFrame, input_payload_limit, input_payload_limit_admitted, output_item_len, output_item_len_admitted, output_payload_limit,
+    output_payload_limit_admitted, prepare_input_item, prepare_input_request,
+};
 pub use generation::{GenerateError, GeneratedService, Method, generate_server};
 pub use harmos_packaging::proto::{DescriptorError, descriptor};
+pub use harmos_sdk::grpc::{encoded_len, encoded_len_admitted};
 
 pub use input::{InputError, input, open};
 

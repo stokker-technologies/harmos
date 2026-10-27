@@ -121,7 +121,13 @@ impl<C> StorageManager<C> {
                     session.connect();
                     let mut token = token.clone();
                     token.generation = next;
-                    Some(StorageFile { manager: self.erased(), id: *id, progress: file.progress.clone(), session: Some(token) })
+                    Some(StorageFile {
+                        manager: self.erased(),
+                        id: *id,
+                        progress: file.progress.clone(),
+                        session: Some(token),
+                        append: None,
+                    })
                 } else {
                     if session.generation != token.generation || file.abandoned {
                         tracing::error!(file = %token.id, generation = token.generation, offset = file.length, reason = "expired or fenced producer", "file resume rejected");

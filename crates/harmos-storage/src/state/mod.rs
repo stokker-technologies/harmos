@@ -71,12 +71,10 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
-    fn read_snapshot(
-        &self, max_bytes: std::num::NonZeroUsize, memory: crate::arrow::RetainedMemory,
-    ) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+    fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
     fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
     fn read_entries<'a>(
-        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits, memory: crate::arrow::RetainedMemory,
+        &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage>;
     fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()>;
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition>;

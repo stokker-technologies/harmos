@@ -403,8 +403,12 @@ async fn capture_coalesces_writes() {
     store.ready(&storage).await;
     store.data.control.write_sizes.lock().unwrap().clear();
     store.recovery.control.write_sizes.lock().unwrap().clear();
-    for _ in 0..2000 {
+    for index in 0..2000 {
         runtime.state.commit(Advance { panic: false }).await.unwrap();
+        if (index + 1) % 32 == 0 {
+            storage.flush().await.unwrap();
+            storage.flush_recovery().await.unwrap();
+        }
     }
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
@@ -444,7 +448,8 @@ async fn recovery_failure_retries() {
     store.recovery.control.block_write.store(false, Ordering::SeqCst);
     store.recovery.control.write_release.notify_one();
     assert!(flushing.await.unwrap().is_err());
-    assert!(storage.status().pending_bytes < attempting);
+    // The Retry Retains Exactly The Accepted Write Payload.
+    assert_eq!(storage.status().pending_bytes, attempting);
     assert!(storage.status().pending_bytes <= admitted);
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();

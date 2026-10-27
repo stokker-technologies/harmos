@@ -99,11 +99,10 @@ async fn oversized_batch_refused() {
         .unwrap();
     let durable = storage.flush().await.unwrap();
     assert_eq!(durable.sequence, 1);
-    let memory = storage.read_memory(NonZeroUsize::new(8192).unwrap()).await.unwrap();
-    let snapshot = data.open_snapshot(&durable, memory.clone()).await.unwrap();
+    let snapshot = data.open_snapshot(&durable).await.unwrap();
     let selection = harmos_storage::query::RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None };
     let page = ScanPage { after: 0, rows: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
-    let records = data.read_records(&snapshot, &selection, page, memory.clone()).await.unwrap();
+    let records = data.read_records(&snapshot, &selection, page).await.unwrap();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].payload, [1, 2, 3]);
     data.release_snapshot(&snapshot).await.unwrap();

@@ -49,18 +49,25 @@ pub(crate) fn declare(attributes: TokenStream, item: TokenStream) -> TokenStream
 pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
     let mut explicit = None;
     let mut skip_debug = None;
+    let mut skip_default = None;
     for meta in Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attributes)? {
         if matches!(&meta, Meta::Path(path) if path.is_ident("skip_debug")) {
             crate::artifact::set_once(&mut skip_debug, true, meta.span(), "skip_debug")?;
             continue;
         }
-        let value = path::declared(&meta).ok_or_else(|| Error::new(meta.span(), "message accepts only harmos_path and skip_debug"))??;
+        if matches!(&meta, Meta::Path(path) if path.is_ident("skip_default")) {
+            crate::artifact::set_once(&mut skip_default, true, meta.span(), "skip_default")?;
+            continue;
+        }
+        let value = path::declared(&meta)
+            .ok_or_else(|| Error::new(meta.span(), "message accepts only harmos_path, skip_debug and skip_default"))??;
         crate::artifact::set_once(&mut explicit, value, meta.span(), path::KEY)?;
     }
     let skip_debug = skip_debug.unwrap_or(false);
+    let skip_default = skip_default.unwrap_or(false);
     let parsed: syn::Item = syn::parse2(item)?;
     if let syn::Item::Enum(item) = parsed {
-        return enumeration::expand(item, HarmosPath::resolve(explicit), skip_debug);
+        return enumeration::expand(item, HarmosPath::resolve(explicit), skip_debug, skip_default);
     }
     let syn::Item::Struct(mut item) = parsed else {
         return Err(Error::new(parsed.span(), "message requires a struct or enum"));
@@ -95,7 +102,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         });
     }
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
-    let declaration = composition::declare(&mut item, &harmos, skip_debug)?;
+    let declaration = composition::declare(&mut item, &harmos, skip_debug, skip_default)?;
     let name = &item.ident;
     let schema = described(name, quote!(&[#(#fields),*]), quote!(), &harmos);
     let owned_fields = item.fields.iter().map(|field| {

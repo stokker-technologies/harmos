@@ -298,3 +298,39 @@ fn payload(value: &str) -> Vec<u8> {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn wire_registration_uses_supplied_schema_snapshot() {
+    use harmos_runtime::operations::{Contract, WireDeclaration};
+    let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
+    let tiny = harmos_runtime::config::SchemaSettings { preparation_bytes: std::num::NonZeroUsize::MIN, ..Default::default() };
+    assert!(WireDeclaration::of::<ReadContract>().contract_with_settings(&tiny).is_err());
+    assert!(
+        Contract::new_with_settings(
+            declaration.operation().clone(),
+            declaration.version(),
+            declaration.codec(),
+            declaration.schema().clone(),
+            &tiny
+        )
+        .is_err()
+    );
+    assert!(declaration.compatible(&declaration));
+    assert!(!declaration.compatible_with_settings(&declaration, &tiny));
+
+    for catalog in [false, true] {
+        for accepted in [true, false] {
+            let settings = if accepted { harmos_runtime::config::SchemaSettings::default() } else { tiny };
+            let runtime = Runtime::<App>::builder((), ()).schema_settings(settings).register(Lanes::catalog()).runtime().await.unwrap();
+            let resources = Arc::new(Resources::default());
+            let result = if catalog {
+                runtime.operations.register_wire_operations::<Authored, Resources>("schema-budget", Lanes::Open, resources)
+            } else {
+                runtime.operations.register_wire_operation::<Read>("schema-budget", Lanes::Open, resources)
+            };
+            assert_eq!(result.is_ok(), accepted);
+            assert_eq!(runtime.operations.definition(ReadContract::ID).is_ok(), accepted);
+            runtime.stop().await.unwrap();
+        }
+    }
+}

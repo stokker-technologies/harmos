@@ -66,7 +66,7 @@ impl<C> StorageManager<C> {
             let admitted = self
                 .inner
                 .wait(None, |state| {
-                    if let Err(error) = crate::capacity::admitting(state, Pool::Write) {
+                    if let Err(error) = crate::capacity::admitting(state, true) {
                         return Attempt::Refuse(Refusal::Failed(error));
                     }
                     if let Some(mutation) = mutation {
@@ -88,7 +88,7 @@ impl<C> StorageManager<C> {
                         }
                     }
                     if bytes > byte_capacity {
-                        return Attempt::Refuse(Refusal::Exceeded(Pool::Write));
+                        return Attempt::Refuse(Refusal::Exceeded("pending storage writes"));
                     }
                     state.collect();
 
@@ -155,7 +155,7 @@ impl<C> StorageManager<C> {
                 }
                 if let Some(mutation) = mutation {
                     let outcome = MutationValue::Cursor(self.position(last));
-                    state.receipts.insert(mutation.id, mutation.fingerprint, crate::MemorySize::memory_size(&outcome))?;
+                    state.receipts.insert(mutation.id, mutation.fingerprint)?;
                     state.receipts.complete(mutation.id, outcome);
                 }
                 let target = Target { index, sequence: last };

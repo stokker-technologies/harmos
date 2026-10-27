@@ -17,7 +17,6 @@
 
 // Standard Library Imports
 use std::{
-    cell::Cell,
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter, Write},
@@ -30,7 +29,6 @@ use serde::{Deserialize, Serialize};
 
 // Local Imports
 use super::{config::JsonStorageSettings, format};
-use crate::arrow::RetainedMemory;
 use crate::{
     BackendSnapshot, FileReference, MemorySize, ObjectEntry, Result, ScanPage, StorageBatch, StorageCursor, StorageSchema, StoreHistory,
     StoredIdentity, StoredRecord, StoredRow,
@@ -38,7 +36,7 @@ use crate::{
 
 /* === Constants === */
 
-const READ_BUFFER: usize = 8192;
+const READ_BUFFER: usize = 256 * 1024;
 
 /* === Macros === */
 
@@ -54,6 +52,7 @@ pub(super) struct Log {
     segments: Vec<Segment>,
     pub snapshots: BTreeMap<Vec<u8>, (u64, u64)>,
     pub generation: u64,
+    pub readers: BTreeMap<Vec<u8>, super::files::Reader>,
     pub pruned: BTreeMap<u64, u64>,
     pub pruned_through: u64,
     pub identities: BTreeMap<String, StoredIdentity>,
@@ -74,13 +73,6 @@ struct Segment {
     path: PathBuf,
 }
 
-pub(super) struct Read<'a> {
-    pub memory: &'a RetainedMemory,
-    base: usize,
-    pub retained: Cell<usize>,
-    admitted: Cell<usize>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -90,7 +82,6 @@ pub(super) trait Row: MemorySize + Sized + Send + Sync + PartialEq + 'static {
     fn position(&self) -> &StorageCursor;
     fn encode(&self, writer: &mut dyn Write) -> Result<()>;
     fn decode(bytes: &[u8]) -> Result<Self>;
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize>;
     fn identity(&self) -> Option<StoredIdentity> {
         None
     }
@@ -129,9 +120,12 @@ impl Log {
             if path.extension().is_none_or(|extension| extension != "jsonl") {
                 continue;
             }
-            let mut reader = BufReader::new(File::open(&path).map_err(format::io)?);
+            let mut reader = BufReader::with_capacity(READ_BUFFER, File::open(&path).map_err(format::io)?);
             let line = format::line(&mut reader, maximum)?.ok_or_else(|| format::corrupt("empty committed segment"))?;
+
             let header: Header = serde_json::from_slice(&line).map_err(format::json)?;
+
+            drop(line);
             history.check(&header.first.history)?;
             if header.first.sequence == 0
                 || header.count == 0
@@ -155,6 +149,7 @@ impl Log {
             if sequence - 1 != header.through {
                 return Err(format::corrupt("segment row count differs"));
             }
+            segments.try_reserve_exact(1).map_err(|_| exhausted())?;
             segments.push(Segment { header, path });
         }
         segments.sort_by_key(|segment| segment.header.first.sequence);
@@ -177,6 +172,7 @@ impl Log {
             segments,
             snapshots: BTreeMap::new(),
             generation,
+            readers: BTreeMap::new(),
             pruned,
             pruned_through,
             identities,
@@ -231,7 +227,7 @@ impl Log {
         }
         let overlap = rows.partition_point(|row| row.position().sequence <= self.saved);
         for row in &rows[..overlap] {
-            let stored = self.bootstrap_one::<T>(row.position().sequence)?;
+            let stored = self.one::<T>(row.position().sequence)?;
             if stored.as_ref() != Some(row) {
                 return Err(format::conflict("typed retry differs from durable bytes"));
             }
@@ -260,14 +256,16 @@ impl Log {
         writer.get_ref().sync_all().map_err(format::io)?;
         drop(writer);
         if path.exists() {
-            let mut reader = BufReader::new(File::open(&path).map_err(format::io)?);
+            let mut reader = BufReader::with_capacity(READ_BUFFER, File::open(&path).map_err(format::io)?);
             let prior = format::line(&mut reader, self.maximum)?.ok_or_else(|| format::corrupt("missing uncertain commit header"))?;
+
             let prior: Header = serde_json::from_slice(&prior).map_err(format::json)?;
             if prior != header {
                 return Err(format::conflict("uncertain typed commit range differs"));
             }
             for row in rows {
                 let line = format::line(&mut reader, self.maximum)?.ok_or_else(|| format::corrupt("incomplete uncertain commit"))?;
+
                 if T::decode(&line)? != *row {
                     return Err(format::conflict("uncertain typed commit differs"));
                 }
@@ -294,7 +292,7 @@ impl Log {
         Ok(self.cursor())
     }
 
-    pub(super) fn bootstrap_visit<T: Row>(&self, at: u64, after: u64, mut visitor: impl FnMut(T) -> Result<bool>) -> Result<()> {
+    pub(super) fn visit_sized<T: Row>(&self, at: u64, after: u64, mut visitor: impl FnMut(T, usize) -> Result<bool>) -> Result<()> {
         for segment in &self.segments {
             if segment.header.kind != T::KIND || segment.header.through <= after || segment.header.first.sequence > at {
                 continue;
@@ -302,13 +300,15 @@ impl Log {
             let mut reader = BufReader::with_capacity(READ_BUFFER, File::open(&segment.path).map_err(format::io)?);
             let header = format::line(&mut reader, self.maximum)?.ok_or_else(|| format::corrupt("segment header disappeared"))?;
             drop(header);
+
             while let Some(line) = format::line(&mut reader, self.maximum)? {
                 let row = T::decode(&line)?;
+
                 let sequence = row.position().sequence;
                 if sequence > at {
                     break;
                 }
-                if sequence > after && !visitor(row)? {
+                if sequence > after && !visitor(row, line.len())? {
                     return Ok(());
                 }
             }
@@ -316,89 +316,34 @@ impl Log {
         Ok(())
     }
 
-    fn bootstrap_one<T: Row>(&self, sequence: u64) -> Result<Option<T>> {
-        let mut found = None;
-        self.bootstrap_visit::<T>(sequence, sequence.saturating_sub(1), |row| {
-            found = Some(row);
-            Ok(false)
-        })?;
-        Ok(found)
-    }
-
-    pub(super) fn visit_sized<T: Row>(
-        &self, at: u64, after: u64, read: &Read<'_>, mut visitor: impl FnMut(T, usize, usize) -> Result<bool>,
-    ) -> Result<()> {
-        for segment in &self.segments {
-            if segment.header.kind != T::KIND || segment.header.through <= after || segment.header.first.sequence > at {
-                continue;
-            }
-            read.admit(READ_BUFFER)?;
-            let mut reader = BufReader::with_capacity(READ_BUFFER, File::open(&segment.path).map_err(format::io)?);
-            let header = format::line_admitted(&mut reader, self.maximum, |bytes| read.admit(add(READ_BUFFER, bytes)?).map(|_| ()))?
-                .ok_or_else(|| format::corrupt("segment header disappeared"))?;
-            drop(header);
-
-            while let Some(line) =
-                format::line_admitted(&mut reader, self.maximum, |bytes| read.admit(add(READ_BUFFER, bytes)?).map(|_| ()))?
-            {
-                let scratch = add(READ_BUFFER, line.allocated_bytes())?;
-                let bound = T::decoding_memory_bytes(line.len()).ok_or_else(exhausted)?;
-                read.admit(add(scratch, bound)?)?;
-                let row = T::decode(&line)?;
-                let resident = row.memory_size();
-                if resident > bound {
-                    return Err(format::corrupt("decoded row exceeds its memory bound"));
-                }
-                let live = read.admit(add(scratch, resident)?)?;
-                let sequence = row.position().sequence;
-                if sequence > at {
-                    break;
-                }
-                if sequence > after && !visitor(row, line.len(), live)? {
-                    return Ok(());
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn scan<T: Row>(
-        &self, at: u64, generation: u64, page: ScanPage, memory: &RetainedMemory, base: usize, mut select: impl FnMut(&T) -> Result<bool>,
-    ) -> Result<Vec<T>> {
-        let read = Read::new(memory, base);
-        self.scan_read(at, generation, page, &read, |row, _| select(row))
+    pub fn scan<T: Row>(&self, at: u64, generation: u64, page: ScanPage, mut select: impl FnMut(&T) -> Result<bool>) -> Result<Vec<T>> {
+        self.scan_read(at, generation, page, |row| select(row))
     }
 
     pub(super) fn scan_read<T: Row>(
-        &self, at: u64, generation: u64, page: ScanPage, read: &Read<'_>, mut select: impl FnMut(&T, usize) -> Result<bool>,
+        &self, at: u64, generation: u64, page: ScanPage, mut select: impl FnMut(&T) -> Result<bool>,
     ) -> Result<Vec<T>> {
         let mut output = Vec::new();
         let mut bytes = 0usize;
-        let mut heap = 0usize;
-        read.retained.set(std::mem::size_of::<Vec<T>>());
-        self.visit_sized::<T>(at, page.after, read, |row, size, live| {
+        self.visit_sized::<T>(at, page.after, |row, size| {
             let sequence = row.position().sequence;
-            if self.pruned.get(&sequence).is_some_and(|pruned| *pruned <= generation) || !select(&row, live)? {
+            if self.pruned.get(&sequence).is_some_and(|pruned| *pruned <= generation) || !select(&row)? {
                 return Ok(true);
             }
             if !output.is_empty() && size > page.bytes.get().saturating_sub(bytes) {
                 return Ok(false);
             }
-            reserve(&mut output, page.rows.get(), read, live)?;
+            reserve(&mut output, page.rows.get())?;
             bytes = add(bytes, size)?;
-            heap = add(heap, row.memory_size().saturating_sub(std::mem::size_of::<T>()))?;
             output.push(row);
-            let slots = output.capacity().checked_mul(std::mem::size_of::<T>()).ok_or_else(exhausted)?;
-            read.retained.set(add(add(std::mem::size_of::<Vec<T>>(), slots)?, heap)?);
             Ok(output.len() < page.rows.get() && bytes < page.bytes.get())
         })?;
         Ok(output)
     }
 
-    pub fn one<T: Row>(&self, sequence: u64, memory: &RetainedMemory, base: usize) -> Result<Option<T>> {
-        let read = Read::new(memory, base);
+    pub fn one<T: Row>(&self, sequence: u64) -> Result<Option<T>> {
         let mut found = None;
-        self.visit_sized::<T>(sequence, sequence.saturating_sub(1), &read, |row, _, _| {
+        self.visit_sized::<T>(sequence, sequence.saturating_sub(1), |row, _| {
             found = Some(row);
             Ok(false)
         })?;
@@ -407,9 +352,6 @@ impl Log {
 }
 
 impl Row for StorageSchema {
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        StorageSchema::decoding_memory_bytes(encoded_bytes)
-    }
     const KIND: &'static str = "schemas";
     fn position(&self) -> &StorageCursor {
         &self.position
@@ -423,9 +365,6 @@ impl Row for StorageSchema {
 }
 
 impl Row for StoredRecord {
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        format::flat_decoding_bytes(encoded_bytes, std::mem::size_of::<Self>())
-    }
     const KIND: &'static str = "records";
     fn position(&self) -> &StorageCursor {
         &self.position
@@ -439,9 +378,6 @@ impl Row for StoredRecord {
 }
 
 impl Row for StoredRow {
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        format::flat_decoding_bytes(encoded_bytes, std::mem::size_of::<Self>())
-    }
     const KIND: &'static str = "stream";
     fn position(&self) -> &StorageCursor {
         &self.record.position
@@ -467,9 +403,6 @@ impl Row for StoredRow {
 }
 
 impl Row for ObjectEntry {
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        format::flat_decoding_bytes(encoded_bytes, std::mem::size_of::<Self>())
-    }
     const KIND: &'static str = "objects";
     fn position(&self) -> &StorageCursor {
         &self.position
@@ -489,9 +422,6 @@ impl Row for ObjectEntry {
 }
 
 impl Row for FileReference {
-    fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
-        format::flat_decoding_bytes(encoded_bytes, std::mem::size_of::<Self>())
-    }
     const KIND: &'static str = "files";
     fn position(&self) -> &StorageCursor {
         &self.position
@@ -501,27 +431,6 @@ impl Row for FileReference {
     }
     fn decode(bytes: &[u8]) -> Result<Self> {
         serde_json::from_slice(bytes).map_err(format::json)
-    }
-}
-
-impl<'a> Read<'a> {
-    pub(super) fn new(memory: &'a RetainedMemory, base: usize) -> Self {
-        Self { memory, base, retained: Cell::new(0), admitted: Cell::new(memory.bytes()) }
-    }
-
-    pub(super) fn admit(&self, bytes: usize) -> Result<usize> {
-        let total = add(add(self.base, self.retained.get())?, bytes)?;
-        self.ensure(total)?;
-        Ok(total)
-    }
-
-    fn ensure(&self, total: usize) -> Result<()> {
-        // The Blocking Job Retains Its Guard; Reconciliation Follows Completion.
-        if total > self.admitted.get() {
-            self.memory.try_grow_to(total)?;
-            self.admitted.set(total);
-        }
-        Ok(())
     }
 }
 
@@ -537,13 +446,12 @@ pub(super) fn add(left: usize, right: usize) -> Result<usize> {
     left.checked_add(right).ok_or_else(exhausted)
 }
 
-pub(super) fn reserve<T>(output: &mut Vec<T>, limit: usize, read: &Read<'_>, live: usize) -> Result<()> {
+pub(super) fn reserve<T>(output: &mut Vec<T>, limit: usize) -> Result<()> {
     if output.len() < output.capacity() {
         return Ok(());
     }
     let target = output.capacity().max(2).checked_mul(2).ok_or_else(exhausted)?.min(limit);
-    let allocation = target.checked_mul(std::mem::size_of::<T>()).ok_or_else(exhausted)?;
-    read.ensure(add(live, allocation)?)?;
+
     output.try_reserve_exact(target - output.len()).map_err(|_| exhausted())?;
     Ok(())
 }

@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 
 // Third Party Imports
 use serde::{Deserializer, Serializer};
@@ -65,7 +64,7 @@ impl Wire for SchematicEditor {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(Arc::new(change)),
+                value: Recorded::Transaction(harmos::operations::Response::new(change)),
                 apply,
             }),
             Kind::Record => Records::restore(id, version, payload)?.map(|fact| Payload {

@@ -113,7 +113,7 @@ impl<A: Application> StateManager<A> {
         origin: At<A::State>, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
         durability: Option<watch::Receiver<Position>>, catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
         capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
-        clock: fn() -> super::Timestamp,
+        schema_settings: Arc<crate::config::SchemaSettings>, clock: fn() -> super::Timestamp,
     ) -> (Self, JoinHandle<()>, mpsc::Receiver<ReadRequest<A>>) {
         let position = origin.position;
         let (sender, receiver) = mpsc::channel(requests.max(1));
@@ -142,7 +142,7 @@ impl<A: Application> StateManager<A> {
         (
             Self {
                 handles: Arc::new(()),
-                record_schemas: Arc::new(crate::records::Registry::new(storage)),
+                record_schemas: Arc::new(crate::records::Registry::new(storage, schema_settings)),
                 writer: sender,
                 context: Context::default(),
                 tracked,
@@ -158,7 +158,7 @@ impl<A: Application> StateManager<A> {
         T: Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<TransactionError<A>>,
     {
-        self.request(None, transaction.into()).await
+        self.request(None, crate::operations::Response::new(transaction.into())).await
     }
 
     #[tracing::instrument(target = "harmos::state", name = "state.commit_keyed", level = "debug", skip_all)]
@@ -167,7 +167,29 @@ impl<A: Application> StateManager<A> {
         T: Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<TransactionError<A>>,
     {
-        self.request(Some(key), transaction.into()).await
+        self.request(Some(key), crate::operations::Response::new(transaction.into())).await
+    }
+
+    /// Commits a transaction projected from an external owner without copying its payload.
+    ///
+    /// After queue acceptance, cancelling this caller does not release the owner:
+    /// writer, capture and history references retain it until their last transaction
+    /// handle drops. Allocations made while applying the transaction remain separate.
+    pub async fn commit_owned(
+        &self, transaction: crate::operations::Response<A::Transaction>,
+    ) -> Result<Receipt, Error<<A::Transaction as Transaction<A::State>>::Error>> {
+        self.request(None, transaction).await
+    }
+
+    /// Commits an externally owned transaction with the existing request-key deduplication.
+    ///
+    /// Accepted work retains its owner through writer, capture and history references
+    /// despite caller cancellation. A duplicate key releases the unused supplied owner;
+    /// this does not account for allocations made while applying a transaction.
+    pub async fn commit_keyed_owned(
+        &self, key: RequestKey, transaction: crate::operations::Response<A::Transaction>,
+    ) -> Result<Receipt, Error<<A::Transaction as Transaction<A::State>>::Error>> {
+        self.request(Some(key), transaction).await
     }
 
     pub(crate) fn record_resources(&self) -> (Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>, Arc<tokio::sync::Semaphore>) {
@@ -370,7 +392,9 @@ impl<A: Application> StateManager<A> {
         if self.capture_status().is_err() { Error::CaptureFailed } else { Error::Unavailable }
     }
 
-    async fn request<E>(&self, key: Option<RequestKey>, transaction: A::Transaction) -> Result<Receipt, Error<E>>
+    async fn request<E>(
+        &self, key: Option<RequestKey>, transaction: crate::operations::Response<A::Transaction>,
+    ) -> Result<Receipt, Error<E>>
     where
         E: From<TransactionError<A>>,
     {
@@ -397,9 +421,9 @@ impl<A: Application> Feed<A> {
     #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     #[tracing::instrument(target = "harmos::state", name = "state.shared_page", level = "debug", skip_all)]
     pub(crate) async fn shared_page(
-        &self, after: Position, through: Position, max_rows: std::num::NonZeroUsize,
+        &self, after: Position, through: Position, max_rows: std::num::NonZeroUsize, bytes: impl Fn(&A::Record) -> usize,
     ) -> Result<history::SharedPage<A>, Error> {
-        self.tracked.tail.read().await.shared_page(after, through, max_rows)
+        self.tracked.tail.read().await.shared_page_sized(after, through, max_rows, bytes)
     }
 
     #[tracing::instrument(target = "harmos::state", name = "state.since", level = "debug", skip_all)]

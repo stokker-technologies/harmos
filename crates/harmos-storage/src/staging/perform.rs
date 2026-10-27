@@ -37,7 +37,7 @@ use super::*;
 /* === Public Functions === */
 
 #[tracing::instrument(name = "storage.staging.perform.perform", level = "debug", skip_all)]
-pub(crate) async fn perform(inner: &crate::manager::Inner, action: &FileAction) -> Result<FileCompleted> {
+pub(crate) async fn perform(inner: &Arc<crate::manager::Inner>, action: &FileAction) -> Result<FileCompleted> {
     match action {
         FileAction::Create { id, metadata, staging, resumable } => {
             let actual = if *resumable {

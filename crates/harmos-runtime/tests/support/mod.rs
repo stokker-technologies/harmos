@@ -646,7 +646,7 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
         }
     };
     let value = match &entry.value {
-        Recorded::Transaction(change) => Recorded::Transaction(Arc::clone(change)),
+        Recorded::Transaction(change) => Recorded::Transaction(change.clone()),
         Recorded::Record(fact) => Recorded::Record(fact.clone()),
         Recorded::System(fact) => Recorded::System(fact.clone()),
     };
@@ -683,7 +683,7 @@ fn ancient(entry: &Entry<Recorded<Bank>>, deposit: Deposit) -> Envelope<Payload<
             prepared: None,
             id: DefinitionId::new(id),
             version,
-            value: Recorded::Transaction(Arc::new(Change::from(Deposit::from(old)))),
+            value: Recorded::Transaction(harmos_runtime::operations::Response::new(Change::from(Deposit::from(old)))),
             apply: Some(Box::new(move |ledger: &mut Ledger| old.apply(ledger))),
         },
     }

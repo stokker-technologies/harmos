@@ -58,6 +58,12 @@ impl harmos_sdk::operations::Host for OperationManager {
         std::future::ready(OperationManager::submit(self, request))
     }
 
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
+        std::future::ready(OperationManager::submit_owned(self, request, claims))
+    }
+
     fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         let submitted = OperationManager::submit(self, request);
         async move { submitted?.await }
@@ -87,6 +93,12 @@ impl harmos_sdk::operations::Host for Context<'_> {
 
     fn submit<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
         std::future::ready(Context::submit(self, request))
+    }
+
+    fn submit_owned<O: OperationDeclaration>(
+        &self, request: O, claims: super::RequestClaims,
+    ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
+        std::future::ready(Context::submit_owned(self, request, claims))
     }
 
     fn call<O: OperationDeclaration>(&self, request: O) -> impl Future<Output = Result<Response<O::Response>>> + Send {

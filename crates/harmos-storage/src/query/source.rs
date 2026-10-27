@@ -30,7 +30,6 @@ use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
-use crate::storage::memory::{MemoryBank, MemoryScope as Budget};
 use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
 
@@ -73,54 +72,37 @@ enum Node<'a> {
 
 /* === Public Functions === */
 
-// Construction Charges The Shared Storage Reservation Before Allocation.
 pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
 
-pub(super) fn records(schema: &StorageSchema, rows: &[StoredRecord], bank: &MemoryBank) -> Result<RecordBatch> {
-    let mut budget = bank.scope();
-    budget.claim(rows.len().checked_mul(std::mem::size_of::<&StoredRecord>()).ok_or_else(exhausted)?)?;
+pub(super) fn records(schema: &StorageSchema, rows: &[StoredRecord]) -> Result<RecordBatch> {
     let refs = rows.iter().collect::<Vec<_>>();
-    record_batch(schema, &refs, None, bank)
+    record_batch(schema, &refs, None)
 }
 
-pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow], bank: &MemoryBank) -> Result<RecordBatch> {
-    let mut budget = bank.scope();
-    budget.claim(rows.len().checked_mul(std::mem::size_of::<&StoredRecord>()).ok_or_else(exhausted)?)?;
+pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch> {
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
-    record_batch(schema, &refs, Some(rows), bank)
+    record_batch(schema, &refs, Some(rows))
 }
 
-pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry], bank: &MemoryBank) -> Result<RecordBatch> {
+pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBatch> {
     // The caller resolves every selected schema and establishes compatibility.
     // Equivalent payload graphs may have different logical schema identifiers.
     for row in rows {
         row.value.schema.require_postcard()?;
     }
-    let mut budget = bank.scope();
-    budget.claim(rows.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or_else(exhausted)?)?;
+
     let payloads = rows.iter().map(|row| row.value.payload.as_slice()).collect::<Vec<_>>();
-    let payload = payload(schema, &payloads, &mut budget)?;
-    metadata_budget(
-        rows.len(),
-        rows.iter()
-            .map(|row| {
-                row.value.item.as_str().len() + row.position.history.store.as_str().len() + row.position.history.epoch.as_str().len()
-            })
-            .fold(0usize, usize::saturating_add),
-        &mut budget,
-    )?;
+    let payload = payload(schema, &payloads)?;
+
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.push((Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.item.as_str())))));
     columns.push((
         Field::new("revision", DataType::UInt64, false),
         Arc::new(UInt64Array::from(rows.iter().map(|row| row.version.revision().get()).collect::<Vec<_>>())),
     ));
-    let schema_text = rows
-        .iter()
-        .try_fold(0usize, |bytes, row| bytes.checked_add(row.value.schema.id.as_str().len().saturating_add(32)).ok_or_else(exhausted))?;
-    budget.claim(schema_text.checked_mul(4).ok_or_else(exhausted)?)?;
+
     columns.push((Field::new("schema_id", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.schema.id.as_str())))));
     columns.push((
         Field::new("schema_version", DataType::UInt32, false),
@@ -131,22 +113,7 @@ pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry], bank: &Memor
     assemble(columns, payload)
 }
 
-pub(super) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordBatch> {
-    let mut budget = bank.scope();
-    metadata_budget(
-        rows.len(),
-        rows.iter()
-            .map(|row| {
-                row.metadata.id.as_str().len()
-                    + row.metadata.scope.as_ref().map_or(0, |v| v.as_str().len())
-                    + row.metadata.media_type.len()
-                    + row.position.history.store.as_str().len()
-                    + row.position.history.epoch.as_str().len()
-                    + 64
-            })
-            .fold(0usize, usize::saturating_add),
-        &mut budget,
-    )?;
+pub(super) fn files(rows: &[FileReference]) -> Result<RecordBatch> {
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
         (Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.metadata.id.as_str())))),
@@ -174,19 +141,9 @@ pub(super) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordB
     flat(columns)
 }
 
-pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<RecordBatch> {
-    let mut budget = bank.scope();
-    metadata_budget(
-        rows.len(),
-        rows.iter()
-            .map(|row| row.key.id.as_str().len() + row.position.history.store.as_str().len() + row.position.history.epoch.as_str().len())
-            .fold(0usize, usize::saturating_add),
-        &mut budget,
-    )?;
+pub(super) fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
     let mut encoded = Vec::with_capacity(rows.len());
     for row in rows {
-        let size = crate::Message::encoded_len(row.schema.as_ref());
-        budget.claim(size.checked_mul(4).ok_or_else(exhausted)?)?;
         encoded.push(crate::Message::encode_to_vec(row.schema.as_ref()));
     }
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
@@ -208,29 +165,16 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
 
 /* === Private Functions === */
 
-fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>, bank: &MemoryBank) -> Result<RecordBatch> {
+fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>) -> Result<RecordBatch> {
     for row in rows {
         if row.schema != schema.key {
             return Err(invalid("record batch has incompatible schemas"));
         }
     }
-    let mut budget = bank.scope();
-    budget.claim(rows.len().checked_mul(std::mem::size_of::<&[u8]>()).ok_or_else(exhausted)?)?;
+
     let payloads = rows.iter().map(|row| row.payload.as_slice()).collect::<Vec<_>>();
-    let payload = payload(schema, &payloads, &mut budget)?;
-    metadata_budget(
-        rows.len(),
-        rows.iter()
-            .map(|row| {
-                row.item.as_str().len()
-                    + row.scope.as_ref().map_or(0, |v| v.as_str().len())
-                    + row.source.as_ref().map_or(0, |v| v.as_str().len())
-                    + row.position.history.store.as_str().len()
-                    + row.position.history.epoch.as_str().len()
-            })
-            .fold(0usize, usize::saturating_add),
-        &mut budget,
-    )?;
+    let payload = payload(schema, &payloads)?;
+
     let times = rows.iter().map(|row| row.source_time.map(timestamp).transpose()).collect::<Result<Vec<_>>>()?;
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
@@ -243,16 +187,13 @@ fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<
         ),
     ]);
     if let Some(streams) = streams {
-        budget.claim(
-            streams.iter().map(|row| row.stream.as_str().len()).fold(0usize, usize::saturating_add).checked_mul(4).ok_or_else(exhausted)?,
-        )?;
         columns.push((Field::new("stream", DataType::Utf8, false), strings(streams.iter().map(|row| Some(row.stream.as_str())))));
         columns.push((
             Field::new("sequence", DataType::UInt64, false),
             Arc::new(UInt64Array::from(streams.iter().map(|row| row.sequence).collect::<Vec<_>>())),
         ));
     }
-    append_schema_columns(&mut columns, &schema.key, rows.len(), &mut budget)?;
+    append_schema_columns(&mut columns, &schema.key, rows.len())?;
     assemble(columns, payload)
 }
 
@@ -295,41 +236,10 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
     Ok(output.into())
 }
 
-// Account For Reused Graph Definitions Expanding Into Independent Arrow Fields.
-fn expanded_schema_bytes(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) -> Result<usize> {
-    if depth >= MAX_DEPTH {
-        return Err(invalid("recursive or excessive Arrow payload nesting"));
-    }
-    let definition = schema.definitions.get(root).ok_or_else(|| invalid("missing schema definition"))?;
-    *count = count.checked_add(definition.len() + 1).ok_or_else(exhausted)?;
-    if *count > super::super::arrow::MAX_FIELDS {
-        return Err(invalid("expanded Arrow schema exceeds field limit"));
-    }
-    let mut bytes = 1024usize;
-    for field in definition {
-        bytes = bytes
-            .checked_add(1024)
-            .and_then(|bytes| field.name.len().checked_mul(4).and_then(|name| bytes.checked_add(name)))
-            .ok_or_else(exhausted)?;
-        if let graph::Kind::Message { definition } = field.kind {
-            bytes = bytes.checked_add(expanded_schema_bytes(schema, definition, depth + 1, count)?).ok_or_else(exhausted)?;
-        }
-    }
-    Ok(bytes)
-}
-
-fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) -> Result<ArrayRef> {
+fn payload(schema: &StorageSchema, payloads: &[&[u8]]) -> Result<ArrayRef> {
     schema.key.require_postcard()?;
-    let mut expanded_fields = 0;
-    let expanded_bytes = expanded_schema_bytes(&schema.schema, schema.schema.root, 0, &mut expanded_fields)?;
-    budget.claim(expanded_bytes)?;
     let settings = harmos_domain::config::SchemaSettings::default();
-    let construction =
-        schema::Validator::construction_memory_bytes(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
-    budget.claim(construction)?;
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
-    // Count Expansion Before Allocating Trees Or Arrow Buffers.
-    account_expansion(&validator, payloads, |bytes| budget.claim(bytes))?;
     let mut roots = Vec::with_capacity(payloads.len());
     for bytes in payloads {
         let mut root = Node::Null;
@@ -356,46 +266,6 @@ fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget<'_>) 
     }
     let refs = roots.iter().map(Some).collect::<Vec<_>>();
     array(&DataType::Struct(payload_fields(&schema.schema)?), &refs)
-}
-
-fn account_expansion(validator: &schema::Validator, payloads: &[&[u8]], claim: impl FnOnce(usize) -> Result<()>) -> Result<()> {
-    if payloads.is_empty() {
-        return Ok(());
-    }
-    let mut bytes = 0usize;
-    let result = count_expansion(validator, payloads, &mut bytes);
-    // Claim Even A Malformed Prefix Before Reporting Its Validation Failure.
-    claim(bytes)?;
-    result
-}
-
-fn count_expansion(validator: &schema::Validator, payloads: &[&[u8]], total: &mut usize) -> Result<()> {
-    for bytes in payloads {
-        add_expansion(total, bytes.len().checked_mul(4).ok_or_else(exhausted)?)?;
-        validator
-            .visit(bytes, |path, event| {
-                add_expansion(total, 256)?;
-                for part in path {
-                    if let PathElement::Field { name, .. } = part {
-                        add_expansion(total, name.len().checked_mul(4).ok_or_else(exhausted)?)?;
-                    }
-                }
-                if let Event::BeginRepeated { length } = event {
-                    add_expansion(total, length.checked_mul(256).ok_or_else(exhausted)?)?;
-                }
-                Ok::<_, Error>(())
-            })
-            .map_err(|error| match error {
-                schema::VisitError::Consumer(error) => error,
-                schema::VisitError::Payload(_) => invalid("payload differs from its schema"),
-            })?;
-    }
-    Ok(())
-}
-
-fn add_expansion(total: &mut usize, bytes: usize) -> Result<()> {
-    *total = total.checked_add(bytes).ok_or_else(exhausted)?;
-    Ok(())
 }
 
 fn node_at<'n, 'a>(root: &'n mut Node<'a>, path: &[PathElement<'_>]) -> Result<&'n mut Node<'a>> {
@@ -511,10 +381,7 @@ fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> 
         (Field::new("position", DataType::UInt64, false), Arc::new(UInt64Array::from(rows.map(|row| row.sequence).collect::<Vec<_>>()))),
     ]
 }
-fn append_schema_columns(
-    columns: &mut Vec<(Field, ArrayRef)>, key: &crate::storage::SchemaKey, rows: usize, budget: &mut Budget<'_>,
-) -> Result<()> {
-    budget.claim(rows.checked_mul(key.id.as_str().len().saturating_add(32)).and_then(|n| n.checked_mul(4)).ok_or_else(exhausted)?)?;
+fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &crate::storage::SchemaKey, rows: usize) -> Result<()> {
     columns.push((Field::new("schema_id", DataType::Utf8, false), strings((0..rows).map(|_| Some(key.id.as_str())))));
     columns.push((Field::new("schema_version", DataType::UInt32, false), Arc::new(UInt32Array::from(vec![key.version.get(); rows]))));
     columns.push((Field::new("payload_encoding", DataType::Utf8, false), strings((0..rows).map(|_| Some(encoding(key))))));
@@ -546,14 +413,7 @@ fn assemble(columns: Vec<(Field, ArrayRef)>, payload: ArrayRef) -> Result<Record
     )
     .map_err(|_| invalid("Arrow result batch mismatch"))
 }
-fn metadata_budget(rows: usize, text: usize, budget: &mut Budget<'_>) -> Result<()> {
-    budget.claim(
-        rows.checked_mul(2048)
-            .and_then(|n| text.checked_mul(4).and_then(|text| n.checked_add(text)))
-            .and_then(|bytes| bytes.checked_add(16 * 1024))
-            .ok_or_else(exhausted)?,
-    )
-}
+
 fn timestamp(value: SystemTime) -> Result<i64> {
     let value = match value.duration_since(UNIX_EPOCH) {
         Ok(value) => i128::try_from(value.as_nanos()).map_err(|_| invalid("timestamp overflow"))?,
@@ -569,91 +429,3 @@ fn exhausted() -> Error {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use harmos_domain::Message;
-    use harmos_domain::schema::Described;
-
-    #[harmos_domain::message]
-    struct Detail {
-        label: String,
-    }
-
-    #[harmos_domain::message]
-    struct Accounted {
-        value: u64,
-        optional: Option<u32>,
-        samples: Vec<u32>,
-        detail: Detail,
-    }
-
-    fn fixture() -> (schema::Validator, Vec<u8>) {
-        let settings = harmos_domain::config::SchemaSettings::default();
-        let graph = graph::Schema::from_declaration(Accounted::DEFINITION, &settings).unwrap();
-        let validator = schema::Validator::from_schema(&graph, &settings).unwrap();
-        let row = Accounted { value: 1, optional: None, samples: vec![1, 2], detail: Detail { label: "x".into() } };
-        (validator, row.encode_to_vec())
-    }
-
-    #[test]
-    fn accounting_charges_once() {
-        let (validator, bytes) = fixture();
-        assert_eq!(bytes.len(), 7);
-        let mut claims = Vec::new();
-        account_expansion(&validator, &[bytes.as_slice(), bytes.as_slice()], |bytes| {
-            claims.push(bytes);
-            Ok(())
-        })
-        .unwrap();
-        // Each Row: Seven Encoded Bytes Times Four, 11 Events, Ancestor Names And Two Repeated Slots.
-        assert_eq!(claims, [7_224]);
-        account_expansion(&validator, &[], |_| panic!("empty input has no expansion claim")).unwrap();
-    }
-
-    #[test]
-    fn accounting_respects_budget() {
-        let (validator, bytes) = fixture();
-        for (limit, accepted) in [(3_611, false), (3_612, true)] {
-            let mut claims = Vec::new();
-            let result = account_expansion(&validator, &[&bytes], |bytes| {
-                claims.push(bytes);
-                if bytes > limit { Err(exhausted()) } else { Ok(()) }
-            });
-            assert_eq!(claims, [3_612]);
-            assert_eq!(result.is_ok(), accepted);
-            if !accepted {
-                assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
-            }
-        }
-    }
-
-    #[test]
-    fn malformed_prefix_claims_first() {
-        let (validator, mut bytes) = fixture();
-        bytes.pop();
-        for limit in [2_771, 2_772] {
-            let mut claims = Vec::new();
-            let result = account_expansion(&validator, &[&bytes], |bytes| {
-                claims.push(bytes);
-                if bytes > limit { Err(exhausted()) } else { Ok(()) }
-            });
-            assert_eq!(claims, [2_772]);
-            if limit < 2_772 {
-                assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
-            } else {
-                assert!(matches!(result, Err(Error::InvalidInput { .. })));
-            }
-        }
-    }
-
-    #[test]
-    fn accounting_rejects_overflow() {
-        let (validator, bytes) = fixture();
-        let mut total = usize::MAX - 1;
-        let error = count_expansion(&validator, &[&bytes], &mut total).unwrap_err();
-        assert!(matches!(error, Error::ResourceExhausted { .. }));
-        assert_eq!(total, usize::MAX - 1);
-    }
-}

@@ -46,9 +46,10 @@ impl<C> StorageManager<C> {
             .result(span, async {
                 let mut reader = self.read_file(ReadFile { source: request.source, range: request.range }).await?;
                 let mut target = self.create_file(request.metadata).await?;
-                while let Some((batch, memory)) = reader.next_raw(false).await? {
-                    target.write_all(batch.bytes).await?;
-                    drop(memory);
+                while let Some(batch) = reader.next_raw(false).await? {
+                    let chunk = crate::FileChunk::new(batch.bytes);
+                    let offset = target.length();
+                    target.write_retained_at(offset, chunk).await?;
                 }
                 reader.completion()?;
                 if request.consistency == CaptureConsistency::Stable {

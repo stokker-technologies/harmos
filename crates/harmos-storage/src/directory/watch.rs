@@ -27,9 +27,8 @@ use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::{Notify, mpsc};
 // Local Imports
-use super::{DirectoryEntry, DirectoryEvent, DirectoryReader, Selection, item, relative, retained_item, selection};
-use crate::capacity::{Held, Pool, Refusal, Reservation};
-use crate::manager::{ENTRY_OVERHEAD, Inner};
+use super::{DirectoryEntry, DirectoryEvent, DirectoryReader, Selection, item, relative, selection};
+use crate::manager::Inner;
 use crate::{Error, ReadBatch, Result};
 use harmos_domain::model::storage::DirectorySelection;
 
@@ -44,7 +43,7 @@ use harmos_domain::model::storage::DirectorySelection;
 pub struct DirectoryWatcher {
     context: crate::execution::Context,
     inner: Arc<Inner>,
-    held: Held,
+
     selection: Arc<Selection>,
     initial: Option<DirectoryReader>,
     initial_complete: bool,
@@ -55,12 +54,10 @@ pub struct DirectoryWatcher {
     overflow: Arc<AtomicBool>,
     changed: Arc<Notify>,
     watcher: Option<RecommendedWatcher>,
-    memory: Option<Reservation>,
 }
 
 struct Queued {
     event: Event,
-    _memory: Reservation,
 }
 
 /* === Enums === */
@@ -71,21 +68,15 @@ struct Queued {
 
 impl DirectoryWatcher {
     pub(super) async fn new(inner: Arc<Inner>, value: DirectorySelection, include_existing: bool) -> Result<Self> {
-        let held = Held::default();
-        let selected = selection(&inner, value, &held).await?;
-        let initial_marker = item(&inner, &held, DirectoryEvent::InitialScanComplete)?;
-        let rescan = item(&inner, &held, DirectoryEvent::RescanRequired)?;
+        let selected = selection(value).await?;
+        let initial_marker = item(&inner, DirectoryEvent::InitialScanComplete)?;
+        let rescan = item(&inner, DirectoryEvent::RescanRequired)?;
         let settings = inner.settings.filesystem;
-        // Tokio Allocates Queue Slots In Blocks; Include A Partial Block.
-        let slots = settings.event_capacity.get().saturating_add(32);
-        let bytes = slots.saturating_mul(std::mem::size_of::<Queued>() + 64).saturating_add(ENTRY_OVERHEAD);
-        let memory = Reservation::try_new(&inner, Pool::Read, &held, bytes).map_err(Refusal::into_error)?;
 
         let (outgoing, incoming) = mpsc::channel(settings.event_capacity.get());
         let overflow = Arc::new(AtomicBool::new(false));
         let changed = Arc::new(Notify::new());
-        let callback_inner = Arc::clone(&inner);
-        let callback_held = held.clone();
+
         let callback_overflow = Arc::clone(&overflow);
         let callback_changed = Arc::clone(&changed);
 
@@ -105,31 +96,20 @@ impl DirectoryWatcher {
                     signal(&callback_overflow, &callback_changed);
                     return;
                 }
-                let paths = event.paths.iter().fold(0_usize, |bytes, path| bytes.saturating_add(path.capacity()));
-                let bytes = paths
-                    .saturating_mul(3)
-                    .saturating_add(event.paths.capacity().saturating_mul(std::mem::size_of::<std::path::PathBuf>() * 3))
-                    .saturating_add(ENTRY_OVERHEAD);
-                let Ok(memory) = Reservation::try_new(&callback_inner, Pool::Read, &callback_held, bytes) else {
-                    signal(&callback_overflow, &callback_changed);
-                    return;
-                };
-                deliver(&outgoing, Queued { event, _memory: memory }, &callback_overflow, &callback_changed);
+
+                deliver(&outgoing, Queued { event }, &callback_overflow, &callback_changed);
             })
         };
         let configuration = notify::Config::default().with_poll_interval(settings.poll_interval).with_follow_symlinks(false);
         let mut watcher = RecommendedWatcher::new(handler, configuration).map_err(watch_error)?;
         let mode = if selected.value.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
         watcher.watch(&selected.value.root, mode).map_err(watch_error)?;
-        let initial = if include_existing {
-            Some(DirectoryReader::selected(Arc::clone(&inner), Arc::clone(&selected), held.clone()).await?)
-        } else {
-            None
-        };
+        let initial =
+            if include_existing { Some(DirectoryReader::selected(Arc::clone(&inner), Arc::clone(&selected)).await?) } else { None };
         Ok(Self {
             context,
             inner,
-            held,
+
             selection: selected,
             initial,
             initial_complete: false,
@@ -140,7 +120,6 @@ impl DirectoryWatcher {
             overflow,
             changed,
             watcher: Some(watcher),
-            memory: Some(memory),
         })
     }
 
@@ -165,8 +144,8 @@ impl DirectoryWatcher {
                             _ = lifecycle.changed() => None,
                         };
                         let Some(next) = next else { continue };
-                        if let Some((entry, memory)) = next? {
-                            return retained_item(&self.inner, DirectoryEvent::Existing(entry), memory).map(Some);
+                        if let Some(entry) = next? {
+                            return item(&self.inner, DirectoryEvent::Existing(entry)).map(Some);
                         }
                         self.initial = None;
                     }
@@ -198,7 +177,7 @@ impl DirectoryWatcher {
                     }
                     for event in events {
                         // One Native Event Can Carry Several Paths; Preserve Every Projection.
-                        let item = item(&self.inner, &self.held, event)?;
+                        let item = item(&self.inner, event)?;
                         self.ready.push_back(item);
                     }
                     if let Some(item) = self.ready.pop_front() {
@@ -216,7 +195,6 @@ impl DirectoryWatcher {
         while self.incoming.try_recv().is_ok() {}
         self.ready.clear();
         self.initial = None;
-        self.memory = None;
     }
 
     fn rescan(&mut self) -> ReadBatch<DirectoryEvent> {

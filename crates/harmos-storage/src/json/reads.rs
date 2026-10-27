@@ -25,10 +25,8 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::{
     format,
-    log::{Log, Read, add, exhausted, reserve},
+    log::{Log, add, reserve},
 };
-use crate::MemorySize;
-use crate::arrow::RetainedMemory;
 use crate::query::{ObjectSelection, ObjectVersions};
 use crate::{
     BackendSnapshot, ObjectEntry, ObjectKey, ObjectPoint, ObjectRetention, ObjectVersion, Result, ScanPage, SchemaKey, StorageCursor,
@@ -63,47 +61,35 @@ pub(super) struct Pruning {
 
 impl Log {
     pub fn catalog(
-        &self, snapshot: &BackendSnapshot, selection: &crate::IdentitySelection, page: ScanPage, memory: &RetainedMemory, base: usize,
+        &self, snapshot: &BackendSnapshot, selection: &crate::IdentitySelection, page: ScanPage,
     ) -> Result<Vec<crate::StoredIdentity>> {
         self.pin(snapshot)?;
-        let mut output = Vec::new();
-        let mut bytes = 0usize;
-        let mut ordered: Vec<&crate::StoredIdentity> = Vec::new();
-        let read = Read::new(memory, base);
-        read.retained.set(std::mem::size_of::<Vec<crate::StoredIdentity>>());
-        let mut heap = 0usize;
+        let mut ordered = Vec::new();
         for identity in self.identities.values() {
             let sequence = identity.first().sequence;
             if sequence <= page.after || sequence > snapshot.at.sequence || !selection.matches(identity) {
                 continue;
             }
-            let insertion = ordered.partition_point(|prior| prior.first().sequence < sequence);
+            let insertion = ordered.partition_point(|prior: &&crate::StoredIdentity| prior.first().sequence < sequence);
             if insertion >= page.rows.get() {
                 continue;
             }
             if ordered.len() == page.rows.get() {
                 ordered.pop();
             }
-            let slots = ordered.capacity().checked_mul(std::mem::size_of::<&crate::StoredIdentity>()).ok_or_else(exhausted)?;
-            let live = read.admit(slots)?;
-            reserve(&mut ordered, page.rows.get(), &read, live)?;
+            reserve(&mut ordered, page.rows.get())?;
             ordered.insert(insertion, identity);
         }
-        let ordered_bytes = ordered.capacity().checked_mul(std::mem::size_of::<&crate::StoredIdentity>()).ok_or_else(exhausted)?;
-        for identity in &ordered {
-            let size = identity_size(identity);
+        let mut output = Vec::new();
+        let mut bytes = 0usize;
+        for identity in ordered {
+            let size = crate::manager::encoded_size(identity)?;
             if !output.is_empty() && size > page.bytes.get().saturating_sub(bytes) {
                 break;
             }
-            let resident = identity.memory_size();
-            let live = read.admit(add(ordered_bytes, resident)?)?;
-            reserve(&mut output, page.rows.get(), &read, live)?;
+            reserve(&mut output, page.rows.get())?;
             bytes = add(bytes, size)?;
-            let row = (*identity).clone();
-            heap = add(heap, row.memory_size().saturating_sub(std::mem::size_of::<crate::StoredIdentity>()))?;
-            output.push(row);
-            let slots = output.capacity().checked_mul(std::mem::size_of::<crate::StoredIdentity>()).ok_or_else(exhausted)?;
-            read.retained.set(add(add(std::mem::size_of::<Vec<crate::StoredIdentity>>(), slots)?, heap)?);
+            output.push(identity.clone());
             if output.len() == page.rows.get() || bytes >= page.bytes.get() {
                 break;
             }
@@ -111,34 +97,28 @@ impl Log {
         Ok(output)
     }
 
-    pub fn objects(
-        &self, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage, memory: &RetainedMemory, base: usize,
-    ) -> Result<Vec<ObjectEntry>> {
+    pub fn objects(&self, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage) -> Result<Vec<ObjectEntry>> {
         let generation = self.pin(snapshot)?;
         let reclaimed = self.pruned.iter().any(|(position, pruned)| *pruned <= generation && *position > page.after);
         if selection.versions == ObjectVersions::Revisions && reclaimed {
             return Err(crate::Error::Gap { requested: page.after + 1, available: self.pruned_through + 1 });
         }
-        let read = Read::new(memory, base);
-        self.scan_read(snapshot.at.sequence, generation, page, &read, |row: &ObjectEntry, live| {
+        self.scan_read(snapshot.at.sequence, generation, page, |row: &ObjectEntry| {
             if !crate::selection::Entry::matches(row, selection) {
                 return Ok(false);
             }
             if selection.versions == ObjectVersions::Revisions {
                 return Ok(true);
             }
-            let nested = Read::new(memory, live);
-            let latest = self.latest(snapshot.at.sequence, generation, &row.value.schema.id, &row.value.item, &nested)?;
+            let latest = self.latest(snapshot.at.sequence, generation, &row.value.schema.id, &row.value.item)?;
             Ok(latest.as_ref().is_some_and(|latest| latest.position == row.position))
         })
     }
 
-    pub fn object(
-        &self, snapshot: &BackendSnapshot, point: &ObjectPoint, memory: &RetainedMemory, base: usize,
-    ) -> Result<Option<ObjectEntry>> {
+    pub fn object(&self, snapshot: &BackendSnapshot, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let generation = self.pin(snapshot)?;
         match &point.version {
-            ObjectVersion::Latest => self.latest(snapshot.at.sequence, generation, &point.schema, &point.item, &Read::new(memory, base)),
+            ObjectVersion::Latest => self.latest(snapshot.at.sequence, generation, &point.schema, &point.item),
             ObjectVersion::Exact(version) => {
                 self.history.check(version.history())?;
                 let sequence = version.revision().get();
@@ -146,22 +126,19 @@ impl Log {
                     return Ok(None);
                 }
                 Ok(self
-                    .one::<ObjectEntry>(sequence, memory, base)?
+                    .one::<ObjectEntry>(sequence)?
                     .filter(|row| row.value.schema.id == point.schema && row.value.item == point.item && row.version == *version))
             }
         }
     }
 
-    fn latest(
-        &self, at: u64, generation: u64, schema: &crate::Identifier, item: &ObjectKey, read: &Read<'_>,
-    ) -> Result<Option<ObjectEntry>> {
+    fn latest(&self, at: u64, generation: u64, schema: &crate::Identifier, item: &ObjectKey) -> Result<Option<ObjectEntry>> {
         let mut latest = None;
-        self.visit_sized::<ObjectEntry>(at, 0, read, |row, _, _| {
+        self.visit_sized::<ObjectEntry>(at, 0, |row, _| {
             if row.value.schema.id == *schema
                 && row.value.item == *item
                 && !self.pruned.get(&row.position.sequence).is_some_and(|pruned| *pruned <= generation)
             {
-                read.retained.set(row.memory_size());
                 latest = Some(row);
             }
             Ok(true)
@@ -174,6 +151,7 @@ impl Log {
         if through.sequence > self.saved {
             return Err(format::invalid("object release exceeds saved frontier"));
         }
+
         let bytes = serde_json::to_vec(&(&schema, &item)).map_err(format::json)?;
         let key = format::hex(&Sha256::digest(bytes));
         let path = self.root.join("releases").join(format!("{key}.json"));
@@ -192,9 +170,10 @@ impl Log {
         if through.sequence > self.saved {
             return Err(format::invalid("object pruning exceeds saved frontier"));
         }
-        let mut remove = Vec::new();
+
+        let mut remove = Vec::with_capacity(maximum.get());
         let mut complete = true;
-        self.bootstrap_visit::<ObjectEntry>(through.sequence, 0, |row| {
+        self.visit_sized::<ObjectEntry>(through.sequence, 0, |row, _| {
             if self.pruned.contains_key(&row.position.sequence) {
                 return Ok(true);
             }
@@ -210,7 +189,7 @@ impl Log {
             }
             let keep = retention.versions().get();
             let mut newer = 0;
-            self.bootstrap_visit::<ObjectEntry>(through.sequence, row.position.sequence, |other| {
+            self.visit_sized::<ObjectEntry>(through.sequence, row.position.sequence, |other, _| {
                 if other.value.schema.id == row.value.schema.id
                     && other.value.item == row.value.item
                     && !self.pruned.contains_key(&other.position.sequence)
@@ -232,6 +211,7 @@ impl Log {
             return Ok(complete);
         }
         let generation = self.generation.checked_add(1).ok_or_else(|| format::invalid("object pruning generation overflow"))?;
+
         let mut positions = self.pruned.clone();
         for sequence in remove {
             positions.insert(sequence, generation);
@@ -248,14 +228,5 @@ impl Log {
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn identity_size(identity: &crate::StoredIdentity) -> usize {
-    use crate::{MemorySize, StoredIdentity};
-    let base = std::mem::size_of::<StoredIdentity>() + identity.first().memory_size() + identity.schema().memory_size();
-    match identity {
-        StoredIdentity::Stream { scope, item, stream, .. } => base + scope.memory_size() + item.memory_size() + stream.memory_size(),
-        StoredIdentity::Object { key, .. } => base + key.memory_size(),
-    }
-}
 
 /* === Tests === */

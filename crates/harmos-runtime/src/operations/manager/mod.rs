@@ -68,10 +68,11 @@ type CachedResponse = harmos_sdk::__private::ErasedResponse;
 
 #[derive(Clone)]
 pub struct OperationManager {
+    pub(super) schema_settings: Arc<crate::config::SchemaSettings>,
     pub(super) registry: Arc<Registry>,
     pub(super) instances: Arc<Instances>,
     pub(super) lanes: Arc<Lanes>,
-    pub(super) preparation: Option<Arc<Semaphore>>,
+    pub(crate) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(super) resident: super::resident::Registry,
 }

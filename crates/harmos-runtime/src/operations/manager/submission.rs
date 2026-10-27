@@ -39,6 +39,10 @@ impl OperationManager {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }
 
+    pub fn submit_owned<O: OperationDeclaration>(&self, request: O, claims: super::super::RequestClaims) -> Result<OperationInstance<O>> {
+        self.admit::<O, ()>((crate::operations::binding::Request::owned(request, claims), ()), None, &[], &Source::Host, None)
+    }
+
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O, endpoints: P) -> Result<OperationInstance<O>> {
         self.admit::<O, P>((request.into(), endpoints), None, &[], &Source::Host, None)
     }

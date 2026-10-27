@@ -299,7 +299,7 @@ impl Wire for Bank {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(Arc::new(change)),
+                value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
                 apply,
             }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {

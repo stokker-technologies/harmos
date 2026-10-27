@@ -122,7 +122,7 @@ fn decode_postcard<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<
 fn encode<T: Portable>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
     let value = value.downcast_ref::<T>().ok_or_else(|| MessageError::borrowed("protobuf response type differs from operation"))?;
     let mut bytes = Vec::new();
-    grpc::encode(value, &mut bytes)?;
+    grpc::encode_bounded(value, &mut bytes, super::codec::LIMIT)?;
     Ok(bytes)
 }
 

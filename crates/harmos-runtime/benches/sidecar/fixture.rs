@@ -206,7 +206,7 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
             max_entries: nz(100_000),
             event_capacity: nz(1024),
         },
-        budget: StorageBudget { read_memory_bytes: nz(128 * 1024 * 1024) },
+
         request: StorageRequestSettings {
             max_pending_queries: nz(64),
             max_active_queries: nz(4),

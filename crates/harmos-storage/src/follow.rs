@@ -24,9 +24,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 // Local Imports
 use super::backend::{ReadLimits, ScanPage};
-use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
+use super::capacity::{Attempt, Refusal};
 use super::config::SCAN_ROWS;
-use super::manager::{Domain, ENTRY_OVERHEAD, Inner, State, encoded_size};
+use super::manager::{Domain, Inner, State, encoded_size};
 pub use super::selection::Entry;
 use super::selection::Queued;
 use super::snapshot::Snapshot;
@@ -47,7 +47,6 @@ pub struct Follower<T: Entry> {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     id: u64,
-    held: Held,
     selection: T::Selection,
     history: Option<Snapshot>,
     after: u64,
@@ -57,7 +56,6 @@ pub struct Follower<T: Entry> {
 
 pub struct FollowPage<T> {
     entries: Vec<T>,
-    _charge: crate::arrow::RetainedMemory,
 }
 
 pub(super) struct Following {
@@ -90,7 +88,7 @@ impl<C> StorageManager<C> {
         // Register Queue Retention From The Saved Frontier Atomically.
         let (saved, accepted) = {
             let mut state = self.inner.state.lock().unwrap();
-            super::capacity::admitting(&state, Pool::Read)?;
+            super::capacity::admitting(&state, false)?;
             let saved = state.status.saved.clone();
             let accepted = state.status.accepted.clone();
             if requested > accepted.sequence {
@@ -103,7 +101,6 @@ impl<C> StorageManager<C> {
             context: crate::execution::Context::current(),
             inner: Arc::clone(&self.inner),
             id,
-            held: Held::default(),
             selection,
             history: None,
             after,
@@ -111,7 +108,7 @@ impl<C> StorageManager<C> {
             accepted,
         };
         if after < follower.saved.sequence {
-            follower.history = Some(self.snapshot(&follower.saved, &follower.held).await?);
+            follower.history = Some(self.snapshot(&follower.saved).await?);
         }
         Ok(follower)
     }
@@ -120,15 +117,12 @@ impl<C> StorageManager<C> {
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.follow.page", level = "debug", skip_all)]
     pub async fn page<T: Entry>(&self, selection: &T::Selection, after: u64, limits: ReadLimits) -> Result<FollowPage<T>> {
-        let held = Held::default();
         let rows = limits.rows.min(SCAN_ROWS);
         let bytes = limits.bytes.min(self.inner.settings.scan_bytes());
-        let charge = rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get());
-        let reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None).await.map_err(Refusal::into_error)?.retain();
-        let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
-        let (entries, encoded) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }, reservation.clone()).await?;
-        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)))?;
-        Ok(FollowPage { entries, _charge: reservation })
+
+        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let (entries, _) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }).await?;
+        Ok(FollowPage { entries })
     }
 }
 
@@ -164,18 +158,16 @@ impl<T: Entry> Follower<T> {
             return Ok(None);
         };
         let bytes = self.inner.settings.scan_bytes();
-        let reservation =
-            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?.retain();
+
         let page = ScanPage { after: self.after, rows: SCAN_ROWS, bytes };
-        let (entries, encoded) = snapshot.scan::<T>(&self.selection, page, reservation.clone()).await?;
+        let (entries, _) = snapshot.scan::<T>(&self.selection, page).await?;
         let Some(last) = entries.last() else {
             self.history = None;
             self.after = self.after.max(self.saved.sequence);
             return Ok(None);
         };
         self.after = last.position().sequence;
-        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)))?;
-        Ok(Some(FollowPage { entries, _charge: reservation }))
+        Ok(Some(FollowPage { entries }))
     }
 
     // Accepted Entries From The Queue; Waits Without Allocating While None Match.
@@ -194,9 +186,8 @@ impl<T: Entry> Follower<T> {
 
         // Charge The Page Before Copying Entries Out Of The Queue.
         let bytes = self.inner.settings.scan_bytes();
-        let mut reservation =
-            Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?;
-        let (entries, encoded) = {
+
+        let (entries, _) = {
             let mut state = self.inner.state.lock().unwrap();
             copy::<T>(&mut state, self.id, &self.selection, bytes)?
         };
@@ -204,8 +195,7 @@ impl<T: Entry> Follower<T> {
             return Ok(None);
         };
         self.after = last.position().sequence;
-        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
-        Ok(Some(FollowPage { entries, _charge: reservation.retain() }))
+        Ok(Some(FollowPage { entries }))
     }
 }
 
@@ -284,14 +274,10 @@ impl State {
 
 /* === Private Functions === */
 
-fn page_charge(bytes: NonZeroUsize) -> usize {
-    SCAN_ROWS.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get())
-}
-
 // Whether A Matching Queued Entry Follows The Subscription Cursor. Queue
 // Entries Without A Match Advance The Cursor So They Can Be Retired.
 fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Result<bool> {
-    super::capacity::admitting(state, Pool::Read)?;
+    super::capacity::admitting(state, false)?;
     let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
     following.check()?;
     let mut cursor = following.after;

@@ -138,6 +138,12 @@ impl Host for Supervisor {
         Ok(OperationInstance { host: self.clone(), id: Id::new(id), released: false, _operation: PhantomData })
     }
 
+    async fn submit_owned<O: OperationDeclaration>(
+        &self, _: O, _: harmos_sdk::operations::RequestClaims,
+    ) -> Result<OperationInstance<O>, CallError> {
+        Err(CallError::LocalResources { method: O::ID })
+    }
+
     // Resident resources live in the host process; a sidecar cannot lend them.
     async fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self, _: O, _: std::sync::Arc<R>,

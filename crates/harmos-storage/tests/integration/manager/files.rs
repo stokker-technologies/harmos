@@ -58,6 +58,10 @@ fn whole(file: &harmos_storage::FileReference) -> harmos_domain::operations::sto
     }
 }
 
+fn shareable_tempfile() -> std::fs::File {
+    tempfile::NamedTempFile::new().unwrap().into_file()
+}
+
 #[tokio::test(start_paused = true)]
 async fn file_roundtrip_recovers() {
     let large = (0..8192).map(|n| (n % 251) as u8).collect::<Vec<_>>();
@@ -325,20 +329,16 @@ async fn reader_keeps_metadata() {
     let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().pending_bytes, 0);
-    assert!(f.storage.status().read_bytes > 0);
     assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"abc");
     assert!(reader.next().await.unwrap().is_none());
     // The Exhausted Reader Schedules Backend Snapshot Release.
     f.data.control.release_entered.notified().await;
     // Completion Remains Inspectable While That Release Is Pending.
     assert_eq!(reader.completion().unwrap().bytes, file.length);
-    assert!(f.storage.status().read_bytes > 0);
     drop(reader);
-    assert!(f.storage.status().read_bytes > 0);
     f.data.control.block_release.store(false, Ordering::SeqCst);
     f.data.control.release_release.notify_one();
     f.data.snapshots_released().await;
-    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
 
@@ -406,6 +406,7 @@ async fn bounded_file_parallelism() {
 async fn pressure_preserves_owner() {
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(40_000).unwrap();
+    policy.request.max_pending_write_batches = NonZeroUsize::MIN;
     policy.response.batch_bytes = NonZeroUsize::new(1024).unwrap();
     let f = Fixture::new(policy).await;
     let bytes = vec![42; 16_000];
@@ -543,19 +544,17 @@ async fn file_projection_retains() {
     file.write_all(b"abc".to_vec()).await.unwrap();
     let reference = file.finish().await.unwrap();
     f.storage.flush().await.unwrap();
-    let session = f.storage.read_session();
+    let session = f.storage.clone();
     let mut reader = session.read_file(whole(&reference)).await.unwrap();
     let batch = reader.next().await.unwrap().unwrap();
     let pointer = batch.bytes().as_ptr();
-    let projected = batch.try_map(0, |batch| Ok::<_, Error>(batch.bytes)).unwrap();
+    let projected = batch.try_map(|batch| Ok::<_, Error>(batch.bytes)).unwrap();
     assert_eq!(projected.as_ptr(), pointer);
     drop(reader);
     drop(session);
     f.data.snapshots_released().await;
     assert_eq!(projected.as_slice(), b"abc");
-    assert!(f.storage.status().read_bytes > 0);
     drop(projected);
-    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
 
@@ -566,12 +565,12 @@ async fn file_slice_refuses() {
     file.write_all(b"abc".to_vec()).await.unwrap();
     let reference = file.finish().await.unwrap();
     f.storage.flush().await.unwrap();
-    let session = f.storage.read_session();
+    let session = f.storage.clone();
     let mut reader = session.read_file(whole(&reference)).await.unwrap();
     let batch = reader.next().await.unwrap().unwrap();
     let slice = batch.slice(1..3);
     let called = std::cell::Cell::new(false);
-    let result = batch.try_map(0, |batch| {
+    let result = batch.try_map(|batch| {
         called.set(true);
         Ok::<_, Error>(batch.bytes)
     });
@@ -581,8 +580,404 @@ async fn file_slice_refuses() {
     drop(session);
     f.data.snapshots_released().await;
     assert_eq!(slice.bytes(), b"bc");
-    assert!(f.storage.status().read_bytes > 0);
     drop(slice);
-    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_retains_cancelled_copy() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    let expected = b"original opened source";
+    source.write_all(expected).unwrap();
+    let target = f.storage.produce_file(metadata("opened-capture", expected)).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(source, target, ByteRange { offset: 0, limit: None }, CaptureConsistency::Stable);
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    {
+        let finish = capture.finish();
+        tokio::pin!(finish);
+        tokio::select! {
+            biased;
+            _ = &mut finish => panic!("copy must block"),
+            _ = f.data.control.chunk_entered.notified() => {}
+        }
+    }
+    assert_eq!(capture.acknowledged(), 0);
+    f.data.control.block_chunk.store(false, Ordering::SeqCst);
+    f.data.control.chunk_release.notify_waiters();
+    let reference = capture.finish().await.unwrap();
+    assert_eq!(capture.acknowledged(), expected.len() as u64);
+    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+    assert_eq!(capture.finish().await.unwrap(), reference);
+    drop((reader, capture));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_keeps_source_identity() {
+    let f = Fixture::new(config()).await;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("source");
+    std::fs::write(&path, b"original").unwrap();
+    let source = std::fs::File::open(&path).unwrap();
+    std::fs::rename(&path, directory.path().join("retained")).unwrap();
+    std::fs::write(&path, b"replaced").unwrap();
+    let target = f.storage.produce_file(metadata("identity-capture", b"original")).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(source, target, ByteRange { offset: 0, limit: None }, CaptureConsistency::Stable);
+    let reference = capture.finish().await.unwrap();
+    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"original");
+    drop((reader, capture));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_retries_exact_failed_chunk() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    let expected = b"retained failed bytes";
+    source.write_all(expected).unwrap();
+    let target = f.storage.produce_file(metadata("failed-opened-capture", expected)).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(source, target, ByteRange { offset: 0, limit: None }, CaptureConsistency::Stable);
+    *f.data.control.permanent_chunk_file.lock().unwrap() = Some("failed-opened-capture".into());
+    assert!(capture.finish().await.is_err());
+    assert_eq!(capture.acknowledged(), 0);
+    *f.data.control.permanent_chunk_file.lock().unwrap() = None;
+    let reference = capture.finish().await.unwrap();
+    assert_eq!(reference.length, expected.len() as u64);
+    assert_eq!(capture.acknowledged(), expected.len() as u64);
+    drop(capture);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_verifies_retained_prefix() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    for (id, source_bytes, succeeds) in
+        [("matching-prefix", b"prefixsuffix".as_slice(), true), ("differing-prefix", b"badfixsuffix".as_slice(), false)]
+    {
+        let mut source = shareable_tempfile();
+        source.write_all(source_bytes).unwrap();
+        let mut target = f.storage.produce_file(metadata(id, b"prefixsuffix")).await.unwrap();
+        target.write_all(b"prefix".to_vec()).await.unwrap();
+        let token = target.session().unwrap();
+        let file = StagedFile { history: token.history.clone(), id: token.id.clone() };
+        let mut capture = f.storage.capture_opened_file(source, target, ByteRange { offset: 0, limit: None }, CaptureConsistency::Stable);
+        let result = capture.finish().await;
+        if succeeds {
+            assert_eq!(result.unwrap().length, source_bytes.len() as u64);
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput { .. })));
+            assert_eq!(f.storage.file_progress(&file).await.unwrap().length, 6);
+            assert_eq!(capture.acknowledged(), 6);
+            assert!(capture.finish().await.is_err());
+        }
+        drop(capture);
+    }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_synchronizes_one_original_production() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    source.write_all(b"prefix").unwrap();
+    let mut definition = metadata("live-opened", b"");
+    definition.expected_length = None;
+    definition.expected_sha256 = None;
+    let target = f.storage.produce_file(definition).await.unwrap();
+    let token = target.session().unwrap();
+    let staged = StagedFile { history: token.history.clone(), id: token.id.clone() };
+    let session = f.storage.clone();
+    let mut capture =
+        session.capture_opened_file(source.try_clone().unwrap(), target, ByteRange { offset: 0, limit: None }, CaptureConsistency::Stable);
+
+    assert!(capture.synchronize(6).await.unwrap());
+    assert_eq!(capture.acknowledged(), 6);
+    assert!(capture.synchronize(6).await.unwrap());
+    assert_eq!(capture.acknowledged(), 6);
+    let progress = session.file_progress(&staged).await.unwrap();
+    assert_eq!(progress.phase, FilePhase::Producing);
+    assert_eq!(progress.length, 6);
+    source.write_all(b"suffix").unwrap();
+    assert!(capture.synchronize(12).await.unwrap());
+    assert_eq!(capture.acknowledged(), 12);
+    assert_eq!(session.file_progress(&staged).await.unwrap().phase, FilePhase::Producing);
+    let reference = capture.finish_at(12).await.unwrap();
+    assert_eq!(reference.metadata.id, staged.id);
+    assert_eq!(reference.length, 12);
+    assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(b"prefixsuffix")));
+    assert_eq!(capture.finish_at(12).await.unwrap(), reference);
+    assert_eq!(f.data.control.chunk_offsets.lock().unwrap().as_slice(), &[0, 6]);
+    drop((capture, session));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_finish_rechecks_stable_source_on_repeat() {
+    use std::io::{Seek, SeekFrom, Write};
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    source.write_all(b"original").unwrap();
+    let stamp = source.metadata().unwrap().modified().unwrap();
+    let target = f.storage.produce_file(metadata("stable-repeat", b"original")).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(
+        source.try_clone().unwrap(),
+        target,
+        ByteRange { offset: 0, limit: None },
+        CaptureConsistency::Stable,
+    );
+    let reference = capture.finish().await.unwrap();
+    source.seek(SeekFrom::Start(0)).unwrap();
+    source.write_all(b"modified").unwrap();
+    source.set_modified(std::time::SystemTime::UNIX_EPOCH).unwrap();
+    assert!(capture.finish().await.is_err());
+    source.seek(SeekFrom::Start(0)).unwrap();
+    source.write_all(b"original").unwrap();
+    source.set_modified(stamp).unwrap();
+    assert_eq!(capture.finish().await.unwrap(), reference);
+    drop(capture);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_discards_unstable_unaccepted_suffix() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    source.write_all(b"prefixsuffix").unwrap();
+    let mut definition = metadata("unstable-opened", b"");
+    definition.expected_length = None;
+    definition.expected_sha256 = None;
+    let mut target = f.storage.produce_file(definition).await.unwrap();
+    target.write_all(b"prefix".to_vec()).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(
+        source.try_clone().unwrap(),
+        target,
+        ByteRange { offset: 0, limit: None },
+        CaptureConsistency::Stable,
+    );
+    f.data.control.block_read.store(true, Ordering::SeqCst);
+    {
+        let synchronize = capture.synchronize(12);
+        tokio::pin!(synchronize);
+        tokio::select! {
+            biased;
+            _ = &mut synchronize => panic!("prefix verification must block"),
+            _ = f.data.control.read_entered.notified() => {}
+        }
+        source.write_all(b"later").unwrap();
+        f.data.control.block_read.store(false, Ordering::SeqCst);
+        f.data.control.read_release.notify_waiters();
+        assert!(!synchronize.await.unwrap());
+    }
+    assert_eq!(capture.acknowledged(), 6);
+    assert!(capture.synchronize(17).await.unwrap());
+    let reference = capture.finish_at(17).await.unwrap();
+    assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(b"prefixsuffixlater")));
+    drop(capture);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_interrupts_only_accepted_cancelled_step() {
+    use std::io::Write;
+    let mut policy = config();
+    policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+    let f = Fixture::new(policy).await;
+    let bytes: Vec<_> = (0..96).map(|value| value as u8).collect();
+    let mut source = shareable_tempfile();
+    source.write_all(&bytes).unwrap();
+    let mut definition = metadata("interrupted-opened", b"");
+    definition.expected_length = None;
+    definition.expected_sha256 = None;
+    let target = f.storage.produce_file(definition).await.unwrap();
+    let mut capture = f.storage.capture_opened_file(
+        source.try_clone().unwrap(),
+        target,
+        ByteRange { offset: 0, limit: None },
+        CaptureConsistency::Stable,
+    );
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    {
+        let synchronize = capture.synchronize(bytes.len() as u64);
+        tokio::pin!(synchronize);
+        tokio::select! {
+            biased;
+            _ = &mut synchronize => panic!("accepted append must block"),
+            _ = f.data.control.chunk_entered.notified() => {}
+        }
+    }
+    let accepted = f.data.control.chunk_sizes.lock().unwrap()[0];
+    assert!(accepted < bytes.len());
+    assert_eq!(capture.acknowledged(), 0);
+    source.set_len(0).unwrap();
+    f.data.control.block_chunk.store(false, Ordering::SeqCst);
+    f.data.control.chunk_release.notify_waiters();
+    let reference = capture.interrupt().await.unwrap();
+    assert_eq!(reference.length, accepted as u64);
+    assert_eq!(capture.acknowledged(), accepted as u64);
+    assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[..accepted])));
+    assert_eq!(f.data.control.chunk_offsets.lock().unwrap().as_slice(), &[0]);
+    drop(capture);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_capture_prefix_conflict_survives_source_repair() {
+    use std::io::{Seek, SeekFrom, Write};
+    let f = Fixture::new(config()).await;
+    for (id, truncate) in [("rewrite-opened", false), ("truncate-opened", true)] {
+        let mut source = shareable_tempfile();
+        source.write_all(b"prefix").unwrap();
+        let mut definition = metadata(id, b"");
+        definition.expected_length = None;
+        definition.expected_sha256 = None;
+        let target = f.storage.produce_file(definition).await.unwrap();
+        let mut capture = f.storage.capture_opened_file(
+            source.try_clone().unwrap(),
+            target,
+            ByteRange { offset: 0, limit: None },
+            CaptureConsistency::Stable,
+        );
+        assert!(capture.synchronize(6).await.unwrap());
+        if truncate {
+            source.set_len(2).unwrap();
+        } else {
+            source.seek(SeekFrom::Start(0)).unwrap();
+            source.write_all(b"change").unwrap();
+            source.set_modified(std::time::SystemTime::UNIX_EPOCH).unwrap();
+        }
+        assert!(capture.synchronize(if truncate { 2 } else { 6 }).await.is_err());
+        source.seek(SeekFrom::Start(0)).unwrap();
+        source.write_all(b"prefix").unwrap();
+        source.set_len(6).unwrap();
+        assert!(capture.synchronize(6).await.is_err());
+        let reference = capture.interrupt().await.unwrap();
+        assert_eq!(reference.length, 6);
+        assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(b"prefix")));
+        drop(capture);
+    }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn opened_clones_keep_independent_read_offsets() {
+    use std::io::{Seek, SeekFrom, Write};
+    let f = Fixture::new(config()).await;
+    let expected: Vec<u8> = (0..256_000).map(|index| (index % 251) as u8).collect();
+    let mut source = shareable_tempfile();
+    source.write_all(&expected).unwrap();
+    let mut observer = source.try_clone().unwrap();
+    observer.seek(SeekFrom::Start(11)).unwrap();
+    let session = f.storage.clone();
+    let mut left = session.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: Some(100_000) }).await.unwrap();
+    let mut right = session.read_opened_file(source, ByteRange { offset: 128_000, limit: Some(100_000) }).await.unwrap();
+    loop {
+        let (first, second) = tokio::join!(left.next(), right.next());
+        let (first, second) = (first.unwrap(), second.unwrap());
+        assert_eq!(observer.stream_position().unwrap(), 11);
+        let (Some(first), Some(second)) = (first, second) else {
+            break;
+        };
+        let left_offset = first.offset() as usize;
+        let right_offset = second.offset() as usize;
+        assert_eq!(first.bytes(), &expected[left_offset..left_offset + first.bytes().len()]);
+        assert_eq!(second.bytes(), &expected[right_offset..right_offset + second.bytes().len()]);
+    }
+    assert_eq!(left.completion().unwrap().bytes, 100_000);
+    assert_eq!(right.completion().unwrap().bytes, 100_000);
+    drop((left, right, session));
+    f.finish().await;
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn opened_file_rejects_exclusive_handles() {
+    let f = Fixture::new(config()).await;
+    let session = f.storage.clone();
+    let exclusive = tempfile::tempfile().unwrap();
+    let result = session.read_opened_file(exclusive, ByteRange { offset: 0, limit: None }).await;
+    assert!(matches!(
+        result,
+        Err(Error::InvalidInput { field: "opened file", reason: "source handle does not permit an independent read handle" })
+    ));
+    drop(session);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn frozen_file_keeps_exact_bytes_across_source_mutation_and_capture_retry() {
+    use std::io::{Seek, SeekFrom, Write};
+    let f = Fixture::new(config()).await;
+    let expected = b"independent frozen bytes";
+    let mut source = shareable_tempfile();
+    source.write_all(expected).unwrap();
+    let session = f.storage.clone();
+    let frozen = session.freeze_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: None }).await.unwrap();
+    assert_eq!(frozen.length(), expected.len() as u64);
+    assert_eq!(*frozen.sha256(), <[u8; 32]>::from(Sha256::digest(expected)));
+    let clone = frozen.clone();
+    source.seek(SeekFrom::Start(0)).unwrap();
+    source.write_all(b"mutable source was replaced").unwrap();
+    source.set_len(27).unwrap();
+
+    let target = f.storage.produce_file(metadata("frozen-retry", expected)).await.unwrap();
+    let mut capture = f.storage.capture_frozen_file(frozen, target).unwrap();
+    *f.data.control.permanent_chunk_file.lock().unwrap() = Some("frozen-retry".into());
+    assert!(capture.finish().await.is_err());
+    *f.data.control.permanent_chunk_file.lock().unwrap() = None;
+    let reference = capture.finish().await.unwrap();
+    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), expected);
+    drop((reader, capture));
+
+    let target = f.storage.produce_file(metadata("frozen-cancel", expected)).await.unwrap();
+    let mut capture = f.storage.capture_frozen_file(clone, target).unwrap();
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    {
+        let finish = capture.finish();
+        tokio::pin!(finish);
+        tokio::select! {
+            biased;
+            _ = &mut finish => panic!("frozen capture must retain the blocked write"),
+            _ = f.data.control.chunk_entered.notified() => {}
+        }
+    }
+    f.data.control.block_chunk.store(false, Ordering::SeqCst);
+    f.data.control.chunk_release.notify_waiters();
+    let reference = capture.finish().await.unwrap();
+    assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(expected)));
+    drop((capture, source, session));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn frozen_file_ranges_include_empty_and_refuse_missing_prefix() {
+    use std::io::Write;
+    let f = Fixture::new(config()).await;
+    let mut source = shareable_tempfile();
+    source.write_all(b"prefixsuffix").unwrap();
+    let session = f.storage.clone();
+    for (offset, limit, bytes) in [(0, 0, b"".as_slice()), (0, 6, b"prefix".as_slice()), (6, 6, b"suffix".as_slice())] {
+        let frozen = session.freeze_opened_file(source.try_clone().unwrap(), ByteRange { offset, limit: Some(limit) }).await.unwrap();
+        assert_eq!(frozen.length(), limit);
+        assert_eq!(*frozen.sha256(), <[u8; 32]>::from(Sha256::digest(bytes)));
+        let mut reader = frozen.read(ByteRange { offset: 0, limit: None }).await.unwrap();
+        drop(frozen);
+        let mut actual = Vec::new();
+        while let Some(page) = reader.next().await.unwrap() {
+            actual.extend_from_slice(page.bytes());
+        }
+        assert_eq!(actual, bytes);
+        assert_eq!(reader.completion().unwrap().bytes, limit);
+    }
+    assert!(session.freeze_opened_file(source, ByteRange { offset: 0, limit: Some(13) }).await.is_err());
+    drop(session);
     f.finish().await;
 }

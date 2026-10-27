@@ -23,9 +23,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
 
 // Local Imports
-use super::arrow::RetainedMemory;
 use super::backend::{BackendSnapshot, ScanPage};
-use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
+use super::capacity::{Attempt, Refusal};
 use super::config::SNAPSHOT_BYTES;
 use super::manager::{Inner, State, encoded_size};
 use super::selection::Entry;
@@ -55,14 +54,13 @@ pub(super) struct SnapshotState {
     opened: Option<std::result::Result<BackendSnapshot, Arc<Error>>>,
     opening: bool,
     released: bool,
-    memory: RetainedMemory,
 }
 
 /* === Enums === */
 
 pub(super) enum SnapshotAction {
-    Open(u64, StorageCursor, RetainedMemory),
-    Release(u64, Option<BackendSnapshot>, RetainedMemory),
+    Open(u64, StorageCursor),
+    Release(u64, Option<BackendSnapshot>),
 }
 
 /* === Traits === */
@@ -77,17 +75,13 @@ impl Drop for SnapshotState {
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub(super) async fn snapshot(&self, at: &StorageCursor, held: &Held) -> Result<Snapshot> {
+    pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
         let result = async {
             self.inner.primary.history().check(&at.history)?;
-            let memory = Reservation::wait(&self.inner, Pool::Read, held, super::manager::ENTRY_OVERHEAD, None)
-                .await
-                .map_err(Refusal::into_error)?
-                .retain();
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
             {
                 let mut state = self.inner.state.lock().unwrap();
-                super::capacity::admitting(&state, super::capacity::Pool::Read)?;
+                super::capacity::admitting(&state, false)?;
                 if !state.status.saved.covers(at)? {
                     return Err(Error::InvalidInput { field: "query cursor", reason: "cursor exceeds the durable storage frontier" });
                 }
@@ -100,7 +94,6 @@ impl<C> StorageManager<C> {
                         opened: None,
                         opening: false,
                         released: false,
-                        memory,
                     },
                 );
             }
@@ -155,10 +148,11 @@ impl<C> StorageManager<C> {
 
 impl Snapshot {
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
-    pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage, memory: RetainedMemory) -> Result<(Vec<T>, usize)> {
+    pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let entries = self.inner.bounded("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page, memory)).await?;
+        let entries = self.inner.bounded("primary.scan", T::scan(&*self.inner.primary, &self.backend, selection, page)).await?;
+        self.check()?;
         let mut previous = page.after;
         let mut bytes = 0usize;
         for entry in &entries {
@@ -177,10 +171,11 @@ impl Snapshot {
     }
 
     #[tracing::instrument(name = "storage.snapshot.read_object", level = "trace", skip_all)]
-    pub(super) async fn read_object(&self, point: &ObjectPoint, memory: RetainedMemory) -> Result<Option<ObjectEntry>> {
+    pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point, memory)).await?;
+        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point)).await?;
+        self.check()?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
             if object.position.sequence == 0
@@ -195,18 +190,18 @@ impl Snapshot {
     }
 
     #[tracing::instrument(name = "storage.snapshot.read_file", level = "trace", skip_all)]
-    pub(super) async fn read_file(
-        &self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize, memory: RetainedMemory,
-    ) -> Result<Vec<u8>> {
+    pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes, memory)).await
+        let bytes = self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await?;
+        self.check()?;
+        Ok(bytes)
     }
 
     fn check(&self) -> Result<()> {
         let state = self.inner.state.lock().unwrap();
         match state.snapshots.get(&self.id) {
-            Some(held) if !held.released => Ok(()),
+            Some(held) if !held.released && !state.status.closing => Ok(()),
             _ => Err(Error::Closing { domain: "storage" }),
         }
     }
@@ -243,11 +238,11 @@ impl State {
                     Some(Ok(snapshot)) => Some(snapshot.clone()),
                     _ => None,
                 };
-                return Some(SnapshotAction::Release(id, snapshot, held.memory.clone()));
+                return Some(SnapshotAction::Release(id, snapshot));
             }
             if held.opened.is_none() {
                 held.opening = true;
-                return Some(SnapshotAction::Open(id, held.at.clone(), held.memory.clone()));
+                return Some(SnapshotAction::Open(id, held.at.clone()));
             }
         }
         None

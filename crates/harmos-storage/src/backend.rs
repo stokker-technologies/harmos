@@ -85,29 +85,26 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn write_files(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor>;
 
     // Historical Reads
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor, memory: crate::arrow::RetainedMemory) -> StorageFuture<'a, BackendSnapshot>;
+    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
     fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
     fn read_schemas<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage, memory: crate::arrow::RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>>;
     fn read_objects<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage, memory: crate::arrow::RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>>;
     fn read_records<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage, memory: crate::arrow::RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>>;
     fn read_stream<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage, memory: crate::arrow::RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>>;
     fn read_files<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage, memory: crate::arrow::RetainedMemory,
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>>;
-    fn read_object<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint, memory: crate::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, Option<ObjectEntry>>;
+    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>>;
     fn read_file<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
-        memory: crate::arrow::RetainedMemory,
     ) -> StorageFuture<'a, Vec<u8>>;
 
     // Object Lifecycle Retention
@@ -141,15 +138,13 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn save_production(&self, _checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
         unsupported("file checkpoint")
     }
-    fn recover_productions(&self, _limits: ReadLimits, _memory: crate::arrow::RetainedMemory) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn recover_productions(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         unsupported("file recovery")
     }
-    fn file_progress<'a>(&'a self, _file: &'a StagedFile, _memory: crate::arrow::RetainedMemory) -> StorageFuture<'a, FileProgress> {
+    fn file_progress<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         unsupported("file following")
     }
-    fn read_production<'a>(
-        &'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: NonZeroUsize, _memory: crate::arrow::RetainedMemory,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    fn read_production<'a>(&'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         unsupported("file following")
     }
     fn abandon_file<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> {
@@ -170,13 +165,13 @@ pub trait StorageBackend: Send + Sync + 'static {
         unsupported("storage mutations")
     }
 
-    fn recover_mutations(&self, _limits: ReadLimits, _memory: crate::arrow::RetainedMemory) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")
     }
 
     // Stored Identity Catalog
     fn read_identities<'a>(
-        &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a IdentitySelection, _page: ScanPage, _memory: crate::arrow::RetainedMemory,
+        &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a IdentitySelection, _page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredIdentity>> {
         unsupported("storage identity catalog")
     }

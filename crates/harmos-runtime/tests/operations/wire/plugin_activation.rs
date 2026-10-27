@@ -21,6 +21,7 @@
 
 // Local Imports
 use super::*;
+#[cfg(feature = "grpc")]
 use harmos_sdk::grpc::{self, DecodeInput};
 
 /* === Constants === */
