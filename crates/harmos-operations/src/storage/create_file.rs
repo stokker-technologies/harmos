@@ -28,7 +28,7 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(CreateFileRequest {
+product!(CreateFile {
     mutation: Nested<MutationId> => 1,
     metadata: Nested<FileMetadata> => 2,
 });
@@ -38,23 +38,16 @@ product!(CreateFileRequest {
 /* === Structs === */
 
 // Open A Producing File Session For New Metadata.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CreateFileRequest {
-    pub mutation: MutationId,
-    pub metadata: FileMetadata,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_create_file",
-    request = CreateFileRequest,
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+    id = "storage.create_file",
     response = FileProducer,
     policy = POLICY,
-    infer_request,
     visibility = Visibility::Host,
     replay = ReplaySafety::Idempotent)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CreateFile {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub mutation: MutationId,
+    pub metadata: FileMetadata,
 }
 
 /* === Enums === */
@@ -63,7 +56,7 @@ pub struct CreateFile {
 
 /* === Implementations === */
 
-impl MemorySize for CreateFileRequest {
+impl MemorySize for CreateFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
@@ -73,7 +66,6 @@ impl MemorySize for CreateFileRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // Standard Library Imports
 
@@ -84,26 +76,18 @@ mod execution {
     use harmos_sdk::operations::Operation;
     use harmos_storage::FileProducer;
 
-    use harmos_storage::StorageManager;
-
     use crate::{Error, Result};
 
     impl Operation for super::CreateFile {
-        type Request = <CreateFile as harmos_domain::OperationDeclaration>::Request;
-        type Response = <CreateFile as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = ();
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.create_file", level = "trace", skip_all)]
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<FileProducer>> {
+        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProducer>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let request = &mut self;
+
             let result: ::core::result::Result<FileProducer, Self::Error> =
-                async move { self.storage.create_file_once(&request.mutation, &request.metadata).await.map_err(Into::into) }.await;
+                async move { storage.create_file_once(&request.mutation, &request.metadata).await.map_err(Into::into) }.await;
             result.map(::core::convert::Into::into)
         }
 

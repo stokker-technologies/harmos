@@ -36,8 +36,16 @@ product!(FollowBoundaries {
 
 /* === Structs === */
 
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+    id = "storage.follow_records",
+    response = StorageCursor,
+    policy = super::STREAM_POLICY,
+    output = Followed,
+    visibility = harmos_domain::operations::Visibility::Shared,
+    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowRecords"),
+    grant = Self::grant_for)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowRecordsRequest {
+pub struct FollowRecords {
     pub after: Option<StorageCursor>,
     pub selection: RecordSelection,
 }
@@ -60,27 +68,13 @@ pub enum Followed {
 
 /* === Implementations === */
 
-product!(FollowRecordsRequest {
+product!(FollowRecords {
     after: Optional<Nested<StorageCursor>> => 1,
     selection: Nested<RecordSelection> => 2,
 });
 
-#[harmos::operation(harmos_path = crate,
-    id = "storage_follow_records",
-    request = FollowRecordsRequest,
-    response = StorageCursor,
-    policy = super::STREAM_POLICY,
-    infer_request,
-    output = Followed,
-    visibility = harmos_domain::operations::Visibility::Shared,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowRecords"),
-    grant = Self::grant_for)]
-pub struct FollowRecords {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
 impl FollowRecords {
-    fn grant_for(request: &FollowRecordsRequest) -> Option<harmos_domain::plugin::Grant> {
+    fn grant_for(request: &FollowRecords) -> Option<harmos_domain::plugin::Grant> {
         Some(harmos_domain::plugin::Grant::of(
             <Self as harmos_domain::OperationDeclaration>::ID,
             request.selection.schema.id.as_str().to_owned(),
@@ -88,7 +82,7 @@ impl FollowRecords {
     }
 }
 
-impl MemorySize for FollowRecordsRequest {
+impl MemorySize for FollowRecords {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.after.memory_size().saturating_sub(std::mem::size_of_val(&self.after)))
@@ -195,30 +189,23 @@ mod execution {
 
     // Local Imports
 
-    use harmos_sdk::operations::{Operation, StreamOutput};
+    use harmos_sdk::operations::Operation;
 
-    use harmos_storage::StorageManager;
     use harmos_storage::{StorageCursor, StoredRecord};
 
     use crate::MemorySize;
     use crate::{Error, Result};
 
     impl Operation for super::FollowRecords {
-        type Request = <FollowRecords as harmos_domain::OperationDeclaration>::Request;
-        type Response = <FollowRecords as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = StreamOutput<Followed>;
 
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
+        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let request = &mut self;
+            let output = context.streams();
 
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<StorageCursor>> {
             harmos_storage::query::Source::Records(request.selection.clone()).validate()?;
-            let mut follower = self.storage.follow::<StoredRecord>(request.after.as_ref(), request.selection.clone()).await?;
+            let mut follower = storage.follow::<StoredRecord>(request.after.as_ref(), request.selection.clone()).await?;
             let first = Followed::Boundaries(FollowBoundaries {
                 saved: follower.saved_boundary().clone(),
                 accepted: follower.accepted_boundary().clone(),

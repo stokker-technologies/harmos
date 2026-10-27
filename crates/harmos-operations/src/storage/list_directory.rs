@@ -26,30 +26,23 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(ListDirectoryRequest { selection: Nested<DirectorySelection> => 1 });
+product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ListDirectoryRequest {
-    pub selection: DirectorySelection,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_list_directory",
-    request = ListDirectoryRequest,
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+    id = "storage.list_directory",
     response = DirectoryCompletion,
     policy = IO_POLICY,
-    infer_request,
     output = DirectoryEntry,
     visibility = Visibility::Shared,
     replay = ReplaySafety::Idempotent,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ListDirectory"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListDirectory {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub selection: DirectorySelection,
 }
 
 /* === Enums === */
@@ -58,7 +51,7 @@ pub struct ListDirectory {
 
 /* === Implementations === */
 
-impl MemorySize for ListDirectoryRequest {
+impl MemorySize for ListDirectory {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
     }
@@ -66,7 +59,6 @@ impl MemorySize for ListDirectoryRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // Finite Storage Query Operation
 
@@ -74,26 +66,19 @@ mod execution {
     // Third Party Imports
     // Local Imports
     use crate::{Error, Result};
-    use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry};
-    use harmos_sdk::operations::{Operation, Response, StreamOutput};
-    use harmos_storage::StorageManager;
+    use harmos_domain::model::storage::DirectoryCompletion;
+    use harmos_sdk::operations::{Operation, Response};
 
     impl Operation for super::ListDirectory {
-        type Request = <ListDirectory as harmos_domain::OperationDeclaration>::Request;
-        type Response = <ListDirectory as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = StreamOutput<DirectoryEntry>;
-
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.list_directory", level = "trace", skip_all)]
-        async fn run(
-            &mut self, _ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-        ) -> Result<Response<DirectoryCompletion>> {
-            let mut reader = self.storage.list_directory(request.selection.clone()).await?;
+        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let request = &mut self;
+            let output = context.streams();
+
+            let mut reader = storage.list_directory(request.selection.clone()).await?;
             while let Some(item) = reader.next().await? {
                 let response = Response::from_owner(item.owner());
                 tokio::time::timeout(crate::storage::IO_TIMEOUT, output.send_owned(response))

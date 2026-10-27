@@ -17,14 +17,14 @@ mod watch;
 
 /* === Re-Exports === */
 
-pub use cancel::{Cancel, CancelRequest};
+pub use cancel::Cancel;
 pub use harmos_domain::model::operations::lifecycle::*;
 #[cfg(feature = "lifecycle")]
 pub use initialize::ControlError;
-pub use initialize::{Initialize, InitializeRequest};
-pub use shutdown::{Shutdown, ShutdownRequest};
-pub use status::{InstanceState, Status, StatusRequest};
-pub use watch::{Watch, WatchRequest};
+pub use initialize::Initialize;
+pub use shutdown::Shutdown;
+pub use status::{InstanceState, Status};
+pub use watch::Watch;
 
 /* === Imports === */
 
@@ -64,7 +64,7 @@ pub fn bind<P: harmos_sdk::Plugin>(
     let mut dependencies = harmos_sdk::Dependencies::new();
     dependencies
         .insert(std::sync::Arc::new(LifecycleAccess(owner)))
-        .map_err(|error| harmos_sdk::plugin::Error::Dependency(std::sync::Arc::new(error)))?;
+        .map_err(|error| harmos_sdk::plugin::Error::Resource(std::sync::Arc::new(error)))?;
     let mut table = table.lock().map_err(|_| harmos_sdk::plugin::Error::Poisoned)?;
     let initialize = Descriptor::of_initialize::<P>()
         .map_err(harmos_sdk::ServingError::from)
@@ -73,10 +73,10 @@ pub fn bind<P: harmos_sdk::Plugin>(
         .map_err(harmos_sdk::ServingError::from)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<Initialize, Initialize>(dependencies.clone(), initialize)
+        .install_lifecycle::<Initialize, initialize::Control>(dependencies.clone(), initialize)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<Shutdown, Shutdown>(dependencies, shutdown)
+        .install_lifecycle::<Shutdown, shutdown::Control>(dependencies, shutdown)
         .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
 

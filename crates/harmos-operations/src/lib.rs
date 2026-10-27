@@ -17,13 +17,22 @@ pub mod lifecycle;
 pub mod storage;
 pub mod streams;
 
+pub mod operations {
+    pub use harmos_domain::operations::*;
+    #[cfg(feature = "lifecycle")]
+    pub use harmos_sdk::operations::Executable;
+}
+
 /* === Re-Exports === */
 
 #[cfg(feature = "runtime")]
 pub use error::Error;
 pub use harmos_domain::*;
 #[cfg(feature = "lifecycle")]
-pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Response};
+pub use harmos_sdk::{
+    Context, Dependencies, Dependent, Executable, Handler, Operation, OperationContext, RegistrationBatch, Resource, ResourceError,
+    Response,
+};
 pub use host::Host;
 pub use lifecycle::Lifecycle;
 pub use storage::Storage;

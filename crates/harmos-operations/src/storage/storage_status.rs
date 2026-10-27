@@ -28,28 +28,21 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(StorageStatusRequest {});
+product!(StorageStatus {});
 
 /* === Type Aliases === */
 
 /* === Structs === */
 
 // Read The Storage Frontiers, Mutation Window And File Batch Size.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct StorageStatusRequest {}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_status",
-    request = StorageStatusRequest,
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+    id = "storage.status",
     response = StorageInfo,
     policy = POLICY,
-    infer_request,
     visibility = Visibility::Host,
     replay = ReplaySafety::Idempotent)]
-pub struct StorageStatus {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StorageStatus {}
 
 /* === Enums === */
 
@@ -57,7 +50,7 @@ pub struct StorageStatus {
 
 /* === Implementations === */
 
-impl MemorySize for StorageStatusRequest {
+impl MemorySize for StorageStatus {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
@@ -65,7 +58,6 @@ impl MemorySize for StorageStatusRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // Standard Library Imports
 
@@ -76,24 +68,15 @@ mod execution {
     use harmos_sdk::operations::Operation;
     use harmos_storage::StorageInfo;
 
-    use harmos_storage::StorageManager;
-
     use crate::{Error, Result};
 
     impl Operation for super::StorageStatus {
-        type Request = <StorageStatus as harmos_domain::OperationDeclaration>::Request;
-        type Response = <StorageStatus as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = ();
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, _request: &mut Self::Request, _: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<StorageInfo>> {
-            let result: ::core::result::Result<StorageInfo, Self::Error> = async move { self.storage.info().map_err(Into::into) }.await;
+        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StorageInfo>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+
+            let result: ::core::result::Result<StorageInfo, Self::Error> = async move { storage.info().map_err(Into::into) }.await;
             result.map(::core::convert::Into::into)
         }
 

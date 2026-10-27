@@ -7,7 +7,7 @@
  * ***
  */
 
-// FollowProductionRequest Declaration.
+// FollowProduction Declaration.
 
 /* === Modules === */
 
@@ -30,7 +30,7 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(FollowProductionRequest {
+product!(FollowProduction {
     file: Nested<StagedFile> => 1,
     offset: Unsigned => 2,
 });
@@ -39,26 +39,19 @@ product!(FollowProductionRequest {
 
 /* === Structs === */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowProductionRequest {
-    pub file: StagedFile,
-    pub offset: u64,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_follow_production",
-    request = FollowProductionRequest,
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>, harmos_sdk::operations::access::GrantAccess], codec = manual,
+    id = "storage.follow_production",
     response = FileProgress,
     policy = IO_POLICY,
-    infer_request,
     output = FileBatch,
     visibility = Visibility::Shared,
     replay = ReplaySafety::Unknown,
     grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowProduction"),
     grant = Self::grant_for)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowProduction {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
+    pub file: StagedFile,
+    pub offset: u64,
 }
 
 /* === Enums === */
@@ -68,12 +61,12 @@ pub struct FollowProduction {
 /* === Implementations === */
 
 impl FollowProduction {
-    fn grant_for(request: &FollowProductionRequest) -> Option<harmos_domain::plugin::Grant> {
+    fn grant_for(request: &FollowProduction) -> Option<harmos_domain::plugin::Grant> {
         Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.file.id.as_str().to_owned()))
     }
 }
 
-impl MemorySize for FollowProductionRequest {
+impl MemorySize for FollowProduction {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
@@ -94,30 +87,25 @@ mod execution {
     // Local Imports
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
-    use harmos_sdk::operations::{Operation, OperationDeclaration, StreamOutput};
-    use harmos_storage::{FileBatch, FileProgress, StorageManager};
+    use harmos_sdk::operations::{Operation, OperationDeclaration};
+    use harmos_storage::FileProgress;
 
     impl Operation for super::FollowProduction {
-        type Request = <FollowProduction as harmos_domain::OperationDeclaration>::Request;
-        type Response = <FollowProduction as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = StreamOutput<FileBatch>;
-
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_production", level = "trace", skip_all)]
-        async fn run(
-            &mut self, ctx: harmos_sdk::OperationContext, request: &mut Self::Request, output: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<FileProgress>> {
-            let host = ctx.dependency::<harmos_sdk::operations::access::GrantAccess>()?;
+        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProgress>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let grants = context.resource::<harmos_sdk::operations::access::GrantAccess>();
+            let request = &mut self;
+            let output = context.streams();
+
+            let host = grants;
             let ctx = &host.0;
             let grant = harmos_domain::plugin::Grant::of(FollowProduction::ID, request.file.id.as_str().to_owned());
             ctx.admit(&grant).map_err(Error::Access)?;
-            let mut follower = self.storage.follow_production(&request.file, request.offset).await?;
-            let batch_bytes = self.storage.settings().response.batch_bytes;
+            let mut follower = storage.follow_production(&request.file, request.offset).await?;
+            let batch_bytes = storage.settings().response.batch_bytes;
             while let Some(batch) = follower.next_batch(batch_bytes).await? {
                 ctx.admit(&grant).map_err(Error::Access)?;
                 let response = harmos_sdk::operations::Response::from_owner(batch.owner());

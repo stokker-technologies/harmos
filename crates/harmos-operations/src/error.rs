@@ -47,7 +47,7 @@ pub enum Error {
     InvalidInput { field: &'static str, reason: &'static str },
 
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::DependencyError),
+    Dependency(#[from] harmos_sdk::ResourceError),
 
     #[error("operation instance `{0}` is not registered for this caller")]
     UnknownInstance(u64),

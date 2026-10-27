@@ -40,29 +40,29 @@ mod write_streams;
 
 /* === Re-Exports === */
 
-pub use abandon_file::{AbandonFile, AbandonFileRequest};
-pub use append_file::{AppendFile, AppendFileRequest};
-pub use capture_file::{CaptureFile, CaptureFileRequest};
-pub use create_file::{CreateFile, CreateFileRequest};
-pub use delete_file::{DeleteFile, DeleteFileRequest};
-pub use finish_file::{FinishFile, FinishFileRequest};
-pub use follow_file::{FollowFile, FollowFileRequest};
-pub use follow_objects::{FollowObjects, FollowObjectsRequest};
-pub use follow_production::{FollowProduction, FollowProductionRequest};
-pub use follow_records::{FollowBoundaries, FollowRecords, FollowRecordsRequest, Followed};
-pub use follow_stream::{FollowStream, FollowStreamRequest};
-pub use hash_file::{HashFile, HashFileRequest};
-pub use list_directory::{ListDirectory, ListDirectoryRequest};
-pub use query::{Query, QueryRequest};
-pub use read_file::{ReadFile, ReadFileRequest};
-pub use resume_file::{ResumeFile, ResumeFileRequest};
-pub use storage_status::{StorageStatus, StorageStatusRequest};
-pub use watch_directory::{WatchDirectory, WatchDirectoryRequest};
-pub use write_file::{WriteFile, WriteFileRequest};
-pub use write_objects::{WriteObjects, WriteObjectsRequest};
-pub use write_records::{WriteRecords, WriteRecordsRequest};
-pub use write_schema::{WriteSchema, WriteSchemaRequest};
-pub use write_streams::{WriteStreams, WriteStreamsRequest};
+pub use abandon_file::AbandonFile;
+pub use append_file::AppendFile;
+pub use capture_file::CaptureFile;
+pub use create_file::CreateFile;
+pub use delete_file::DeleteFile;
+pub use finish_file::FinishFile;
+pub use follow_file::FollowFile;
+pub use follow_objects::FollowObjects;
+pub use follow_production::FollowProduction;
+pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
+pub use follow_stream::FollowStream;
+pub use hash_file::HashFile;
+pub use list_directory::ListDirectory;
+pub use query::Query;
+pub use read_file::ReadFile;
+pub use resume_file::ResumeFile;
+pub use storage_status::StorageStatus;
+pub use watch_directory::WatchDirectory;
+pub use write_file::WriteFile;
+pub use write_objects::WriteObjects;
+pub use write_records::WriteRecords;
+pub use write_schema::WriteSchema;
+pub use write_streams::WriteStreams;
 
 /* === Imports === */
 
@@ -91,7 +91,11 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 
 pub const EVERY_SCHEMA: &str = "*";
 
-pub const STREAM_POLICY: OperationPolicy = OperationPolicy { attempt_timeout: POLICY.timeout, retries: RetryPolicy::Never, ..POLICY };
+pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
+    attempt_timeout: POLICY.timeout,
+    retries: RetryPolicy::Never,
+    ..POLICY
+};
 
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
     timeout: harmos_domain::operations::UNBOUNDED,

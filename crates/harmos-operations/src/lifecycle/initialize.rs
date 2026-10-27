@@ -23,15 +23,16 @@ use harmos_domain::{MemorySize, schema::Described};
 
 /* === Structs === */
 
+#[harmos::operation(harmos_path = crate, codec = manual, id = "harmos.initialize", response = (), policy = super::POLICY, )]
 #[derive(Clone, PartialEq, Debug, Default)]
-pub struct InitializeRequest {
+pub struct Initialize {
     pub config_json: Vec<u8>,
     pub generation_context: Vec<u8>,
     pub assignments: Vec<u8>,
 }
 
-#[harmos::operation(harmos_path = crate, id = "harmos_initialize", request = InitializeRequest, response = (), policy = super::POLICY, infer_request)]
-pub struct Initialize {
+#[cfg(feature = "lifecycle")]
+pub struct Control {
     #[cfg(feature = "lifecycle")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
@@ -42,7 +43,7 @@ pub struct Initialize {
 #[derive(Debug, thiserror::Error)]
 pub enum ControlError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::DependencyError),
+    Dependency(#[from] harmos_sdk::ResourceError),
     #[error("plugin lifecycle access failed: {0}")]
     Access(#[source] harmos_sdk::operations::access::AccessError),
 }
@@ -51,15 +52,15 @@ pub enum ControlError {
 
 /* === Implementations === */
 
-harmos_domain::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
-impl Described for InitializeRequest {
+harmos_domain::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8>, assignments: Vec<u8> });
+impl Described for Initialize {
     const NAME: &'static str = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
         <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::FIELDS;
     const MARKER: &'static [u8] = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::MARKER;
 }
 
-impl MemorySize for InitializeRequest {
+impl MemorySize for Initialize {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.config_json.capacity())
@@ -69,17 +70,19 @@ impl MemorySize for InitializeRequest {
 }
 
 #[cfg(feature = "lifecycle")]
-impl crate::Operation for Initialize {
-    type Request = InitializeRequest;
+impl crate::Handler for Control {
+    type Request = Initialize;
     type Response = ();
     type Error = super::ControlError;
-    type Endpoints = ();
+    type StreamEndpoints = ();
     async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
-        let access = context.dependency::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
-        Ok(Self { instance: access.0.clone().begin(super::Action::Initialize) })
+        let access = context.resource::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
+        Ok(Self {
+            instance: access.0.clone().begin(super::Action::Initialize),
+        })
     }
     async fn run(
-        &mut self, context: crate::OperationContext, request: &mut InitializeRequest, _: &mut (),
+        &mut self, context: crate::OperationContext, request: &mut Initialize, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
         let _ = &request;
         self.instance
@@ -98,3 +101,8 @@ impl crate::Operation for Initialize {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(feature = "lifecycle")]
+impl crate::Executable for Initialize {
+    type Handler = Control;
+}

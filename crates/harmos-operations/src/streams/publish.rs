@@ -19,7 +19,10 @@ pub use harmos_domain::model::operations::publication::FollowingRow;
 
 /* === Macros === */
 
-harmos_domain::builtin_payload! { PublishRequest,
+harmos_domain::builtin_payload! {
+    #[harmos::operation(harmos_path = crate, id = "host.publish", policy = crate::host::POLICY,
+        codec = manual, visibility = Shared, resources = [harmos_sdk::operations::publication::PublicationAccess])]
+    Publish,
     stream: String => (1, Kind::String, Required),
     schema: u32 => (2, Kind::U32, Required),
     sequence: Option<u64> => (3, Kind::U64, Optional),
@@ -33,14 +36,6 @@ harmos_domain::builtin_payload! { PublishRequest,
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, id = "host_publish", request = PublishRequest,
- response = (), policy = crate::host::POLICY, infer_request,
- visibility = harmos_domain::operations::Visibility::Shared)]
-pub struct Publish {
-    #[cfg(feature = "runtime")]
-    access: std::sync::Arc<harmos_sdk::operations::publication::PublicationAccess>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -49,16 +44,12 @@ pub struct Publish {
 
 #[cfg(feature = "runtime")]
 impl crate::Operation for Publish {
-    type Request = PublishRequest;
-    type Response = ();
     type Error = crate::Error;
-    type Endpoints = ();
-    async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
-        Ok(Self { access: context.dependency()? })
-    }
-    async fn run(
-        &mut self, context: crate::OperationContext, request: &mut PublishRequest, _: &mut (),
-    ) -> Result<crate::Response<()>, Self::Error> {
+
+    async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
+        let access = context.resource::<harmos_sdk::operations::publication::PublicationAccess>();
+        let request = &mut self;
+
         let publication = harmos_sdk::operations::publication::Publication {
             stream: &request.stream,
             schema: request.schema,
@@ -68,7 +59,7 @@ impl crate::Operation for Publish {
             payload: &mut request.payload,
             following: &mut request.following,
         };
-        self.access.0.publish(context, publication).await.map_err(crate::Error::Access)?;
+        access.0.publish(context.call().clone(), publication).await.map_err(crate::Error::Access)?;
         Ok(().into())
     }
 }

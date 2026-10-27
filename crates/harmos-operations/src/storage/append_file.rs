@@ -28,7 +28,7 @@ use harmos_domain::operations::{ReplaySafety, Visibility};
 
 /* === Macros === */
 
-product!(AppendFileRequest {
+product!(AppendFile {
     mutation: Nested<MutationId> => 1,
     session: Nested<FileSession> => 2,
     offset: Unsigned => 3,
@@ -40,27 +40,18 @@ product!(AppendFileRequest {
 /* === Structs === */
 
 // Append Bytes At An Offset Of A Producing File Session.
+#[harmos::operation(harmos_path = crate, resources = [harmos_storage::StorageManager<harmos_storage::ErasedCatalog>], codec = manual,
+    id = "storage.append_file",
+    response = FileProducer,
+    policy = POLICY,
+    visibility = Visibility::Host,
+    replay = ReplaySafety::Idempotent)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AppendFileRequest {
+pub struct AppendFile {
     pub mutation: MutationId,
     pub session: FileSession,
     pub offset: u64,
     pub bytes: Vec<u8>,
-}
-
-#[harmos::operation(harmos_path = crate,
-    id = "storage_append_file",
-    request = AppendFileRequest,
-    response = FileProducer,
-    policy = POLICY,
-    infer_request,
-    visibility = Visibility::Host,
-    replay = ReplaySafety::Idempotent)]
-pub struct AppendFile {
-    #[cfg(feature = "runtime")]
-    storage: std::sync::Arc<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>,
-    #[cfg(feature = "runtime")]
-    payload: Option<harmos_storage::FileChunk>,
 }
 
 /* === Enums === */
@@ -69,7 +60,7 @@ pub struct AppendFile {
 
 /* === Implementations === */
 
-impl MemorySize for AppendFileRequest {
+impl MemorySize for AppendFile {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
@@ -81,7 +72,6 @@ impl MemorySize for AppendFileRequest {
 
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
 
     // Standard Library Imports
 
@@ -92,31 +82,19 @@ mod execution {
     use harmos_sdk::operations::Operation;
     use harmos_storage::{FileChunk, FileProducer};
 
-    use harmos_storage::StorageManager;
-
     use crate::{Error, Result};
 
     impl Operation for super::AppendFile {
-        type Request = <AppendFile as harmos_domain::OperationDeclaration>::Request;
-        type Response = <AppendFile as harmos_domain::OperationDeclaration>::Response;
         type Error = Error;
-        type Endpoints = ();
-        async fn initialize(context: harmos_sdk::OperationContext) -> Result<Self> {
-            let storage = context.dependency::<StorageManager<harmos_storage::ErasedCatalog>>()?;
-            Ok(Self { storage, payload: None })
-        }
 
         #[tracing::instrument(target = "harmos::storage", name = "storage.operation.append_file", level = "trace", skip_all)]
-        async fn run(
-            &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut Self::Endpoints,
-        ) -> Result<harmos_sdk::operations::Response<FileProducer>> {
-            if self.payload.is_none() {
-                let bytes = std::mem::take(&mut request.bytes);
-                self.payload = Some(FileChunk::new(bytes));
-            }
-            let payload = self.payload.as_ref().expect("retained file payload").clone();
+        async fn run(mut self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<FileProducer>> {
+            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
+            let request = &mut self;
+
+            let payload = FileChunk::new(std::mem::take(&mut request.bytes));
             let result: ::core::result::Result<FileProducer, Self::Error> = async move {
-                self.storage.append_file_once(&request.mutation, &request.session, request.offset, payload).await.map_err(Into::into)
+                storage.append_file_once(&request.mutation, &request.session, request.offset, payload).await.map_err(Into::into)
             }
             .await;
             result.map(::core::convert::Into::into)

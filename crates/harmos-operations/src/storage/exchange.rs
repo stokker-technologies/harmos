@@ -50,7 +50,7 @@ pub(crate) enum WriteKind {
 #[tracing::instrument(target = "harmos::storage", name = "storage.exchange", level = "debug", skip_all)]
 pub(crate) async fn exchange<C>(
     storage: &StorageManager<C>, ctx: &std::sync::Arc<dyn harmos_sdk::operations::access::GrantAuthority>,
-    scope: Option<&crate::Identifier>, endpoints: &mut (StreamInput<DataBatch>, StreamOutput<WriteReceipt>), kind: WriteKind,
+    scope: Option<&crate::Identifier>, endpoints: &(StreamInput<DataBatch>, StreamOutput<WriteReceipt>), kind: WriteKind,
     operation: &'static str,
 ) -> Result<WriteCompletion> {
     storage.retry_transient_persistence();
