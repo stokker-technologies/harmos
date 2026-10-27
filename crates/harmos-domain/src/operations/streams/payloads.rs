@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use crate::operations::common::payload::payload;
+use crate::operations::payload::payload;
 
 /* === Constants === */
 

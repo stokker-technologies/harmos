@@ -39,7 +39,7 @@ macro_rules! payload {
         pub struct $name { $(pub $field: $ty),* }
         const _: () = {
         #[allow(unused_imports)]
-        use $crate::operations::common::payload::prelude::*;
+        use $crate::operations::payload::prelude::*;
         impl Described for $name {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!($name));
             const FIELDS: &'static [Field] = &[$(Field {

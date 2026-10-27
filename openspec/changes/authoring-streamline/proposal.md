@@ -16,7 +16,7 @@ Operation authoring exposes internal trait machinery, manually maintained versio
 - Unify runtime/manager register and unregister, individual identity removal, owner-qualified plugin IDs and dynamic contributions.
 - Use closed runtime lane enums with typed invocation overrides and host-owned default placement; retain safe contribution withdrawal.
 
-These targets are resolved by design.md and the disjoint inventory in tasks.md; implementation has not started. Development compatibility permits a clean source/protocol break without legacy adapters; persisted application data and payload encodings remain intact. Automatic reload/readiness/rollback, a new carrier protocol architecture, and external company skill edits are deferred for tonight; explicit unregister/register and existing transport machinery cover consumers.
+These targets are resolved by design.md and the disjoint inventory in tasks.md; implementation is active. Development compatibility permits a clean source/protocol break without legacy adapters; the owner authorizes a v1-only clean break for protocol, envelope, journal and schema formats without old-format detection or migration. Automatic reload/readiness/rollback, a new carrier protocol architecture, and external company skill edits are deferred for tonight; explicit unregister/register and existing transport machinery cover consumers.
 
 ## Capabilities
 
