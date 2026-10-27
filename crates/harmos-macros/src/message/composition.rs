@@ -42,6 +42,9 @@ use crate::path::HarmosPath;
 // The Authored Struct With Its Message Debug And Default Surface. Transport
 // Codecs Derive From Its Postcard Value And Described Shape Elsewhere.
 pub(super) fn declare(item: &mut ItemStruct, harmos: &HarmosPath, skip_debug: bool) -> Result<TokenStream, Error> {
+    if !derives(item, "Clone") {
+        item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
+    }
     let mut defaultable = true;
     for field in &item.fields {
         let (required_message, _, _) = encoding(&field.ty, harmos)?;

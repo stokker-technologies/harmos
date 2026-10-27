@@ -7,6 +7,8 @@
  * ***
  */
 
+// Undeclared Child Operations Cannot Be Called Through An Authored Context.
+
 /* === Modules === */
 
 #[path = "policy.rs"]
@@ -30,14 +32,11 @@ mod controls;
 
 /* === Structs === */
 
-#[harmos::message]
-struct Request {}
-
-#[harmos::operation(request = Request, response = (), policy = controls::POLICY, infer_request)]
+#[harmos::operation(id = "test.read", policy = controls::POLICY)]
 struct Read;
 
-#[harmos::operation(request = Request, response = (), policy = controls::POLICY, infer_request)]
-struct AlsoRead;
+#[harmos::operation(id = "test.other", policy = controls::POLICY)]
+struct Other;
 
 /* === Enums === */
 
@@ -48,6 +47,10 @@ struct AlsoRead;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn undeclared(ctx: harmos::Context<'_, Read>) {
+    std::mem::drop(ctx.operation(Other));
+}
 
 fn main() {}
 

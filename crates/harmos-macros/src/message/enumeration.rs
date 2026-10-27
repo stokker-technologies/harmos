@@ -148,6 +148,9 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool) -
         .into_iter()
         .flatten()
         .collect();
+    if !derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Clone")) {
+        item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
+    }
     let has_default = derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Default"));
     // An Absent Oneof Decodes To The `#[default]` Unit Variant, Else The First.
     let default_variant = item.variants.iter().position(|variant| {

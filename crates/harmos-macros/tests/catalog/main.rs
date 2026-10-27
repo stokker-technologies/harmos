@@ -53,7 +53,9 @@ fn authoring_refusals_compile() {
 
     for (fixture, expected) in [
         ("operation_on_variant.rs", "catalogs only assemble types"),
-        ("duplicate_request_inference.rs", "conflicting implementations"),
+        ("bad_operation_id.rs", "operation id"),
+        ("undeclared_resource.rs", "Requires<u64>"),
+        ("undeclared_operation.rs", "Invokes<Other>"),
         ("unsafe_id.rs", "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments"),
         ("zero_window.rs", "a stream window must retain at least 1 row"),
         ("absent_axis_field.rs", "the declared `axis` names no field of this row"),

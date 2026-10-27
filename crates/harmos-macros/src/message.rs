@@ -65,7 +65,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let syn::Item::Struct(mut item) = parsed else {
         return Err(Error::new(parsed.span(), "message requires a struct or enum"));
     };
-    if !matches!(item.fields, Fields::Named(_)) || !item.generics.params.is_empty() {
+    if !matches!(item.fields, Fields::Named(_) | Fields::Unit) || !item.generics.params.is_empty() {
         return Err(Error::new(item.span(), "a message requires a non-generic struct with named fields (use {} for an empty message)"));
     }
     let harmos = HarmosPath::resolve(explicit);

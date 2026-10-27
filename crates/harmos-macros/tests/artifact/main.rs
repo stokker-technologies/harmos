@@ -125,7 +125,7 @@ fn artifacts_embed_metadata() {
         .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
     // Only The Native Sidecar Publishes Analysis Progress, Through The Host
-    let publishing = BTreeSet::from(["host_publish"]);
+    let publishing = BTreeSet::from(["host.publish"]);
     let progress = BTreeSet::from(["schematic.analysis_progress"]);
     let none = BTreeSet::new();
 

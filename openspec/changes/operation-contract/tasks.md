@@ -4,7 +4,7 @@
   `Resource` and `Dependent`; delete `RequestFor`.
 - [x] 1.2 SDK: `Handler`, `Executable`, authored `Operation` with `Context`, `ResourceError`, `resource::<T>()`, derived
   `StreamEndpoints`, the carrier `Caller`, and registration verification of declared resources.
-- [ ] 1.3 Macros: struct-as-request `#[harmos::operation]` (defaults, short visibility, dotted IDs, `resources`, `operations`,
+- [x] 1.3 Macros: struct-as-request `#[harmos::operation]` (defaults, short visibility, dotted IDs, `resources`, `operations`,
   `codec = manual`), catalog variant attributes and callee projection, plugin requirement aggregation; compile tests.
 
 ## 2. Carriers

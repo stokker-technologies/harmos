@@ -70,14 +70,16 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
     let mut seen = std::collections::BTreeSet::new();
     let mut variants = std::collections::BTreeSet::new();
     let mut members = Vec::new();
+    let mut helpers = Vec::new();
+    let mut direct = Vec::new();
+    let catalog_name = declared.ident.clone();
+    let catalog_generics = declared.generics.clone();
     for variant in &mut declared.variants {
         if !variants.insert(variant.ident.to_string()) {
             return Err(Error::new_spanned(&variant.ident, "a catalog variant name may appear only once"));
         }
-        if variant.discriminant.is_some()
-            || variant.attrs.iter().any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
-        {
-            return Err(Error::new_spanned(variant, "catalog variants cannot have discriminants or conditional attributes"));
+        if variant.discriminant.is_some() {
+            return Err(Error::new_spanned(variant, "catalog variants cannot have discriminants"));
         }
         if variant.attrs.iter().any(|attribute| attribute.path().is_ident("operation")) {
             return Err(Error::new_spanned(variant, "declare operations on structs in vertical files; catalogs only assemble types"));
@@ -105,7 +107,29 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
                 nested = true;
             }
         }
-        members.push((member.clone(), nested));
+        let member_gates = crate::operation::configuration(&variant.attrs)?;
+        if !nested {
+            direct.push((member.clone(), member_gates.clone()));
+        }
+        if member_gates.is_empty() {
+            members.push((member.clone(), nested));
+        } else {
+            let helper = quote::format_ident!("__Harmos{}{}", catalog_name, variant.ident);
+            let predicate = conditions(&member_gates)?;
+            let nesting = nested.then(|| quote!(#[nested]));
+            let enabled = quote! {
+                #[cfg(#predicate)]
+                pub enum #helper #catalog_generics { #nesting Member(#member) }
+            };
+            let disabled = quote! {
+                #[cfg(not(#predicate))]
+                pub enum #helper #catalog_generics {}
+            };
+            helpers.push(expand(quote!(harmos_path = #sdk), enabled, false)?);
+            helpers.push(expand(quote!(harmos_path = #sdk), disabled, false)?);
+            let (_, arguments, _) = catalog_generics.split_for_impl();
+            members.push((syn::parse_quote!(#helper #arguments), true));
+        }
         variant.attrs.retain(|attribute| !attribute.path().is_ident("nested"));
     }
 
@@ -132,7 +156,6 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
         };
         visitor_generics.make_where_clause().predicates.push(bound);
     }
-    let direct = members.iter().filter_map(|(member, nested)| (!nested).then_some(member));
     let (entries_type, entries) = if members.iter().any(|(_, nested)| *nested) {
         members.iter().rev().fold((quote!(()), quote!(())), |(tail_type, tail), (member, nested)| {
             let (head_type, head) = if *nested {
@@ -154,6 +177,7 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
     let inspection = [
         quote!(#sdk::catalog::OperationEntry),
         quote!(#sdk::catalog::WireEntry),
+        quote!(&'static [#sdk::catalog::WireEntry]),
         quote!(#sdk::catalog::RequirementEntry),
         quote!(#sdk::catalog::ObserverEntry),
         quote!(#sdk::catalog::ListenerEntry),
@@ -226,10 +250,7 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
             }
             impl<O> #sdk::catalog::Member<O> for Registration<'_>
             where
-                O: #sdk::OperationDeclaration + #sdk::Operation<
-                    Request = <O as #sdk::OperationDeclaration>::Request,
-                    Response = <O as #sdk::OperationDeclaration>::Response,
-                >,
+                O: #sdk::operations::Executable,
             {
                 const ENTRY: Self::Entry = #sdk::RegistrationBatch::operation::<O>;
             }
@@ -256,9 +277,10 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
     };
 
     let methods = operations.then_some(methods);
-    let contains = direct.map(|member| {
+    let contains = direct.iter().map(|(member, member_gates)| {
         quote! {
             #(#gates)*
+            #(#member_gates)*
             impl #impl_generics #sdk::catalog::Contains<#member> for #name #type_generics #where_clause {}
         }
     });
@@ -269,6 +291,8 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
         #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]
         #declared
 
+        const _: () = {
+        #(#helpers)*
         #(#gates)*
         impl #visitor_impl #sdk::catalog::Catalog<#visitor> for #name #type_generics #visitor_where {
             type Entries = #entries_type;
@@ -279,7 +303,26 @@ fn expand(attribute: TokenStream, item: TokenStream, operations: bool) -> Result
 
         #(#inspection)*
         #methods
+        };
     })
+}
+
+fn conditions(attributes: &[syn::Attribute]) -> Result<TokenStream, Error> {
+    fn condition(meta: &Meta) -> Result<TokenStream, Error> {
+        let Meta::List(list) = meta else {
+            return Err(Error::new_spanned(meta, "expected cfg condition"));
+        };
+        if list.path.is_ident("cfg") {
+            return Ok(list.tokens.clone());
+        }
+        let parts = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
+        let mut parts = parts.iter();
+        let predicate = parts.next().ok_or_else(|| Error::new_spanned(meta, "missing cfg_attr predicate"))?;
+        let conditions = parts.map(condition).collect::<Result<Vec<_>, _>>()?;
+        Ok(quote!(any(not(#predicate), all(#(#conditions),*))))
+    }
+    let predicates = attributes.iter().map(|attribute| condition(&attribute.meta)).collect::<Result<Vec<_>, _>>()?;
+    Ok(quote!(all(#(#predicates),*)))
 }
 
 /* === Tests === */

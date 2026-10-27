@@ -40,21 +40,18 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryP
 
 pub struct State;
 
-#[facade::message]
-pub struct EchoRequest {
-    pub value: String,
-}
-
 #[facade::operation(
-    request = EchoRequest, response = relative::Reply, infer_request,
-    id = "echo",
+    response = relative::Reply,
+    id = "test.echo",
     policy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
 },
 )]
-pub struct Echo;
+pub struct Echo {
+    pub value: String,
+}
 
 pub struct Guest;
 

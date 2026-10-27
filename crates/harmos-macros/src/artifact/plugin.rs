@@ -362,7 +362,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const DESCRIPTION: &'static str = #description;
             const PROVIDES: &'static [#harmos::catalog::Node<#harmos::operations::WireDeclaration>] =
                 <#provides as #harmos::catalog::InertCatalog<#harmos::operations::Contracts, #harmos::operations::WireDeclaration>>::ENTRIES;
-            const REQUIRES: &'static [#harmos::catalog::Node<#requirement>] = #requires;
+            const REQUIRES: &'static [#harmos::catalog::Node<#requirement>] = {
+                const CALLEES: &[#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>] =
+                    <#provides as #harmos::catalog::InertCatalog<#harmos::operations::Callees, &'static [#harmos::operations::WireDeclaration]>>::ENTRIES;
+                const EXPLICIT: &[#harmos::catalog::Node<#requirement>] = #requires;
+                const REQUIRED: [#harmos::catalog::Node<#requirement>; 1 + #harmos::plugin::callee_count(CALLEES)] =
+                    #harmos::plugin::aggregate(EXPLICIT, <#name as #declarations>::PROVIDES, CALLEES);
+                &REQUIRED
+            };
             const LISTENERS: &'static [#harmos::catalog::Node<#harmos::listeners::Entry>] = <#audience as #harmos::catalog::InertCatalog<#harmos::listeners::Declarations, #harmos::listeners::Entry>>::ENTRIES;
             const OBSERVERS: &'static [#harmos::catalog::Node<#inventory::observers::Entry>] =
                 <#observed as #harmos::catalog::InertCatalog<
