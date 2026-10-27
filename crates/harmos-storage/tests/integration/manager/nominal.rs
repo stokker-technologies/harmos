@@ -19,7 +19,6 @@
 use std::num::NonZeroUsize;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
-use harmos_domain::operations::storage::{QueryRequest, ReadFileRequest};
 use harmos_storage::Identifier;
 use harmos_storage::query::transform::{
     Transform,
@@ -30,6 +29,7 @@ use harmos_storage::query::transform::{
 };
 use harmos_storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_storage::*;
+use harmos_storage::{FileRead, Query};
 // Local Imports
 use super::backend::{history, storage_settings};
 use super::fixture::state_settings;
@@ -82,8 +82,8 @@ impl Nominal {
         Self { _directory: directory, storage, schema, samples, durable }
     }
 
-    fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> QueryRequest {
-        QueryRequest { at: self.durable.clone(), source: Source::Stream(selection), transforms, slice: RowSlice::default() }
+    fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> Query {
+        Query { at: self.durable.clone(), source: Source::Stream(selection), transforms, slice: RowSlice::default() }
     }
 
     fn all(&self, after: u64) -> StreamSelection {
@@ -116,7 +116,7 @@ fn project(fields: &[(&str, &str)]) -> Transform {
 }
 
 // Every Data Batch A Query Delivers, In Order.
-async fn batches(storage: &StorageManager, query: QueryRequest) -> Vec<arrow_array::RecordBatch> {
+async fn batches(storage: &StorageManager, query: Query) -> Vec<arrow_array::RecordBatch> {
     let mut reader = storage.query(query).await.unwrap();
     assert!(matches!(reader.next().await.unwrap(), Some(QueryArrow::Schema(_))));
     let mut batches = Vec::new();
@@ -132,7 +132,7 @@ async fn batches(storage: &StorageManager, query: QueryRequest) -> Vec<arrow_arr
 }
 
 // Stored Position And Ordinal Of Every Projected Row, In Delivery Order.
-async fn positions(storage: &StorageManager, query: QueryRequest) -> Vec<(u64, u64)> {
+async fn positions(storage: &StorageManager, query: Query) -> Vec<(u64, u64)> {
     let mut rows = Vec::new();
     for batch in batches(storage, query).await {
         let position = column::<arrow_array::UInt64Array>(&batch, "position");
@@ -146,7 +146,7 @@ async fn positions(storage: &StorageManager, query: QueryRequest) -> Vec<(u64, u
 
 async fn read_range(storage: &StorageManager, file: &FileReference, range: ByteRange) -> Vec<u8> {
     let mut reader = storage
-        .read_file(ReadFileRequest { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
+        .read_file(FileRead { source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()), range })
         .await
         .unwrap();
     let mut bytes = Vec::new();
@@ -292,7 +292,7 @@ async fn file_ranges_read() {
         assert!(end.is_empty());
         let beyond = n
             .storage
-            .read_file(ReadFileRequest {
+            .read_file(FileRead {
                 source: harmos_domain::model::storage::files::FileSource::Stored(reference.clone()),
                 range: range(reference.length + 1, None),
             })

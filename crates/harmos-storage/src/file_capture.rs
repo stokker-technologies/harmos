@@ -20,9 +20,9 @@
 // Third Party Imports
 
 // Local Imports
+use crate::FileRead;
 use crate::{FileReference, Result, StorageManager};
 use harmos_domain::model::storage::files::CaptureConsistency;
-use harmos_domain::operations::storage::{CaptureFileRequest, ReadFileRequest};
 
 /* === Constants === */
 
@@ -32,6 +32,14 @@ use harmos_domain::operations::storage::{CaptureFileRequest, ReadFileRequest};
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct FileCapture {
+    pub source: crate::FileSource,
+    pub range: crate::ByteRange,
+    pub metadata: crate::FileMetadata,
+    pub consistency: CaptureConsistency,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -39,12 +47,12 @@ use harmos_domain::operations::storage::{CaptureFileRequest, ReadFileRequest};
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
-    pub async fn capture_file(&self, request: CaptureFileRequest) -> Result<FileReference> {
+    pub async fn capture_file(&self, request: FileCapture) -> Result<FileReference> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.capture_file", outcome = "cancelled"));
         context
             .result(span, async {
-                let mut reader = self.read_file(ReadFileRequest { source: request.source, range: request.range }).await?;
+                let mut reader = self.read_file(FileRead { source: request.source, range: request.range }).await?;
                 let mut target = self.create_file(request.metadata).await?;
                 while let Some((batch, memory)) = reader.next_raw(false).await? {
                     target.write_all(batch.bytes).await?;

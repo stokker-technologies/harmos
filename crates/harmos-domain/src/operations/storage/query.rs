@@ -22,12 +22,12 @@
 
 // Local Imports
 use super::IO_POLICY;
+use crate::MemorySize;
 use crate::model::storage::StorageCursor;
 use crate::model::storage::codec::{Nested, Repeated, product};
 use crate::model::storage::query::transform::Transform;
 use crate::model::storage::query::{QueryCompletion, QueryOutput, RowSlice, Source};
 use crate::operations::{ReplaySafety, Visibility};
-use crate::{MemorySize, Result};
 
 /* === Constants === */
 
@@ -78,16 +78,6 @@ pub struct QueryRequest {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl QueryRequest {
-    pub fn validate(&self) -> Result<()> {
-        self.source.validate()?;
-        if self.transforms.len() > 64 {
-            return Err(crate::model::storage::query::transform::invalid("too many query transforms"));
-        }
-        Ok(())
-    }
-}
 
 impl MemorySize for QueryRequest {
     fn memory_size(&self) -> usize {

@@ -78,7 +78,7 @@ async fn delete_removes_file() {
     assert_eq!(f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap(), deleted);
     let mut query = f
         .storage
-        .query(harmos_runtime::storage::operations::QueryRequest {
+        .query(harmos_runtime::storage::Query {
             at: f.storage.cursor_saved(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
                 scope: None,
@@ -145,7 +145,7 @@ async fn deletion_preserves_other() {
     let kept = f.storage.write_file(metadata("kept-first"), (b"kept").to_vec()).await.unwrap();
     let removed = f.storage.write_file(metadata("removed-last"), (b"gone").to_vec()).await.unwrap();
     f.storage.flush().await.unwrap();
-    let whole = |file: &harmos_runtime::storage::FileReference| harmos_runtime::storage::operations::ReadFileRequest {
+    let whole = |file: &harmos_runtime::storage::FileReference| harmos_runtime::storage::FileRead {
         source: harmos_runtime::storage::FileSource::Stored(file.clone()),
         range: harmos_runtime::storage::ByteRange { offset: 0, limit: None },
     };

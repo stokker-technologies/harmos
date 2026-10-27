@@ -17,7 +17,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 
 // Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-use harmos_domain::operations::storage::QueryRequest;
+use harmos_storage::Query;
 use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_storage::*;
 use harmos_storage::{Identifier, Message};
@@ -103,12 +103,12 @@ impl Mapped {
         Self { _directory: directory, storage, schema, at }
     }
 
-    fn query(&self, item: Option<&str>) -> QueryRequest {
+    fn query(&self, item: Option<&str>) -> Query {
         let item = item.map(|item| {
             let identifier = Identifier::new(item);
             identifier.unwrap()
         });
-        QueryRequest {
+        Query {
             at: self.at.clone(),
             source: Source::Records(RecordSelection {
                 schema: self.schema.clone(),

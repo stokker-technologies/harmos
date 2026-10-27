@@ -63,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
         if let Some(grant) = &grant {
             ctx.admit_stream_grant(grant)?;
         }
-        let mut reader = self.storage.read_file(request.clone()).await?;
+        let mut reader = self.storage.read_file(harmos_storage::FileRead { source: request.source.clone(), range: request.range }).await?;
         while let Some(batch) = reader.next().await? {
             if let Some(grant) = &grant {
                 ctx.admit_stream_grant(grant)?;

@@ -64,7 +64,15 @@ impl<C: 'static> Operation for Handler<C> {
         let ctx = host.borrow();
         let grant = Grant::of(Query::ID, request.source.grant_scope());
         ctx.admit_stream_grant(&grant)?;
-        let mut reader = self.storage.query(request.clone()).await?;
+        let mut reader = self
+            .storage
+            .query(harmos_storage::Query {
+                at: request.at.clone(),
+                source: request.source.clone(),
+                transforms: request.transforms.clone(),
+                slice: request.slice.clone(),
+            })
+            .await?;
         while let Some(item) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
             let bytes = item.output_memory_size();

@@ -182,6 +182,8 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 - [ ] 1.25 Apply the owner's clean break across the project: remove version-only peer rejection, legacy decoders, migrations, deprecated aliases and compatibility adapters; reset protocol, envelope, journal and schema versions to 1. Delete legacy-only tests and update current-format fixtures. Old data and peers have no compatibility or detection path.
 - [ ] 1.26 Verify the completed extraction and clean break with targeted dependency/feature and behavior checks, then run `mise run check` followed by the full `mise run test` lanes serially, repairing failures. Commit coherent local milestones; do not push. Leave delivery section 2 open.
 
+- [x] 1.27 Extraction prerequisites: flatten the portable declaration machinery out of operations/common, give the storage engine its own non-wire file/query inputs, migrate direct engine consumers and keep query validation with the engine. Targeted contract, file-session and query-mapping tests pass; runtime tests compile with all features. README reviewed; affected storage documentation and generated repository skills updated. The 30-operation extraction and clean-break sweep remain open in 1.24–1.25.
+
 ## 2. Validation And Delivery
 
 - [ ] 2.1 Orchestrator: obtain delivery authorization after presenting the source-complete candidate.

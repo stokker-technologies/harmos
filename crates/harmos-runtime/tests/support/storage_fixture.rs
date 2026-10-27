@@ -103,7 +103,7 @@ pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &Schem
     use harmos_runtime::storage::operations::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(harmos_runtime::storage::operations::QueryRequest {
+        .query(harmos_runtime::storage::Query {
             at: storage.cursor_saved(),
             source: Source::Records(RecordSelection {
                 schema: schema.clone(),

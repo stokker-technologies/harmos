@@ -69,7 +69,8 @@ impl<C: 'static> Operation for Handler<C> {
         if let Some(grant) = &grant {
             ctx.admit_stream_grant(grant)?;
         }
-        let mut follower = self.storage.follow_file(request.clone()).await?;
+        let mut follower =
+            self.storage.follow_file(harmos_storage::FileFollow { source: request.source.clone(), start: request.start }).await?;
         while let Some(event) = follower.next().await? {
             if let Some(grant) = &grant {
                 ctx.admit_stream_grant(grant)?;

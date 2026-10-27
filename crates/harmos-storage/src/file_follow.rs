@@ -22,13 +22,13 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
+use crate::FileRead;
 use crate::arrow::RetainedMemory;
 use crate::capacity::{Held, Pool, Refusal, Reservation};
 use crate::local::LocalReader;
 use crate::manager::{ENTRY_OVERHEAD, Inner};
 use crate::{ByteRange, Error, FileBatch, FileCompletion, FileReadEvent, FileReader, MemorySize, Result, StorageManager};
 use harmos_domain::model::storage::files::{FileEvent, FileSource, FollowStart};
-use harmos_domain::operations::storage::{FollowFileRequest, ReadFileRequest};
 
 /* === Constants === */
 
@@ -37,6 +37,12 @@ use harmos_domain::operations::storage::{FollowFileRequest, ReadFileRequest};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct FileFollow {
+    pub source: FileSource,
+    pub start: crate::FollowStart,
+}
 
 pub struct FileFollower {
     context: crate::execution::Context,
@@ -74,7 +80,7 @@ enum Step {
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
-    pub async fn follow_file(&self, request: FollowFileRequest) -> Result<FileFollower> {
+    pub async fn follow_file(&self, request: FileFollow) -> Result<FileFollower> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.follow_file", outcome = "cancelled"));
         context
@@ -95,7 +101,7 @@ impl<C> StorageManager<C> {
                         let offset = start(request.start, file.length);
                         let reader = self
                             .read_file_with_held(
-                                ReadFileRequest { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
+                                FileRead { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
                                 held.clone(),
                             )
                             .await?;

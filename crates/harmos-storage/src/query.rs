@@ -27,7 +27,7 @@ pub use harmos_domain::model::storage::query::{
     StreamSelection, scalar,
 };
 pub(crate) use reader::schema_at;
-pub use reader::{QueryArrow, QueryReader};
+pub use reader::{Query, QueryArrow, QueryReader};
 pub use typed::{ObjectRead, ObjectReader, RecordRead, RecordReader};
 
 /* === Imports === */

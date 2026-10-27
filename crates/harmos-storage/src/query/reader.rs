@@ -38,7 +38,6 @@ use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::ArrowIpc;
-use harmos_domain::operations::storage::QueryRequest;
 
 /* === Constants === */
 
@@ -52,11 +51,19 @@ const PROTOBUF_FRAMING: usize = 30;
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct Query {
+    pub at: harmos_domain::model::storage::StorageCursor,
+    pub source: Source,
+    pub transforms: Vec<harmos_domain::model::storage::query::transform::Transform>,
+    pub slice: harmos_domain::model::storage::query::RowSlice,
+}
+
 pub struct QueryReader {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
-    query: QueryRequest,
+    query: Query,
     snapshot: Option<Snapshot>,
     active: Option<OwnedSemaphorePermit>,
     _description: Reservation,
@@ -92,6 +99,26 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Query {
+    pub fn validate(&self) -> harmos_domain::Result<()> {
+        self.source.validate()?;
+        if self.transforms.len() > 64 {
+            return Err(harmos_domain::model::storage::query::transform::invalid("too many query transforms"));
+        }
+        Ok(())
+    }
+}
+
+impl MemorySize for Query {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
+            .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
+    }
+}
 
 impl QueryArrow {
     /// Resident bound for the wire value, without converting or copying its IPC.
@@ -135,14 +162,14 @@ impl MemorySize for QueryArrow {
 }
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.query.reader.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub async fn query(&self, query: QueryRequest) -> Result<QueryReader> {
+    pub async fn query(&self, query: Query) -> Result<QueryReader> {
         crate::ReadSession::standalone(self).query(query).await
     }
 }
 
 impl<C> crate::ReadSession<C> {
     #[tracing::instrument(name = "storage.read_session.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub async fn query(&self, query: QueryRequest) -> Result<QueryReader> {
+    pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {
             query.validate()?;
             self.manager.inner.primary.history().check(&query.at.history)?;

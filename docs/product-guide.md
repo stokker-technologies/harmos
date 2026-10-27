@@ -348,7 +348,7 @@ yields native `QueryArrow` items whose shared Arrow buffers keep their storage
 charge through clones and slices. The `storage.query` operation, declared in
 `harmos-domain`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
-`harmos::storage::operations::register`.
+`harmos::storage::operations::registration`.
 
 `ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
 buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
@@ -356,12 +356,17 @@ uniquely owned encoded buffers move through these conversions. Retained aliases
 continue to share their existing allocations and memory charges.
 
 ```rust
-let mut reader = storage.query(Query { at, source, transforms, slice }).await?;
+let mut reader = storage.query(harmos::storage::Query { at, source, transforms, slice }).await?;
 while let Some(output) = reader.next().await? {
     // One QueryArrow::Schema, then QueryArrow::Batch values.
 }
 let completion = reader.completion()?;
 ```
+
+Direct storage APIs take resource-owned inputs: `Query`, `FileRead`,
+`FileCapture` and `FileFollow`. Hashing also takes `FileRead`. Operation handlers
+construct these inputs from their wire requests; the storage engine does not
+depend on operation declarations.
 
 Every read shares the one read budget. Work that cannot fit while other queries
 hold memory waits for released capacity; work that can never fit the budget, even

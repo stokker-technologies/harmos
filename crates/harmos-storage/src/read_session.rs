@@ -82,7 +82,7 @@ impl<C> ReadSession<C> {
     }
 
     #[tracing::instrument(name = "storage.read_session.read_file", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub async fn read_file(&self, request: harmos_domain::operations::storage::ReadFileRequest) -> Result<crate::FileReader> {
+    pub async fn read_file(&self, request: crate::FileRead) -> Result<crate::FileReader> {
         let result = self.manager.read_file_with_held(request, self.held.clone()).await;
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result

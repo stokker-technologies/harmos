@@ -116,7 +116,7 @@ async fn restore(
     };
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(harmos_runtime::storage::operations::QueryRequest {
+        .query(harmos_runtime::storage::Query {
             at: storage.cursor_saved(),
             source: Source::Records(RecordSelection {
                 schema: schema(),

@@ -60,7 +60,16 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run(
         &mut self, _: harmos_sdk::OperationContext, request: &mut Self::Request, _: &mut (),
     ) -> Result<crate::operations::Response<FileReference>> {
-        Ok(self.storage.capture_file(request.clone()).await?.into())
+        Ok(self
+            .storage
+            .capture_file(harmos_storage::FileCapture {
+                source: request.source.clone(),
+                range: request.range,
+                metadata: request.metadata.clone(),
+                consistency: request.consistency,
+            })
+            .await?
+            .into())
     }
 
     fn classify(error: &Error) -> crate::operations::FailureKind {

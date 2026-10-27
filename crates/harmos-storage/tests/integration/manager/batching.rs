@@ -923,7 +923,7 @@ async fn retained_observer_traced() {
 async fn filesystem_trace_lifetimes() {
     use harmos_domain::model::storage::files::{ByteRange, FileSource};
     use harmos_domain::model::storage::{DirectoryRule, DirectorySelection};
-    use harmos_domain::operations::storage::{HashFileRequest, ReadFileRequest};
+    use harmos_storage::FileRead;
     use harmos_storage::{JsonStorage, JsonStorageSettings, StorageBackend};
     use std::future::Future;
     use std::task::Poll;
@@ -938,7 +938,7 @@ async fn filesystem_trace_lifetimes() {
     let range = ByteRange { offset: 0, limit: None };
     let mut reader = f
         .storage
-        .read_file(ReadFileRequest { source: FileSource::Local(path.clone()), range })
+        .read_file(FileRead { source: FileSource::Local(path.clone()), range })
         .instrument(request.clone())
         .with_subscriber(dispatch.clone())
         .await
@@ -971,7 +971,7 @@ async fn filesystem_trace_lifetimes() {
 
     let digest = f
         .storage
-        .hash_file(HashFileRequest { source: FileSource::Local(path), range })
+        .hash_file(FileRead { source: FileSource::Local(path), range })
         .instrument(request.clone())
         .with_subscriber(dispatch.clone())
         .await

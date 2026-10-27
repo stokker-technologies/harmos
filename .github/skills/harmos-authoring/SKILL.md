@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Implement consumer Harmos operations, runtime resources, storage integration, composed plugins and transport exposure.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:565d99023d6f56f7831454891c8a872669f502cd4f40dcb02df8ea9f9958c3af -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:c9ba374f30be9bdda534e50f6f39f8558196dbc41cec43d0ca2ccf4b94415459 -->
 
 # Harmos Authoring
 
@@ -12,20 +12,19 @@ repository-specific build system are required.
 
 ## Ownership Before Wiring
 
-For a reusable product, put portable operation declarations, models, records,
-streams, prompts and product settings in its domain crate. Implement operations
-and retain live resources in its runtime crate. Interfaces consume the product
-entry library, enabling its optional runtime feature when hosting execution.
+Keep shared models, records, streams and product settings in the domain.
+Colocate each request, response, declaration struct and runtime-gated `Operation`
+implementation in a vertical operations file. A reusable operations crate exposes
+contracts by default and enables execution with `runtime`; resource dependencies
+can be optional. A self-contained plugin uses the same layout under `operations/`.
 
-A self-contained crate can colocate each declaration and handler in a vertical
-`operations/` module. Plugin-private operations use the same approach. Do not
-create duplicate product declarations or forwarding operations to expose the
-same behavior through another interface.
-
-Declaration catalogs describe contracts; handler catalogs assemble executable
-implementations. Plugin advertisement and runtime binding are distinct steps.
-Use the installed Harmos version's carrier and context APIs: a handler authored
-for one concrete context is not automatically reusable in every carrier.
+One catalog provides `catalog()` for portable definitions and
+`registration(Dependencies)` for execution factories. Runtime composition inserts
+shared `Arc<T>` dependencies, chooses typed lanes with `RegistrationExt`, and
+registers the batch. `OperationContext::dependency` reads that snapshot.
+Native, sidecar and guest bodies implement the common SDK `Operation` trait;
+carrier composition supplies target-compatible resources. Keep one implementation
+where dependencies support both carriers. Do not add forwarding operations.
 
 ## Choose The Relevant Reference
 

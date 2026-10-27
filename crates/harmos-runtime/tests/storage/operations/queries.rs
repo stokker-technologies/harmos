@@ -260,7 +260,7 @@ async fn query_heterogeneous_projection() {
 
     // Equal Graphs Under Distinct Logical Keys Retain Their Actual Identity.
     let mut matching = storage
-        .query(Request {
+        .query(harmos_runtime::storage::Query {
             at: at.clone(),
             source: selected(Some(ObjectKey::new("shared", NonZeroUsize::new(128).unwrap()).unwrap())),
             transforms: vec![],
@@ -281,7 +281,7 @@ async fn query_heterogeneous_projection() {
 
     // A Leading Projection Normalizes Common Fields Across Different Graphs.
     let mut projected = storage
-        .query(Request {
+        .query(harmos_runtime::storage::Query {
             at: at.clone(),
             source: selected(None),
             transforms: vec![Transform::Project(Project {
@@ -313,8 +313,10 @@ async fn query_heterogeneous_projection() {
     drop(projected);
 
     // Incompatible Unprojected Types Fail Before Publishing A Schema.
-    let mut incompatible =
-        storage.query(Request { at, source: selected(None), transforms: vec![], slice: RowSlice::default() }).await.unwrap();
+    let mut incompatible = storage
+        .query(harmos_runtime::storage::Query { at, source: selected(None), transforms: vec![], slice: RowSlice::default() })
+        .await
+        .unwrap();
     assert!(incompatible.next().await.is_err());
     drop(incompatible);
     storage.close().await.unwrap();
@@ -353,7 +355,7 @@ async fn ipc_admission_retains() {
     for cancel in [true, false] {
         let mut reader = fixture
             .storage
-            .query(Request {
+            .query(harmos_runtime::storage::Query {
                 at: fixture.storage.cursor_saved(),
                 source: Source::Records(RecordSelection {
                     schema: schema.clone(),
