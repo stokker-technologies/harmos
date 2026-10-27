@@ -23,7 +23,7 @@ pub use spectrum::{
     papr, peaks, phase, rolloff, thd,
 };
 #[cfg(feature = "fft")]
-pub use spectrum::{Estimate, Welch, fft_in_place, reconstruct, transform};
+pub use spectrum::{Estimate, FftBuffer, Welch, fft_in_place, reconstruct, transform};
 pub use waveform::{
     Edge, Series, Summary, above_floor, crossing, decimate, decimate_indices, derivative, edges, extrema, integral, lttb, lttb_log,
     nearest, resample, resample_count, resample_uniform, value_at,

@@ -42,8 +42,9 @@ pub(super) const PAGE_BYTES: usize = WORKSPACE_BYTES / 16;
 
 /* === Structs === */
 
+#[derive(Clone)]
 pub(super) struct Spool {
-    file: NamedTempFile,
+    file: Arc<NamedTempFile>,
     pub schema: Arc<Schema>,
     pub rows: usize,
 
@@ -90,7 +91,7 @@ impl Builder {
         let writer = StreamWriter::try_new(file.reopen().map_err(io)?, &schema).map_err(|_| invalid("spill schema encoding failed"))?;
         Ok(Self {
             spool: Spool {
-                file,
+                file: Arc::new(file),
                 schema,
                 rows: 0,
                 #[cfg(test)]

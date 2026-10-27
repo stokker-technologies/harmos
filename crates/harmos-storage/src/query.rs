@@ -20,6 +20,7 @@ mod reader;
 mod reduction;
 mod source;
 mod spill;
+mod table;
 pub mod transform;
 mod typed;
 
@@ -32,6 +33,7 @@ pub use harmos_domain::model::storage::query::{
 };
 pub(crate) use reader::schema_at;
 pub use reader::{QueryArrow, QueryReader};
+pub use table::{Table, TableReader, TableWriter};
 pub use typed::{ObjectRead, ObjectReader, RecordRead, RecordReader, StreamRead, StreamReader};
 
 /* === Imports === */

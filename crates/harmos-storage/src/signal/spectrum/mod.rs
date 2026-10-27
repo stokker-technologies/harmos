@@ -16,6 +16,8 @@ mod decibel;
 mod fourier;
 mod harmonic;
 mod indicator;
+#[cfg(feature = "fft")]
+mod spilled;
 mod taper;
 
 /* === Re-Exports === */
@@ -27,6 +29,8 @@ pub use decibel::{Decibel, Scale};
 pub use fourier::{Estimate, Welch, reconstruct, transform};
 pub use harmonic::{fundamental, harmonics, peaks, thd};
 pub use indicator::{band_energy, band_rms, centroid, occupied_bandwidth, papr, rolloff};
+#[cfg(feature = "fft")]
+pub use spilled::FftBuffer;
 pub use taper::{Band, Taper};
 
 /* === Imports === */
