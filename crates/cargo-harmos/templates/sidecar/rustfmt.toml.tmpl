@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/tools/rustfmt.toml; sha256:d1a015a0738ce3b3f66875750f37263c92329aa4f1d0ea96d48e6f7dc37d9f5a
+# Rendered by stkr project update from templates/tools/rustfmt.toml; sha256:285cc81654365890d448b8396abc9acc80061d93676ba27d3b57bf575eef2ab6
 # ***
 #
 # __PRODUCT_NAME__
@@ -15,3 +15,6 @@
 max_width = 140
 fn_params_layout = "Compressed"
 use_small_heuristics = "Max"
+# Struct literals wider than 40 characters break one field per line, so a literal reads as a record even under the
+# maximum small heuristics.
+struct_lit_width = 40

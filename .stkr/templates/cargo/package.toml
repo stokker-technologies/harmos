@@ -1,0 +1,35 @@
+{% include "partials/hash-header.jinja" %}
+# === Package === #
+
+[package]
+name = "{{project_name}}"
+version = "0.1.0"
+edition = "2024"
+
+# === Package Targets === #
+
+# === Features === #
+
+# === Dependencies === #
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
