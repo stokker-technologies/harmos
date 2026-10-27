@@ -45,7 +45,7 @@ pub struct Publication<'a> {
 /* === Traits === */
 
 pub trait PublicationHost: Send + Sync {
-    fn publish<'a>(&'a self, context: super::OperationContext, publication: Publication<'a>) -> Published<'a>;
+    fn publish<'a>(&'a self, context: super::CallContext, publication: Publication<'a>) -> Published<'a>;
 }
 
 /* === Implementations === */

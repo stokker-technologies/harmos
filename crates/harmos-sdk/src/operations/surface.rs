@@ -55,7 +55,7 @@ pub trait Host: Send + Sync + Sized {
     fn call<O: OperationDeclaration>(&self, request: O::Request)
     -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
-    // Publish one row on a declared stream through the host's `host_publish`.
+    // Publish one row on a declared stream through the host's `host.publish`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
         S::Row: Message;

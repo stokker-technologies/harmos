@@ -18,10 +18,10 @@
 // Third Party Imports
 
 // Local Imports
-use super::{Answer, Finalization, Finished, Handler, Prepare, Prepared, ServingError, WireTable, guarded};
+use super::{Answer, Finalization, Finished, Prepare, Prepared, Route, ServingError, WireTable, guarded};
 use crate::Message;
 use crate::QualifiedId;
-use crate::operations::{Dependencies, EndpointSet, Operation, OperationContext, OperationDeclaration};
+use crate::operations::{Dependencies, EndpointSet, Handler, OperationContext, OperationDeclaration};
 
 /* === Constants === */
 
@@ -31,7 +31,7 @@ use crate::operations::{Dependencies, EndpointSet, Operation, OperationContext, 
 
 /* === Structs === */
 
-struct State<T: Operation> {
+struct State<T: Handler> {
     physical: Option<Physical<T>>,
 
     #[cfg(feature = "streaming")]
@@ -48,15 +48,15 @@ struct State<T: Operation> {
     grant: Option<crate::plugin::Grant>,
 }
 
-struct Physical<T: Operation> {
+struct Physical<T: Handler> {
     dependencies: Dependencies,
     operation: Option<T>,
     request: T::Request,
-    endpoints: T::Endpoints,
+    endpoints: T::StreamEndpoints,
     stopped: bool,
 }
 
-struct Endpoints<E> {
+struct StreamEndpoints<E> {
     endpoints: E,
 
     #[cfg(feature = "streaming")]
@@ -79,18 +79,18 @@ impl WireTable {
     pub(crate) fn install<D, T>(&mut self, dependencies: Dependencies, contract: crate::operations::Contract) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
-        T: Operation<Request = D::Request, Response = D::Response>,
+        T: Handler<Request = D::Request, Response = D::Response>,
     {
         #[cfg(feature = "grpc")]
         let protobuf = D::GRPC.is_some().then(super::protobuf::Codec::of::<D>);
         #[cfg(feature = "streaming")]
         let limits = self.stream_limits;
         #[cfg(feature = "streaming")]
-        if T::Endpoints::item_types() != (None, None) && limits.is_none() {
+        if T::StreamEndpoints::item_types() != (None, None) && limits.is_none() {
             return Err(ServingError::StreamLimits);
         }
         #[cfg(not(feature = "streaming"))]
-        if T::Endpoints::item_types() != (None, None) {
+        if T::StreamEndpoints::item_types() != (None, None) {
             return Err(ServingError::StreamUnsupported);
         }
         let observe = std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::observers::Control>();
@@ -100,8 +100,8 @@ impl WireTable {
             false,
             observe,
             move || {
-                if let Some(endpoints) = T::Endpoints::empty() {
-                    return Ok(Endpoints {
+                if let Some(endpoints) = T::StreamEndpoints::empty() {
+                    return Ok(StreamEndpoints {
                         endpoints,
                         #[cfg(feature = "streaming")]
                         streams: None,
@@ -109,8 +109,8 @@ impl WireTable {
                 }
                 #[cfg(feature = "streaming")]
                 {
-                    let (endpoints, streams) = T::Endpoints::bind_wire(limits.ok_or(ServingError::StreamLimits)?)?;
-                    Ok(Endpoints { endpoints, streams: Some(streams) })
+                    let (endpoints, streams) = T::StreamEndpoints::bind_wire(limits.ok_or(ServingError::StreamLimits)?)?;
+                    Ok(StreamEndpoints { endpoints, streams: Some(streams) })
                 }
                 #[cfg(not(feature = "streaming"))]
                 Err(ServingError::StreamUnsupported)
@@ -130,7 +130,7 @@ impl WireTable {
     ) -> Result<(), ServingError>
     where
         D: crate::OperationDeclaration,
-        T: Operation<Request = D::Request, Response = D::Response, Endpoints = ()>,
+        T: Handler<Request = D::Request, Response = D::Response, StreamEndpoints = ()>,
     {
         if self.closed || self.ordinary_closed {
             return Err(ServingError::Closing);
@@ -147,7 +147,7 @@ impl WireTable {
             true,
             true,
             || {
-                Ok(Endpoints {
+                Ok(StreamEndpoints {
                     endpoints: (),
                     #[cfg(feature = "streaming")]
                     streams: None,
@@ -160,16 +160,16 @@ impl WireTable {
 
     fn bind_owned_contract<D, T>(
         &mut self, dependencies: Dependencies, contract: crate::operations::Contract, lifecycle: bool, builtin: bool,
-        endpoints: impl Fn() -> Result<Endpoints<T::Endpoints>, ServingError> + Send + Sync + 'static,
+        endpoints: impl Fn() -> Result<StreamEndpoints<T::StreamEndpoints>, ServingError> + Send + Sync + 'static,
         #[cfg(feature = "grpc")] protobuf: Option<super::protobuf::Codec>,
     ) -> Result<(), ServingError>
     where
         D: OperationDeclaration,
-        T: Operation<Request = D::Request, Response = D::Response>,
+        T: Handler<Request = D::Request, Response = D::Response>,
     {
         let qualified = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
         let id = qualified.as_str();
-        let (input, output) = T::Endpoints::item_types();
+        let (input, output) = T::StreamEndpoints::item_types();
         if (input, output) != crate::operations::item_types::<D>()
             || input.is_some() != contract.input().is_some()
             || output.is_some() != contract.output().is_some()
@@ -215,7 +215,7 @@ impl WireTable {
             let grant = <D as OperationDeclaration>::grant(&request);
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
-            let endpoints = Endpoints {
+            let endpoints = StreamEndpoints {
                 endpoints: endpoints.endpoints,
                 streams: match (endpoints.streams, selected) {
                     (Some(streams), Some(codec)) => Some(streams.protobuf(codec)?),
@@ -241,7 +241,8 @@ impl WireTable {
             };
             Ok(Box::new(state))
         });
-        let handler = Handler {
+        let handler = Route {
+            callees: D::OPERATIONS,
             generation: None,
             lifecycle,
             builtin,
@@ -256,7 +257,7 @@ impl WireTable {
     }
 }
 
-impl<T: Operation> Prepared for State<T> {
+impl<T: Handler> Prepared for State<T> {
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<super::WireStreams> {
         self.streams.clone()
@@ -346,7 +347,7 @@ impl<T: Operation> Prepared for State<T> {
 
 // The handler's error becomes the failure's cause here, in the plugin process
 // where it originated; every later carrier forwards the same value.
-fn operation_error<T: Operation>(error: T::Error) -> ServingError {
+fn operation_error<T: Handler>(error: T::Error) -> ServingError {
     let failure = crate::Failure::originate(T::classify(&error), &error, crate::failure::Origin::Plugin);
     ServingError::Handler(failure)
 }

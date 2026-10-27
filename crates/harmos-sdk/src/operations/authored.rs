@@ -19,7 +19,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::{FailureKind, OperationContext};
+use super::{FailureKind, OperationContext, OperationDeclaration};
 use crate::Portable;
 
 /* === Constants === */
@@ -73,16 +73,18 @@ pub trait OutputEndpoint: Send + Sized + 'static {
     }
 }
 
-pub trait Operation: Send + Sized + 'static {
+// The Instance Contract Behind Every Registered Operation: Carrier Proxies,
+// Lifecycle Built-Ins And Authored Operations Through `Authored`.
+pub trait Handler: Send + Sized + 'static {
     type Request: Portable;
     type Response: Portable;
     type Error: std::error::Error + Send + Sync + 'static;
-    type Endpoints: EndpointSet;
+    type StreamEndpoints: EndpointSet;
 
     fn initialize(context: OperationContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn run(
-        &mut self, context: OperationContext, request: &mut Self::Request, endpoints: &mut Self::Endpoints,
+        &mut self, context: OperationContext, request: &mut Self::Request, endpoints: &mut Self::StreamEndpoints,
     ) -> impl Future<Output = Result<super::Response<Self::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
@@ -100,6 +102,14 @@ pub trait Operation: Send + Sized + 'static {
     fn classify(_error: &Self::Error) -> FailureKind {
         FailureKind::Permanent
     }
+}
+
+// Selects The Handler That Executes A Declaration.
+pub trait Executable: OperationDeclaration {
+    type Handler: Handler<Request = <Self as OperationDeclaration>::Request, Response = <Self as OperationDeclaration>::Response>;
+
+    // Resources the handler reads; registration refuses a snapshot lacking one.
+    const RESOURCES: &'static [super::Resource] = &[];
 }
 
 /* === Implementations === */

@@ -37,7 +37,7 @@ use crate::plugin::Plugin;
 #[derive(thiserror::Error)]
 pub enum Error<P: Plugin> {
     #[error(transparent)]
-    Dependency(Arc<crate::DependencyError>),
+    Resource(Arc<crate::ResourceError>),
 
     #[error("invalid plugin configuration: {0}")]
     Configuration(#[source] Arc<crate::ConfigError>),
@@ -71,7 +71,7 @@ pub enum Error<P: Plugin> {
 impl<P: Plugin> std::fmt::Debug for Error<P> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Dependency(error) => formatter.debug_tuple("Dependency").field(error).finish(),
+            Self::Resource(error) => formatter.debug_tuple("Resource").field(error).finish(),
             Self::Configuration(error) => formatter.debug_tuple("Configuration").field(error).finish(),
             Self::Plugin(error) => formatter.debug_tuple("Plugin").field(error).finish(),
             Self::Inventory(error) => formatter.debug_tuple("Inventory").field(error).finish(),
@@ -87,7 +87,7 @@ impl<P: Plugin> std::fmt::Debug for Error<P> {
 impl<P: Plugin> Clone for Error<P> {
     fn clone(&self) -> Self {
         match self {
-            Self::Dependency(error) => Self::Dependency(Arc::clone(error)),
+            Self::Resource(error) => Self::Resource(Arc::clone(error)),
             Self::Configuration(error) => Self::Configuration(Arc::clone(error)),
             Self::Plugin(error) => Self::Plugin(Arc::clone(error)),
             Self::Inventory(error) => Self::Inventory(Arc::clone(error)),

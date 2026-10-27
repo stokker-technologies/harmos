@@ -49,7 +49,7 @@ pub struct StreamOutput<T, E = Error> {
 }
 
 pub struct StreamInput<T> {
-    receiver: mpsc::Receiver<StreamItem<T>>,
+    receiver: tokio::sync::Mutex<mpsc::Receiver<StreamItem<T>>>,
     transferred: Arc<AtomicBool>,
 }
 
@@ -164,8 +164,16 @@ impl<T> StreamItem<T> {
             return Err(Error::Construction);
         }
         Ok(match value {
-            Ok(value) => Ok(StreamItem { value: Payload::Plain(value), _bytes: self._bytes, delivery: self.delivery }),
-            Err(value) => Err(StreamItem { value: Payload::Plain(value), _bytes: self._bytes, delivery: self.delivery }),
+            Ok(value) => Ok(StreamItem {
+                value: Payload::Plain(value),
+                _bytes: self._bytes,
+                delivery: self.delivery,
+            }),
+            Err(value) => Err(StreamItem {
+                value: Payload::Plain(value),
+                _bytes: self._bytes,
+                delivery: self.delivery,
+            }),
         })
     }
 
@@ -173,13 +181,23 @@ impl<T> StreamItem<T> {
         let Payload::Plain(value) = self.value else {
             return Err(Error::Ownership);
         };
-        Ok((value, RequestClaims { _original: self._bytes, _delivery: self.delivery }))
+        Ok((
+            value,
+            RequestClaims {
+                _original: self._bytes,
+                _delivery: self.delivery,
+            },
+        ))
     }
 }
 
 impl<T: MemorySize> StreamItem<T> {
     pub fn charged(value: T, bytes: OwnedSemaphorePermit) -> Result<Self> {
-        let item = Self { value: Payload::Plain(value), _bytes: bytes, delivery: None };
+        let item = Self {
+            value: Payload::Plain(value),
+            _bytes: bytes,
+            delivery: None,
+        };
         if item.memory_size() > item._bytes.num_permits() {
             return Err(Error::Construction);
         }
@@ -194,7 +212,10 @@ impl<T: Clone + Send + Sync + 'static> StreamItem<T> {
             Payload::Plain(value) => value,
             Payload::Owned { response, .. } => response.restore::<T>().ok_or(Error::Ownership)?.into_owned(),
         };
-        let claims = RequestClaims { _original: self._bytes, _delivery: self.delivery };
+        let claims = RequestClaims {
+            _original: self._bytes,
+            _delivery: self.delivery,
+        };
         Ok((value, claims))
     }
 }
@@ -205,7 +226,14 @@ impl<T: MemorySize + Send + Sync + 'static> StreamItem<T> {
         if retained > bytes.num_permits() {
             return Err(Error::Construction);
         }
-        Ok(Self { value: Payload::Owned { response: value.into_erased(), project: owned::<T> }, _bytes: bytes, delivery: None })
+        Ok(Self {
+            value: Payload::Owned {
+                response: value.into_erased(),
+                project: owned::<T>,
+            },
+            _bytes: bytes,
+            delivery: None,
+        })
     }
 }
 
@@ -221,20 +249,20 @@ impl<T> Deref for StreamItem<T> {
 
 impl<T> StreamInput<T> {
     pub fn into_receiver(self) -> mpsc::Receiver<StreamItem<T>> {
-        self.receiver
+        self.receiver.into_inner()
     }
 
     pub fn try_recv(&mut self) -> std::result::Result<StreamItem<T>, mpsc::error::TryRecvError> {
-        self.receiver.try_recv()
+        self.receiver.get_mut().try_recv()
     }
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.recv", level = "trace", skip_all)]
-    pub async fn recv(&mut self) -> Option<StreamItem<T>> {
-        self.receiver.recv().await
+    pub async fn recv(&self) -> Option<StreamItem<T>> {
+        self.receiver.lock().await.recv().await
     }
 
     pub fn close(&mut self) {
-        self.receiver.close();
+        self.receiver.get_mut().close();
     }
 }
 
@@ -403,7 +431,10 @@ pub fn channel<T, E: From<Error>>(settings: StreamSettings) -> Result<(StreamOut
             limit: bytes,
             transferred: transferred.clone(),
         },
-        StreamInput { receiver, transferred },
+        StreamInput {
+            receiver: tokio::sync::Mutex::new(receiver),
+            transferred,
+        },
     ))
 }
 
