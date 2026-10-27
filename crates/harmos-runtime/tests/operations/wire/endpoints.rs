@@ -93,6 +93,14 @@ struct Trace {
 
 struct AttemptGuard(Arc<Trace>);
 
+#[cfg(feature = "grpc")]
+#[derive(Default)]
+struct Gate(Notify);
+
+#[cfg(feature = "grpc")]
+#[harmos_runtime::operation(resources = [Gate], id = "endpoints.slow", response = u32, input = u32, policy = ForwardDeclaration::POLICY)]
+struct SlowDeclaration {}
+
 #[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext],
     operations = [ForwardDeclaration], id = "endpoints.parent", response = u32, policy = ForwardDeclaration::POLICY)]
 #[derive(Clone)]
@@ -135,6 +143,23 @@ impl harmos_runtime::Operation for ParentDeclaration {
     }
 }
 
+#[cfg(feature = "grpc")]
+impl harmos_runtime::Operation for SlowDeclaration {
+    type Error = Error;
+    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+        let gate = ctx.resource::<Gate>();
+        let input = ctx.streams();
+        // Consume Nothing Until The Forwarder Has Handed Off A Full Window.
+        gate.0.notified().await;
+        let mut total = 0;
+        while let Some(item) = input.recv().await {
+            tokio::task::yield_now().await;
+            total += *item;
+        }
+        Ok(total.into())
+    }
+}
+
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
@@ -172,7 +197,107 @@ async fn envelope(
     input.recv().await.unwrap()
 }
 
+#[cfg(feature = "grpc")]
+type SlowEnvelope = harmos_runtime::grpc::InputEnvelope<SlowDeclaration, u32>;
+
+#[cfg(feature = "grpc")]
+type SlowCodec = harmos_runtime::grpc::Codec<harmos_runtime::grpc::Transcoded, SlowEnvelope, harmos_runtime::Response<u32>>;
+
+#[cfg(feature = "grpc")]
+fn frame(value: &SlowEnvelope) -> bytes::Bytes {
+    use harmos_runtime::grpc::{Transcoded, Wire};
+    let mut payload = Vec::new();
+    <Transcoded as Wire<SlowEnvelope>>::encode(value, &mut payload).unwrap();
+    let mut frame = vec![0];
+    frame.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+    frame.extend_from_slice(&payload);
+    frame.into()
+}
+
+#[cfg(feature = "grpc")]
+fn request_body(
+    frames: impl futures_util::Stream<Item = bytes::Bytes> + Send + 'static,
+) -> impl tonic::codegen::Body<Data = bytes::Bytes, Error = std::convert::Infallible> + Send + 'static {
+    use futures_util::StreamExt;
+    let data = |bytes| Ok(http_body::Frame::data(bytes));
+    http_body_util::StreamBody::new(frames.map(data))
+}
+
+// Holds Decoded Items From A Fresh Call Until The Shared Decode Budget Refuses One.
+#[cfg(feature = "grpc")]
+async fn admitted_items(codec: &mut SlowCodec, frames: u32) -> usize {
+    let item = |index| frame(&harmos_runtime::grpc::InputEnvelope::Item(index));
+    let body = request_body(futures_util::stream::iter((0..frames).map(item)));
+    let mut incoming = tonic::codec::Codec::decoder(codec).request(body);
+    let mut held = Vec::new();
+    let refusal = loop {
+        match incoming.message().await {
+            Ok(Some(item)) => held.push(item),
+            Ok(None) => break None,
+            Err(status) => break Some(status),
+        }
+    };
+    assert!(refusal.as_ref().is_none_or(|status| status.code() == tonic::Code::ResourceExhausted), "{refusal:?}");
+    held.len()
+}
+
 /* === Tests === */
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn decoded_charge_releases_on_hand_off() {
+    use futures_util::StreamExt;
+    use harmos_runtime::grpc::{DecodeSettings, EncodeSettings, InputEnvelope};
+    const WINDOW: u32 = 32;
+    const FRAMES: u32 = 128;
+    let decode = DecodeSettings {
+        message_bytes: NonZeroUsize::new(4096).unwrap(),
+        retained_bytes: NonZeroUsize::new(8 * std::mem::size_of::<SlowEnvelope>()).unwrap(),
+    };
+    let encode = EncodeSettings {
+        message_bytes: NonZeroUsize::new(4096).unwrap(),
+        buffer_bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let capacity = admitted_items(&mut SlowCodec::new(decode, encode).unwrap(), FRAMES).await;
+    assert!((2..WINDOW as usize).contains(&capacity), "the window must outgrow the decode budget: {capacity}");
+
+    let runtime = runtime().await;
+    let gate = Arc::new(Gate::default());
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(gate.clone()).unwrap();
+                dependencies
+            })
+            .operation::<SlowDeclaration>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    let mut codec = SlowCodec::new(decode, encode).unwrap();
+    let opened = gate.clone();
+    let frames = futures_util::stream::iter(0..=FRAMES).map(move |index| {
+        // Every Earlier Item Is Already Forwarded Into The Unconsumed Window.
+        if index == WINDOW {
+            opened.0.notify_one();
+        }
+        frame(&if index == 0 { InputEnvelope::Request(SlowDeclaration {}) } else { InputEnvelope::Item(index) })
+    });
+    let incoming = tonic::codec::Codec::decoder(&mut codec).request(request_body(frames));
+    let (request, items) = bounded(harmos_runtime::grpc::open(incoming)).await.unwrap();
+    let (sending, receiving) = stream(StreamSettings {
+        items: NonZeroUsize::new(WINDOW as usize).unwrap(),
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    })
+    .unwrap();
+    let instance = runtime.operations.submit_charged::<SlowDeclaration, _>(request, receiving).unwrap();
+    let total = bounded(harmos_runtime::grpc::input(instance, sending, items)).await.unwrap();
+    assert_eq!(*total, (1..=FRAMES).sum::<u32>());
+    assert_eq!(admitted_items(&mut codec, FRAMES).await, capacity);
+    bounded(runtime.stop()).await.unwrap();
+}
 
 #[tokio::test]
 async fn endpoint_admission_contract() {
