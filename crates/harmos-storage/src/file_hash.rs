@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use crate::{Result, StorageManager};
 use harmos_domain::model::storage::files::FileHash;
-use harmos_domain::operations::storage::{HashFile, ReadFile};
+use harmos_domain::operations::storage::{HashFileRequest, ReadFileRequest};
 
 /* === Constants === */
 
@@ -40,12 +40,12 @@ use harmos_domain::operations::storage::{HashFile, ReadFile};
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
-    pub async fn hash_file(&self, request: HashFile) -> Result<FileHash> {
+    pub async fn hash_file(&self, request: HashFileRequest) -> Result<FileHash> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.hash_file", outcome = "cancelled"));
         context
             .result(span, async {
-                let mut reader = self.read_file(ReadFile { source: request.source, range: request.range }).await?;
+                let mut reader = self.read_file(ReadFileRequest { source: request.source, range: request.range }).await?;
                 let mut hash = Sha256::new();
                 let local = reader.is_local();
                 while let Some(batch) = reader.next().await? {

@@ -111,7 +111,7 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
     }
     let local = project.harmos_path.as_ref().map(std::fs::canonicalize).transpose()?;
     if let Some(root) = &local {
-        for name in ["harmos-domain", &format!("harmos-{kind}")] {
+        for name in ["harmos", &format!("harmos-{kind}")] {
             if !root.join("crates").join(name).join("Cargo.toml").is_file() {
                 return Err(Error::Settings("--harmos-path must name a Harmos source checkout".into()));
             }
@@ -149,7 +149,7 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
 
 // Point The Harmos Dependency Sub-Tables At A Local Checkout: Their Git Key Becomes A Path And Their Revision Goes.
 fn localized(text: &str, root: &Path, kind: &str) -> Result<String, Error> {
-    let local = ["harmos-domain".to_owned(), format!("harmos-{kind}")];
+    let local = ["harmos".to_owned(), format!("harmos-{kind}")];
     let mut dependency: Option<&String> = None;
     let mut lines = Vec::new();
     for line in text.lines() {

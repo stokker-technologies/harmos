@@ -15,7 +15,7 @@
 
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, Objects};
-use harmos_domain::operations::storage::Query;
+use harmos_domain::operations::storage::QueryRequest;
 use harmos_storage::Identifier;
 use harmos_storage::query::transform::{
     Transform,
@@ -92,7 +92,7 @@ async fn labels<C>(
     storage: &StorageManager<C>, at: &StorageCursor, schema: &SchemaKey, versions: ObjectVersions,
 ) -> harmos_storage::Result<Vec<String>> {
     let mut reader = storage
-        .query(Query {
+        .query(QueryRequest {
             at: at.clone(),
             source: Source::Objects(ObjectSelection { schema: Some(schema.clone()), key: None, versions }),
             transforms: vec![Transform::Project(Project {

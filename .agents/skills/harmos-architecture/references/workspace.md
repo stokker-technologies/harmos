@@ -21,26 +21,22 @@ product/
     │       │   └── instrument/
     │       │       ├── mod.rs
     │       │       └── config.rs
-    │       ├── operations/
-    │       │   ├── mod.rs
-    │       │   └── instrument/
-    │       │       ├── mod.rs
-    │       │       └── read.rs
     │       ├── transactions/
     │       ├── state/
     │       ├── records/
     │       └── streams/
+    ├── product-operations/
+    │   └── src/
+    │       ├── lib.rs
+    │       └── instrument/
+    │           ├── mod.rs
+    │           └── read.rs
     ├── product-runtime/
     │   └── src/
     │       ├── lib.rs
     │       ├── error.rs
     │       ├── runtime.rs
     │       ├── instrument/
-    │       ├── operations/
-    │       │   ├── mod.rs
-    │       │   └── instrument/
-    │       │       ├── mod.rs
-    │       │       └── read.rs
     │       ├── transactions/
     │       └── state/
     ├── product-automation/
@@ -60,11 +56,11 @@ product/
                 └── inspect_session.rs
 ```
 
-The domain's `read.rs` owns request, reply and operation metadata; the runtime's
-counterpart owns its implementation. Shared values belong in the domain's
-models. Transaction and state definitions remain portable, while their
-resource-bound execution belongs in runtime. Product records and streams have
-portable contracts; interface-private contributions stay with that interface.
+The operations crate's `read.rs` owns request, reply, declaration metadata and
+the runtime-gated implementation. Shared values belong in domain models.
+Transaction, record and stream contracts retain their domain owners; execution
+composition and resource construction remain in the runtime. Interfaces enable
+the operations crate's `runtime` feature only when they execute its factories.
 
 `runtime.rs` is an illustrative cohesive assembly module, not a mandatory
 filename. Operation groups can contain several related operations; do not
@@ -83,12 +79,14 @@ runtime = ["dep:product-runtime"]
 
 [dependencies]
 product-domain = { path = "../product-domain" }
+product-operations = { path = "../product-operations", default-features = false }
 product-runtime = { path = "../product-runtime", optional = true }
 ```
 
 ```rust
 // product/src/lib.rs
 pub use product_domain as domain;
+pub use product_operations as operations;
 
 #[cfg(feature = "runtime")]
 pub use product_runtime as runtime;
@@ -111,7 +109,8 @@ product = { path = "../product", features = ["runtime"] }
 These are alternative dependency declarations. Published consumers select the
 appropriate version; publishable internal dependencies also need valid version
 requirements. The product's optional `runtime` feature is a consumer convention,
-not a claim that Harmos's own facade has that feature.
+also the feature name on Harmos's facade. The operations crate keeps resource
+dependencies optional under the same feature.
 
 ## Self-Contained And Composed Plugins
 
@@ -123,7 +122,7 @@ independent consumers, not simply because the crate uses Harmos.
 A composed plugin enables `product/runtime`, retains the runtime owner and
 exposes the original product contracts. Its private `inspect_session.rs` can
 still use the vertical layout. If another interface needs that behavior, move
-its contract and implementation into the product owners rather than copying it.
+its vertical operation into the reusable operations crate rather than copying it.
 
 Host-specific files such as a plugin framework's `settings.rs` may remain;
 do not rename or merge them solely to match this illustration. Framework suites,

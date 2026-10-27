@@ -71,7 +71,7 @@ fn normalize(message: &mut prost_reflect::prost_types::DescriptorProto) {
 fn portable_messages_cross() {
     use harmos_domain::Message;
     let value = annotated();
-    let postcard = Message::encode_to_vec(&value);
+    let postcard = Message::encode(&value);
     assert!(<Annotated as Message>::decode(&postcard).unwrap() == value);
     let protobuf = {
         let mut bytes = Vec::new();
@@ -99,7 +99,7 @@ fn boxed_messages_cross() {
     use harmos_domain::Message;
     let request = Envelope { inner: Box::new(annotated()), sequence: 3 };
     let response = Delivered::Boxed(Box::new(annotated()));
-    let postcard = Message::encode_to_vec(&request);
+    let postcard = Message::encode(&request);
     assert!(<Envelope as Message>::decode(&postcard).unwrap() == request);
     let protobuf = {
         let mut bytes = Vec::new();

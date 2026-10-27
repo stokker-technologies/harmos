@@ -36,7 +36,14 @@ mod other {
     #[derive(Clone, Copy, Debug)]
     pub struct Branch;
 
+    #[harmos_runtime::lanes]
+    pub enum BranchLanes {
+        #[default]
+        Open,
+    }
+
     impl Application for Branch {
+        type Lanes = BranchLanes;
         type State = Ledger;
         type Transaction = Movement;
         type Record = Observed;

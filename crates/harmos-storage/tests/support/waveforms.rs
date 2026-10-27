@@ -116,7 +116,7 @@ pub fn inputs(samples: &[Sample]) -> Vec<StreamInput> {
                 item: Identifier::new(format!("phase-{}", sample.phase)).unwrap(),
                 source: None,
                 source_time: Some(UNIX_EPOCH + Duration::from_millis(sample.ordinal)),
-                payload: Message::encode_to_vec(sample),
+                payload: Message::encode(sample),
             },
             stream: Identifier::new(format!("phase-{}", sample.phase)).unwrap(),
             sequence: sample.ordinal,

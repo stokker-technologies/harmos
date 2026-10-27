@@ -17,26 +17,35 @@ license = "Apache-2.0"
 
 # === Package Targets === #
 
+[[bin]]
+name = "__PACKAGE_NAME__"
+path = "src/main.rs"
+required-features = ["runtime"]
+
 # === Features === #
+
+[features]
+default = ["runtime"]
+runtime = ["harmos/runtime", "dep:harmos-sidecar", "dep:tokio"]
 
 # === Dependencies === #
 
 [dependencies]
 # Async
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
 
 # Harmos Sub-Tables Keep Their Layout When cargo-harmos new Substitutes A Local Path
-[dependencies.harmos-domain]
+[dependencies.harmos]
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
-features = ["derive"]
 
 [dependencies.harmos-sidecar]
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
 features = ["derive", "kit"]
+optional = true
 
 
 # === Build Dependencies === #

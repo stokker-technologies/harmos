@@ -16,7 +16,7 @@ version = { workspace = true }
 
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true }
+harmos = { workspace = true, features = ["runtime"] }
 
 # Git
 

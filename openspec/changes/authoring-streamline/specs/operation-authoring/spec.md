@@ -68,6 +68,3 @@ The execution surface SHALL provide operation(request).retry(policy).run() and s
 
 - **WHEN** one invocation overrides retry policy and awaits start
 - **THEN** admission returns a running handle without mutating other calls or the request schema, and preserves cancellation, status, replay safety and response ownership guarantees.
-
-
-

@@ -85,13 +85,13 @@ impl<C: ObjectCatalog> ObjectGroup<'_, C> {
         let limit = NonZeroUsize::new((self.remaining_bytes() - metadata) / 2).ok_or_else(|| invalid("object key exceeds allowance"))?;
         let item = object_key(value.key(), limit)?;
         let key_bytes = item.memory_size();
-        let length = value.encoded_len();
+        let length = value.encoded_size();
         let bytes =
             metadata.checked_add(key_bytes).and_then(|bytes| bytes.checked_add(length)).ok_or_else(|| invalid("object size overflow"))?;
         if bytes > self.remaining_bytes() {
             return Err(invalid("object payload exceeds allowance"));
         }
-        let payload = value.encode_to_vec();
+        let payload = value.encode();
         if payload.len() != length || payload.capacity() > self.remaining_bytes() - metadata - key_bytes {
             return Err(invalid("object codec exceeded its reported allowance"));
         }

@@ -142,7 +142,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             const ENTRY: #harmos::listeners::Entry = #harmos::listeners::Entry {
                 id: #id, source: #source,
                 callback: #harmos::operations::WireDeclaration::of::<
-                    #harmos::listeners::Delivery<#name>
+                    #harmos::listeners::Callback<#name>
                 >(),
             };
         }

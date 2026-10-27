@@ -74,44 +74,42 @@ struct Cancellation {
 
 struct PendingCall(Arc<Cancellation>);
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "shutdown.pending",
-    version = 1,
-    policy = harmos_runtime::operations::OperationPolicy {
+#[harmos_runtime::operation(request = PendingContract, infer_request,
+    id = "shutdown_pending",
+
+    policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(3),
         attempt_timeout: Duration::from_secs(2),
         retries: harmos_runtime::operations::RetryPolicy::Never,
-        restart: harmos_runtime::operations::RestartPolicy::Never,
     },
     response = (),
 )]
+struct PendingContractDeclaration;
+
+#[harmos_runtime::message]
+
 struct PendingContract {}
 
 #[harmos_runtime::catalog]
 enum Operations {
-    PendingContract(PendingContract),
+    PendingContract(PendingContractDeclaration),
 }
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
-}
+use crate::runtime::probe::Lanes;
 
 impl harmos_runtime::operations::Operation for PendingCall {
-    type Declaration = PendingContract;
-    type Resources = Cancellation;
+    type Request = PendingContract;
+    type Response = <PendingContractDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = std::convert::Infallible;
     type Endpoints = ();
-    type Context<'a> = harmos_runtime::operations::Context<'a>;
 
-    async fn initialize<'ctx>(trace: Arc<Cancellation>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> Result<Self, Self::Error> {
+        let trace = context.dependency::<Cancellation>().expect("fixture registers its dependency");
         Ok(Self(trace))
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, _: &mut PendingContract, _: &mut (),
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, _: &mut PendingContract, _: &mut (),
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.started.notify_one();
@@ -128,7 +126,7 @@ impl harmos_runtime::operations::Operation for PendingCall {
 }
 
 struct StopNotification {
-    operations: harmos_runtime::operations::OperationManager,
+    operations: harmos_runtime::operations::OperationManager<crate::runtime::probe::Lanes>,
     operation: harmos_runtime::operations::OperationInstanceId,
     cancelled: Arc<std::sync::OnceLock<bool>>,
 }
@@ -144,18 +142,30 @@ impl std::task::Wake for StopNotification {
 async fn services_stop_first() {
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Cancellation::default());
-    runtime.operations.register_operation::<PendingCall>("shutdown", Lanes::Open, trace.clone()).unwrap();
-    let operation = runtime.operations.submit(PendingContract {}).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::RegistrationExt::lane(
+            harmos_runtime::RegistrationBatch::new({
+                let mut dependencies = harmos_runtime::Dependencies::new();
+                dependencies.insert(trace.clone()).unwrap();
+                dependencies
+            })
+            .implementation::<PendingContractDeclaration, PendingCall>(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
+    let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContract {}).unwrap();
     trace.started.notified().await;
     runtime
         .operations
         .register_service(
             harmos_runtime::services::ServiceDefinition { id: "caller".into(), policy: harmos_runtime::services::POLICY },
             |_: Arc<()>| {
-                |mut context: harmos_runtime::services::Service<Editor>| async move {
+                |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
                     context.stopping().await;
-                    Ok::<(), harmos_runtime::services::Fault<std::convert::Infallible>>(())
+                    Ok::<(), std::convert::Infallible>(())
                 }
             },
         )

@@ -74,7 +74,14 @@ impl Identified for SetGain {
 
 struct Amplifier;
 
+#[harmos_runtime::lanes]
+pub enum AmplifierLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Amplifier {
+    type Lanes = AmplifierLanes;
     type State = Model;
     type Transaction = SetGain;
     type Record = ();

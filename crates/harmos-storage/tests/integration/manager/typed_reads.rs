@@ -25,7 +25,7 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{self, Experiment, Objects, Sample};
-use harmos_domain::operations::storage::Query;
+use harmos_domain::operations::storage::QueryRequest;
 use harmos_storage::Error;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
 use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
@@ -206,7 +206,7 @@ async fn unwritten_schema_empty() {
 
     // The Arrow Query Has No Schema To Answer, So It Still Refuses.
     let mut query = storage
-        .query(Query { at: at.clone(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
+        .query(QueryRequest { at: at.clone(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
         .await
         .unwrap();
     assert!(query.next().await.is_err());
@@ -520,7 +520,7 @@ async fn session_file_pressure() {
         .unwrap();
     let page = typed.next().await.unwrap().unwrap();
     let mut reader = session
-        .read_file(harmos_domain::operations::storage::ReadFile {
+        .read_file(harmos_domain::operations::storage::ReadFileRequest {
             source: harmos_storage::FileSource::Stored(file),
             range: harmos_storage::ByteRange { offset: 0, limit: None },
         })
@@ -553,7 +553,12 @@ async fn session_arrow_pressure() {
     storage.flush().await.unwrap();
     let session = storage.read_session();
     let mut query = session
-        .query(Query { at: storage.cursor_saved(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
+        .query(QueryRequest {
+            at: storage.cursor_saved(),
+            source: Source::Records(samples()),
+            transforms: Vec::new(),
+            slice: RowSlice::default(),
+        })
         .await
         .unwrap();
     assert!(query.next().await.unwrap().is_some());
@@ -615,7 +620,7 @@ async fn receipt_claim_preserves() {
     let object = harmos_storage::ObjectValue {
         schema: harmos_domain::model::storage::catalog::object_schema::<Experiment>().unwrap(),
         item: harmos_storage::ObjectKey::new("once", NonZeroUsize::new(128).unwrap()).unwrap(),
-        payload: harmos_storage::Message::encode_to_vec(&value),
+        payload: harmos_storage::Message::encode(&value),
     };
     let bound = storage.object_receipts_memory(NonZeroUsize::MIN).unwrap();
     let first_claim = session.try_memory(NonZeroUsize::new(bound).unwrap()).unwrap();

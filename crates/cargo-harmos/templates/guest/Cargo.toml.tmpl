@@ -22,20 +22,24 @@ crate-type = ["cdylib", "rlib"]
 
 # === Features === #
 
+[features]
+default = ["runtime"]
+runtime = ["harmos/runtime", "dep:harmos-guest"]
+
 # === Dependencies === #
 
 # Harmos Sub-Tables Keep Their Layout When cargo-harmos new Substitutes A Local Path
-[dependencies.harmos-domain]
+[dependencies.harmos]
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
-features = ["derive"]
 
 [dependencies.harmos-guest]
 git = "https://github.com/stokker-technologies/harmos"
 rev = "__HARMOS_REVISION__"
 default-features = false
 features = ["derive", "kit"]
+optional = true
 
 
 # === Build Dependencies === #

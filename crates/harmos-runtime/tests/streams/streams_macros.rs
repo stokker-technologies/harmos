@@ -142,7 +142,14 @@ impl Transaction<State> for Change {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum StudioLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Studio {
+    type Lanes = StudioLanes;
     type State = State;
     type Transaction = Change;
     type Record = ();
@@ -277,7 +284,7 @@ fn stream_attribute_carries() {
     use harmos_runtime::{Message, StreamSpec};
 
     let row = PresentedSample { voltage: -12.5, sample_index: u64::MAX };
-    let decoded = PresentedSample::decode(&row.encode_to_vec()).unwrap();
+    let decoded = PresentedSample::decode(&row.encode()).unwrap();
     assert_eq!(decoded.voltage.to_bits(), row.voltage.to_bits());
     assert_eq!(decoded.sample_index, u64::MAX);
     assert_eq!(<PresentedSample as StreamSpec>::metadata().label, "Samples");

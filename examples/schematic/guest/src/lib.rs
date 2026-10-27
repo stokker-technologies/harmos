@@ -9,16 +9,9 @@
 
 /* === Modules === */
 
-mod error;
-mod operations;
-
-#[cfg(feature = "benchmark")]
-#[path = "../../transfer.rs"]
-mod transfer;
-
 /* === Re-Exports === */
 
-pub use error::Error;
+pub use std::convert::Infallible as Error;
 
 /* === Imports === */
 
@@ -29,8 +22,6 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "benchmark")]
-use harmos_guest as carrier;
 use harmos_guest::Context;
 use harmos_guest::operations::{OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable};
 
@@ -42,14 +33,12 @@ harmos_guest::export_plugin!(Plugin, capacity = 8);
 
 /* === Type Aliases === */
 
-#[cfg(feature = "benchmark")]
-type TransferContext = harmos_guest::Context;
-
 /* === Structs === */
 
 pub struct Plugin {
+    hash: Arc<schematic_operations::resources::HashProvider>,
     #[cfg(feature = "benchmark")]
-    transfer: Arc<transfer::Store>,
+    transfer: Arc<schematic_operations::transfer::Store>,
     resources: Arc<()>,
 }
 
@@ -60,12 +49,12 @@ pub struct Plugin {
 /* === Implementations === */
 
 impl harmos_guest::operations::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: OperationPolicy = schematic_domain::operations::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = schematic_operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[cfg_attr(not(feature = "benchmark"), harmos_guest::plugin(id = "schematic-tools", provides = schematic_domain::operations::Operations, requires = ()))]
-#[cfg_attr(feature = "benchmark", harmos_guest::plugin(id = "schematic-tools", provides = schematic_domain::operations::transfer::Guest, requires = schematic_domain::operations::transfer::GuestRequires))]
+#[cfg_attr(not(feature = "benchmark"), harmos_guest::plugin(id = "schematic_tools", provides = schematic_operations::Operations, requires = ()))]
+#[cfg_attr(feature = "benchmark", harmos_guest::plugin(id = "schematic_tools", provides = schematic_operations::transfer::Guest, requires = schematic_operations::transfer::GuestRequires))]
 impl harmos_guest::Plugin for Plugin {
     type Config = ();
     type Error = Error;
@@ -74,8 +63,21 @@ impl harmos_guest::Plugin for Plugin {
 
     fn prepare(_: ()) -> Result<Self, Error> {
         Ok(Self {
+            hash: Arc::new(schematic_operations::resources::HashProvider {
+                hasher: Arc::new(|context, request| {
+                    Box::pin(async move {
+                        use harmos_guest::Host;
+                        let host = context.dependency::<harmos_guest::Context>()?;
+                        let response = host
+                            .call::<harmos_guest::operations::storage::HashFile>(request)
+                            .await
+                            .map_err(|error| schematic_operations::Error::Host(Box::new(error)))?;
+                        Ok(*response)
+                    })
+                }),
+            }),
             #[cfg(feature = "benchmark")]
-            transfer: Arc::new(transfer::Store::default()),
+            transfer: Arc::new(schematic_operations::transfer::Store::default()),
             resources: Arc::new(()),
         })
     }
@@ -84,16 +86,18 @@ impl harmos_guest::Plugin for Plugin {
         Arc::clone(&self.resources)
     }
 
-    fn bind_operations(&self, table: &mut WireTable<Context>) -> Result<(), ServingError> {
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), ServingError> {
+        let mut dependencies = harmos_guest::Dependencies::new();
+        dependencies.insert(self.hash.clone()).expect("each dependency is inserted once");
         #[cfg(feature = "benchmark")]
-        {
-            let direction = StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap() };
-            let limits = WireStreamLimits { input: direction, output: direction };
-            table.bind_streaming_operations::<transfer::Operations, transfer::Store>(Arc::clone(&self.transfer), limits)?;
-        }
-        let direction = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() };
-        let limits = WireStreamLimits { input: direction, output: direction };
-        table.bind_streaming_operations::<operations::Operations, ()>(self.resources(), limits)
+        dependencies.insert(self.transfer.clone()).expect("each dependency is inserted once");
+        let direction = StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap() };
+        table.stream_limits(WireStreamLimits { input: direction, output: direction })?;
+        #[cfg(feature = "benchmark")]
+        let batch = schematic_operations::transfer::Guest::registration(dependencies);
+        #[cfg(not(feature = "benchmark"))]
+        let batch = schematic_operations::Operations::registration(dependencies);
+        table.register(batch)
     }
 
     async fn initialize(&mut self, _: &Context) -> Result<(), Error> {

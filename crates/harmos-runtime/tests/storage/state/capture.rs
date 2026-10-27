@@ -85,7 +85,14 @@ enum Records {
 
 /* === Implementations === */
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl harmos_runtime::Application for Model {
+    type Lanes = ModelLanes;
     type State = u64;
     type Transaction = Transactions;
     type Record = Records;
@@ -372,14 +379,14 @@ async fn reconciliation_saves_capture() {
             storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
             Ok(())
         })
-        .service("producer", move |context: harmos_runtime::services::Service<Model>| {
+        .service("producer", move |context: harmos_runtime::services::ServiceContext<Model>| {
             let check = check.clone();
             let notify = notify.clone();
             async move {
                 assert_eq!(check.status().saved.sequence, 1);
                 context.records().publish(Observed { before: 0 }).await.unwrap();
                 notify.notify_one();
-                Ok::<(), harmos_runtime::services::Fault<String>>(())
+                Ok::<(), std::io::Error>(())
             }
         })
         .runtime_with_storage(&storage)
@@ -588,7 +595,7 @@ async fn registration_stores_schema() {
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     storage.flush().await.unwrap();
     let mut reader = storage
-        .query(harmos_runtime::storage::operations::Query {
+        .query(harmos_runtime::storage::operations::QueryRequest {
             at: storage.cursor_saved(),
             source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
                 schema: Some(key.clone()),
@@ -609,7 +616,7 @@ async fn registration_stores_schema() {
         }
     }
     assert_eq!(stored, vec![definition.graph().clone()]);
-    let payload = harmos_runtime::Message::encode_to_vec(&Message { value: "retained".into() });
+    let payload = harmos_runtime::Message::encode(&Message { value: "retained".into() });
     drop(definition);
     Validator::from_schema(&stored[0], &harmos_runtime::config::SchemaSettings::default()).unwrap().validate(&payload).unwrap();
     drop(reader);

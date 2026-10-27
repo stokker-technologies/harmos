@@ -14,18 +14,23 @@
 /* === Re-Exports === */
 
 pub use harmos_domain as domain;
-#[cfg(feature = "runtime")]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use harmos_runtime::*;
+
+#[cfg(all(feature = "runtime", target_arch = "wasm32"))]
+pub use harmos_sdk::*;
 
 #[cfg(not(feature = "runtime"))]
 pub use harmos_domain::*;
 
-#[cfg(not(feature = "runtime"))]
+#[cfg(any(not(feature = "runtime"), target_arch = "wasm32"))]
 pub mod prelude {
     pub use harmos_domain::{
         Backoff, Jitter, Message, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, RequestFor, RestartPolicy,
         RetryPolicy, ServicePolicy, catalog, message, operation,
     };
+    #[cfg(feature = "runtime")]
+    pub use harmos_sdk::{Dependencies, Operation, OperationContext, RegistrationBatch, Response, Service};
 }
 
 /* === Imports === */

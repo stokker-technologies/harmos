@@ -24,7 +24,7 @@ use tokio::{sync::Mutex, task::JoinHandle};
 
 // Local Imports
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
-use harmos_domain::operations::storage::{CaptureFile, FollowFile, HashFile, ReadFile};
+use harmos_domain::operations::storage::{CaptureFileRequest, FollowFileRequest, HashFileRequest, ReadFileRequest};
 use harmos_storage::*;
 
 /* === Constants === */
@@ -116,7 +116,7 @@ fn metadata(id: &str) -> FileMetadata {
 }
 
 async fn contents(storage: &StorageManager, source: FileSource, range: ByteRange) -> Vec<u8> {
-    let mut reader = storage.read_file(ReadFile { source, range }).await.unwrap();
+    let mut reader = storage.read_file(ReadFileRequest { source, range }).await.unwrap();
     let mut bytes = Vec::new();
     while let Some(batch) = reader.next().await.unwrap() {
         bytes.extend_from_slice(batch.bytes());
@@ -134,7 +134,7 @@ async fn local_file_transfer() {
     let storage = storage(&directory.path().join("backend")).await;
     let source = FileSource::Local(path.clone());
     let whole = ByteRange { offset: 0, limit: None };
-    let mut reader = storage.read_file(ReadFile { source: source.clone(), range: whole }).await.unwrap();
+    let mut reader = storage.read_file(ReadFileRequest { source: source.clone(), range: whole }).await.unwrap();
     let batch = reader.next().await.unwrap().unwrap();
     let backing_bytes = batch.bytes().len();
     let view = batch.slice(2..10);
@@ -145,26 +145,32 @@ async fn local_file_transfer() {
     drop(view);
     assert_eq!(storage.status().read_bytes, 0);
 
-    let hash = storage.hash_file(HashFile { source: source.clone(), range: whole }).await.unwrap();
+    let hash = storage.hash_file(HashFileRequest { source: source.clone(), range: whole }).await.unwrap();
     assert_eq!(hash.bytes_read, expected.len() as u64);
     assert_eq!(hash.sha256, <[u8; 32]>::from(Sha256::digest(&expected)));
     let captured = storage
-        .capture_file(CaptureFile { source, range: whole, metadata: metadata("captured"), consistency: CaptureConsistency::Stable })
+        .capture_file(CaptureFileRequest { source, range: whole, metadata: metadata("captured"), consistency: CaptureConsistency::Stable })
         .await
         .unwrap();
     assert!(storage.status().saved.covers(&captured.position).unwrap());
     std::fs::write(&path, b"changed after capture").unwrap();
     let stored = FileSource::Stored(captured.clone());
     assert_eq!(contents(&storage, stored.clone(), whole).await, expected);
-    assert_eq!(storage.hash_file(HashFile { source: stored.clone(), range: whole }).await.unwrap(), hash);
+    assert_eq!(storage.hash_file(HashFileRequest { source: stored.clone(), range: whole }).await.unwrap(), hash);
     let range = ByteRange { offset: 17, limit: Some(83) };
     let second = storage
-        .capture_file(CaptureFile { source: stored, range, metadata: metadata("independent"), consistency: CaptureConsistency::Bounded })
+        .capture_file(CaptureFileRequest {
+            source: stored,
+            range,
+            metadata: metadata("independent"),
+            consistency: CaptureConsistency::Bounded,
+        })
         .await
         .unwrap();
     assert_ne!(captured.position, second.position);
     assert_eq!(contents(&storage, FileSource::Stored(second), whole).await, expected[17..100]);
-    let mut follow = storage.follow_file(FollowFile { source: FileSource::Stored(captured), start: FollowStart::End }).await.unwrap();
+    let mut follow =
+        storage.follow_file(FollowFileRequest { source: FileSource::Stored(captured), start: FollowStart::End }).await.unwrap();
     assert!(follow.next().await.unwrap().is_none());
     assert_eq!(follow.completion().unwrap().bytes, 0);
     drop(follow);
@@ -181,7 +187,7 @@ async fn capture_rejects_mutation() {
     for (index, consistency, replacement) in [(0, CaptureConsistency::Stable, vec![9; 8193]), (1, CaptureConsistency::Bounded, vec![9; 1])]
     {
         std::fs::write(&path, vec![7; 8192]).unwrap();
-        let request = CaptureFile {
+        let request = CaptureFileRequest {
             source: FileSource::Local(path.clone()),
             range: ByteRange { offset: 0, limit: None },
             metadata: metadata(&format!("mutation-{index}")),
@@ -211,7 +217,7 @@ async fn local_follow_changes() {
     std::fs::write(&path, b"first").unwrap();
     let storage = storage(&directory.path().join("backend")).await;
     let source = FileSource::Local(path.clone());
-    let mut follower = storage.follow_file(FollowFile { source: source.clone(), start: FollowStart::Beginning }).await.unwrap();
+    let mut follower = storage.follow_file(FollowFileRequest { source: source.clone(), start: FollowStart::Beginning }).await.unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"first");
     std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"second").unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"second");
@@ -222,10 +228,10 @@ async fn local_follow_changes() {
     std::fs::write(&path, b"replacement").unwrap();
     assert_eq!(follower.next().await.unwrap().unwrap().event(), &FileEvent::Replaced);
     assert_eq!(follower.next().await.unwrap().unwrap().data().unwrap(), b"replacement");
-    let mut tail = storage.follow_file(FollowFile { source: source.clone(), start: FollowStart::End }).await.unwrap();
+    let mut tail = storage.follow_file(FollowFileRequest { source: source.clone(), start: FollowStart::End }).await.unwrap();
     std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"tail").unwrap();
     assert_eq!(tail.next().await.unwrap().unwrap().data().unwrap(), b"tail");
-    let mut at = storage.follow_file(FollowFile { source, start: FollowStart::At(2) }).await.unwrap();
+    let mut at = storage.follow_file(FollowFileRequest { source, start: FollowStart::At(2) }).await.unwrap();
     assert_eq!(at.next().await.unwrap().unwrap().data().unwrap(), b"placementtail");
     drop((follower, tail, at));
     storage.close().await.unwrap();
@@ -240,15 +246,15 @@ async fn native_path_rules() {
     let path = directory.path().join(name);
     std::fs::write(&path, b"native bytes").unwrap();
     let storage = storage(&directory.path().join("backend")).await;
-    let request = HashFile { source: FileSource::Local(path.clone()), range: ByteRange { offset: 0, limit: None } };
+    let request = HashFileRequest { source: FileSource::Local(path.clone()), range: ByteRange { offset: 0, limit: None } };
     assert_eq!(storage.hash_file(request.clone()).await.unwrap().bytes_read, 12);
     let link = directory.path().join("linked-file");
     symlink(&path, &link).unwrap();
-    assert!(storage.hash_file(HashFile { source: FileSource::Local(link), ..request.clone() }).await.is_err());
+    assert!(storage.hash_file(HashFileRequest { source: FileSource::Local(link), ..request.clone() }).await.is_err());
     let alias = directory.path().join("linked-directory");
     symlink(directory.path(), &alias).unwrap();
     let through = alias.join(path.file_name().unwrap());
-    assert!(storage.hash_file(HashFile { source: FileSource::Local(through), ..request }).await.is_err());
+    assert!(storage.hash_file(HashFileRequest { source: FileSource::Local(through), ..request }).await.is_err());
     storage.close().await.unwrap();
 }
 
@@ -381,7 +387,7 @@ async fn sessions_survive_reopen() {
     assert_eq!(third.file_progress(&file).await.unwrap(), FileProgress { length: expected.len() as u64, phase: FilePhase::Finished });
     assert_eq!(third.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
     assert_eq!(third.resume_file_once(&resume, &written.session).await.unwrap(), resumed);
-    let request = ReadFile {
+    let request = ReadFileRequest {
         source: harmos_domain::model::storage::files::FileSource::Stored(reference.clone()),
         range: ByteRange { offset: 0, limit: None },
     };

@@ -24,10 +24,8 @@ use std::path::Path;
 // Local Imports
 use crate::Result;
 use harmos::{state::Focus, state::PrincipalId};
-use schematic_app::domain::{
-    model,
-    operations::{ProposeRoute, ValidateSchematic},
-};
+use schematic_app::domain::model;
+use schematic_app::operations::{ProposeRouteRequest, ValidateSchematicRequest};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -135,14 +133,14 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         })
         .collect();
     let schematic = model::Snapshot { symbols, connections };
-    let validation = ValidateSchematic { schematic: schematic.clone() };
-    let validation = runtime.operations.call(validation).await?;
+    let validation = ValidateSchematicRequest { schematic: schematic.clone() };
+    let validation = runtime.operation(validation).run().await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
     let from = snapshot.symbol(SymbolId(1)).position;
     let to = snapshot.symbol(SymbolId(2)).position;
-    let request = ProposeRoute { from: model::Point { x: from.x, y: from.y }, to: model::Point { x: to.x, y: to.y } };
-    let proposed = runtime.operations.call(request).await?;
+    let request = ProposeRouteRequest { from: model::Point { x: from.x, y: from.y }, to: model::Point { x: to.x, y: to.y } };
+    let proposed = runtime.operation(request).run().await?;
     let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
     let change = ApplyRoute { net: NetId(1), points };
     state.commit(change).await?;

@@ -46,7 +46,14 @@ enum Records {
 
 /* === Implementations === */
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl harmos_runtime::Application for Model {
+    type Lanes = ModelLanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = Records;
@@ -134,7 +141,7 @@ async fn discovery_shares_producer() {
             .unwrap()
     ));
     let message = Message { value: "saved".into() };
-    definition.validate(&harmos_runtime::Message::encode_to_vec(&message)).unwrap();
+    definition.validate(&harmos_runtime::Message::encode(&message)).unwrap();
     assert!(matches!(definition.validate(&[0xff]), Err(Error::RecordPayload { .. })));
     assert!(
         producer

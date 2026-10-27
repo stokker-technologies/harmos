@@ -107,6 +107,12 @@ struct Obsolete {
 
 /* === Enums === */
 
+#[harmos::lanes]
+pub enum TestLanes {
+    #[default]
+    Open,
+}
+
 #[harmos::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -211,6 +217,7 @@ impl Application for Model {
     type Record = Facts;
     type Streams = ();
     type Resources = ();
+    type Lanes = TestLanes;
 }
 
 impl Wire for Model {

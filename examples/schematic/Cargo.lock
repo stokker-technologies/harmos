@@ -844,6 +844,7 @@ version = "0.1.6"
 dependencies = [
  "harmos-domain",
  "harmos-runtime",
+ "harmos-sdk",
 ]
 
 [[package]]
@@ -856,6 +857,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror",
  "time",
 ]
@@ -1628,6 +1630,7 @@ version = "0.1.6"
 dependencies = [
  "harmos",
  "schematic-domain",
+ "schematic-operations",
  "schematic-storage",
  "serde",
  "serde_json",
@@ -1646,6 +1649,7 @@ dependencies = [
  "harmos-packaging",
  "schematic-app",
  "schematic-domain",
+ "schematic-operations",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1671,8 +1675,19 @@ dependencies = [
  "harmos-guest",
  "harmos-packaging",
  "schematic-domain",
+ "schematic-operations",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "schematic-operations"
+version = "0.1.6"
+dependencies = [
+ "harmos",
+ "schematic-domain",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -1683,6 +1698,7 @@ dependencies = [
  "harmos-packaging",
  "harmos-sidecar",
  "schematic-domain",
+ "schematic-operations",
  "tempfile",
  "thiserror",
  "tokio",

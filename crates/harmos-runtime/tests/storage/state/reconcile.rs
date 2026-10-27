@@ -26,7 +26,7 @@ use super::closed;
 use crate::storage::support::{HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos_runtime::storage::ReadLimits;
-use harmos_runtime::{Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position};
+use harmos_runtime::{Builder, Error, Identifier, Runtime, services::ServiceContext, state::Position};
 
 /* === Constants === */
 
@@ -79,7 +79,7 @@ impl Store {
             )
             .await
             .unwrap();
-        let payload = harmos_runtime::Message::encode_to_vec(&Balance { value: 8 });
+        let payload = harmos_runtime::Message::encode(&Balance { value: 8 });
         storage.write_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
         runtime.stop().await.unwrap();
@@ -110,14 +110,13 @@ fn failure() -> Error {
 async fn restore(
     journal: harmos_runtime::state::StateManager<Bank>, storage: StorageManager<harmos_runtime::storage::ErasedCatalog>,
 ) -> harmos_runtime::Result<()> {
-    use harmos_runtime::storage::operations::Query;
     use harmos_runtime::storage::query::transform::{
         Transform,
         project::{Project, Projection},
     };
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(Query {
+        .query(harmos_runtime::storage::operations::QueryRequest {
             at: storage.cursor_saved(),
             source: Source::Records(RecordSelection {
                 schema: schema(),
@@ -160,7 +159,7 @@ async fn saved_facts_reconcile() {
         let saved = storage.clone();
         let runtime = builder()
             .reconcile(restore)
-            .service("application", move |context: Service<Bank>| {
+            .service("application", move |context: ServiceContext<Bank>| {
                 let signal = signal.clone();
                 let saved = saved.clone();
                 async move {
@@ -168,7 +167,7 @@ async fn saved_facts_reconcile() {
                     assert_eq!(context.state().stored(), Position(2));
                     assert_eq!(saved.status().recovery_saved.sequence, 2);
                     signal.notify_one();
-                    Ok::<(), Fault<String>>(())
+                    Ok::<(), std::io::Error>(())
                 }
             })
             .runtime_with_storage(&storage)
@@ -194,9 +193,9 @@ async fn reconciliation_precedes_services() {
             storage.write_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
             restore(journal, storage).await
         })
-        .service("application", move |_context: Service<Bank>| {
+        .service("application", move |_context: ServiceContext<Bank>| {
             mark.store(true, Ordering::SeqCst);
-            async { Ok::<(), Fault<String>>(()) }
+            async { Ok::<(), std::io::Error>(()) }
         })
         .runtime_with_storage(&storage);
     tokio::pin!(opening);
@@ -234,9 +233,9 @@ async fn failed_reconcile_repairs() {
             journal.commit(deposit(2)).await.unwrap();
             Err(failure())
         })
-        .service("application", move |_context: Service<Bank>| {
+        .service("application", move |_context: ServiceContext<Bank>| {
             mark.store(true, Ordering::SeqCst);
-            async { Ok::<(), Fault<String>>(()) }
+            async { Ok::<(), std::io::Error>(()) }
         })
         .runtime_with_storage(&storage)
         .await;
@@ -299,9 +298,9 @@ async fn repair_save_blocks() {
                 harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
                 Ok(())
             })
-            .service("application", move |_context: Service<Bank>| {
+            .service("application", move |_context: ServiceContext<Bank>| {
                 mark.store(true, Ordering::SeqCst);
-                async { Ok::<(), Fault<String>>(()) }
+                async { Ok::<(), std::io::Error>(()) }
             })
             .runtime_with_storage(&storage)
             .await

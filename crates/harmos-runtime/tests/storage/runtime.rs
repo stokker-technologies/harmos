@@ -20,7 +20,7 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::{Bank, Data, Fixture, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
-use harmos_runtime::{Error, services::Fault, services::Service, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
+use harmos_runtime::{Error, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Constants === */
 
@@ -111,7 +111,7 @@ async fn producers_flush_storage() {
             move |_: Arc<()>| {
                 let storage = storage.clone();
                 let started = started.clone();
-                move |mut context: Service<Bank>| {
+                move |mut context: ServiceContext<Bank>| {
                     let storage = storage.clone();
                     let started = started.clone();
                     async move {
@@ -119,7 +119,7 @@ async fn producers_flush_storage() {
                         context.stopping().await;
                         write(&storage, "service").await;
                         storage.flush().await.unwrap();
-                        Ok::<(), Fault<String>>(())
+                        Ok::<(), std::io::Error>(())
                     }
                 }
             },

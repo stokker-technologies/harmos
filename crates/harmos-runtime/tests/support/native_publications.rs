@@ -22,18 +22,17 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
+use harmos_runtime::operations::{Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable};
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
-use harmos_runtime::{Message, Runtime, services::Service, services::ServiceStatus};
+use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
 
 /* === Constants === */
 
-const POLICY: OperationPolicy = OperationPolicy {
+const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     timeout: Duration::from_secs(60),
     attempt_timeout: Duration::from_secs(60),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -41,7 +40,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 type Source = harmos_sidecar::PluginNative<Producer>;
-type Resident = Supervised<Model, Source, fn(&Service<Model>, Notice)>;
+type Resident = Supervised<Model, Source, fn(&ServiceContext<Model>, Notice)>;
 
 /* === Structs === */
 
@@ -49,7 +48,7 @@ pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
 }
 
 #[harmos_runtime::stream(id = "publication.sample", window = 1024)]
@@ -60,14 +59,17 @@ pub struct Sample {
 }
 
 // One Producer Run: `rows` Rows In Calls Of `batch` Rows Each.
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "publication.publish",
-    version = 1,
+#[harmos_runtime::operation(request = Publish, infer_request,
+    id = "publication_publish",
+
     policy = POLICY,
     response = Timings,
     visibility = Visibility::Shared,
 )]
+pub struct PublishDeclaration;
+
+#[harmos_runtime::message]
+
 pub struct Publish {
     pub rows: u32,
     pub batch: u32,
@@ -87,7 +89,7 @@ struct Publishing;
 
 #[harmos_runtime::catalog]
 pub enum Operations {
-    Publish(Publish),
+    Publish(PublishDeclaration),
 }
 
 #[harmos_runtime::lanes]
@@ -101,6 +103,7 @@ pub enum Lanes {
 /* === Implementations === */
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -113,7 +116,7 @@ impl harmos_runtime::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos_runtime::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication-producer", provides = Operations, requires(harmos_runtime::operations::streams::Publish), streams(Sample))]
+#[harmos_runtime::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication_producer", provides = Operations, requires(harmos_runtime::operations::streams::Publish), streams(Sample))]
 impl harmos_runtime::Plugin for Producer {
     type Config = ();
     type Context = Supervisor;
@@ -128,8 +131,10 @@ impl harmos_runtime::Plugin for Producer {
     fn resources(&self) -> Arc<()> {
         Arc::new(())
     }
-    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
-        table.bind_operation::<Publishing>(self.resources())
+    fn bind_operations(&self, table: &mut WireTable) -> Result<(), harmos_runtime::operations::ServingError> {
+        table.register(
+            harmos_runtime::RegistrationBatch::new(harmos_runtime::Dependencies::new()).implementation::<PublishDeclaration, Publishing>(),
+        )
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
@@ -140,17 +145,17 @@ impl harmos_runtime::Plugin for Producer {
 }
 
 impl Operation for Publishing {
-    type Declaration = Publish;
-    type Resources = ();
+    type Request = Publish;
+    type Response = <PublishDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Refusal;
     type Endpoints = ();
-    type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+    async fn initialize(_: harmos_runtime::OperationContext) -> Result<Self, Refusal> {
         Ok(Self)
     }
-    async fn run<'a>(
-        &mut self, host: Self::Context<'a>, burst: &mut Publish, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, host: harmos_runtime::OperationContext, burst: &mut Publish, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Timings>, Refusal> {
+        let host = host.dependency::<Supervisor>().expect("carrier context");
         let result: ::core::result::Result<Timings, Self::Error> = async move {
             let publisher = host.publisher::<Producer>();
             let size = burst.batch.max(1) as usize;
@@ -206,7 +211,7 @@ impl Fixture {
                 ..PluginContributions::default()
             },
         };
-        let resident: Resident = Supervised::new(source, notices as fn(&Service<Model>, Notice));
+        let resident: Resident = Supervised::new(source, notices as fn(&ServiceContext<Model>, Notice));
         let runtime = Runtime::<Model>::builder((), ())
             .register(Lanes::catalog())
             .operation_settings(harmos_runtime::operations::Settings {
@@ -218,18 +223,23 @@ impl Fixture {
             .unwrap();
         runtime
             .operations
-            .register_wire_operation::<harmos_runtime::sidecar::Publish<_, _, _>>(
-                "native-publication",
+            .register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(Arc::new(resident.clone())).unwrap();
+                    dependencies
+                })
+                .implementation::<harmos_runtime::operations::streams::Publish, harmos_runtime::sidecar::Publish<Model, Source, fn(&ServiceContext<Model>, Notice)>>(),
                 Lanes::Open,
-                Arc::new(resident.clone()),
-            )
+            ))
+            .await
             .unwrap();
         runtime
             .operations
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "producer".into(),
-                    policy: harmos_runtime::operations::OperationPolicy {
+                    policy: harmos_runtime::ServicePolicy {
                         restart: harmos_runtime::operations::RestartPolicy::Never,
                         ..harmos_runtime::services::POLICY
                     },
@@ -267,7 +277,12 @@ impl Fixture {
 
     // Publish `rows` rows in calls of `batch` rows; answers each call's latency.
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
-        let bytes = self.runtime.operations.call_encoded(Publish::ID, Publish { rows, batch }.encode_to_vec()).await.unwrap();
+        let bytes = self
+            .runtime
+            .operations
+            .call_encoded(&format!("publication_producer.{}", PublishDeclaration::ID), Publish { rows, batch }.encode())
+            .await
+            .unwrap();
         Timings::decode(&bytes).unwrap().durations()
     }
 }
@@ -276,6 +291,6 @@ impl Fixture {
 
 /* === Private Functions === */
 
-fn notices(_: &Service<Model>, _: Notice) {}
+fn notices(_: &ServiceContext<Model>, _: Notice) {}
 
 /* === Tests === */

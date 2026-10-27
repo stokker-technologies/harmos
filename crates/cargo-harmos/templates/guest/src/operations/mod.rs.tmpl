@@ -7,7 +7,7 @@
  * ***
  */
 
-// The Closed Catalog Of Operation Implementations.
+// The Closed Catalog Of Authored Operations.
 
 /* === Modules === */
 pub mod greeting;
@@ -23,6 +23,11 @@ pub mod greeting;
 // Local Imports
 
 /* === Constants === */
+pub const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    retries: harmos::operations::RetryPolicy::Never,
+};
 
 /* === Macros === */
 
@@ -31,6 +36,10 @@ pub mod greeting;
 /* === Structs === */
 
 /* === Enums === */
+#[harmos::catalog]
+pub enum Operations {
+    Greet(greeting::Greet),
+}
 
 /* === Traits === */
 

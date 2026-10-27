@@ -24,11 +24,11 @@ use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos::config::PluginSettings;
 use harmos::guest::{Host, Loaded};
-use schematic_domain::operations::Operations;
+use schematic_operations::Operations;
 
 /* === Constants === */
 
-pub const NAME: &str = "schematic-tools";
+pub const NAME: &str = "schematic_tools";
 
 const SDK_ENCODING_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 

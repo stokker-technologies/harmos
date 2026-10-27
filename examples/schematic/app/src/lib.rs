@@ -27,6 +27,7 @@ mod wire;
 
 pub use error::{Error, Result};
 pub use schematic_domain as domain;
+pub use schematic_operations as operations;
 
 /* === Imports === */
 

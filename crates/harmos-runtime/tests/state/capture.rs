@@ -91,7 +91,14 @@ impl harmos_runtime::state::Invert<i64> for Add {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Model {
+    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;

@@ -25,6 +25,8 @@ crate-type = ["cdylib", "rlib"]
 # === Features === #
 
 [features]
+default = ["runtime"]
+runtime = []
 benchmark = []
 
 # === Dependencies === #
@@ -35,6 +37,7 @@ benchmark = []
 # Local
 harmos-guest = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
 schematic-domain = { path = "../domain" }
+schematic-operations = { path = "../operations", features = ["runtime"] }
 
 # Git
 
@@ -73,6 +76,7 @@ tracing = { workspace = true, default-features = true }
 harmos-domain = { workspace = true }
 harmos-packaging = { workspace = true, features = ["generate-proto"] }
 schematic-domain = { path = "../domain" }
+schematic-operations = { path = "../operations" }
 
 # Git
 

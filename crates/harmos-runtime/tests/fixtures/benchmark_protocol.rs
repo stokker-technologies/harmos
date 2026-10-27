@@ -18,13 +18,12 @@
 // Standard Library Imports
 use std::convert::Infallible;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use std::time::Duration;
 
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
+use harmos_runtime::operations::{Operation, RetryPolicy, Visibility};
 
 /* === Constants === */
 
@@ -36,16 +35,19 @@ use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPol
 
 pub struct Model;
 
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "benchmark.echo", version = 1, response = Payload,
+#[harmos_runtime::operation(request = Echo, infer_request,
+    id = "benchmark_echo",  response = Payload,
     visibility = Visibility::Shared,
-    policy = OperationPolicy {
+    policy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(30), attempt_timeout: Duration::from_secs(30),
-        retries: RetryPolicy::Never, restart: RestartPolicy::Never,
+        retries: RetryPolicy::Never,
     },
     grpc(package = "benchmark.v1", service = "Commands", method = "Echo"),
 )]
+pub struct EchoDeclaration;
+
+#[harmos_runtime::message]
+
 pub struct Echo {
     pub bytes: Vec<u8>,
 }
@@ -70,6 +72,7 @@ pub enum Lanes {
 /* === Implementations === */
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -78,18 +81,17 @@ impl harmos_runtime::Application for Model {
 }
 
 impl Operation for Echoing {
-    type Declaration = Echo;
-    type Resources = ();
+    type Request = Echo;
+    type Response = <EchoDeclaration as harmos_runtime::OperationDeclaration>::Response;
     type Error = Infallible;
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Infallible> {
+    async fn initialize(_context: harmos_runtime::OperationContext) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
-    async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, request: &mut Echo, _: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Echo, _: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Payload>, Infallible> {
         let bytes = std::mem::take(&mut request.bytes);
         Ok(Payload { bytes }.into())

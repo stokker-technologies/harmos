@@ -17,7 +17,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 
 // Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-use harmos_domain::operations::storage::Query;
+use harmos_domain::operations::storage::QueryRequest;
 use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_storage::*;
 use harmos_storage::{Identifier, Message};
@@ -94,7 +94,7 @@ impl Mapped {
                     item: item.clone(),
                     source: None,
                     source_time: None,
-                    payload: payload.encode_to_vec(),
+                    payload: payload.encode(),
                 }])
                 .await
                 .unwrap();
@@ -103,12 +103,12 @@ impl Mapped {
         Self { _directory: directory, storage, schema, at }
     }
 
-    fn query(&self, item: Option<&str>) -> Query {
+    fn query(&self, item: Option<&str>) -> QueryRequest {
         let item = item.map(|item| {
             let identifier = Identifier::new(item);
             identifier.unwrap()
         });
-        Query {
+        QueryRequest {
             at: self.at.clone(),
             source: Source::Records(RecordSelection {
                 schema: self.schema.clone(),
@@ -220,7 +220,7 @@ async fn expansion_exceeds_budget() {
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = NonZeroUsize::new(512 * 1024).unwrap();
     let payload = compact();
-    assert!(Message::encode_to_vec(&payload[0]).len() < 16 * 1024);
+    assert!(Message::encode(&payload[0]).len() < 16 * 1024);
     let m = Mapped::new(settings.clone(), "expansion", &payload).await;
     let query = m.query(Some("row-0"));
     let mut reader = m.storage.query(query).await.unwrap();

@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 use harmos_runtime::Runtime;
 use harmos_runtime::storage::*;
 use schematic_domain::model::Snapshot;
-use schematic_domain::operations::schematic::{propose, validate};
+use schematic_operations::schematic::{propose, validate};
 use sha2::{Digest, Sha256};
 
 /* === Constants === */
@@ -62,6 +62,7 @@ pub enum Lanes {
 /* === Implementations === */
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -79,7 +80,7 @@ impl Fixture {
         let mut plugin = plugin_settings();
         plugin.host_operations.push(harmos_runtime::Identifier::new("host.publish").unwrap());
         let settings = harmos_runtime::config::PluginSidecarSettings { plugin, calls: nz(8) };
-        runtime.plugin.register_sidecar::<schematic_domain::operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
+        runtime.plugin.register_sidecar::<schematic_operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
         Self { runtime, storage, _storage_root: root, startup_elapsed: host_elapsed + started.elapsed() }
     }
@@ -101,28 +102,24 @@ impl Fixture {
         };
         let host = harmos_runtime::guest::Host::with_settings(&runtime, settings).unwrap();
         let loaded = host.load(&bytes).unwrap();
-        runtime
-            .plugin
-            .register_guest::<schematic_domain::operations::transfer::Guest>(loaded, plugin_settings(), Lanes::Open)
-            .await
-            .unwrap();
+        runtime.plugin.register_guest::<schematic_operations::transfer::Guest>(loaded, plugin_settings(), Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
         Self { runtime, storage, _storage_root: root, startup_elapsed: host_elapsed + started.elapsed() }
     }
 
     pub async fn command(&self) -> harmos_runtime::operations::Response<propose::Route> {
         self.runtime
-            .operations
-            .call(propose::ProposeRoute {
+            .operation(propose::ProposeRouteRequest {
                 from: schematic_domain::model::Point { x: 0, y: 0 },
                 to: schematic_domain::model::Point { x: 3, y: 4 },
             })
+            .run()
             .await
             .unwrap()
     }
 
-    pub async fn payload(&self, request: validate::ValidateSchematic) -> harmos_runtime::operations::Response<validate::Validation> {
-        self.runtime.operations.call(request).await.unwrap()
+    pub async fn payload(&self, request: validate::ValidateSchematicRequest) -> harmos_runtime::operations::Response<validate::Validation> {
+        self.runtime.operation(request).run().await.unwrap()
     }
 
     pub async fn verify_filesystem(&self) {
@@ -131,13 +128,13 @@ impl Fixture {
         let path = root.path().join("carrier-hash.bin");
         let bytes = b"host filesystem through the carrier";
         std::fs::write(&path, bytes).unwrap();
-        let request = schematic_domain::operations::transfer::Hash {
-            request: harmos_runtime::storage::operations::HashFile {
+        let request = schematic_operations::transfer::HashRequest {
+            request: harmos_runtime::storage::operations::HashFileRequest {
                 source: FileSource::Local(path),
                 range: ByteRange { offset: 5, limit: Some(10) },
             },
         };
-        let answer = self.runtime.operations.call(request).await.unwrap();
+        let answer = self.runtime.operation(request).run().await.unwrap();
         assert_eq!(answer.bytes_read, 10);
         assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
         self.storage.close().await.unwrap();
@@ -163,9 +160,9 @@ pub fn verify_route(answer: &propose::Route) {
     );
 }
 
-pub fn payload(symbols: usize) -> validate::ValidateSchematic {
+pub fn payload(symbols: usize) -> validate::ValidateSchematicRequest {
     let symbols = (0..symbols).map(|value| value as u64).collect();
-    validate::ValidateSchematic { schematic: Snapshot { symbols, connections: Vec::new() } }
+    validate::ValidateSchematicRequest { schematic: Snapshot { symbols, connections: Vec::new() } }
 }
 
 pub fn artifact(name: &str) -> PathBuf {
@@ -224,7 +221,14 @@ async fn runtime() -> (Runtime<Model>, StorageManager, tempfile::TempDir, Durati
     let backends = primary
         .into_backends(state::StorageStateSettings { max_entry_bytes: nz(16 * 1024 * 1024), max_checkpoint_bytes: nz(16 * 1024 * 1024) });
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    harmos_runtime::storage::operations::register(&runtime.operations, "storage", Lanes::Open, Arc::new(storage.clone())).unwrap();
+    runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::storage::operations::registration(Arc::new(storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     (runtime, storage, root, host_elapsed)
 }
 

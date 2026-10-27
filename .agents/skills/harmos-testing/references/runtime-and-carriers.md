@@ -10,8 +10,8 @@ public boundary when a runtime test needs a particular failure.
 
 For a native plugin composing a reusable product, consume the entry facade with
 its `runtime` feature enabled. Check that the advertised catalog contains the
-original domain declarations and that the handler catalog binds the intended
-runtime implementations. Declaration discovery alone does not prove that a
+original operation declarations and that its runtime registration supplies the
+intended factories and dependency snapshot. Declaration discovery alone does not prove that a
 handler is bound or dispatchable. Exercise a representative call through the
 composed plugin and observe its resource effects.
 
@@ -21,11 +21,11 @@ dependency configurations with the project's existing check mechanism.
 
 ## Context And Carrier Compatibility
 
-Shared declarations do not make every implementation portable. Native runtime
-handlers use native runtime context; guest handlers use the guest's supported
-context and dependency surface. Before reusing a handler catalog, verify its
-context and resource bounds for the intended carrier. A native runtime test
-cannot establish that a guest builds or that its imports are available.
+Native, sidecar and guest bodies implement the common SDK `Operation` trait
+with `OperationContext`. Dependency snapshots carry process-local resources;
+sharing a declaration does not make those resources target-compatible. Check
+contract-only and runtime-enabled configurations separately, including actual
+guest dependency availability. A native test cannot prove guest buildability.
 
 Use actual guest compilation when target compatibility is the question. Use a
 real component or sidecar invocation when testing carrier admission, message
@@ -48,9 +48,9 @@ separately from a crash after readiness; one is not evidence for the other.
 
 Await operation or runtime settlement before checking final state or reusing a
 resource. Dropping a request instance requests cancellation; it does not prove
-cleanup has completed. Resident handles hold leases: releasing the last lease
-stops the instance, while explicit cancellation stops it for all holders. Select
-the lifecycle action matching the behavior under test and await its result.
+cleanup has completed. Services use `ServicePolicy`, independent of request retry policy. Verify
+failed cleanup retains ownership and that a repeated `unregister` resumes
+settlement before re-registration. Verify fresh generations fence stale work.
 
 When reload or recovery is a product feature, prove withdrawal of the old
 provider and successful use of the new generation. Keep failure and recovery

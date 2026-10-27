@@ -181,6 +181,18 @@ pub struct Ancient {
 
 /* === Enums === */
 
+#[harmos_runtime::lanes]
+pub enum Lanes {
+    #[default]
+    Open,
+    #[lane(serial)]
+    Serial,
+    #[lane(concurrent(2))]
+    Concurrent,
+    #[lane(unbounded)]
+    Unbounded,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -247,6 +259,7 @@ impl From<String> for Failed {
 }
 
 impl Application for Bank {
+    type Lanes = Lanes;
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;

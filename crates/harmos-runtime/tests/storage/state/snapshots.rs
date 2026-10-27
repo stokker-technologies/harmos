@@ -92,7 +92,14 @@ impl Store {
     }
 }
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl harmos_runtime::Application for Model {
+    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Transactions;
     type Record = Records;

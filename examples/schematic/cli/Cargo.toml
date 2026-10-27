@@ -24,7 +24,7 @@ version = { workspace = true }
 
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true, features = ["plugin-guest", "plugin"] }
+harmos = { workspace = true, default-features = true, features = ["runtime", "plugin-guest", "plugin"] }
 schematic-app = { path = "../app" }
 
 # Git
@@ -69,6 +69,7 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt",
 harmos-domain = { workspace = true }
 harmos-packaging = { workspace = true, features = ["generate-proto"] }
 schematic-domain = { path = "../domain" }
+schematic-operations = { path = "../operations" }
 
 # Git
 

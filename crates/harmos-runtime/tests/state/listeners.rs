@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
-use harmos_runtime::operations::{Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{Operation, OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -87,7 +87,7 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos_runtime::operations::OperationManager,
+    operations: harmos_runtime::operations::OperationManager<Lanes>,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     fail_start: bool,
@@ -106,8 +106,8 @@ enum Rows {
 
 #[harmos_runtime::catalog]
 enum Callbacks {
-    First(Delivery<Heard<true>>),
-    Second(Delivery<Heard<false>>),
+    First(harmos_runtime::listeners::Callback<Heard<true>>),
+    Second(harmos_runtime::listeners::Callback<Heard<false>>),
 }
 
 #[harmos_runtime::lanes]
@@ -144,12 +144,17 @@ impl Described for Fact {
 }
 
 impl Message for Fact {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        WireFact { value: self.value }.encode_to_vec()
+    const CODEC: &'static str = WireFact::CODEC;
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, MessageError> {
+        WireFact::decoding_memory(bytes)
     }
-    fn encoded_len(&self) -> usize {
+
+    fn encode(&self) -> Vec<u8> {
+        WireFact { value: self.value }.encode()
+    }
+    fn encoded_size(&self) -> usize {
         assert_ne!(self.value, u32::MAX, "scripted native source codec panic");
-        WireFact { value: self.value }.encoded_len()
+        WireFact { value: self.value }.encoded_size()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
         Ok(Self { value: WireFact::decode(bytes)?.value, dropped: Arc::new(AtomicUsize::new(0)) })
@@ -157,6 +162,7 @@ impl Message for Fact {
 }
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = Rows;
@@ -166,19 +172,12 @@ impl harmos_runtime::Application for Model {
 
 impl<const FIRST: bool> Listener for Heard<FIRST> {
     type Row = WireFact;
-    const CALLBACK: &'static str = if FIRST { "listener.heard-z" } else { "listener.heard-a" };
-    const POLICY: OperationPolicy = OperationPolicy {
+    const CALLBACK: &'static str = if FIRST { "heard_z" } else { "heard_a" };
+    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
     };
-}
-
-#[harmos_runtime::catalog]
-enum ImplementedCallbacks {
-    First(Hearing<true>),
-    Second(Hearing<false>),
 }
 
 struct Hearing<const FIRST: bool> {
@@ -188,15 +187,16 @@ struct Hearing<const FIRST: bool> {
 
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = Delivery<Heard<FIRST>>;
-    type Resources = Owner;
+    type Request = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Request;
+    type Response = <harmos_runtime::listeners::Callback<Heard<FIRST>> as harmos_runtime::OperationDeclaration>::Response;
+
     type Error = Failed;
-    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::result::Result<Self, Failed> {
+    async fn initialize(context: harmos_runtime::OperationContext) -> std::result::Result<Self, Failed> {
+        let resources = context.dependency::<Owner>().expect("fixture dependency");
         Ok(Self { resources, wait_cleanup: false })
     }
-    async fn run<'a>(
-        &mut self, _: Self::Context<'a>, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
+    async fn run(
+        &mut self, _: harmos_runtime::OperationContext, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
@@ -251,7 +251,16 @@ impl PluginLifecycle for Host {
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
         resources.operations = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register_wire_operations::<ImplementedCallbacks, _>(Lanes::Open, self.owner.clone())
+            bindings.register(harmos_runtime::RegistrationExt::lane(
+                harmos_runtime::RegistrationBatch::new({
+                    let mut dependencies = harmos_runtime::Dependencies::new();
+                    dependencies.insert(self.owner.clone()).unwrap();
+                    dependencies
+                })
+                .implementation::<harmos_runtime::listeners::Callback<Heard<true>>, Hearing<true>>()
+                .implementation::<harmos_runtime::listeners::Callback<Heard<false>>, Hearing<false>>(),
+                Lanes::Open,
+            ))
         })?);
         if !self.skip_sources {
             let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(
@@ -303,8 +312,8 @@ fn fact(value: u32) -> Fact {
 fn candidate() -> PluginDefinitions {
     let mut listeners = Vec::new();
     for (id, callback) in [
-        ("listener.first", WireDeclaration::of::<Delivery<Heard<true>>>().contract().unwrap()),
-        ("listener.second", WireDeclaration::of::<Delivery<Heard<false>>>().contract().unwrap()),
+        ("listener.first", WireDeclaration::of::<harmos_runtime::listeners::Callback<Heard<true>>>().contract().unwrap()),
+        ("listener.second", WireDeclaration::of::<harmos_runtime::listeners::Callback<Heard<false>>>().contract().unwrap()),
     ] {
         listeners.push(
             harmos_domain::listeners::Definition::new(

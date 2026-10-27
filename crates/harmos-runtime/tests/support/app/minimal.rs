@@ -38,6 +38,7 @@ pub struct App<R = ()>(PhantomData<R>);
 /* === Implementations === */
 
 impl<R: Send + Sync + 'static> Application for App<R> {
+    type Lanes = super::Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();

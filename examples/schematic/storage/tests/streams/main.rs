@@ -48,6 +48,12 @@ struct Columns {
 
 /* === Enums === */
 
+#[harmos::lanes]
+pub enum TestLanes {
+    #[default]
+    Open,
+}
+
 #[harmos::streams]
 enum Feeds {
     Reading(Reading),
@@ -63,6 +69,7 @@ impl harmos::Application for Model {
     type Record = support::Fact;
     type Streams = Feeds;
     type Resources = ();
+    type Lanes = TestLanes;
 }
 
 /* === Public Functions === */

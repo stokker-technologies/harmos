@@ -1059,6 +1059,7 @@ version = "0.1.6"
 dependencies = [
  "harmos-domain",
  "harmos-runtime",
+ "harmos-sdk",
 ]
 
 [[package]]

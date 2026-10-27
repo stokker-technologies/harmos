@@ -86,9 +86,20 @@ pub(super) async fn seed(f: &Fixture) {
 #[tokio::test]
 async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
+    f.runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     seed(&f).await;
-    let mut records = f.runtime.operations.exchange::<WriteRecords>(WriteRecords { scope: None }, settings(), settings()).unwrap();
+    let mut records = f
+        .runtime
+        .operations
+        .exchange::<WriteRecords>(harmos_runtime::storage::operations::WriteRecordsRequest { scope: None }, settings(), settings())
+        .unwrap();
     let first = batch(1, "bench");
     records.send_with(first.memory_size(), || Ok(first)).await.unwrap();
     records.finish_input();
@@ -116,11 +127,22 @@ async fn record_exchange_receipts() {
 #[tokio::test]
 async fn cancelled_exchange_retains() {
     let f = Fixture::new(config()).await;
-    harmos_runtime::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
+    f.runtime
+        .operations
+        .register(harmos_runtime::operations::RegistrationExt::lane(
+            harmos_runtime::storage::operations::registration(Arc::new(f.storage.clone())).unwrap(),
+            Lanes::Open,
+        ))
+        .await
+        .unwrap();
     seed(&f).await;
 
     // Cancelling Delivery Does Not Retract Storage-Owned Samples.
-    let mut stream = f.runtime.operations.exchange::<WriteStreams>(WriteStreams { scope: None }, settings(), settings()).unwrap();
+    let mut stream = f
+        .runtime
+        .operations
+        .exchange::<WriteStreams>(harmos_runtime::storage::operations::WriteStreamsRequest { scope: None }, settings(), settings())
+        .unwrap();
     let first = batch(1, "voltage");
     stream.send(first).await.unwrap();
     let accepted = loop {
@@ -140,7 +162,7 @@ async fn cancelled_exchange_retains() {
 fn batch_descriptor_roundtrips() {
     // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
     let original = batch(42, "roundtrip");
-    let encoded = original.encode_to_vec();
+    let encoded = original.encode();
     assert!(DataBatch::decoding_memory(&encoded).unwrap() >= encoded.len());
     let decoded = DataBatch::decode(&encoded).unwrap();
     assert_eq!(decoded.sequence, 42);

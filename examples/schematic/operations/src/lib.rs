@@ -12,16 +12,26 @@
 
 /* === Modules === */
 
-mod common;
 pub mod directories;
 pub mod schematic;
 pub mod transfer;
 
+#[cfg(feature = "runtime")]
+mod error;
+
+#[cfg(feature = "runtime")]
+pub mod resources;
+
 /* === Re-Exports === */
 
-pub use common::POLICY;
-pub use directories::ListDirectories;
-pub use schematic::streaming::{AnalyzeExchange, AnalyzeUpload};
+#[cfg(feature = "runtime")]
+pub use error::Error;
+
+pub use directories::list_directories::{ListDirectories, ListDirectoriesRequest};
+pub use schematic::analyze::AnalyzeSchematicRequest;
+pub use schematic::propose::ProposeRouteRequest;
+pub use schematic::streaming::{AnalyzeExchange, AnalyzeExchangeRequest, AnalyzeUpload, AnalyzeUploadRequest};
+pub use schematic::validate::ValidateSchematicRequest;
 pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
 
 /* === Imports === */
@@ -34,6 +44,12 @@ pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
 
 /* === Constants === */
 
+pub const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+    timeout: std::time::Duration::from_secs(10),
+    attempt_timeout: std::time::Duration::from_secs(10),
+    retries: harmos::operations::RetryPolicy::Never,
+};
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -42,14 +58,14 @@ pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
+#[harmos::catalog]
 pub enum Operations {
     Validate(ValidateSchematic),
     Route(ProposeRoute),
     Analyze(AnalyzeSchematic),
 }
 
-#[harmos_domain::catalog]
+#[harmos::catalog]
 pub enum Native {
     #[nested]
     Shared(Operations),
@@ -59,9 +75,9 @@ pub enum Native {
     AnalyzeExchange(AnalyzeExchange),
 }
 
-#[harmos_domain::catalog]
+#[harmos::catalog]
 pub enum Requires {
-    Publish(harmos_domain::operations::streams::Publish),
+    Publish(harmos::operations::streams::Publish),
 }
 
 /* === Traits === */

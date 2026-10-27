@@ -17,11 +17,11 @@ version = { workspace = true }
 
 [features]
 default = []
-runtime = ["dep:harmos-runtime"]
+runtime = ["dep:harmos-runtime", "dep:harmos-sdk"]
 plugin = ["runtime", "harmos-runtime/plugin"]
 plugin-sidecar = ["runtime", "harmos-runtime/plugin-sidecar"]
 plugin-guest = ["runtime", "harmos-runtime/plugin-guest"]
-grpc = ["runtime", "harmos-runtime/grpc"]
+grpc = ["runtime", "harmos-runtime/grpc", "harmos-sdk?/grpc"]
 generate-proto = ["runtime", "harmos-runtime/generate-proto"]
 signal = ["runtime", "harmos-runtime/signal"]
 signal-fft = ["runtime", "harmos-runtime/signal-fft"]
@@ -32,7 +32,6 @@ simulation = ["runtime", "harmos-runtime/simulation"]
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-runtime = { workspace = true, optional = true }
 
 # Git
 
@@ -67,6 +66,12 @@ harmos-runtime = { workspace = true, optional = true }
 # === Dev Dependencies === #
 
 # === Target Dependencies === #
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+harmos-runtime = { workspace = true, optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+harmos-sdk = { workspace = true, optional = true, features = ["streaming"] }
 
 # === Test Targets === #
 

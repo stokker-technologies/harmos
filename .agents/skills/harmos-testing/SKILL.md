@@ -14,15 +14,16 @@ repository fixture pipeline or company tooling is required.
 
 All product crates, including interfaces, live under `crates/`. For a reusable
 product, test portable contracts and configuration validation in `product-domain`
-and execution, configured resources and lifecycle in `product-runtime`. Keep
+and the operations crate without `runtime`; test execution through the operations
+crate with `runtime` and configured composition in `product-runtime`. Keep
 domain tests independent of runtime initialization. The entry library exposes
 the domain by default and can expose runtime through an optional `runtime`
 feature; check the feature combinations the product promises.
 
 A self-contained operation keeps its declaration and handler together in a
 vertical operation module, including plugin-private operations. Test it there;
-do not introduce a separate domain crate solely for tests. Reusable contracts
-keep their domain owner when a CLI, plugin or other interface consumes them.
+do not introduce a separate domain crate solely for tests. Reusable operation contracts
+keep their operations owner when a CLI, plugin or other interface consumes them.
 
 Resource libraries such as automation or gRPC clients retain their own protocol
 and failure tests. Runtime composition tests prove how the product uses those

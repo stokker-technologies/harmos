@@ -26,7 +26,7 @@ use arrow_array::{Float64Array, UInt64Array};
 use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
 use super::waveforms;
-use harmos_domain::operations::storage::Query;
+use harmos_domain::operations::storage::QueryRequest;
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_storage::query::transform::{
     Transform,
@@ -87,7 +87,7 @@ async fn pressure_reloads_page() {
     storage.write_stream((borrowed).to_vec()).await.unwrap();
     let at = storage.flush().await.unwrap();
     let baseline = storage.status().read_bytes;
-    let query = || Query {
+    let query = || QueryRequest {
         at: at.clone(),
         source: Source::Stream(StreamSelection {
             schema: schema.clone(),
@@ -190,7 +190,7 @@ async fn cancelled_advance_poisons() {
     .unwrap();
     super::fixture::start(&storage).await;
     let at = storage.flush().await.unwrap();
-    let query = || Query {
+    let query = || QueryRequest {
         at: at.clone(),
         source: Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],
@@ -339,7 +339,7 @@ async fn small_readers_progress() {
 }
 
 // A Manager With A Bounded Read Budget And Saved Waveform Stream Rows.
-async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
+async fn loaded(periods: usize) -> (super::fixture::Fixture, QueryRequest) {
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = NonZeroUsize::new(CONTENTION_BUDGET).unwrap();
     settings.request.max_active_queries = NonZeroUsize::new(CONTENTION_QUERIES).unwrap();
@@ -352,7 +352,7 @@ async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
     let at = f.storage.flush().await.unwrap();
     f.data.snapshots_released().await;
     assert_eq!(f.storage.status().read_bytes, 0);
-    let query = Query {
+    let query = QueryRequest {
         at,
         source: Source::Stream(StreamSelection {
             schema,
@@ -370,7 +370,7 @@ async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
 }
 
 // One Capture Alone: Its Batch Count And The Bytes It Retains At The End.
-async fn alone(f: &super::fixture::Fixture, query: &Query) -> (usize, usize) {
+async fn alone(f: &super::fixture::Fixture, query: &QueryRequest) -> (usize, usize) {
     let mut reader = f.storage.query(query.clone()).await.unwrap();
     let mut kept = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {

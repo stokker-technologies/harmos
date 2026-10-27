@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Structure consumer applications using Harmos, including reusable domains and runtimes, self-contained plugins, resource libraries and interface crates.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:abd4dd1597ec6a16b21721fdbf2fedc7bbc7823eebc30e1e6a01e321676ee937 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:f360f7f945f894c244844e38474f719b1acaf0b4dd3b29504ca43d3f53c21b51 -->
 
 # Harmos Architecture
 
@@ -16,8 +16,9 @@ skills or tooling are prerequisites.
 | Owner | Responsibility | Production Dependencies |
 | --- | --- | --- |
 | `<p>` | Public entry library and curated `prelude.rs`. | Domain by default; optional runtime. |
-| `<p>-domain` | Portable models, operation declarations, settings and pure behavior. | Host-free declaration libraries such as `harmos-domain`. |
-| `<p>-runtime` | Operation implementations, state coordination, live resources and execution lifecycle. | Domain, applicable Harmos execution facilities and resource libraries. |
+| `<p>-domain` | Shared portable models, settings, transactions and pure behavior. | Host-free domain libraries. |
+| `<p>-operations` | Vertical operation messages, declarations and optional implementations. | `harmos` without default features; optional resource dependencies under `runtime`. |
+| `<p>-runtime` | State coordination, live resource construction and execution composition. | Domain, operations with `runtime`, Harmos execution facilities and resource libraries. |
 | `<p>-cli`, `<p>-gui`, `<p>-plugin`, `<p>-sidecar`, `<p>-guest` | Product interfaces and carrier entry points. | Product entry library plus interface or carrier dependencies. |
 | Resource libraries | One external system, such as desktop automation or an external gRPC client. | Their own protocols; no dependency back on the product runtime. |
 
@@ -33,17 +34,19 @@ this facade rule applies to interfaces, not every internal dependency.
 
 ## Operation Placement
 
-In a reusable product, declare each operation once in `<p>-domain` and
-implement it in `<p>-runtime`. Catalogs reference those owners. Interfaces
-expose existing implementations without introducing forwarding operations
-merely to publish the same behavior.
+In a reusable product, colocate each operation's portable request, response,
+declaration struct and runtime-gated `Operation` implementation in
+`<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
+`catalog() -> Vec<OperationDefinition>` and, with `runtime`,
+`registration(Dependencies) -> RegistrationBatch`. There is one operation tree.
+Shared models remain in the domain; resource crates remain optional lower-level
+dependencies. Runtime composition supplies dependencies and lane placement.
 
-In a self-contained crate, colocate each operation's declaration and handler
-in a vertical module under `operations/`. Do not require parallel local
-`domain/operations/` and `operations/` trees. A composed plugin may use
-this layout for plugin-private operations while exposing reusable product
-operations from its runtime. Extract contracts when independent reuse or
-dependency requirements justify it.
+A self-contained crate can use the same vertical layout under `operations/`.
+Create a separate operations crate when independent contract consumers justify
+it. Declarations are independent of their request types: `infer_request` selects
+one declaration for inference, while `operation_for::<O>` selects explicitly.
+Execution fields use `#[cfg(feature = "runtime")]` and never enter message schemas.
 
 ## Resources And Configuration
 
@@ -66,8 +69,7 @@ error wrapper. No universal `boot.rs` or empty module hierarchy is required.
 ## Hosting And Reuse
 
 A composed native plugin hosts the product runtime in its sidecar process.
-The plugin retains that owner, shares its resources and binds compatible
-handlers. Do not add another process without an isolation requirement.
+The plugin retains that owner, shares its resources and registers the shared operation factories. Do not add another process without an isolation requirement.
 A separately hosted provider instead advertises the contracts it implements;
 other interfaces require those original contracts.
 

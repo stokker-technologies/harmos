@@ -29,8 +29,8 @@ use sha2::{Digest, Sha256};
 use harmos_runtime::operations::OperationDeclaration;
 use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos_runtime::sidecar::{Attach, Executable, Notice, Supervised};
-use harmos_runtime::{Message, Runtime, services::Service, services::ServiceStatus};
-use plugin::{Progress, Receiver};
+use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
+use plugin::Receiver;
 
 /* === Constants === */
 
@@ -38,8 +38,8 @@ use plugin::{Progress, Receiver};
 
 /* === Type Aliases === */
 
-type Resident<T> = Supervised<Model, T, fn(&Service<Model>, Notice)>;
-type Managed<T> = harmos_runtime::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
+type Resident<T> = Supervised<Model, T, fn(&ServiceContext<Model>, Notice)>;
+type Managed<T> = harmos_runtime::sidecar::Managed<Model, T, fn(&ServiceContext<Model>, Notice), Lanes>;
 type Constructor<T> = fn(Resident<T>, PluginDefinition, Lanes, NonZeroUsize, NonZeroUsize) -> harmos_runtime::Result<Managed<T>>;
 
 /* === Structs === */
@@ -48,7 +48,7 @@ pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
 }
 
 /* === Enums === */
@@ -69,6 +69,7 @@ pub enum Lanes {
 /* === Implementations === */
 
 impl harmos_runtime::Application for Model {
+    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -122,7 +123,7 @@ impl Fixture {
                 ..PluginContributions::default()
             },
         };
-        let resident = Supervised::new(source, notices as fn(&Service<Model>, Notice));
+        let resident = Supervised::new(source, notices as fn(&ServiceContext<Model>, Notice));
         let runtime = Runtime::<Model>::builder((), ())
             .register(Streams::catalog())
             .register(Lanes::catalog())
@@ -138,7 +139,7 @@ impl Fixture {
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "consumer".into(),
-                    policy: harmos_runtime::operations::OperationPolicy {
+                    policy: harmos_runtime::ServicePolicy {
                         restart: harmos_runtime::operations::RestartPolicy::Never,
                         ..harmos_runtime::services::POLICY
                     },
@@ -170,7 +171,8 @@ impl Fixture {
     }
 
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {
-        let bytes = self.runtime.operations.call_encoded(Progress::ID, rows.encode_to_vec()).await.unwrap();
+        let bytes =
+            self.runtime.operations.call_encoded(&format!("consumption.{}", plugin::ProgressDeclaration::ID), rows.encode()).await.unwrap();
         Acknowledged::decode(&bytes).unwrap()
     }
 }
@@ -179,6 +181,6 @@ impl Fixture {
 
 /* === Private Functions === */
 
-fn notices(_: &Service<Model>, _: Notice) {}
+fn notices(_: &ServiceContext<Model>, _: Notice) {}
 
 /* === Tests === */

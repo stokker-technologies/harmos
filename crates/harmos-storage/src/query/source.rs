@@ -185,9 +185,9 @@ pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<Recor
     )?;
     let mut encoded = Vec::with_capacity(rows.len());
     for row in rows {
-        let size = crate::Message::encoded_len(row.schema.as_ref());
+        let size = crate::Message::encoded_size(row.schema.as_ref());
         budget.claim(size.checked_mul(4).ok_or_else(exhausted)?)?;
-        encoded.push(crate::Message::encode_to_vec(row.schema.as_ref()));
+        encoded.push(crate::Message::encode(row.schema.as_ref()));
     }
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
@@ -594,7 +594,7 @@ mod tests {
         let graph = graph::Schema::from_declaration(Accounted::DEFINITION, &settings).unwrap();
         let validator = schema::Validator::from_schema(&graph, &settings).unwrap();
         let row = Accounted { value: 1, optional: None, samples: vec![1, 2], detail: Detail { label: "x".into() } };
-        (validator, row.encode_to_vec())
+        (validator, row.encode())
     }
 
     #[test]

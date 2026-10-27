@@ -98,6 +98,12 @@ struct Definitions(Vec<(Kind, DefinitionId, u32)>);
 
 /* === Enums === */
 
+#[harmos::lanes]
+pub enum TestLanes {
+    #[default]
+    Open,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -260,6 +266,7 @@ impl Application for Bank {
     type Record = Fact;
     type Streams = ();
     type Resources = ();
+    type Lanes = TestLanes;
 }
 
 impl Wire for Bank {

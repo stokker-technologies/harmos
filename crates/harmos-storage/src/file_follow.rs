@@ -28,7 +28,7 @@ use crate::local::LocalReader;
 use crate::manager::{ENTRY_OVERHEAD, Inner};
 use crate::{ByteRange, Error, FileBatch, FileCompletion, FileReadEvent, FileReader, MemorySize, Result, StorageManager};
 use harmos_domain::model::storage::files::{FileEvent, FileSource, FollowStart};
-use harmos_domain::operations::storage::{FollowFile, ReadFile};
+use harmos_domain::operations::storage::{FollowFileRequest, ReadFileRequest};
 
 /* === Constants === */
 
@@ -74,7 +74,7 @@ enum Step {
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
-    pub async fn follow_file(&self, request: FollowFile) -> Result<FileFollower> {
+    pub async fn follow_file(&self, request: FollowFileRequest) -> Result<FileFollower> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.follow_file", outcome = "cancelled"));
         context
@@ -95,7 +95,7 @@ impl<C> StorageManager<C> {
                         let offset = start(request.start, file.length);
                         let reader = self
                             .read_file_with_held(
-                                ReadFile { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
+                                ReadFileRequest { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
                                 held.clone(),
                             )
                             .await?;

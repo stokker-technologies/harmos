@@ -252,6 +252,8 @@ fn portable_preserves_local() {
         generation_context: Some([9; 32]),
         values: values.clone(),
         operation: "overlay.child".into(),
+        fingerprint: [1; 32],
+        generation: u64::MAX,
         payload: ().encode(),
         submit: true,
     };

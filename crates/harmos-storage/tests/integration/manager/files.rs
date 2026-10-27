@@ -51,8 +51,8 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
-fn whole(file: &harmos_storage::FileReference) -> harmos_domain::operations::storage::ReadFile {
-    harmos_domain::operations::storage::ReadFile {
+fn whole(file: &harmos_storage::FileReference) -> harmos_domain::operations::storage::ReadFileRequest {
+    harmos_domain::operations::storage::ReadFileRequest {
         source: harmos_domain::model::storage::files::FileSource::Stored(file.clone()),
         range: harmos_storage::ByteRange { offset: 0, limit: None },
     }
@@ -108,7 +108,7 @@ async fn file_roundtrip_recovers() {
         assert_eq!(f.storage.status().saved.sequence, 0);
         let mut durable = f
             .storage
-            .query(harmos_domain::operations::storage::Query {
+            .query(harmos_domain::operations::storage::QueryRequest {
                 at: f.storage.cursor_saved(),
                 source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
                 transforms: Vec::new(),

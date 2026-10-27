@@ -38,10 +38,10 @@ Your application defines each change; Harmos manages its accepted history.
 
 ## Features
 
-- **Managed State:** Apply typed transactions, inspect history and scope undo or redo to selected changes.
-- **Operations And Services:** Define requests and streams with explicit timeout, retry and cancellation policies; keep resources with the work that owns them.
-- **Streams And Storage:** Capture bounded live measurements and supply adapters for history, snapshots, streams and evidence.
-- **Crash Recovery:** Reconstruct state and undo history according to your storage adapter's durability policy.
+- **Managed State** [`runtime`]: Apply typed transactions, inspect history and scope undo or redo to selected changes.
+- **Operations And Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies; keep resources with the work that owns them.
+- **Streams And Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots, streams and evidence.
+- **Crash Recovery** [`runtime`]: Reconstruct state and undo history according to your storage adapter's durability policy.
 - **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
@@ -82,7 +82,10 @@ application revision that produced them.
 
 Use the `harmos` facade to compose a runtime and define your application's
 state, transactions and operations. Optional Cargo features select plugin,
-transport and simulation capabilities.
+transport and simulation capabilities. The default facade exposes portable contracts;
+enable `runtime` for SDK execution and, on native targets, host runtime facilities.
+The [operations guide](.agents/skills/harmos-authoring/references/operations.md)
+shows one operation file with separate request and implementation types.
 
 Structured operation and storage tracing supports performance investigation;
 applications control collection. See [Performance](docs/product-guide.md#performance).

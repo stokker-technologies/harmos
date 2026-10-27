@@ -30,11 +30,7 @@ mod support;
 
 // The Lanes The Storage Fixture Serves Its Operations On
 mod operations {
-    #[harmos_runtime::lanes]
-    pub(crate) enum Lanes {
-        #[default]
-        Open,
-    }
+    pub(crate) use super::support::Lanes;
 }
 
 /* === Re-Exports === */

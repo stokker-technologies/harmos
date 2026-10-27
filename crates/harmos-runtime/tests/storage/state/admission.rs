@@ -71,7 +71,14 @@ enum Records {
 
 /* === Implementations === */
 
+#[harmos_runtime::lanes]
+pub enum ModelLanes {
+    #[default]
+    Open,
+}
+
 impl Application for Model {
+    type Lanes = ModelLanes;
     type State = u64;
     type Transaction = Transactions;
     type Record = Records;
@@ -99,7 +106,7 @@ impl RecordProjection for Projection {
         Box::pin(async move {
             let schema = waveforms::schema();
             let item = Identifier::new(format!("observed-{}", entry.position.0)).unwrap();
-            let payload = harmos_runtime::Message::encode_to_vec(&waveforms::Sample { phase: 0, ordinal: entry.position.0, value: 1.0 });
+            let payload = harmos_runtime::Message::encode(&waveforms::Sample { phase: 0, ordinal: entry.position.0, value: 1.0 });
             output.push(record(&schema, &item, &payload)).await
         })
     }
@@ -110,8 +117,8 @@ impl RecordProjection for Projection {
 /* === Private Functions === */
 
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
-fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::Query {
-    harmos_runtime::storage::operations::Query {
+fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::QueryRequest {
+    harmos_runtime::storage::operations::QueryRequest {
         at,
         source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
         transforms: Vec::new(),

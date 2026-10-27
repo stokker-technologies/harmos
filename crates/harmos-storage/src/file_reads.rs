@@ -35,7 +35,7 @@ use crate::arrow::RetainedMemory;
 use crate::local::LocalReader;
 use crate::{BackendFailure, Error, MemorySize, Result};
 use harmos_domain::model::storage::files::{FileHash, FileSource};
-use harmos_domain::operations::storage::ReadFile;
+use harmos_domain::operations::storage::ReadFileRequest;
 
 /* === Constants === */
 
@@ -76,13 +76,13 @@ struct StoredReader {
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
-    pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
+    pub async fn read_file(&self, request: ReadFileRequest) -> Result<FileReader> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.read_file", outcome = "cancelled"));
         context.result(span, async { self.read_file_with_held(request, Held::default()).await }).await
     }
 
-    pub(crate) async fn read_file_with_held(&self, request: ReadFile, held: Held) -> Result<FileReader> {
+    pub(crate) async fn read_file_with_held(&self, request: ReadFileRequest, held: Held) -> Result<FileReader> {
         let source = match request.source {
             FileSource::Stored(file) => Source::Stored(Box::new(self.read_stored_file(file, request.range, held).await?)),
             FileSource::Local(path) => Source::Local(LocalReader::open(&self.inner, path, request.range, held).await?),

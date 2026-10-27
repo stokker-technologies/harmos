@@ -38,7 +38,7 @@ use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::ArrowIpc;
-use harmos_domain::operations::storage::Query;
+use harmos_domain::operations::storage::QueryRequest;
 
 /* === Constants === */
 
@@ -56,7 +56,7 @@ pub struct QueryReader {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     held: Held,
-    query: Query,
+    query: QueryRequest,
     snapshot: Option<Snapshot>,
     active: Option<OwnedSemaphorePermit>,
     _description: Reservation,
@@ -135,14 +135,14 @@ impl MemorySize for QueryArrow {
 }
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.query.reader.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub async fn query(&self, query: Query) -> Result<QueryReader> {
+    pub async fn query(&self, query: QueryRequest) -> Result<QueryReader> {
         crate::ReadSession::standalone(self).query(query).await
     }
 }
 
 impl<C> crate::ReadSession<C> {
     #[tracing::instrument(name = "storage.read_session.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub async fn query(&self, query: Query) -> Result<QueryReader> {
+    pub async fn query(&self, query: QueryRequest) -> Result<QueryReader> {
         let result = async {
             query.validate()?;
             self.manager.inner.primary.history().check(&query.at.history)?;
@@ -421,7 +421,7 @@ impl QueryReader {
             let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
             // Protobuf Frames This One-Variant Bytes Envelope With Two Keys And Two
             // Length Prefixes Beyond The Postcard Bytes; Bound Both Encodings.
-            let encoded = crate::Message::encoded_len(&envelope).saturating_add(PROTOBUF_FRAMING);
+            let encoded = crate::Message::encoded_size(&envelope).saturating_add(PROTOBUF_FRAMING);
             drop(envelope);
             if encoded <= settings.batch_bytes.get() {
                 self.pending_offset += rows;

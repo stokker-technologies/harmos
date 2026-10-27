@@ -21,7 +21,7 @@
 
 // Local Imports
 
-use harmos_domain::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_domain::operations::{OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -29,7 +29,6 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
     retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -46,39 +45,46 @@ pub(crate) struct Payload {
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
 pub(crate) struct Read {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Read, infer_request, id = "read", harmos_path = ::harmos_domain, response = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+pub(crate) struct ReadOperation;
+
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
 pub(crate) struct Exchange {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Exchange, infer_request, id = "exchange", harmos_path = ::harmos_domain, response = Payload, input = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+pub(crate) struct ExchangeOperation;
+
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
 pub(crate) struct Upload {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Upload, infer_request, id = "upload", harmos_path = ::harmos_domain, response = Payload, input = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+pub(crate) struct UploadOperation;
+
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
 pub(crate) struct Download {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
+#[harmos_domain::operation(request = Download, infer_request, id = "download", harmos_path = ::harmos_domain, response = Payload, output = Payload, policy = POLICY, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+pub(crate) struct DownloadOperation;
+
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, id = "annotate", response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
 #[derive(Clone, PartialEq)]
 pub(crate) struct Annotated {
     identifier: harmos_domain::Identifier,
@@ -88,27 +94,32 @@ pub(crate) struct Annotated {
     values: Vec<harmos_domain::Value>,
 }
 
+#[harmos_domain::operation(request = Annotated, infer_request, harmos_path = ::harmos_domain, id = "annotate", response = Annotated, policy = POLICY, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
+pub(crate) struct AnnotatedOperation;
+
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_domain::operation(harmos_path = ::harmos_domain, id = "wrap", response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
 #[derive(Clone, PartialEq)]
 pub(crate) struct Envelope {
     pub(crate) inner: Box<Annotated>,
     pub(crate) sequence: u64,
 }
 
+#[harmos_domain::operation(request = Envelope, infer_request, harmos_path = ::harmos_domain, id = "wrap", response = Delivered, policy = POLICY, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
+pub(crate) struct EnvelopeOperation;
+
 /* === Enums === */
 
 #[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 pub(crate) enum Routes {
-    Read(Read),
-    Exchange(Exchange),
-    Upload(Upload),
-    Download(Download),
+    Read(ReadOperation),
+    Exchange(ExchangeOperation),
+    Upload(UploadOperation),
+    Download(DownloadOperation),
 }
 
 #[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 pub(crate) enum Portable {
-    Annotate(Annotated),
+    Annotate(AnnotatedOperation),
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
@@ -120,7 +131,7 @@ pub(crate) enum Delivered {
 
 #[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 pub(crate) enum Boxed {
-    Wrap(Envelope),
+    Wrap(EnvelopeOperation),
 }
 
 /* === Traits === */

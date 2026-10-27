@@ -25,11 +25,11 @@ use crate::lanes::Lanes;
 use harmos::config::PluginSidecarSettings;
 use harmos::sidecar::Executable;
 use harmos::{Error, Result};
-use schematic_domain::operations::Native;
+use schematic_operations::Native;
 
 /* === Constants === */
 
-pub const NAME: &str = "schematic-tools";
+pub const NAME: &str = "schematic_tools";
 
 /* === Macros === */
 
@@ -55,7 +55,10 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
         return Err(Error::NotReady { domain: "schematic plugin identity" });
     }
     let mut settings = PluginSidecarSettings::default();
-    settings.plugin.host_operations.push(harmos::Identifier::declared("host.publish", "host operation"));
+    settings
+        .plugin
+        .host_operations
+        .push(harmos::Identifier::declared(<harmos::operations::streams::Publish as harmos::OperationDeclaration>::ID, "host operation"));
     runtime.plugin.register_sidecar::<Native>(executable, settings, Lanes::Open).await?;
     runtime.plugin.initialize().await
 }

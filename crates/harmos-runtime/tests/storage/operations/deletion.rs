@@ -22,7 +22,6 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::DeleteFile;
 use harmos_runtime::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
 
 /* === Constants === */
@@ -52,8 +51,8 @@ fn metadata(id: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
-fn request(f: &Fixture, id: &str) -> DeleteFile {
-    DeleteFile {
+fn request(f: &Fixture, id: &str) -> harmos_runtime::storage::operations::DeleteFileRequest {
+    harmos_runtime::storage::operations::DeleteFileRequest {
         mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new("delete").unwrap() },
         file: StagedFile { history: f.data.history.clone(), id: Identifier::new(id).unwrap() },
     }
@@ -79,7 +78,7 @@ async fn delete_removes_file() {
     assert_eq!(f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap(), deleted);
     let mut query = f
         .storage
-        .query(harmos_runtime::storage::operations::Query {
+        .query(harmos_runtime::storage::operations::QueryRequest {
             at: f.storage.cursor_saved(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
                 scope: None,
@@ -146,7 +145,7 @@ async fn deletion_preserves_other() {
     let kept = f.storage.write_file(metadata("kept-first"), (b"kept").to_vec()).await.unwrap();
     let removed = f.storage.write_file(metadata("removed-last"), (b"gone").to_vec()).await.unwrap();
     f.storage.flush().await.unwrap();
-    let whole = |file: &harmos_runtime::storage::FileReference| harmos_runtime::storage::operations::ReadFile {
+    let whole = |file: &harmos_runtime::storage::FileReference| harmos_runtime::storage::operations::ReadFileRequest {
         source: harmos_runtime::storage::FileSource::Stored(file.clone()),
         range: harmos_runtime::storage::ByteRange { offset: 0, limit: None },
     };

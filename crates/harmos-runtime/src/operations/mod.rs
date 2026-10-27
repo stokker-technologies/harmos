@@ -81,7 +81,7 @@ pub use crate::config::OperationSettings as Settings;
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_domain::observers;
-pub use harmos_sdk::operations::streaming::Error as StreamError;
+pub use harmos_sdk::operations::StreamError;
 pub use harmos_sdk::operations::{EndpointSet, InputEndpoint, OutputEndpoint, host, lifecycle, streams};
 pub(crate) use manager::Manager;
 pub use manager::OperationManager;
