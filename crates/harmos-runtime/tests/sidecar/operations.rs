@@ -493,7 +493,7 @@ impl<A: Attach> Managed<A> {
     pub(crate) async fn publication(&self) -> harmos_runtime::Result<()> {
         let selected = harmos_runtime::operations::WireDeclaration::of::<harmos_operations::streams::Publish>()
             .contract()
-            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host.publish".into(), source: Arc::new(source) })?;
+            .map_err(|source| harmos_runtime::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) })?;
         let required = self
             .manager
             .definitions()

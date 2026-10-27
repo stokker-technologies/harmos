@@ -114,7 +114,7 @@ impl<P: Declared> Publisher<P> {
     }
 
     // Publish rows in order with contiguous sequences and their own stamps,
-    // as one `host.publish` call where they fit (at most one window of
+    // as one `host_publish` call where they fit (at most one window of
     // rows). Each call answers once the host's ingest has taken in every row
     // published before it on the stream, so no row is dropped unread. Rows
     // before a refused row stay published.

@@ -300,7 +300,7 @@ async fn throughput_case(
             Frame::Call { id, method, params } if method == harmos_sdk::operations::CHILD_METHOD => {
                 let call: harmos_sdk::operations::WireChildCall =
                     harmos_sdk::operations::WireChildCall::decode(&params).expect("typed child envelope");
-                assert_eq!(call.operation, "host.publish");
+                assert_eq!(call.operation, "host_publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
                 let row = harmos_operations::streams::PublishRequest::decode(&call.payload).expect("typed publication");
                 calls += 1;

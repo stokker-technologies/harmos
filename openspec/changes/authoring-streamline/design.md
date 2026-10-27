@@ -101,6 +101,8 @@ Carrier kits select the operations crate's lightweight `lifecycle` feature for S
 
 ## Current Format Ownership
 
+The guest WIT package is `harmos:guest@1.0.0`; the native linker binds its current operation-context interface.
+
 Only current v1 protocol, artifact, envelope, journal and persisted payload shapes
 are supported. Transaction, record and stream authoring emits schema version 1.
 Remove historical shape catalogs, replay callbacks, protobuf storage encoding,

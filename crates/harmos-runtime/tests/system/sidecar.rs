@@ -84,7 +84,7 @@ fn plugin_settings() -> PluginSidecarSettings {
     PluginSidecarSettings {
         plugin: PluginSettings {
             configuration: b"null".to_vec(),
-            host_operations: vec![harmos_runtime::Identifier::new("host.publish").unwrap()],
+            host_operations: vec![harmos_runtime::Identifier::new("host_publish").unwrap()],
             ..Default::default()
         },
         ..Default::default()

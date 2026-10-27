@@ -112,7 +112,7 @@ async fn runtime_baseline_walks() {
     assert!(storage.status().running);
 
     // Read The Catalog Before And After Serving Storage
-    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage.")), "nothing is served before the host registers it");
+    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
     runtime
         .operations
         .register(harmos_runtime::operations::RegistrationExt::lane(
@@ -122,7 +122,7 @@ async fn runtime_baseline_walks() {
         .await
         .unwrap();
     let catalogue = served(&runtime);
-    for required in ["storage.query", "storage.write_records", "storage.read_file"] {
+    for required in ["storage_query", "storage_write_records", "storage_read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
     }
 

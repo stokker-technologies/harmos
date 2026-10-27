@@ -1,4 +1,4 @@
-package harmos:guest@0.3.0;
+package harmos:guest@1.0.0;
 
 interface capabilities {
     /// A carrier refusal: its code beside the encoded Harmos failure it

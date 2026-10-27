@@ -50,7 +50,7 @@ fn pending_settings() -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec("shutdown-pending").unwrap(),
         shutdown_timeout: std::time::Duration::from_millis(20),
-        host_operations: ["host.publish", "provider.echo"].map(|id| harmos_runtime::Identifier::new(id).unwrap()).to_vec(),
+        host_operations: ["host_publish", "provider_echo"].map(|id| harmos_runtime::Identifier::new(id).unwrap()).to_vec(),
         ..Default::default()
     }
 }

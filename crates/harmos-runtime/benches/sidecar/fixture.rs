@@ -78,7 +78,7 @@ impl Fixture {
         let started = Instant::now();
         let executable = harmos_runtime::sidecar::Executable::at(artifact("schematic-sidecar")).unwrap();
         let mut plugin = plugin_settings();
-        plugin.host_operations.push(harmos_runtime::Identifier::new("host.publish").unwrap());
+        plugin.host_operations.push(harmos_runtime::Identifier::new("host_publish").unwrap());
         let settings = harmos_runtime::config::PluginSidecarSettings { plugin, calls: nz(8) };
         runtime.plugin.register_sidecar::<schematic_operations::transfer::Native>(executable, settings, Lanes::Open).await.unwrap();
         runtime.plugin.initialize().await.unwrap();

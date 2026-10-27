@@ -48,7 +48,7 @@ criterion::criterion_main!(benches);
 
 /* === Private Functions === */
 
-// One sidecar `host.publish` child call end to end: kit encode, transport
+// One sidecar `host_publish` child call end to end: kit encode, transport
 // frame, host admission, managed operation dispatch, staging and the answer.
 fn benchmarks(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();

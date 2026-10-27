@@ -226,7 +226,7 @@ impl<A: Application> Host<A> {
             .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
         let mut linker: Linker<Bridge<A>> = Linker::new(&self.engine);
         linker
-            .instance("harmos:guest/operation-context@0.2.0")
+            .instance("harmos:guest/operation-context@1.0.0")
             .and_then(|mut interface| {
                 interface.func_wrap_concurrent("child", |accessor, (payload,): (Vec<u8>,)| {
                     Box::pin(async move {

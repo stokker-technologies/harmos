@@ -389,7 +389,7 @@ impl Supervisor {
         (self.clock)()
     }
 
-    // Publish rows in order through as few `host.publish` calls as fit the
+    // Publish rows in order through as few `host_publish` calls as fit the
     // frame and batch limits; each call awaits its answer before the next.
     // `stamps[i]` is the production time of `rows[i]`.
     pub(super) async fn publication<S>(

@@ -293,7 +293,7 @@ async fn registration_precedes_init() {
             (operation.id.as_str(), required.grants.len())
         })
         .collect::<Vec<_>>();
-    assert_eq!(required, [("provider_echo", 0), ("host.publish", 0)]);
+    assert_eq!(required, [("provider_echo", 0), ("host_publish", 0)]);
 
     let mut session = instantiate(&guest, Stub::default()).await;
     let registrations = session

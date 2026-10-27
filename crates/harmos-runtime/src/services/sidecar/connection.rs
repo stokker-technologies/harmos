@@ -171,7 +171,7 @@ impl Endpoint {
         let mut ended = self.ended.clone();
         tokio::select! {
             ingested = lease.ingested() => ingested.map_err(|source| crate::Error::OperationFailed {
-                operation: "host.publish".into(),
+                operation: "host_publish".into(),
                 source: Arc::new(source),
             })?,
             _ = ended.wait_for(|ended| *ended) => {
@@ -243,7 +243,7 @@ impl Endpoint {
             permit.send(Arrival::Publications(staged.staged));
         }
         match staged.refused {
-            Some(source) => Err(crate::Error::OperationFailed { operation: "host.publish".into(), source: Arc::new(source) }),
+            Some(source) => Err(crate::Error::OperationFailed { operation: "host_publish".into(), source: Arc::new(source) }),
             None => Ok(()),
         }
     }
