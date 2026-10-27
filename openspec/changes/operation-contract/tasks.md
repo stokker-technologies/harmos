@@ -9,7 +9,7 @@
 
 ## 2. Carriers
 
-- [ ] 2.1 Runtime: `operation(request)` invocation, native `Caller`, declared-operation verification at registration, adapters on
+- [x] 2.1 Runtime: `operation(request)` invocation, native `Caller`, declared-operation verification at registration, adapters on
   `Handler`.
 - [x] 2.2 Sidecar and guest kits: encoded `Caller`, carrier-provided resources, kit adapters.
 

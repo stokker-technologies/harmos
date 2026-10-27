@@ -32,7 +32,7 @@ use std::convert::Infallible;
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::DependencyError),
+    Dependency(#[from] harmos_sdk::ResourceError),
 
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
@@ -263,8 +263,14 @@ impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
         match error {
             ContextError::Duplicate { name } => Self::AlreadyRegistered { domain: "call context", name },
             ContextError::Missing { name } => Self::NotRegistered { domain: "call context", name },
-            ContextError::Decode { .. } => Self::InvalidInput { field: "call context", reason: "portable value is unreadable" },
-            ContextError::Budget => Self::InvalidInput { field: "call context", reason: "portable values exceed their budget" },
+            ContextError::Decode { .. } => Self::InvalidInput {
+                field: "call context",
+                reason: "portable value is unreadable",
+            },
+            ContextError::Budget => Self::InvalidInput {
+                field: "call context",
+                reason: "portable values exceed their budget",
+            },
         }
     }
 }
@@ -285,7 +291,11 @@ impl<E> Error<E> {
     }
 
     pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::Backend { operation, kind, source: Box::new(source) }
+        Self::Backend {
+            operation,
+            kind,
+            source: Box::new(source),
+        }
     }
 }
 

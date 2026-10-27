@@ -94,10 +94,15 @@ impl PluginScope {
             return Ok(*context);
         }
         let mut context = [0; 32];
-        getrandom::fill(&mut context)
-            .map_err(|source| Error::OperationFailed { operation: "plugin generation context".to_owned(), source: Arc::new(source) })?;
+        getrandom::fill(&mut context).map_err(|source| Error::OperationFailed {
+            operation: "plugin generation context".to_owned(),
+            source: Arc::new(source),
+        })?;
         if context == [0; 32] {
-            return Err(Error::InvalidInput { field: "plugin generation context", reason: "zero random context" });
+            return Err(Error::InvalidInput {
+                field: "plugin generation context",
+                reason: "zero random context",
+            });
         }
         let _ = self.generation_context.set(context);
         Ok(*self.generation_context.get().expect("generation context issued once"))
@@ -273,7 +278,12 @@ impl PluginScope {
     pub(super) fn with_listeners(mut self, listeners: &[harmos_domain::listeners::Definition]) -> Self {
         self.listeners = Arc::from(listeners.to_vec());
         self.phase.send_if_modified(|phase| {
-            let Phase::Staged { record_listeners_bound, stream_listeners_bound, .. } = phase else {
+            let Phase::Staged {
+                record_listeners_bound,
+                stream_listeners_bound,
+                ..
+            } = phase
+            else {
                 return false;
             };
             *record_listeners_bound =
@@ -433,7 +443,10 @@ impl PluginScope {
     pub(crate) fn bind_streams(&self) -> bool {
         let mut bound = false;
         self.phase.send_if_modified(|phase| {
-            let Phase::Staged { streams_bound, streams_abandoned: false, .. } = phase else {
+            let Phase::Staged {
+                streams_bound, streams_abandoned: false, ..
+            } = phase
+            else {
                 return false;
             };
             bound = true;
@@ -483,7 +496,10 @@ impl PluginScope {
         if actual.len() != self.operations.len()
             || self.operations.iter().any(|(id, declared)| actual.get(id).is_none_or(|actual| *actual != declared))
         {
-            return Err(Error::InvalidInput { field: "operation catalog", reason: "bindings differ from the admitted plugin inventory" });
+            return Err(Error::InvalidInput {
+                field: "operation catalog",
+                reason: "bindings differ from the admitted plugin inventory",
+            });
         }
         Ok(())
     }
@@ -491,7 +507,12 @@ impl PluginScope {
     pub(crate) fn bind_operations(&self) -> Result<()> {
         let mut bound = false;
         self.phase.send_if_modified(|phase| {
-            if let Phase::Staged { operations_bound, operations_abandoned: false, .. } = phase {
+            if let Phase::Staged {
+                operations_bound,
+                operations_abandoned: false,
+                ..
+            } = phase
+            {
                 bound = true;
                 let changed = !*operations_bound;
                 *operations_bound = true;
@@ -508,7 +529,10 @@ impl PluginScope {
 
     pub(crate) fn unbind_operations(&self) {
         self.phase.send_if_modified(|phase| {
-            if let Phase::Staged { operations_bound, operations_abandoned, .. } = phase {
+            if let Phase::Staged {
+                operations_bound, operations_abandoned, ..
+            } = phase
+            {
                 if self.operations.is_empty() {
                     return false;
                 }
@@ -715,9 +739,10 @@ mod tests {
         type Resources = ();
     }
 
+    #[crate::message]
     struct Read;
     impl OperationDeclaration for Read {
-        type Request = ();
+        type Request = Read;
         type Response = u64;
         type Input = crate::operations::NoStream;
         type Output = crate::operations::NoStream;
@@ -730,19 +755,19 @@ mod tests {
         };
     }
 
-    impl harmos_sdk::Operation for Read {
-        type Request = ();
+    impl harmos_sdk::Handler for Read {
+        type Request = Read;
         type Response = u64;
-        type Error = harmos_sdk::DependencyError;
-        type Endpoints = ();
+        type Error = harmos_sdk::ResourceError;
+        type StreamEndpoints = ();
 
         async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
-            context.dependency::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
+            context.resource::<AtomicUsize>()?.fetch_add(1, Ordering::SeqCst);
             Ok(Self)
         }
 
         async fn run(
-            &mut self, _: harmos_sdk::OperationContext, _: &mut (), _: &mut (),
+            &mut self, _: harmos_sdk::OperationContext, _: &mut Read, _: &mut (),
         ) -> std::result::Result<crate::Response<u64>, Self::Error> {
             Ok(7.into())
         }
@@ -750,13 +775,13 @@ mod tests {
 
     struct Worker(Arc<AtomicUsize>);
     impl harmos_sdk::services::Service for Worker {
-        type Error = harmos_sdk::DependencyError;
+        type Error = harmos_sdk::ResourceError;
         async fn initialize(context: harmos_sdk::OperationContext) -> std::result::Result<Self, Self::Error> {
-            assert_eq!(context.dependency::<PluginScope>()?.owner(), "worker");
-            assert!(context.dependency::<crate::services::ServiceContext<Model>>().is_err());
-            let calls = context.dependency::<AtomicUsize>()?;
+            assert_eq!(context.resource::<PluginScope>()?.owner(), "worker");
+            assert!(context.resource::<crate::services::ServiceContext<Model>>().is_err());
+            let calls = context.resource::<AtomicUsize>()?;
             calls.fetch_add(1, Ordering::SeqCst);
-            context.dependency::<tokio::sync::Notify>()?.notify_one();
+            context.resource::<tokio::sync::Notify>()?.notify_one();
             Ok(Self(calls))
         }
         async fn run(&mut self, _: harmos_sdk::OperationContext) -> std::result::Result<(), Self::Error> {
@@ -782,7 +807,7 @@ mod tests {
         scope
             .register(
                 harmos_sdk::RegistrationBatch::new(dependencies)
-                    .operation::<Read>()
+                    .implementation::<Read, Read>()
                     .service::<Worker>("service", crate::services::POLICY)
                     .defaults::<Lanes>(),
             )
@@ -794,7 +819,7 @@ mod tests {
         receipt.shutdown().await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());
-        assert!(scope.operation_for::<Read, Lanes>(()).start().await.is_err());
+        assert!(scope.operation::<Read, Lanes>(Read).start().await.is_err());
         runtime.stop().await.unwrap();
     }
 
@@ -807,15 +832,15 @@ mod tests {
         let initialized = Arc::new(AtomicUsize::new(0));
         let mut dependencies = harmos_sdk::Dependencies::new();
         dependencies.insert(initialized.clone()).unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(dependencies).operation::<Read>();
-        let invocation = scope.operation_for::<Read, Lanes>(());
+        let batch = harmos_sdk::RegistrationBatch::new(dependencies).implementation::<Read, Read>();
+        let invocation = scope.operation::<Read, Lanes>(Read);
         scope.register(batch.clone().defaults::<Lanes>()).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert_eq!(*invocation.run().await.unwrap(), 7);
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
         assert!(scope.unregister(&crate::QualifiedId::parse("host.read").unwrap()).await.is_err());
 
-        let stale = scope.operation_for::<Read, Lanes>(());
+        let stale = scope.operation::<Read, Lanes>(Read);
         receipt.shutdown().await.unwrap();
         assert!(stale.start().await.is_err());
         assert!(scope.register(batch.defaults::<Lanes>()).await.is_err());

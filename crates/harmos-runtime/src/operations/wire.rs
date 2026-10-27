@@ -157,7 +157,10 @@ impl Manager {
         })?;
         let (owner, local) = qualified.as_str().split_once('.').expect("validated qualified identity");
         let entry = self.capture_routed(local, owner, &origin).map_err(|error| match error {
-            Error::NotRegistered { .. } => Error::NotRegistered { domain: "operation", name: operation.to_owned() },
+            Error::NotRegistered { .. } => Error::NotRegistered {
+                domain: "operation",
+                name: operation.to_owned(),
+            },
             error => error,
         })?;
         entry.available_to(&origin)?;
@@ -170,13 +173,19 @@ impl Manager {
                 reason: "fingerprint or generation differs from the assigned target",
             });
         }
-        let dispatch = entry
-            .wire
-            .ok_or(Error::InvalidInput { field: "encoded operation", reason: "operation has no cross-boundary codec binding" })?;
+        let dispatch = entry.wire.ok_or(Error::InvalidInput {
+            field: "encoded operation",
+            reason: "operation has no cross-boundary codec binding",
+        })?;
 
         dispatch(
             self,
-            Submission { submitted, entry, cause: None, preparation: None },
+            Submission {
+                submitted,
+                entry,
+                cause: None,
+                preparation: None,
+            },
             source,
             parent,
             EncodedInput {
@@ -196,7 +205,10 @@ impl Manager {
         &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
     ) -> Result<PluginControl> {
         if contract.operation().visibility != crate::operations::Visibility::Host || scope.observe_contract() != Some(contract) {
-            return Err(Error::InvalidInput { field: "observer control", reason: "control differs from the frozen Host contract" });
+            return Err(Error::InvalidInput {
+                field: "observer control",
+                reason: "control differs from the frozen Host contract",
+            });
         }
         self.capture_callback(scope, contract).map(PluginControl)
     }
@@ -206,9 +218,10 @@ impl Manager {
             return Err(Error::Closing { domain: "callback scope" });
         }
         let entry = self.capture_provider(contract.operation().id.as_str(), Some(scope.owner()))?;
-        let selected = entry
-            .plugin()
-            .ok_or(Error::InvalidInput { field: "callback scope", reason: "callback target has no original plugin generation" })?;
+        let selected = entry.plugin().ok_or(Error::InvalidInput {
+            field: "callback scope",
+            reason: "callback target has no original plugin generation",
+        })?;
         if !selected.same_activation(scope) {
             return Err(Error::InvalidInput {
                 field: "callback scope",
@@ -229,9 +242,16 @@ impl PluginCallback {
             });
         }
         if entry.wire.is_none() {
-            return Err(Error::InvalidInput { field: "callback codec", reason: "callback target has no original codec binding" });
+            return Err(Error::InvalidInput {
+                field: "callback codec",
+                reason: "callback target has no original codec binding",
+            });
         }
-        Ok(Self { operations, entry, contract: contract.clone() })
+        Ok(Self {
+            operations,
+            entry,
+            contract: contract.clone(),
+        })
     }
 
     pub fn contract(&self) -> &crate::operations::Contract {
@@ -264,7 +284,10 @@ impl PluginCallback {
             .as_ref()
             .map(|binding| if resident { Ok(super::native::Binding::resident_slot()) } else { binding.reserve() })
             .transpose()
-            .map_err(|source| Error::OperationFailed { operation: self.entry.id().to_owned(), source: Arc::new(source) })?;
+            .map_err(|source| Error::OperationFailed {
+                operation: self.entry.id().to_owned(),
+                source: Arc::new(source),
+            })?;
         let payload = catch_unwind(AssertUnwindSafe(|| encode(encoding_memory_bytes.get())))
             .map_err(|_| Error::OperationPanicked { operation: self.entry.id().to_owned() })??;
         if payload.capacity() > encoding_memory_bytes.get() {
@@ -277,13 +300,18 @@ impl PluginCallback {
         source.check()?;
         self.entry.available()?;
         budget(timeout, submitted)?;
-        let dispatch = self
-            .entry
-            .wire
-            .ok_or(Error::InvalidInput { field: "callback codec", reason: "callback target has no original codec binding" })?;
+        let dispatch = self.entry.wire.ok_or(Error::InvalidInput {
+            field: "callback codec",
+            reason: "callback target has no original codec binding",
+        })?;
         dispatch(
             &self.operations,
-            Submission { submitted, entry: Arc::clone(&self.entry), cause: None, preparation: None },
+            Submission {
+                submitted,
+                entry: Arc::clone(&self.entry),
+                cause: None,
+                preparation: None,
+            },
             source,
             None,
             EncodedInput {
@@ -329,7 +357,10 @@ impl super::Context<'_> {
             operation,
             payload,
             self.source.clone(),
-            Some(Parent { scope: &self.scope, ancestors: self.admission.held() }),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
         )
     }
 
@@ -343,7 +374,10 @@ impl super::Context<'_> {
             operation,
             payload,
             self.source.clone(),
-            Some(Parent { scope: &self.scope, ancestors: self.admission.held() }),
+            Some(Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
             submitted,
             Some((fingerprint, generation)),
         )
@@ -362,11 +396,10 @@ pub(super) fn dispatch_native(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(timeout, submitted)?;
-    let factory = submission
-        .entry
-        .binding
-        .downcast_ref::<harmos_sdk::operations::OperationFactory>()
-        .ok_or(Error::InvalidInput { field: "native operation", reason: "entry does not own a native factory" })?;
+    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().ok_or(Error::InvalidInput {
+        field: "native operation",
+        reason: "entry does not own a native factory",
+    })?;
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -385,7 +418,10 @@ pub(super) fn dispatch_native(
     }
     let prepared = catch_unwind(AssertUnwindSafe(|| factory.prepare_encoded(&input.payload)))
         .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
-        .map_err(|source| Error::OperationFailed { operation: name, source: Arc::new(source) })?;
+        .map_err(|source| Error::OperationFailed {
+            operation: name,
+            source: Arc::new(source),
+        })?;
     drop(input.payload);
     dispatch_prepared(operations, submission, source, parent, prepared, super::binding::Request::from(Vec::new()))
 }
@@ -472,11 +508,11 @@ mod tests {
         };
     }
 
-    impl harmos_sdk::Operation for Probe {
+    impl harmos_sdk::Handler for Probe {
         type Request = u64;
         type Response = u64;
         type Error = std::io::Error;
-        type Endpoints = ();
+        type StreamEndpoints = ();
 
         async fn initialize(_: harmos_sdk::OperationContext) -> std::io::Result<Self> {
             Ok(Self)
@@ -491,7 +527,7 @@ mod tests {
     async fn assigned_identity_fences_before_decoding() {
         let builder = crate::Runtime::<Model>::builder((), ()).register(Lanes::catalog());
         let runtime = builder.runtime().await.unwrap();
-        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).operation::<Probe>();
+        let batch = harmos_sdk::RegistrationBatch::new(harmos_sdk::Dependencies::new()).implementation::<Probe, Probe>();
         runtime.register(batch.clone().defaults()).await.unwrap();
         let entry = runtime.operations.entry(Probe::ID).unwrap();
         let fingerprint = entry.declared().fingerprint.0;

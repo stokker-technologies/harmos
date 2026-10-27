@@ -26,7 +26,7 @@ use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
-use harmos_operations::host::{CatalogPage, CatalogRequest};
+use harmos_operations::host::{Catalog, CatalogPage};
 
 /* === Constants === */
 
@@ -76,23 +76,31 @@ impl Write for Bounded {
 }
 
 impl Manager {
-    pub(in crate::operations) fn discover(&self, source: &Source, request: &CatalogRequest) -> Result<CatalogPage> {
+    pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
         let origin = source.check()?;
-        let (rows, bytes) = request
-            .limits()
-            .map_err(|_| Error::InvalidInput { field: "catalog limits", reason: "rows must be 1..=256 and bytes must be 2..=4194304" })?;
+        let (rows, bytes) = request.limits().map_err(|_| Error::InvalidInput {
+            field: "catalog limits",
+            reason: "rows must be 1..=256 and bytes must be 2..=4194304",
+        })?;
         let after: Option<(String, String)> = request
             .after
             .as_ref()
             .map(|cursor| {
                 if cursor.len() > CURSOR_BYTES {
-                    return Err(Error::InvalidInput { field: "discovery cursor", reason: "cursor is too large" });
+                    return Err(Error::InvalidInput {
+                        field: "discovery cursor",
+                        reason: "cursor is too large",
+                    });
                 }
-                let key: (String, String) = serde_json::from_str(cursor)
-                    .map_err(|_| Error::InvalidInput { field: "discovery cursor", reason: "cursor must contain an operation and owner" })?;
+                let key: (String, String) = serde_json::from_str(cursor).map_err(|_| Error::InvalidInput {
+                    field: "discovery cursor",
+                    reason: "cursor must contain an operation and owner",
+                })?;
                 for value in [&key.0, &key.1] {
-                    Identifier::new(value.as_str())
-                        .map_err(|_| Error::InvalidInput { field: "discovery cursor", reason: "cursor contains an invalid identifier" })?;
+                    Identifier::new(value.as_str()).map_err(|_| Error::InvalidInput {
+                        field: "discovery cursor",
+                        reason: "cursor contains an invalid identifier",
+                    })?;
                 }
                 Ok(key)
             })

@@ -48,6 +48,7 @@ struct Physical {
 }
 struct Bound<D: OperationDeclaration> {
     physical: Physical,
+    project: fn(harmos_sdk::__private::ErasedResponse) -> Option<super::Response<Payload<D>>>,
     cached: Option<super::Response<Payload<D>>>,
     entry: Arc<Entry>,
     operations: Manager,
@@ -134,9 +135,10 @@ impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
             self.attempt = self.attempt.saturating_add(1);
             let context = execution_context(context)?;
             let response = guarded(self.entry.id(), self.physical.instance.run(context)).await?;
-            response
-                .restore::<D::Response>()
-                .ok_or(Error::InvalidInput { field: "operation response", reason: "native response differs from its declaration" })
+            (self.project)(response).ok_or(Error::InvalidInput {
+                field: "operation response",
+                reason: "native response differs from its declaration",
+            })
         })
     }
 
@@ -161,8 +163,21 @@ impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
         let operation = self.entry.id().to_owned();
         let failure = super::finalization::failed(&operation, outcome.clone(), cause.clone());
         let diagnostic = Arc::new(super::finalization::failed(&operation, outcome.clone(), cause));
-        let Self { physical, control, admission, preparation, .. } = *self;
-        let owner = Owned { physical, control, operation, outcome, _admission: admission, _preparation: preparation };
+        let Self {
+            physical,
+            control,
+            admission,
+            preparation,
+            ..
+        } = *self;
+        let owner = Owned {
+            physical,
+            control,
+            operation,
+            outcome,
+            _admission: admission,
+            _preparation: preparation,
+        };
         (Box::new(owner), Some(failure), diagnostic)
     }
 }
@@ -192,6 +207,20 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
     + Sync
     + 'static,
 ) -> Typed<D, P> {
+    factory_projected::<D, P>(operations, prepare, harmos_sdk::__private::ErasedResponse::restore::<D::Response>, |response| {
+        response.clone().into_erased()
+    })
+}
+
+pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
+    operations: &Manager,
+    prepare: impl Fn(D::Request, P) -> std::result::Result<Box<dyn harmos_sdk::operations::NativeInstance>, harmos_sdk::ServingError>
+    + Send
+    + Sync
+    + 'static,
+    project: fn(harmos_sdk::__private::ErasedResponse) -> Option<super::Response<Payload<D>>>,
+    erase: fn(&super::Response<Payload<D>>) -> harmos_sdk::__private::ErasedResponse,
+) -> Typed<D, P> {
     let registry = Arc::downgrade(&operations.registry);
     let instances = operations.instances.clone();
     let lanes = operations.lanes.clone();
@@ -199,7 +228,9 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
     let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(move |(request, endpoints), id, control, entry, admission, source, origin, preparation| {
-            let super::binding::Request { value: request, retention, context, key, .. } = request;
+            let super::binding::Request {
+                value: request, retention, context, key, ..
+            } = request;
             let registry = registry.upgrade().ok_or(Error::Closing { domain: "operations" })?;
             let operations = Manager {
                 registry,
@@ -219,11 +250,14 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
                     reason: "endpoint execution cannot reuse a response without executing its streams",
                 });
             }
-            let cached = key.as_ref().and_then(|key| operations.lookup::<D>(&entry, key, &origin.identity));
+            let cached = key.as_ref().and_then(|key| operations.lookup_erased(&entry, key, &origin.identity).and_then(project));
             let bound = Bound::<D> {
+                project,
                 physical: Physical {
-                    instance: prepare(request, endpoints)
-                        .map_err(|source| Error::OperationFailed { operation: entry.id().to_owned(), source: Arc::new(source) })?,
+                    instance: prepare(request, endpoints).map_err(|source| Error::OperationFailed {
+                        operation: entry.id().to_owned(),
+                        source: Arc::new(source),
+                    })?,
                     _request: retention,
                 },
                 cached,
@@ -244,7 +278,7 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
                 if source.check().is_ok()
                     && let Some(registry) = registry.upgrade()
                 {
-                    registry.insert::<D>(&entry, key.clone(), origin.identity.clone(), response.clone());
+                    registry.insert_erased(&entry, key.clone(), origin.identity.clone(), erase(response));
                 }
             }));
             Ok(prepared)
@@ -256,22 +290,39 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
 
 fn execution_context(context: Context<'_>) -> Result<harmos_sdk::OperationContext> {
     let mut dependencies = harmos_sdk::Dependencies::new();
+    dependencies.insert(Arc::new(harmos_sdk::operations::Calls(Arc::new(context.owned())))).map_err(|source| Error::OperationFailed {
+        operation: "declared calls".into(),
+        source: Arc::new(source),
+    })?;
     #[cfg(feature = "plugin-sidecar")]
-    dependencies
-        .insert(Arc::new(harmos_sdk::operations::publication::PublicationAccess(Arc::new(context.owned()))))
-        .map_err(|source| Error::OperationFailed { operation: "publication access".into(), source: Arc::new(source) })?;
-    dependencies
-        .insert(Arc::new(harmos_sdk::operations::access::DiscoveryAccess(Arc::new(context.owned()))))
-        .map_err(|source| Error::OperationFailed { operation: "discovery access".into(), source: Arc::new(source) })?;
-    dependencies
-        .insert(Arc::new(harmos_sdk::operations::access::GrantAccess(Arc::new(context.owned()))))
-        .map_err(|source| Error::OperationFailed { operation: "grant access".into(), source: Arc::new(source) })?;
-    dependencies
-        .insert(Arc::new(harmos_sdk::operations::instances::InstanceAccess(Arc::new(context.owned()))))
-        .map_err(|source| Error::OperationFailed { operation: "instance access".into(), source: Arc::new(source) })?;
-    dependencies
-        .insert(Arc::new(context.owned()))
-        .map_err(|source| Error::OperationFailed { operation: "host context".to_owned(), source: Arc::new(source) })?;
+    dependencies.insert(Arc::new(harmos_sdk::operations::publication::PublicationAccess(Arc::new(context.owned())))).map_err(|source| {
+        Error::OperationFailed {
+            operation: "publication access".into(),
+            source: Arc::new(source),
+        }
+    })?;
+    dependencies.insert(Arc::new(harmos_sdk::operations::access::DiscoveryAccess(Arc::new(context.owned())))).map_err(|source| {
+        Error::OperationFailed {
+            operation: "discovery access".into(),
+            source: Arc::new(source),
+        }
+    })?;
+    dependencies.insert(Arc::new(harmos_sdk::operations::access::GrantAccess(Arc::new(context.owned())))).map_err(|source| {
+        Error::OperationFailed {
+            operation: "grant access".into(),
+            source: Arc::new(source),
+        }
+    })?;
+    dependencies.insert(Arc::new(harmos_sdk::operations::instances::InstanceAccess(Arc::new(context.owned())))).map_err(|source| {
+        Error::OperationFailed {
+            operation: "instance access".into(),
+            source: Arc::new(source),
+        }
+    })?;
+    dependencies.insert(Arc::new(context.owned())).map_err(|source| Error::OperationFailed {
+        operation: "host context".to_owned(),
+        source: Arc::new(source),
+    })?;
     Ok(harmos_sdk::OperationContext::new(dependencies, context.context().clone()))
 }
 async fn guarded<O>(operation: &str, future: impl Future<Output = std::result::Result<O, harmos_sdk::ServingError>>) -> Result<O> {

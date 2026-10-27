@@ -108,10 +108,11 @@ pub struct HostContext {
 
 impl OperationGeneration {
     pub(super) fn fresh() -> Result<Self> {
-        NEXT_GENERATION
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map(Self)
-            .map_err(|_| Error::ResourceExhausted { resource: "operation provider generations" })
+        NEXT_GENERATION.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1)).map(Self).map_err(|_| {
+            Error::ResourceExhausted {
+                resource: "operation provider generations",
+            }
+        })
     }
 
     pub fn value(self) -> u64 {
@@ -430,7 +431,7 @@ impl harmos_sdk::operations::Host for HostContext {
         S::Row: harmos_domain::Message,
     {
         use harmos_domain::Message;
-        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::PublishRequest {
+        let published = self.call::<harmos_operations::streams::Publish>(harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -469,10 +470,11 @@ impl harmos_sdk::operations::Host for HostContext {
 }
 
 pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
-    NEXT_INSTANCE
-        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .map(OperationInstanceId::new)
-        .map_err(|_| Error::ResourceExhausted { resource: "operation instance identities" })
+    NEXT_INSTANCE.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1)).map(OperationInstanceId::new).map_err(|_| {
+        Error::ResourceExhausted {
+            resource: "operation instance identities",
+        }
+    })
 }
 
 /* === Private Functions === */
@@ -510,7 +512,7 @@ impl harmos_sdk::operations::access::Discovery for HostContext {
         &self, after: Option<&str>, rows: usize, bytes: usize,
     ) -> std::result::Result<harmos_sdk::operations::access::DiscoveryPage, harmos_sdk::operations::access::AccessError> {
         let context = self.borrow();
-        let request = harmos_operations::host::CatalogRequest {
+        let request = harmos_operations::host::Catalog {
             kind: harmos_operations::host::CatalogKind::Operations,
             schema: None,
             after: after.map(str::to_owned),
@@ -530,7 +532,7 @@ impl harmos_sdk::operations::access::GrantAuthority for HostContext {
 #[cfg(feature = "plugin-sidecar")]
 impl harmos_sdk::operations::publication::PublicationHost for HostContext {
     fn publish<'a>(
-        &'a self, _: harmos_sdk::OperationContext, publication: harmos_sdk::operations::publication::Publication<'a>,
+        &'a self, _: harmos_sdk::operations::CallContext, publication: harmos_sdk::operations::publication::Publication<'a>,
     ) -> harmos_sdk::operations::publication::Published<'a> {
         Box::pin(async move {
             let context = self.borrow();

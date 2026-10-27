@@ -44,8 +44,8 @@ impl Registry {
         Ok(GenerationCommit { _state: state })
     }
 
-    pub(in crate::operations) fn insert<O: OperationDeclaration>(
-        &self, entry: &Arc<Entry>, key: CacheKey, identity: Identity, response: crate::operations::Response<O::Response>,
+    pub(in crate::operations) fn insert_erased(
+        &self, entry: &Arc<Entry>, key: CacheKey, identity: Identity, response: harmos_sdk::__private::ErasedResponse,
     ) {
         let mut state = self.state.lock().expect("operation registry lock is healthy");
         if state.closing
@@ -60,7 +60,12 @@ impl Registry {
         });
         let available = state.cache_capacity - 1;
         retired.extend(state.evict_to(available));
-        state.cache.push_back(Cached { target: Arc::downgrade(entry), key, identity, response: response.into_erased() });
+        state.cache.push_back(Cached {
+            target: Arc::downgrade(entry),
+            key,
+            identity,
+            response,
+        });
         drop(state);
         drop(retired);
     }
@@ -79,9 +84,15 @@ impl State {
             .into_iter()
             .flat_map(|providers| providers.values())
             .filter(|entry| entry.plugin.is_none() && entry.contract.as_ref() == Some(contract));
-        let selected = compatible.next().ok_or_else(|| Error::NotRegistered { domain: "host provider", name: id.to_owned() })?;
+        let selected = compatible.next().ok_or_else(|| Error::NotRegistered {
+            domain: "host provider",
+            name: id.to_owned(),
+        })?;
         if compatible.next().is_some() {
-            return Err(Error::InvalidInput { field: "host provider", reason: "required contract has multiple host providers" });
+            return Err(Error::InvalidInput {
+                field: "host provider",
+                reason: "required contract has multiple host providers",
+            });
         }
         Ok(selected)
     }
@@ -89,9 +100,10 @@ impl State {
     pub(super) fn select(&self, id: &str, owner: Option<&str>) -> Result<&Arc<Entry>> {
         let providers = self.entries.get(id).ok_or_else(|| Error::NotRegistered { domain: "operation", name: id.to_owned() })?;
         if let Some(owner) = owner {
-            return providers
-                .get(owner)
-                .ok_or_else(|| Error::NotRegistered { domain: "operation provider", name: format!("{owner}/{id}") });
+            return providers.get(owner).ok_or_else(|| Error::NotRegistered {
+                domain: "operation provider",
+                name: format!("{owner}/{id}"),
+            });
         }
         if providers.len() != 1 {
             return Err(Error::InvalidInput {
