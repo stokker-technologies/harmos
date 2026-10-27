@@ -35,31 +35,41 @@ this facade rule applies to interfaces, not every internal dependency.
 
 ### Plugin Internal Structure
 
-Target shape; it requires link-time registration (`#[harmos::catalog(register)]` and
-`#[harmos::resource(register)]`, gathered by the plugin macro or builder), a Harmos follow-up feature.
+Each operation has one definition. A platform-independent operation stays a single file with its definition module and
+the inline runtime module. A platform-dependent operation is a directory whose `mod.rs` holds the definition module
+(the struct-as-request, id, policy, response types and contract tests) and exactly these declarations:
+
+```rust
+#[cfg(all(feature = "runtime", target_os = "windows"))]
+mod windows;
+#[cfg(all(feature = "runtime", unix))]
+mod unix;
+```
 
 ```text
 src/
-├── lib.rs                  # The plugin; registered catalogs and backends are gathered
-├── operations/
-│   ├── mod.rs
-│   ├── catalog.rs          # `Common`: every operation available on all platforms
-│   └── <family>/<operation>.rs
-└── platform/
-    ├── mod.rs              # Only `#[cfg(...)] mod <os>;` lines
-    ├── windows/
-    │   ├── backend.rs      # The registered backend resource behind the product trait
-    │   ├── catalog.rs      # Registered `Platform` catalog of Windows-only operations
-    │   └── <operation>.rs
-    └── linux/
-        └── ...
+├── lib.rs                  # Composes the one catalog, dependencies and resources
+└── operations/
+    ├── mod.rs
+    ├── catalog.rs          # The plugin's single catalog
+    └── <family>/
+        ├── <operation>.rs  # Platform-independent: definition plus inline runtime module
+        └── <operation>/
+            ├── mod.rs      # Definition module plus the two gated declarations
+            ├── windows.rs  # `impl harmos::Operation` against the native API, with its tests
+            └── unix.rs
 ```
+
+Request and response types exist once, so SDK consumers name them without gates and the wire contract cannot drift.
+A plugin has one catalog: no platform catalogs, backend traits, `platform/` folder, selection blocks, `#[path]` or
+`unsupported` stubs. Every operation ships on every supported platform; one that cannot is not an operation of that
+plugin. `lib.rs` composes explicitly with `RegistrationBatch::new(dependencies).operation::<O>()` and
+`Dependencies::insert`; shared platform handles, such as a WLAN client or a D-Bus connection, are ordinary resources.
 
 Gate only declarations, one gate per declaration (`mod` lines, including `#[cfg(test)] mod tests` and
 `#[cfg(feature = "runtime")] mod runtime`, and `pub use` lines), none on items: never on functions, impls, structs,
-fields, statements or catalog variants. A gated-out module contributes nothing; there are no `unsupported` stubs and no
-`pub use` selection. `Common` is identical on every platform, so its fingerprints match everywhere; a `Common` operation
-whose backend is not registered on a platform fails at activation with the declared-dependency error.
+fields, statements or catalog variants. Spell predicates `target_os = "windows"` and `unix`, never the `windows`
+shortcut; use `target_os = "linux"` only for a genuinely Linux-only path.
 
 ## Operation Placement
 
