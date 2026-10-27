@@ -194,7 +194,7 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 
 ### Local Validation
 
-- [ ] 1.26 Verify the completed extraction and clean break with targeted dependency/feature and behavior checks, then run `mise run check` followed by the full `mise run test` lanes serially, repairing failures. Commit coherent local milestones; do not push. Leave delivery section 2 open.
+- [x] 1.26 Verify the completed extraction and clean break with targeted dependency/feature and behavior checks, then run `mise run check` followed by the full `mise run test` lanes serially, repairing failures. Commit coherent local milestones; do not push. Leave delivery section 2 open. Proof: `mise run --jobs 1 check` and `mise run --jobs 1 test` both exited 0 on Windows x86_64 after targeted checks and product/test artifact preparation. The final full run passed 131 unit, 624 integration, 17 acceptance and 10 system tests (782 total, zero failures); the declared acceptance task filtered four authoring tests. Both schematic guest system scenarios passed with the existing fuel limit. All implementation items are closed; delivery and cross-platform proof remain in section 2.
 
 ## 2. Validation And Delivery
 
