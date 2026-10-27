@@ -46,5 +46,5 @@
 - [x] 4.2 Remove unused dependencies through check:rust, upgrade workspace dependencies including majors, and refresh project lockfiles.
 - [x] 4.3 Upgrade mise tools and regenerate mise.lock with mise.
 - [x] 4.4 Run the requested seven-package focused tests, Wasm/guest builds, consumer check and all formatters; repair failures.
-- [ ] 4.5 Push the combined candidate, verify remote SHA, open the authorized dev PR and enable squash auto-merge.
-- [ ] 4.6 Run default ci:simulate once and report each job truthfully; hosted checks are handed off without polling.
+- [x] 4.5 Push the combined candidate, verify remote SHA, open the authorized dev PR and enable squash auto-merge.
+- [x] 4.6 Run default ci:simulate once and report each job truthfully; hosted checks are handed off without polling. Source, Python and both Rust checks passed; Product and Tests builds failed on both platforms before compilation with a cache-wrapper RuntimeError; 14 dependent jobs were blocked. Full local proof remains failed; shared tooling repair is excluded by the owner.
