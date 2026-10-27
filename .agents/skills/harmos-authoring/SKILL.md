@@ -12,15 +12,15 @@ repository-specific build system are required.
 ## Ownership Before Wiring
 
 Keep shared models, records, streams and product settings in the domain.
-Colocate each request, response, declaration struct and runtime-gated `Operation`
-implementation in a vertical operations file. A reusable operations crate exposes
+Use one vertical file per operation: a complete Definition Module skeleton followed by a complete runtime-gated Runtime Module
+skeleton, each with its own Tests section. The operation struct is its request message. A reusable operations crate exposes
 contracts by default and enables execution with `runtime`; resource dependencies
 can be optional. A self-contained plugin uses the same layout under `operations/`.
 
 One catalog provides `catalog()` for portable definitions and
 `registration(Dependencies)` for execution factories. Runtime composition inserts
 shared `Arc<T>` dependencies, chooses typed lanes with `RegistrationExt`, and
-registers the batch. `OperationContext::dependency` reads that snapshot.
+registers the batch. `Context::resource` reads declared resources infallibly from that snapshot.
 Native, sidecar and guest bodies implement the common SDK `Operation` trait;
 carrier composition supplies target-compatible resources. Keep one implementation
 where dependencies support both carriers. Do not add forwarding operations.

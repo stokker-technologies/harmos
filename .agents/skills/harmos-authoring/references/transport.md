@@ -6,15 +6,12 @@ same behavior over gRPC does not require another operation or forwarding handler
 This declaration fragment assumes a product-owned `Reading` and `POLICY`:
 
 ```rust
-#[harmos::message]
-pub struct ReadRequest { pub channel: u32 }
-
 #[harmos::operation(
-    id = "read", request = ReadRequest, response = Reading,
-    policy = POLICY, infer_request,
+    id = "instrument.read", response = Reading,
+    policy = POLICY,
     grpc(package = "instrument.v1", service = "Instrument", method = "Read"),
 )]
-pub struct Read {}
+pub struct Read { pub channel: u32 }
 ```
 
 The runtime's gRPC facility exposes that contract. `harmos-domain` owns the

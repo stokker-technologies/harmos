@@ -31,13 +31,13 @@ impl Operation for Cancel {
 ```
 
 - The macro expands `#[harmos::message]` on the struct (named fields or unit) and adds `Clone`. `codec = manual` keeps an
-  authored codec (built-in `product!` codecs, in-process test requests). The declaration sets `type Request = Self`.
+  authored codec (built-in `product!` codecs, in-process test requests) and leaves Clone to the author. The declaration sets `type Request = Self`.
 - Operation IDs match `segment(.segment)*` with `segment = [a-z][a-z0-9_]*`; qualified IDs are `owner.local`, split at the first
   dot. The derived default ID stays the snake-cased struct name.
 - `Operation: OperationDeclaration<Request = Self> + Dependent + Clone`. `run` consumes a clone of the request per attempt, so
   retries keep their original request.
 - `Context<'a, O>` borrows the attempt: `call() -> &CallContext`, `resource::<T>() -> Arc<T>` where `O: Requires<T>`,
-  `streams() -> &mut O::StreamEndpoints` (mutable because receiving needs `&mut`), `operation(request)` where `O: Invokes<T>`.
+  `streams() -> &O::StreamEndpoints`, `operation(request)` where `O: Invokes<T>`.
   `StreamEndpoints` is derived from the declaration's `Input`/`Output` by a blanket SDK impl.
 - `Handler` is the low-level instance contract (`initialize`, `run(&mut self, ..)`, `stop`, `cleanup`, `transferred`) used by
   carrier proxies, lifecycle built-ins and runtime fixtures. `Executable` selects a declaration's handler; authored operations
@@ -74,9 +74,15 @@ impl Operation for Cancel {
 - Implementation ownership is this worktree alone, including the inherited partial edits. Task order is domain/SDK, macros,
   carriers, built-ins and all workspace consumers, then documentation and targeted proof. No push or PR is authorized.
 - `Resource` and `Dependent` live in the SDK because they describe execution resources; domain owns `Requires` and `Invokes`.
-- Mutable stream access is retained because receiving requires exclusive access; `streams()` borrows the derived endpoint set.
+- Shared stream access uses an asynchronous receiver mutex; receiving remains serialized and cancellation-safe.
 - Stateful carrier and lifecycle machinery retains the internal `Handler` lifecycle; consumer `Operation` has only consuming `run`.
 - The inherited deletion of `authoring-streamline` and folded current specs is retained as its retirement result.
 
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.
 - Feature unification can enable a facade `runtime` without the consumer `runtime`; gating on the consumer feature avoids that.
+
+- Schematic uses aggregated callees directly; duplicate explicit requirement catalogs are removed.
+- Targeted fixture builds refresh stamped macro libraries because inherited compiler outputs no longer exist.
+
+- Generated messages derive Clone when absent so nested request messages support retry snapshots; manual codecs own Clone.
+- Declared native calls reuse the callee cache's erased response owner, preserving identity with direct invocations.

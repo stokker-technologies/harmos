@@ -21,7 +21,9 @@ skills or tooling are prerequisites.
 | `<p>-cli`, `<p>-gui`, `<p>-plugin`, `<p>-sidecar`, `<p>-guest` | Product interfaces and carrier entry points. | Product entry library plus interface or carrier dependencies. |
 | Resource libraries | One external system, such as desktop automation or an external gRPC client. | Their own protocols; no dependency back on the product runtime. |
 
-Place these crates under the product's `crates/` directory. Create only the
+A single `-sidecar` or `-guest` crate stays under `crates/`. Several plugins use
+`plugins/sidecars/<name>` and `plugins/guests/<name>`; these carrier crates declare `publish = false`.
+Place the other product crates under `crates/`. Create only the
 owners the product needs. Runtime is the execution composition layer below
 the entry library; domain remains independently accessible beside it.
 An existing application crate that owns execution fills the runtime role.
@@ -33,8 +35,7 @@ this facade rule applies to interfaces, not every internal dependency.
 
 ## Operation Placement
 
-In a reusable product, colocate each operation's portable request, response,
-declaration struct and runtime-gated `Operation` implementation in
+In a reusable product, use one file per operation for its request struct, response and runtime-gated `Operation` implementation in
 `<p>-operations/src/<concern>/<operation>.rs`. Its catalog supplies both
 `catalog() -> Vec<OperationDefinition>` and, with `runtime`,
 `registration(Dependencies) -> RegistrationBatch`. There is one operation tree.
@@ -43,9 +44,9 @@ dependencies. Runtime composition supplies dependencies and lane placement.
 
 A self-contained crate can use the same vertical layout under `operations/`.
 Create a separate operations crate when independent contract consumers justify
-it. Declarations are independent of their request types: `infer_request` selects
-one declaration for inference, while `operation_for::<O>` selects explicitly.
-Execution fields use `#[cfg(feature = "runtime")]` and never enter message schemas.
+it. The operation struct is its request message. Its Definition Module and runtime-gated Runtime Module each use a complete skeleton,
+including their own Tests section. Runtime resources are declared with `resources` and obtained through `Context`; they are not request fields.
+
 
 ## Resources And Configuration
 

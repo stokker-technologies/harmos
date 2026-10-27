@@ -17,7 +17,7 @@
 
 - [x] 3.1 Built-ins: the 30 harmos-operations declarations adopt the contract and dotted IDs.
 - [ ] 3.2 Consumers: runtime, sidecar, guest and macro fixtures, templates and the schematic example.
-- [ ] 3.3 Documentation: product guide, authoring skill, architecture skill plugin folder layout, rendered copies.
+- [x] 3.3 Documentation: product guide, authoring skill, architecture skill plugin folder layout, rendered copies.
 
 ## 4. Proof
 

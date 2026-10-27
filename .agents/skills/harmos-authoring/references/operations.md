@@ -2,116 +2,158 @@
 
 ## Vertical Authoring
 
-A portable request is separate from its operation declaration. Put request,
-response, declaration and runtime implementation together in the operation's
-concern directory. Shared product values stay in the domain. This example assumes
-`device::Error` converts `harmos::DependencyError`:
+One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
+contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
+tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
 
 ```rust
-#[cfg(feature = "runtime")]
-use {device::{Device, Error}, harmos::{Operation, OperationContext, Response}, std::sync::Arc};
+/* === --- === Definition Module === --- === */
 
-#[harmos::message]
-pub struct ReadRequest { pub channel: u32 }
+/* === Modules === */
 
-#[harmos::message]
-pub struct ReadResponse { pub value: f64 }
 
-#[harmos::operation(id = "read", request = ReadRequest, response = ReadResponse,
-    policy = crate::POLICY, infer_request)]
-pub struct Read {
-    #[cfg(feature = "runtime")]
-    device: Arc<Device>,
-}
+/* === Re-Exports === */
+
+
+/* === Imports === */
 
 #[cfg(feature = "runtime")]
-impl Operation for Read {
-    type Request = ReadRequest;
-    type Response = ReadResponse;
-    type Error = Error;
-    type Endpoints = ();
+use device::Device;
 
-    async fn initialize(context: OperationContext) -> Result<Self, Error> {
-        Ok(Self { device: context.dependency::<Device>()? })
+/* === Constants === */
+
+const POLICY: harmos::OperationPolicy = crate::POLICY;
+
+/* === Macros === */
+
+
+/* === Type Aliases === */
+
+
+/* === Structs === */
+
+#[harmos::message]
+pub struct Reading { pub value: f64 }
+
+#[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
+    visibility = Shared, resources = [Device])]
+pub struct Read { pub channel: u32 }
+
+/* === Enums === */
+
+
+/* === Traits === */
+
+
+/* === Implementations === */
+
+
+/* === Public Functions === */
+
+
+/* === Private Functions === */
+
+
+/* === Tests === */
+
+
+/* === --- === Runtime Module === --- === */
+
+#[cfg(feature = "runtime")]
+mod runtime {
+    /* === Modules === */
+
+
+    /* === Re-Exports === */
+
+
+    /* === Imports === */
+
+    use super::*;
+    use harmos::{Context, Operation, Response};
+
+    /* === Constants === */
+
+
+    /* === Macros === */
+
+
+    /* === Type Aliases === */
+
+
+    /* === Structs === */
+
+
+    /* === Enums === */
+
+
+    /* === Traits === */
+
+
+    /* === Implementations === */
+
+    impl Operation for Read {
+        type Error = device::Error;
+
+        async fn run(self, ctx: Context<'_, Self>) -> Result<Response<Reading>, Self::Error> {
+            let device = ctx.resource::<Device>();
+            Ok(Reading { value: device.read(self.channel).await? }.into())
+        }
     }
 
-    async fn run(&mut self, _: OperationContext, request: &mut ReadRequest,
-        _: &mut ()) -> Result<Response<ReadResponse>, Error> {
-        Ok(ReadResponse { value: self.device.read(request.channel).await? }.into())
-    }
+    /* === Public Functions === */
+
+
+    /* === Private Functions === */
+
+
+    /* === Tests === */
 }
 ```
 
 The operations crate uses `harmos` with `default-features = false` and
-`runtime = ["harmos/runtime", "dep:device"]`. Cargo feature unification can
-still enable execution elsewhere in a shared graph. Keep contracts usable in
-a separate build without runtime dependencies.
+`runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
+`visibility` to `Private`; `Shared` and `Host` are short visibility forms. The operation struct is the request message;
+its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
 
-Harmos's own built-ins follow this layout in
-`crates/harmos-operations/src/{host,lifecycle,storage,streams}/`, exposed as
-`harmos::builtins`. Runtime code supplies SDK-owned state access handles;
-operations never depend back on the runtime crate. Shared portable values and
-reserved lifecycle protocol schemas stay in the domain. The current wire and
-storage formats are v1, with no historical decoding or migration.
-
-## Catalogs And Invocation
+For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
+variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
 
 ```rust
-#[harmos::catalog]
-pub enum Operations { Read(temperature::read::Read) }
+#[cfg(windows)]
+mod desktop;
 
-let definitions = Operations::catalog();
+#[harmos::catalog]
+pub enum Operations {
+    Read(temperature::read::Read),
+    #[cfg(windows)]
+    Desktop(desktop::Inspect),
+}
+
 let mut dependencies = harmos::Dependencies::new();
 dependencies.insert(device)?;
 use harmos::RegistrationExt;
 runtime.register(Operations::registration(dependencies).lane(Lane::Interactive)).await?;
-let reading = runtime.operation(ReadRequest { channel: 3 }).retry(retry).run().await?;
-let pending = runtime.operation_for::<Read>(ReadRequest { channel: 3 }).start().await?;
-let reading = pending.join().await?;
-runtime.unregister(&harmos::QualifiedId::parse("host.read")?).await?;
+let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).run().await?;
 ```
 
-`Application::Lanes` names the closed `Lane` enum. A batch can use
-`.defaults::<Lane>()` and `.default_lane_for::<Read>(lane)`. Invocation builders
-are inert until started. Dependency insertion changes only the caller's snapshot;
-shared resource values remain the same `Arc<T>`. Duplicate or missing types fail
-explicitly. Declare one `infer_request` per request type; omit it when requests
-are reused and select the operation with `operation_for::<O>`.
+`ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
+`operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
+plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
 
-## Messages And Streaming
+- Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
+- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Shared`, or `Host`
+  for a host caller; missing targets and incompatible fingerprints are refused before execution.
+- Run: operation errors, deadlines and carrier faults remain fallible.
 
-`Message` defines `CODEC`, `encode`, `encode_into`, `encoded_size`, `decode`
-and `decoding_memory`. `Portable` adds schema-aware `fingerprint()` and payload
-`digest()`. Manual operation versions are replaced by fingerprints; stored
-application schema and journal versions retain their own durable contracts.
-Invalid static declarations fail macro checks or registration validation.
+`input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
+or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
+Invocation builders accept `.endpoints(...)` and remain inert until `.start()` or `.run()`.
 
-`input` and `output` independently name streamed item types. Use `()` endpoints
-for unary operations, `StreamInput<T>` for input, `StreamOutput<T>` for output,
-and their pair for duplex behavior. Supply typed endpoints with `.endpoints(...)`.
-Retain bounded ownership and await final settlement when cancelling streams.
-Live handles and reference-counted resources are execution fields rather than
-portable request fields.
+IDs use dotted segments `segment(.segment)*`, each `[a-z][a-z0-9_]*`. The runtime prepends the owner once:
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
+and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
 
-## Policy And Lifecycle
-
-`OperationPolicy` has `timeout`, `attempt_timeout` and `retries`; per-call
-`.retry(RetryPolicy)` leaves the declaration unchanged. Grant and cache-key hooks
-inspect `&Self::Request`. Visibility and replay behavior remain declaration metadata.
-
-`initialize(OperationContext)` constructs one fallible instance, `run` returns
-`Response<T>`, and `stop` and `cleanup` settle its resources. Services implement
-`Service` with the same context and lifecycle verbs and use
-`ServicePolicy { stop_timeout, restart }`, including `RestartPolicy::OnFailure`.
-Classify request errors where their meaning is known. Keep retry semantics
-consistent with side effects and replay safety.
-
-Local operation IDs match `[a-z][a-z0-9_]*`. The host assigns owners and qualifies
-routing IDs once as `owner.local_id`. Registration validates a whole batch;
-withdrawal rejects new calls and awaits cleanup. Failed cleanup retains the
-closing owner; another `unregister` resumes it. Re-registration allocates a fresh
-generation, fencing stale frames.
-
-Built-in carrier kits enable `harmos-operations/lifecycle` for SDK initialization
-and shutdown. The full `runtime` feature includes this subset plus host and
-storage execution; consumer operation authoring keeps its `runtime` convention.
+`Message` supplies encoding and decoding; `Portable` supplies structural fingerprints and payload digests. Retries run a clone
+of the original operation request. Large payloads belong in streams. The low-level `Handler` lifecycle is used for carrier proxies
+and lifecycle controls; services retain their separate `Service` lifecycle.
