@@ -376,14 +376,10 @@ impl Supervisor {
 
     // Publish rows in order through as few `host.publish` calls as fit the
     // frame and batch limits; each call awaits its answer before the next.
-    // `stamps[i]` is the production time of `rows[i]`.
-    pub(super) async fn publication<S>(
-        &self, rows: &[S::Row], stamps: &[Option<i64>], context: Option<&str>,
-    ) -> Result<(), super::PublishError>
-    where
-        S: crate::StreamSpec,
-        S::Row: Message,
-    {
+    // `stamps[i]` is the production time of `rows[i]`, each already encoded.
+    pub(super) async fn publication<S: crate::StreamSpec>(
+        &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>,
+    ) -> Result<(), super::PublishError> {
         debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
@@ -433,19 +429,16 @@ impl Supervisor {
     // and a stamp no delta can express starts the next call. A call carries
     // at most one window of rows, so the host never evicts its own rows.
     fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
-        &self, rows: &[S::Row], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
+        &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
         send: impl FnOnce(harmos_domain::operations::streams::Publish) -> Result<(), E>,
-    ) -> Result<usize, E>
-    where
-        S::Row: Message,
-    {
+    ) -> Result<usize, E> {
         let fits = |body: usize| Frame::child_encoded_from_empty(empty_envelope, body) <= Frame::LIMIT;
         let mut sequences = self.sequences.lock().expect("the publication sequence lock is healthy");
         let next = sequences.entry(S::ID).or_insert(0);
         let first = next.checked_add(1).ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
         *next = first;
         let published_unix_micros = stamps[0];
-        let head = crate::wire::publication_encoded_len(S::ID, S::VERSION, first, rows[0].encoded_len(), published_unix_micros, context);
+        let head = crate::wire::publication_encoded_len(S::ID, S::VERSION, first, rows[0].len(), published_unix_micros, context);
         let encoded = |count: usize, following: usize| head.saturating_add(crate::wire::varint_len(count as u64)).saturating_add(following);
         if !fits(encoded(0, 0)) {
             return Err(PublicationError::Oversized { encoded: encoded(0, 0), limit: Frame::LIMIT }.into());
@@ -464,7 +457,7 @@ impl Supervisor {
                 },
                 (None, Some(_)) => break,
             };
-            let grown = following.saturating_add(crate::wire::following_encoded_len(row.encoded_len(), delta));
+            let grown = following.saturating_add(crate::wire::following_encoded_len(row.len(), delta));
             let total = encoded(deltas.len() + 1, grown);
             if total > PUBLICATION_BATCH_BYTES || !fits(total) || *next == u64::MAX {
                 break;
@@ -480,12 +473,12 @@ impl Supervisor {
             sequence: Some(first),
             published_unix_micros,
             context: context.map(str::to_owned),
-            payload: rows[0].encode_to_vec(),
+            payload: rows[0].clone(),
             following: rows[1..taken]
                 .iter()
                 .zip(deltas)
                 .map(|(row, published_delta_micros)| harmos_domain::operations::streams::FollowingRow {
-                    payload: row.encode_to_vec(),
+                    payload: row.clone(),
                     published_delta_micros,
                 })
                 .collect(),
@@ -578,7 +571,7 @@ mod tests {
                 high = middle;
             }
         }
-        let rows = [FileBatch { offset: 0, bytes: vec![0; low] }];
+        let rows = [FileBatch { offset: 0, bytes: vec![0; low] }.encode_to_vec()];
         let taken = host
             .with_publication::<Samples, CallError>(&rows, &[None], None, empty, |request| {
                 let envelope = host.child_with_values(&request, true, values.clone())?;
@@ -588,7 +581,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(taken, 1);
-        let rows = [FileBatch { offset: 0, bytes: vec![0; low + 1] }];
+        let rows = [FileBatch { offset: 0, bytes: vec![0; low + 1] }.encode_to_vec()];
         let result =
             host.with_publication::<Samples, CallError>(&rows, &[None], None, empty, |_| panic!("an oversized publication must not send"));
         assert!(matches!(result, Err(CallError::Publication(PublicationError::Oversized { .. }))));
