@@ -1,6 +1,6 @@
 ## 1. Contract
 
-- [ ] 1.1 Domain: dotted local operation IDs and qualification, `OperationDeclaration::OPERATIONS`, `Requires`/`Invokes` markers,
+- [x] 1.1 Domain: dotted local operation IDs and qualification, `OperationDeclaration::OPERATIONS`, `Requires`/`Invokes` markers,
   `Resource` and `Dependent`; delete `RequestFor`.
 - [ ] 1.2 SDK: `Handler`, `Executable`, authored `Operation` with `Context`, `ResourceError`, `resource::<T>()`, derived
   `StreamEndpoints`, the carrier `Caller`, and registration verification of declared resources.

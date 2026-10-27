@@ -71,5 +71,12 @@ impl Operation for Cancel {
 
 ## Risks
 
+- Implementation ownership is this worktree alone, including the inherited partial edits. Task order is domain/SDK, macros,
+  carriers, built-ins and all workspace consumers, then documentation and targeted proof. No push or PR is authorized.
+- `Resource` and `Dependent` live in the SDK because they describe execution resources; domain owns `Requires` and `Invokes`.
+- Mutable stream access is retained because receiving requires exclusive access; `streams()` borrows the derived endpoint set.
+- Stateful carrier and lifecycle machinery retains the internal `Handler` lifecycle; consumer `Operation` has only consuming `run`.
+- The inherited deletion of `authoring-streamline` and folded current specs is retained as its retirement result.
+
 - Per-attempt request clones copy byte payloads; large transfers belong in streams.
 - Feature unification can enable a facade `runtime` without the consumer `runtime`; gating on the consumer feature avoids that.

@@ -48,10 +48,6 @@ impl crate::operations::OperationDeclaration for Control {
     const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
 }
 
-impl crate::operations::RequestFor for ControlRequest {
-    type Operation = Control;
-}
-
 /* === Type Aliases === */
 
 /* === Structs === */

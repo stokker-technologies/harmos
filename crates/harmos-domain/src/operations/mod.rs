@@ -24,7 +24,7 @@ pub mod payload;
 pub use crate::model::operations::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
 pub use crate::model::services::policy::{RestartPolicy, ServicePolicy};
 pub use crate::observers;
-pub use catalog::{Declarations, Entry};
+pub use catalog::{Callees, Declarations, Entry};
 pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
@@ -99,6 +99,9 @@ pub trait OperationDeclaration: 'static {
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const GRPC: Option<Grpc> = None;
 
+    // The operations this one invokes; catalogs aggregate them into plugin requirements.
+    const OPERATIONS: &'static [WireDeclaration] = &[];
+
     fn definition() -> OperationDefinition {
         Entry::of::<Self>().declared().expect("representable operation declaration")
     }
@@ -112,9 +115,11 @@ pub trait OperationDeclaration: 'static {
     }
 }
 
-pub trait RequestFor: crate::Portable {
-    type Operation: OperationDeclaration<Request = Self>;
-}
+// The Execution Resource Types An Operation Declares With `resources = [..]`.
+pub trait Requires<T: ?Sized> {}
+
+// The Operations An Operation Declares With `operations = [..]`.
+pub trait Invokes<T: OperationDeclaration> {}
 
 /* === Implementations === */
 
@@ -131,7 +136,7 @@ impl OperationDefinition {
         if crate::reserved(self.id.as_str()) {
             return Err(crate::Error::ReservedOperation { id: self.id.as_str().to_owned() });
         }
-        if !crate::identity::segment(self.id.as_str()) {
+        if !crate::identity::dotted(self.id.as_str()) {
             return Err(crate::Error::InvalidOperation { id: self.id.to_string() });
         }
         self.policy.validate()?;

@@ -13,7 +13,7 @@ mod requirement;
 
 /* === Re-Exports === */
 
-pub use requirement::{Grant, Requirement, Requirements};
+pub use requirement::{Grant, Requirement, Requirements, aggregate, callee_count};
 
 /* === Imports === */
 
@@ -98,7 +98,10 @@ pub fn schema_markers<P: Declared>(
         .and_then(|bytes| bytes.checked_add(carrier.capacity() * std::mem::size_of::<&[u8]>()))
         .ok_or(Error::Budget)?;
     let remaining = settings.preparation_bytes.get().checked_sub(retained).and_then(std::num::NonZeroUsize::new).ok_or(Error::Budget)?;
-    let allowance = crate::config::SchemaSettings { preparation_bytes: remaining, ..*settings };
+    let allowance = crate::config::SchemaSettings {
+        preparation_bytes: remaining,
+        ..*settings
+    };
     let declarations = crate::schema::declaration::markers_many(roots, &allowance)?;
     let output = carrier
         .len()

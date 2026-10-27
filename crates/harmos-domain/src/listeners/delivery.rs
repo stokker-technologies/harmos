@@ -200,10 +200,6 @@ impl<L: Listener> crate::operations::OperationDeclaration for Callback<L> {
     const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
 }
 
-impl<L: Listener> crate::RequestFor for Delivery<L> {
-    type Operation = Callback<L>;
-}
-
 impl PostcardValue for Context {
     fn write(&self, bytes: &mut Vec<u8>) {
         match self {
