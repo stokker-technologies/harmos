@@ -75,7 +75,9 @@ impl<T> ReadBatch<T> {
     }
 
     pub(crate) fn retained(value: T, memory: RetainedMemory) -> Self {
-        Self { inner: Arc::new(ReadOwner { value, _memory: vec![memory] }) }
+        Self {
+            inner: Arc::new(ReadOwner { value, _memory: vec![memory] }),
+        }
     }
 
     /// Consumes a unique owner and preserves its admitted memory through a projection.
@@ -98,7 +100,10 @@ impl<T> ReadBatch<T> {
         E: From<crate::Error>,
     {
         let result: std::result::Result<crate::ReadBatch<U>, E> = (|| {
-            let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires a unique owner" };
+            let shared = || crate::Error::InvalidInput {
+                field: "read projection",
+                reason: "requires a unique owner",
+            };
             // Weak aliases can retain the old Arc allocation after its value moves.
             let mut inner = self.inner;
             if Arc::get_mut(&mut inner).is_none() {
@@ -114,7 +119,9 @@ impl<T> ReadBatch<T> {
             }
             let ReadOwner { value, _memory } = owner;
             let value = map(value)?;
-            Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+            Ok(ReadBatch {
+                inner: Arc::new(ReadOwner { value, _memory }),
+            })
         })();
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
@@ -138,7 +145,10 @@ impl<T> ReadBatch<T> {
         E: From<crate::Error>,
     {
         let result: std::result::Result<crate::ReadBatch<V>, E> = (|| {
-            let shared = || crate::Error::InvalidInput { field: "read projection", reason: "requires unique owners" };
+            let shared = || crate::Error::InvalidInput {
+                field: "read projection",
+                reason: "requires unique owners",
+            };
             let exhausted = || crate::Error::ResourceExhausted { resource: "read projection memory" };
             let mut left = self.inner;
             let mut right = other.inner;
@@ -173,7 +183,9 @@ impl<T> ReadBatch<T> {
             let ReadOwner { value: right, _memory: empty } = right;
             drop(empty);
             let value = map(left, right)?;
-            Ok(ReadBatch { inner: Arc::new(ReadOwner { value, _memory }) })
+            Ok(ReadBatch {
+                inner: Arc::new(ReadOwner { value, _memory }),
+            })
         })();
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
@@ -250,7 +262,10 @@ mod tests {
 
     fn storage() -> crate::StorageManager {
         let storage = crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap();
@@ -498,7 +513,10 @@ mod tests {
         let left = admitted(&storage, vec![7u8; 32], 4096);
         let right = admitted(&storage, String::from("retained"), 4096);
         let result = left.try_map_with(right, 64, |_, _| -> crate::Result<()> {
-            Err(crate::Error::InvalidInput { field: "projection", reason: "injected conversion failure" })
+            Err(crate::Error::InvalidInput {
+                field: "projection",
+                reason: "injected conversion failure",
+            })
         });
         assert!(matches!(result, Err(crate::Error::InvalidInput { .. })));
         assert_eq!(storage.status().read_bytes, 0);

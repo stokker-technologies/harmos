@@ -58,7 +58,10 @@ impl Manager {
         for (definition, _) in &entries {
             let (owner, local) = definition.id().split_once('.').expect("validated service identity");
             if state.owned(local, owner).is_some() {
-                return Err(crate::Error::AlreadyRegistered { domain: "service", name: definition.id().to_owned() });
+                return Err(crate::Error::AlreadyRegistered {
+                    domain: "service",
+                    name: definition.id().to_owned(),
+                });
             }
         }
         let staged = self.resident.stage(
@@ -76,9 +79,10 @@ impl Manager {
         let identity = match owner {
             crate::services::ServiceOwner::Host => Identity::Host,
             #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            crate::services::ServiceOwner::Plugin(scope) => {
-                Identity::Plugin { owner: scope.owner().into(), generation: scope.generation() }
-            }
+            crate::services::ServiceOwner::Plugin(scope) => Identity::Plugin {
+                owner: scope.owner().into(),
+                generation: scope.generation(),
+            },
         };
         let lease = self.resident.activate(self, id, &root, std::any::TypeId::of::<()>(), identity, false).await?;
         self.resident.hold(lease);

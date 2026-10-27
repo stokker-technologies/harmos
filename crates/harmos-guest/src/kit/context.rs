@@ -55,7 +55,12 @@ impl harmos_sdk::plugin::Context for Context {
     }
 
     fn with_generation(&self, token: [u8; 32]) -> Self {
-        Self { context: self.context, generation_context: Some(token), assignments: self.assignments.clone(), call: self.call.clone() }
+        Self {
+            context: self.context,
+            generation_context: Some(token),
+            assignments: self.assignments.clone(),
+            call: self.call.clone(),
+        }
     }
 }
 

@@ -49,7 +49,14 @@ pub struct Summary {
 
 impl Default for Summary {
     fn default() -> Self {
-        Self { count: 0, sum: 0.0, mean: 0.0, lowest: f64::INFINITY, highest: f64::NEG_INFINITY, deviations: 0.0 }
+        Self {
+            count: 0,
+            sum: 0.0,
+            mean: 0.0,
+            lowest: f64::INFINITY,
+            highest: f64::NEG_INFINITY,
+            deviations: 0.0,
+        }
     }
 }
 

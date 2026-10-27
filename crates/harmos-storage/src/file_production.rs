@@ -127,7 +127,10 @@ impl ProductionFollower {
                 self.changed.borrow_and_update();
                 let progress = self.manager.file_progress_with_held(&self.file, &self.held).await?;
                 if self.offset > progress.length {
-                    return Err(Error::InvalidInput { field: "file offset", reason: "retained bytes moved behind reader offset" });
+                    return Err(Error::InvalidInput {
+                        field: "file offset",
+                        reason: "retained bytes moved behind reader offset",
+                    });
                 }
                 self.progress = progress;
                 if self.offset < progress.length {

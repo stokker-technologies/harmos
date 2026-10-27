@@ -275,7 +275,12 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
         ));
     }
 
-    Ok(Declaration { id, version, undo, harmos: HarmosPath::resolve(harmos_path) })
+    Ok(Declaration {
+        id,
+        version,
+        undo,
+        harmos: HarmosPath::resolve(harmos_path),
+    })
 }
 
 fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {

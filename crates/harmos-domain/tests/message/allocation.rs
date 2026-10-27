@@ -206,11 +206,23 @@ fn measure<T>(encode: impl FnOnce() -> T) -> (T, Measurement) {
 }
 
 fn nested() -> Fifth {
-    Fifth { row: Fourth { row: Third { row: Second { row: First { row: Leaf { payload: vec![255; 32_768] } } } } } }
+    Fifth {
+        row: Fourth {
+            row: Third {
+                row: Second {
+                    row: First { row: Leaf { payload: vec![255; 32_768] } },
+                },
+            },
+        },
+    }
 }
 
 fn selection() -> Selection {
-    Selection { row: Choice::Selected(nested()), optional: Some(nested()), rows: vec![nested(), nested()] }
+    Selection {
+        row: Choice::Selected(nested()),
+        optional: Some(nested()),
+        rows: vec![nested(), nested()],
+    }
 }
 
 /* === Tests === */
@@ -264,7 +276,12 @@ fn native_decode_peak() {
 
 #[test]
 fn boxed_decode_peak() {
-    for choice in [BoxedChoice::Selected(Box::new(nested())), BoxedChoice::Named { row: Box::new(Leaf { payload: vec![7; 4096] }) }] {
+    for choice in [
+        BoxedChoice::Selected(Box::new(nested())),
+        BoxedChoice::Named {
+            row: Box::new(Leaf { payload: vec![7; 4096] }),
+        },
+    ] {
         let row = BoxedSelection { row: Box::new(nested()), choice };
         let encoded = crate::encode(&row);
         let (budget, inspected) =
@@ -313,7 +330,12 @@ fn strings_fit_bound() {
         labels: vec!["c".repeat(129), String::new()],
         counts: vec![1, 128],
     };
-    let after = Strings { label: "d".repeat(1025), optional: Some(String::new()), labels: vec!["e".repeat(65)], counts: vec![u32::MAX] };
+    let after = Strings {
+        label: "d".repeat(1025),
+        optional: Some(String::new()),
+        labels: vec!["e".repeat(65)],
+        counts: vec![u32::MAX],
+    };
     let mut encoded = crate::encode(&before);
     encoded.extend(crate::encode(&after));
     let (budget, inspected) = measure(|| grpc::prepare::<Strings>(DecodeInput::new(&encoded)).map(|prepared| prepared.memory()).unwrap());

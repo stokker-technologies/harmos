@@ -54,7 +54,11 @@ impl Files {
         fs::create_dir_all(root).map_err(io)?;
         let lease = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join("state.lock")).map_err(io)?;
         lease.try_lock().map_err(|error| Error::backend("lock state storage", BackendFailure::Conflict, error))?;
-        Ok(Self { root: root.to_owned(), _lease: lease, opener })
+        Ok(Self {
+            root: root.to_owned(),
+            _lease: lease,
+            opener,
+        })
     }
 
     #[tracing::instrument(name = "storage.state.file.journal", level = "debug", skip_all)]

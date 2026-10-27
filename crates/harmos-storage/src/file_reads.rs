@@ -92,7 +92,10 @@ impl<C> StorageManager<C> {
             FileSource::Stored(file) => Source::Stored(Box::new(self.read_stored_file(file, request.range, held).await?)),
             FileSource::Local(path) => Source::Local(LocalReader::open(&self.inner, path, request.range, held).await?),
         };
-        Ok(FileReader { context: crate::execution::Context::current(), source })
+        Ok(FileReader {
+            context: crate::execution::Context::current(),
+            source,
+        })
     }
 
     async fn read_stored_file(&self, file: FileReference, range: ByteRange, held: Held) -> Result<StoredReader> {
@@ -128,7 +131,10 @@ impl<C> StorageManager<C> {
 
         // Saved References Must Be Visible In The Pinned Image.
         if pending.is_none() {
-            let selection = FileSelection { scope: file.metadata.scope.clone(), item: Some(file.metadata.id.clone()) };
+            let selection = FileSelection {
+                scope: file.metadata.scope.clone(),
+                item: Some(file.metadata.id.clone()),
+            };
             let page = ScanPage {
                 after: file.position.sequence.saturating_sub(1),
                 rows: NonZeroUsize::MIN,
@@ -158,7 +164,10 @@ impl FileReader {
     pub(crate) fn stored_hash(&self) -> Result<Option<FileHash>> {
         self.completion()?;
         Ok(match &self.source {
-            Source::Stored(reader) => Some(FileHash { bytes_read: reader.bytes, sha256: reader.hash.clone().finalize().into() }),
+            Source::Stored(reader) => Some(FileHash {
+                bytes_read: reader.bytes,
+                sha256: reader.hash.clone().finalize().into(),
+            }),
             Source::Local(_) => None,
         })
     }

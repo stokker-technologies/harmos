@@ -121,7 +121,13 @@ impl DispatchError {
 
 impl Router {
     pub fn new(graph: PluginGraph) -> Self {
-        Self(Arc::new(Registry { state: Mutex::new(RegistryState { graph, generations: BTreeMap::new(), instances: BTreeMap::new() }) }))
+        Self(Arc::new(Registry {
+            state: Mutex::new(RegistryState {
+                graph,
+                generations: BTreeMap::new(),
+                instances: BTreeMap::new(),
+            }),
+        }))
     }
 
     pub fn graph(&self) -> PluginGraph {
@@ -142,7 +148,11 @@ impl Router {
             Some(scope) => scope.generation(),
             None => PluginGeneration::fresh().map_err(|_| DispatchError::Unavailable)?,
         };
-        let live = Arc::new(Live { generation, scope: state.generations.get(owner).cloned(), alive: watch::channel(true).0 });
+        let live = Arc::new(Live {
+            generation,
+            scope: state.generations.get(owner).cloned(),
+            alive: watch::channel(true).0,
+        });
         state.instances.insert(owner.to_owned(), Arc::downgrade(&live));
 
         Ok(PluginEndpoint { registry: Arc::downgrade(&self.0), live })
@@ -195,7 +205,11 @@ impl Router {
         let state = self.0.state.lock().expect("plugin registry lock");
         let live =
             state.instances.get(owner).and_then(Weak::upgrade).filter(|live| *live.alive.borrow()).ok_or(DispatchError::Unavailable)?;
-        Ok(PluginCaller { generation: live.generation, registry: Arc::downgrade(&self.0), live: Arc::downgrade(&live) })
+        Ok(PluginCaller {
+            generation: live.generation,
+            registry: Arc::downgrade(&self.0),
+            live: Arc::downgrade(&live),
+        })
     }
 
     pub(super) fn quiesce(&self, owner: &str) {
@@ -240,7 +254,11 @@ impl PluginEndpoint {
     }
 
     pub fn caller(&self) -> PluginCaller {
-        PluginCaller { generation: self.live.generation, registry: self.registry.clone(), live: Arc::downgrade(&self.live) }
+        PluginCaller {
+            generation: self.live.generation,
+            registry: self.registry.clone(),
+            live: Arc::downgrade(&self.live),
+        }
     }
 
     pub fn quiesce(&mut self) {

@@ -125,7 +125,10 @@ async fn unregister_retains_cleanup() {
         runtime
             .operations
             .register_service(
-                harmos_runtime::services::ServiceDefinition { id: "reload".into(), policy: harmos_runtime::services::POLICY },
+                harmos_runtime::services::ServiceDefinition {
+                    id: "reload".into(),
+                    policy: harmos_runtime::services::POLICY,
+                },
                 move |_: Arc<()>| {
                     let signals = signals.clone();
                     move |mut context: harmos_runtime::services::ServiceContext<App>| {
@@ -206,7 +209,10 @@ async fn stop_joins_cleanup() {
             runtime
                 .operations
                 .register_service(
-                    harmos_runtime::services::ServiceDefinition { id: "cleanup".into(), policy: harmos_runtime::services::POLICY },
+                    harmos_runtime::services::ServiceDefinition {
+                        id: "cleanup".into(),
+                        policy: harmos_runtime::services::POLICY,
+                    },
                     move |_: Arc<()>| resident.clone(),
                 )
                 .unwrap();
@@ -255,7 +261,10 @@ async fn timeout_retains_cleanup() {
             .register_service(
                 harmos_runtime::services::ServiceDefinition {
                     id: "retained-cleanup".into(),
-                    policy: harmos_runtime::ServicePolicy { stop_timeout: Duration::from_millis(10), ..harmos_runtime::services::POLICY },
+                    policy: harmos_runtime::ServicePolicy {
+                        stop_timeout: Duration::from_millis(10),
+                        ..harmos_runtime::services::POLICY
+                    },
                 },
                 move |_: Arc<()>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
@@ -340,7 +349,10 @@ async fn exit_cause_preserved() {
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "environmental-cleanup".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "environmental-cleanup".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             move |_: Arc<()>| RetainedCleanup {
                 gate: gate.lock().unwrap().take(),
                 join: None,

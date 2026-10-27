@@ -62,7 +62,10 @@ enum Source {
 /* === Private Functions === */
 
 fn revision() -> Revision {
-    let history = StoreHistory { store: Identifier::new("store").unwrap(), epoch: Identifier::new("epoch").unwrap() };
+    let history = StoreHistory {
+        store: Identifier::new("store").unwrap(),
+        epoch: Identifier::new("epoch").unwrap(),
+    };
     let cursor = StorageCursor { history, sequence: 7 };
     // Decode The Published Native Codec; Keep The Token Opaque
     let version = ObjectVersionToken::decode(&[5, b's', b't', b'o', b'r', b'e', 5, b'e', b'p', b'o', b'c', b'h', 7]).unwrap();

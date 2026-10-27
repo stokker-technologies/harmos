@@ -101,7 +101,10 @@ impl<C> StorageManager<C> {
                         let offset = start(request.start, file.length);
                         let reader = self
                             .read_file_with_held(
-                                FileRead { source: FileSource::Stored(file), range: ByteRange { offset, limit: None } },
+                                FileRead {
+                                    source: FileSource::Stored(file),
+                                    range: ByteRange { offset, limit: None },
+                                },
                                 held.clone(),
                             )
                             .await?;
@@ -111,7 +114,11 @@ impl<C> StorageManager<C> {
                         let mut reader =
                             LocalReader::open(&self.inner, path.clone(), ByteRange { offset: 0, limit: None }, held.clone()).await?;
                         reader.start(start(request.start, reader.length()))?;
-                        Source::Local(Local { path, reader: Some(reader), missing: false })
+                        Source::Local(Local {
+                            path,
+                            reader: Some(reader),
+                            missing: false,
+                        })
                     }
                 };
                 Ok(FileFollower {

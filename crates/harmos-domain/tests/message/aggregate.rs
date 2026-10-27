@@ -132,7 +132,11 @@ fn postcard_matches_serde() {
 
 #[test]
 fn aggregate_message_field() {
-    let value = Summary { aggregate: Aggregate::Percentile(95), optional: Some(Aggregate::Rms), aggregates: EVERY.to_vec() };
+    let value = Summary {
+        aggregate: Aggregate::Percentile(95),
+        optional: Some(Aggregate::Rms),
+        aggregates: EVERY.to_vec(),
+    };
     let encoded = crate::encode(&value);
     assert!(grpc::decode::<Summary>(DecodeInput::new(&encoded)).unwrap() == value);
     let encoded = Message::encode(&value);

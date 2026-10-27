@@ -128,7 +128,10 @@ impl Batch {
             encoded = next_encoded;
             scratch = next_scratch;
             indices.push(entry.index);
-            target = Target { index: entry.index, sequence: entry.operation.sequence() };
+            target = Target {
+                index: entry.index,
+                sequence: entry.operation.sequence(),
+            };
         }
         if indices.len() < 2 {
             return None;
@@ -159,7 +162,12 @@ impl Batch {
             return None;
         };
         let entries = state.queue.iter().filter(|entry| indices.binary_search(&entry.index).is_ok()).cloned().collect();
-        Some(Self { operation, entries, target, _scratch: Reservation::charged(inner, Pool::Write, scratch) })
+        Some(Self {
+            operation,
+            entries,
+            target,
+            _scratch: Reservation::charged(inner, Pool::Write, scratch),
+        })
     }
 }
 

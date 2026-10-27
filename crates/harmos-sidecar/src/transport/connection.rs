@@ -129,7 +129,11 @@ impl Connection {
             owner.outcome()
         });
         Self {
-            sender: Sender { data: data_tx, control: control_tx, state: state.clone() },
+            sender: Sender {
+                data: data_tx,
+                control: control_tx,
+                state: state.clone(),
+            },
             receiver: Receiver {
                 delivered: 0,
                 cancellations: BTreeMap::new(),
@@ -278,7 +282,12 @@ async fn receive_data(mut reader: IoReader, incoming: mpsc::Sender<Received>, cr
             return Err(broken("sidecar data channel ended"));
         };
         incoming
-            .try_send(Received { frame, cancelled: false, preceding: None, consumption: Some(consumption) })
+            .try_send(Received {
+                frame,
+                cancelled: false,
+                preceding: None,
+                consumption: Some(consumption),
+            })
             .map_err(|_| broken("bounded sidecar data receiver unavailable"))?;
     }
 }
@@ -288,7 +297,12 @@ async fn receive_control(mut reader: IoReader, incoming: mpsc::Sender<Received>,
         match read(&mut reader, Role::Control).await? {
             Some(Packet::Credit(consumed)) => credit.returned(consumed)?,
             Some(Packet::Cancellation { id, preceding }) => incoming
-                .try_send(Received { frame: Frame::Cancel { id }, consumption: None, cancelled: false, preceding: Some(preceding) })
+                .try_send(Received {
+                    frame: Frame::Cancel { id },
+                    consumption: None,
+                    cancelled: false,
+                    preceding: Some(preceding),
+                })
                 .map_err(|_| broken("bounded sidecar control receiver unavailable"))?,
             Some(Packet::Frame(_)) => {
                 return Err(super::invalid("cancellation requires a data watermark"));

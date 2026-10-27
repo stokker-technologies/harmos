@@ -277,7 +277,11 @@ impl Opening {
 pub fn stream<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::Running<O>, items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
-    ResponseStream { pending: Box::pin(response(instance)), items: Some(items.into_receiver()), result: None }
+    ResponseStream {
+        pending: Box::pin(response(instance)),
+        items: Some(items.into_receiver()),
+        result: None,
+    }
 }
 
 pub fn exchange<O, S>(
@@ -290,7 +294,11 @@ where
         + Send
         + 'static,
 {
-    ResponseStream { pending: Box::pin(self::input(instance, input, incoming)), items: Some(output.into_receiver()), result: None }
+    ResponseStream {
+        pending: Box::pin(self::input(instance, input, incoming)),
+        items: Some(output.into_receiver()),
+        result: None,
+    }
 }
 
 pub fn response<O: crate::operations::OperationDeclaration>(

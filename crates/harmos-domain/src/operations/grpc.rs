@@ -45,7 +45,11 @@ pub struct Grpc {
 
 impl Grpc {
     pub const fn new(package: &'static str, service: &'static str, method: &'static str) -> Self {
-        Self { package: Cow::Borrowed(package), service: Cow::Borrowed(service), method: Cow::Borrowed(method) }
+        Self {
+            package: Cow::Borrowed(package),
+            service: Cow::Borrowed(service),
+            method: Cow::Borrowed(method),
+        }
     }
 
     pub fn validate(&self) -> Result<(), super::ContractError> {

@@ -49,16 +49,20 @@ impl RecordWriteBytes for RecordWrite<'_> {
         ]
         .into_iter()
         .try_fold(0usize, |bytes, next| bytes.checked_add(next))
-        .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+        .ok_or(Error::InvalidInput {
+            field: "storage admission",
+            reason: "size overflow",
+        })
     }
 }
 
 impl RecordWriteBytes for RecordInput {
     fn resident_bytes(&self, history: &crate::StoreHistory) -> Result<usize> {
         let metadata = self.borrowed().resident_bytes(history)?;
-        metadata
-            .checked_add(self.payload.capacity() - self.payload.len())
-            .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+        metadata.checked_add(self.payload.capacity() - self.payload.len()).ok_or(Error::InvalidInput {
+            field: "storage admission",
+            reason: "size overflow",
+        })
     }
 }
 
@@ -99,18 +103,20 @@ impl Write for Counter {
 
 pub fn encoded_size<T: Serialize + ?Sized>(value: &T) -> Result<usize> {
     let mut counter = Counter(0);
-    serde_json::to_writer(&mut counter, value)
-        .map_err(|_| Error::InvalidInput { field: "storage payload", reason: "cannot measure encoded size" })?;
+    serde_json::to_writer(&mut counter, value).map_err(|_| Error::InvalidInput {
+        field: "storage payload",
+        reason: "cannot measure encoded size",
+    })?;
     Ok(counter.0)
 }
 
 pub(crate) fn recovery_preparation_bytes(
     payload: usize, history: &crate::StoreHistory, data_history: &crate::StoreHistory,
 ) -> Result<usize> {
-    let capacity = payload
-        .checked_mul(4)
-        .and_then(|bytes| bytes.checked_add(128))
-        .ok_or(Error::InvalidInput { field: "managed recovery", reason: "size overflow" })?;
+    let capacity = payload.checked_mul(4).and_then(|bytes| bytes.checked_add(128)).ok_or(Error::InvalidInput {
+        field: "managed recovery",
+        reason: "size overflow",
+    })?;
     recovery_resident_bytes(capacity, history, data_history)
 }
 
@@ -126,7 +132,10 @@ pub(crate) fn recovery_resident_bytes(payload: usize, history: &crate::StoreHist
     ]
     .into_iter()
     .try_fold(0usize, |bytes, next| bytes.checked_add(next))
-    .ok_or(Error::InvalidInput { field: "managed recovery", reason: "size overflow" })
+    .ok_or(Error::InvalidInput {
+        field: "managed recovery",
+        reason: "size overflow",
+    })
 }
 
 /* === Private Functions === */

@@ -56,7 +56,10 @@ impl<A: Application> ManagedState<A> {
             return Err(self.tracked.unavailable());
         }
 
-        Ok(At { value: read(&state.value), position: state.position })
+        Ok(At {
+            value: read(&state.value),
+            position: state.position,
+        })
     }
 
     #[tracing::instrument(target = "harmos::state", name = "state.at", level = "debug", skip_all)]

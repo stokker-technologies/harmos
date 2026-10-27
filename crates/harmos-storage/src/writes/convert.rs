@@ -139,7 +139,11 @@ pub fn streams(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema
             if optional_id(metadata, "stream", row)?.is_some_and(|stream| stream != batch.destination) {
                 return Err(invalid());
             }
-            Ok(StreamInput { record, stream: batch.destination.clone(), sequence: sequence.value(row) })
+            Ok(StreamInput {
+                record,
+                stream: batch.destination.clone(),
+                sequence: sequence.value(row),
+            })
         })
         .collect()
 }
@@ -156,7 +160,11 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
             }
             let mut bytes = Vec::new();
             encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
-            Ok(ObjectValue { schema: batch.schema.clone(), item: ObjectKey::new(items.value(row), max_key_bytes)?, payload: bytes })
+            Ok(ObjectValue {
+                schema: batch.schema.clone(),
+                item: ObjectKey::new(items.value(row), max_key_bytes)?,
+                payload: bytes,
+            })
         })
         .collect()
 }
@@ -309,7 +317,10 @@ fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "Arrow payload encoding bytes" }
 }
 fn invalid() -> Error {
-    Error::InvalidInput { field: "write Arrow batch", reason: "batch metadata or typed payload does not match its schema" }
+    Error::InvalidInput {
+        field: "write Arrow batch",
+        reason: "batch metadata or typed payload does not match its schema",
+    }
 }
 
 /* === Tests === */
@@ -325,7 +336,12 @@ mod tests {
     use std::sync::Arc;
 
     fn field(name: &str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
-        Field { name: name.to_owned().into(), tag, kind, cardinality }
+        Field {
+            name: name.to_owned().into(),
+            tag,
+            kind,
+            cardinality,
+        }
     }
 
     fn schema() -> Schema {

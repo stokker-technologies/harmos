@@ -149,7 +149,12 @@ impl NormalizedObjects {
                     if projection.is_some() {
                         transforms.remove(0);
                     }
-                    return Ok(Self { schemas, projection, output, _metadata: metadata });
+                    return Ok(Self {
+                        schemas,
+                        projection,
+                        output,
+                        _metadata: metadata,
+                    });
                 }
                 Err(error) => credit = retry(&bank, error, None)?,
             }

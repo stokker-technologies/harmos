@@ -246,7 +246,11 @@ where
     A: Application<State = S, Transaction = T>,
 {
     fn register(self) -> Catalog<A> {
-        Catalog::Transactions { definitions: self.definitions, decode: self.decode, inverses: Some(self.inverses) }
+        Catalog::Transactions {
+            definitions: self.definitions,
+            decode: self.decode,
+            inverses: Some(self.inverses),
+        }
     }
 }
 
@@ -255,13 +259,20 @@ where
     A: Application<Record = R>,
 {
     fn register(self) -> Catalog<A> {
-        Catalog::Transactions { definitions: self.definitions, decode: |_, _, _| Ok(None), inverses: None }
+        Catalog::Transactions {
+            definitions: self.definitions,
+            decode: |_, _, _| Ok(None),
+            inverses: None,
+        }
     }
 }
 
 impl<A: Application> Inspection<A> {
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
-        Ok(At { value: read(&self.state.value), position: self.state.position })
+        Ok(At {
+            value: read(&self.state.value),
+            position: self.state.position,
+        })
     }
 
     pub async fn state_at(&self, origin: Origin<A::State>, at: Position) -> Result<At<A::State>, Error> {
@@ -290,10 +301,14 @@ impl<A: Application> Inspection<A> {
             Ok(entries) => entries
                 .into_iter()
                 .filter_map(|entry| {
-                    entry
-                        .value
-                        .select::<X>()
-                        .map(|value| Ok(Entry { prepared: None, position: entry.position, metadata: entry.metadata, value }))
+                    entry.value.select::<X>().map(|value| {
+                        Ok(Entry {
+                            prepared: None,
+                            position: entry.position,
+                            metadata: entry.metadata,
+                            value,
+                        })
+                    })
                 })
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -389,7 +404,10 @@ impl<A: Application> Runtime<A> {
         let (reads, requests) = crate::state::Reads::channel(REQUESTS);
         let source = tokio::spawn(inspect_reads(consumers, requests));
 
-        Ok(Inspector { state: Inspection { state: Arc::new(state), reads }, source })
+        Ok(Inspector {
+            state: Inspection { state: Arc::new(state), reads },
+            source,
+        })
     }
 
     pub fn stop_participant(&self) -> StopParticipant {
@@ -694,7 +712,10 @@ impl<A: Application> Builder<A> {
                     Err(Incompatible {
                         cause: Cause::Cleanup {
                             source: Box::new(error),
-                            failure: Error::TaskFailed { domain: "bootstrap cleanup", source: failure },
+                            failure: Error::TaskFailed {
+                                domain: "bootstrap cleanup",
+                                source: failure,
+                            },
                         },
                         cleanup: retained,
                     })
@@ -790,7 +811,10 @@ impl<A: Application> Builder<A> {
         let (tier, served) = Tier::channel(REQUESTS);
         let streams = StreamManager::wired(windows, journal.progress(), tier);
         let delivery = streams.delivery();
-        operation_settings.validate().map_err(|source| Incompatible { cause: Cause::Operations(source), cleanup: None })?;
+        operation_settings.validate().map_err(|source| Incompatible {
+            cause: Cause::Operations(source),
+            cleanup: None,
+        })?;
         let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
         let storage = Arc::new(boot.storage.clone().map(OnceLock::from).unwrap_or_default());
         let handles = crate::services::Handles {
@@ -805,7 +829,10 @@ impl<A: Application> Builder<A> {
         for service in &services {
             crate::services::validate(&service.definition()).map_err(Incompatible::work)?;
             if !reserved.insert(service.id().to_owned()) {
-                let duplicate: crate::Error = crate::Error::AlreadyRegistered { domain: "service", name: service.id().to_owned() };
+                let duplicate: crate::Error = crate::Error::AlreadyRegistered {
+                    domain: "service",
+                    name: service.id().to_owned(),
+                };
                 return Err(Incompatible::work(duplicate));
             }
         }
@@ -814,7 +841,10 @@ impl<A: Application> Builder<A> {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }
         for binding in bindings {
-            binding.bind(&operations).map_err(|source| Incompatible { cause: Cause::Operations(source), cleanup: None })?;
+            binding.bind(&operations).map_err(|source| Incompatible {
+                cause: Cause::Operations(source),
+                cleanup: None,
+            })?;
         }
         if let Some(storage) = &boot.storage {
             storage.start_on::<A>(&operations).await.map_err(Incompatible::work)?;
@@ -888,7 +918,10 @@ impl<A: Application> Builder<A> {
 
 impl Incompatible {
     fn initialization(source: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        Self { cause: Cause::Initialization(source), cleanup: None }
+        Self {
+            cause: Cause::Initialization(source),
+            cleanup: None,
+        }
     }
 
     pub fn cleanup_error(&self) -> Option<&crate::Error> {
@@ -907,28 +940,46 @@ impl Incompatible {
     }
 
     fn reconciliation(cause: impl fmt::Display) -> Self {
-        Self { cause: Cause::Reconciliation(cause.to_string()), cleanup: None }
+        Self {
+            cause: Cause::Reconciliation(cause.to_string()),
+            cleanup: None,
+        }
     }
 
     pub fn unreadable(cause: impl fmt::Display) -> Self {
-        Self { cause: Cause::Unreadable(cause.to_string()), cleanup: None }
+        Self {
+            cause: Cause::Unreadable(cause.to_string()),
+            cleanup: None,
+        }
     }
 
     fn of(cause: DecodeError) -> Self {
-        Self { cause: Cause::Undeclared(cause), cleanup: None }
+        Self {
+            cause: Cause::Undeclared(cause),
+            cleanup: None,
+        }
     }
 
     pub(crate) fn dishonored(cause: crate::streams::Refused) -> Self {
-        Self { cause: Cause::Dishonorable(cause), cleanup: None }
+        Self {
+            cause: Cause::Dishonorable(cause),
+            cleanup: None,
+        }
     }
 
     pub(crate) fn work(cause: impl fmt::Display) -> Self {
-        Self { cause: Cause::Work(cause.to_string()), cleanup: None }
+        Self {
+            cause: Cause::Work(cause.to_string()),
+            cleanup: None,
+        }
     }
 
     #[cfg(feature = "simulation")]
     fn simulation(live_only: String) -> Self {
-        Self { cause: Cause::Simulation(live_only), cleanup: None }
+        Self {
+            cause: Cause::Simulation(live_only),
+            cleanup: None,
+        }
     }
 
     fn kept(cause: String) -> Self {
@@ -945,13 +996,20 @@ impl From<harmos_sidecar::ExecutableError> for Incompatible {
 
 impl Participants {
     fn new() -> Self {
-        Self { stopping: watch::channel(false).0, active: watch::channel(0).0 }
+        Self {
+            stopping: watch::channel(false).0,
+            active: watch::channel(0).0,
+        }
     }
 
     fn register(&self) -> StopParticipant {
         self.active.send_modify(|active| *active += 1);
 
-        StopParticipant { stopping: self.stopping.subscribe(), active: self.active.clone(), released: false }
+        StopParticipant {
+            stopping: self.stopping.subscribe(),
+            active: self.active.clone(),
+            released: false,
+        }
     }
 
     async fn stop(&self) {
@@ -1149,7 +1207,10 @@ async fn answer<A: Application>(
                 if recovery.frontier < at {
                     return Err(crate::Error::BeyondTail);
                 }
-                let mut state = At { value: origin.value, position: origin.position };
+                let mut state = At {
+                    value: origin.value,
+                    position: origin.position,
+                };
                 replay(catalog, recovery.entries, &mut state, &mut Undos::default(), inverses, 0).map_err(|_| crate::Error::Unavailable)?;
                 state.position = at;
 
@@ -1165,7 +1226,15 @@ async fn answer<A: Application>(
 
 async fn serve<A: Application>(request: Request, consumers: &mut Consumers<A>) {
     match request {
-        Request::Reader { stream, track, start, end, limits, permit, reply } => {
+        Request::Reader {
+            stream,
+            track,
+            start,
+            end,
+            limits,
+            permit,
+            reply,
+        } => {
             if !reply.is_closed() {
                 let answer = consumers.row_reader(stream, &track, start, end, limits).await;
                 let _ = reply.send(crate::streams::Opened { source: answer, permit });

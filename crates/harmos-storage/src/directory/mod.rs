@@ -104,8 +104,10 @@ fn relative(root: &Path, path: &Path, recursive: bool) -> Result<Option<String>>
     let mut result = String::new();
     for component in relative.components() {
         let std::path::Component::Normal(value) = component else { return Ok(None) };
-        let value =
-            value.to_str().ok_or(Error::InvalidInput { field: "directory entry", reason: "path cannot be represented as UTF-8" })?;
+        let value = value.to_str().ok_or(Error::InvalidInput {
+            field: "directory entry",
+            reason: "path cannot be represented as UTF-8",
+        })?;
         if !result.is_empty() {
             result.push('/');
         }

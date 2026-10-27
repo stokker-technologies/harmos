@@ -61,7 +61,12 @@ impl Connecting {
         };
         let transport::Connection { sender, receiver, mut driver } = transport::Connection::new(data, control);
         let task = executor::task(async move { driver.run().await });
-        let ending = Ending::new(DrivenEnd { sender: sender.clone(), task: Some(task), original: ending, failure: None });
+        let ending = Ending::new(DrivenEnd {
+            sender: sender.clone(),
+            task: Some(task),
+            original: ending,
+            failure: None,
+        });
         (Self::Binary(sender, receiver), Some(ending))
     }
 

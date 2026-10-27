@@ -47,7 +47,12 @@ pub(super) struct Policy {
 /* === Implementations === */
 
 impl Policy {
-    pub(super) const NEVER: Self = Self { credit: 0, sustained_health_ms: 30_000, backoff_base_ms: 250, backoff_cap_ms: 10_000 };
+    pub(super) const NEVER: Self = Self {
+        credit: 0,
+        sustained_health_ms: 30_000,
+        backoff_base_ms: 250,
+        backoff_cap_ms: 10_000,
+    };
 }
 
 /* === Public Functions === */
@@ -87,7 +92,12 @@ pub(super) fn parse(listed: &syn::MetaList) -> Result<Policy, Error> {
     if sustained_health_ms == 0 || backoff_base_ms == 0 || backoff_cap_ms < backoff_base_ms {
         return Err(Error::new(listed.span(), "restart timing is non-zero and `backoff_cap_ms` is at least `backoff_base_ms`"));
     }
-    Ok(Policy { credit, sustained_health_ms, backoff_base_ms, backoff_cap_ms })
+    Ok(Policy {
+        credit,
+        sustained_health_ms,
+        backoff_base_ms,
+        backoff_cap_ms,
+    })
 }
 
 /* === Private Functions === */

@@ -94,7 +94,10 @@ async fn never_restart_preserves_failure() {
         let runtime = assembly()
             .service_with(
                 "analysis",
-                harmos_runtime::ServicePolicy { restart: harmos_runtime::RestartPolicy::Never, ..harmos_runtime::services::POLICY },
+                harmos_runtime::ServicePolicy {
+                    restart: harmos_runtime::RestartPolicy::Never,
+                    ..harmos_runtime::services::POLICY
+                },
                 move |_context| async move {
                     assert!(!panics, "analysis invariant panicked");
                     Err::<(), _>(std::io::Error::other("bad invariant"))

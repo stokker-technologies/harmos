@@ -110,7 +110,10 @@ async fn fixture() -> Fixture {
     let mut settings = config();
     settings.budget.read_memory_bytes = NonZeroUsize::new(128 * 1024).unwrap();
     let storage = StorageManager::with_execution(
-        StorageBackends { primary: data.clone(), state: recovery.clone() },
+        StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        },
         settings,
         Execution::new(now, sleep),
     )
@@ -187,7 +190,10 @@ async fn attached_mutations_complete() {
         let mut writer = f.storage.produce_file(metadata("shared")).await.unwrap();
         writer.write_all((b"abc").to_vec()).await.unwrap();
         let session = writer.session().unwrap().clone();
-        let file = StagedFile { history: session.history.clone(), id: session.id.clone() };
+        let file = StagedFile {
+            history: session.history.clone(),
+            id: session.id.clone(),
+        };
         if matches!(work, Work::Delete) {
             writer.finish().await.unwrap();
             f.storage.flush().await.unwrap();

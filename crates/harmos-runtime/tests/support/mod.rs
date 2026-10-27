@@ -267,7 +267,11 @@ impl Registration<Bank> for Definitions {
             }
         }
 
-        Catalog::Transactions { definitions: self.0, decode, inverses: Some(inverses) }
+        Catalog::Transactions {
+            definitions: self.0,
+            decode,
+            inverses: Some(inverses),
+        }
     }
 }
 
@@ -290,7 +294,10 @@ impl Undoable for Deposit {
 
 impl Invert<Ledger> for Deposit {
     fn invert(&self, _before: &Ledger) -> Withdraw {
-        Withdraw { account: self.account, amount: self.amount }
+        Withdraw {
+            account: self.account,
+            amount: self.amount,
+        }
     }
 }
 
@@ -316,7 +323,10 @@ impl Undoable for Withdraw {
 
 impl Invert<Ledger> for Withdraw {
     fn invert(&self, _before: &Ledger) -> Deposit {
-        Deposit { account: self.account, amount: self.amount }
+        Deposit {
+            account: self.account,
+            amount: self.amount,
+        }
     }
 }
 
@@ -387,7 +397,10 @@ impl Copied {
     }
 
     pub fn resuming(entries: &Stored) -> Self {
-        Self { entries: Arc::clone(entries), resume: Position::ORIGIN }
+        Self {
+            entries: Arc::clone(entries),
+            resume: Position::ORIGIN,
+        }
     }
 
     fn held(&self) -> std::sync::MutexGuard<'_, Vec<Arc<Entry<Recorded<Bank>>>>> {
@@ -517,7 +530,12 @@ pub fn pulse(sample: u64) -> Pulse {
 }
 
 pub fn capture(run: u64, probe: u64, ordinal: u64, value: i64) -> Capture {
-    Capture { run: Run(run), probe: Probe(probe), ordinal, value }
+    Capture {
+        run: Run(run),
+        probe: Probe(probe),
+        ordinal,
+        value,
+    }
 }
 
 pub async fn balance(runtime: &Runtime<Bank>, account: Account) -> i64 {
@@ -572,7 +590,12 @@ fn stored(entry: &Entry<Recorded<Bank>>) -> Envelope<Payload<Bank>> {
                 id: id.clone(),
                 version,
                 metadata: entry.metadata.clone(),
-                payload: Payload { prepared: None, id, version, value: Recorded::System(fact.clone()) },
+                payload: Payload {
+                    prepared: None,
+                    id,
+                    version,
+                    value: Recorded::System(fact.clone()),
+                },
             };
         }
     };

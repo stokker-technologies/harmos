@@ -71,7 +71,9 @@ pub enum Transform {
 
 impl From<&str> for FieldPath {
     fn from(name: &str) -> Self {
-        Self { fields: name.split('.').map(str::to_owned).collect() }
+        Self {
+            fields: name.split('.').map(str::to_owned).collect(),
+        }
     }
 }
 impl Transform {

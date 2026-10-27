@@ -59,7 +59,12 @@ pub(crate) struct WriteCharge {
 impl<T> StorageBatch<T> {
     pub fn new(values: Vec<T>) -> Self {
         let range = 0..values.len();
-        Self { values: Arc::new(values), range, charges: Arc::new(Vec::new()), memory: Arc::new(Vec::new()) }
+        Self {
+            values: Arc::new(values),
+            range,
+            charges: Arc::new(Vec::new()),
+            memory: Arc::new(Vec::new()),
+        }
     }
 
     pub(crate) fn retained(mut self, charge: Arc<WriteCharge>) -> Self {
@@ -112,7 +117,12 @@ impl<T> StorageBatch<T> {
             let source = std::mem::take(Arc::get_mut(&mut batch.values).expect("unique queued backing"));
             values.extend(source);
         }
-        let merged = Self { values: Arc::new(values), range: 0..count, charges: Arc::new(charges), memory: Arc::new(memory) };
+        let merged = Self {
+            values: Arc::new(values),
+            range: 0..count,
+            charges: Arc::new(charges),
+            memory: Arc::new(memory),
+        };
         let mut start = 0;
         for (batch, length) in batches.iter_mut().zip(lengths) {
             **batch = merged.slice(start..start + length);
@@ -128,7 +138,12 @@ impl<T> StorageBatch<T> {
     pub fn slice(&self, range: Range<usize>) -> Self {
         assert!(range.start <= range.end && range.end <= self.len(), "batch slice is outside its span");
         let range = self.range.start + range.start..self.range.start + range.end;
-        Self { values: Arc::clone(&self.values), range, charges: Arc::clone(&self.charges), memory: Arc::clone(&self.memory) }
+        Self {
+            values: Arc::clone(&self.values),
+            range,
+            charges: Arc::clone(&self.charges),
+            memory: Arc::clone(&self.memory),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -248,7 +263,10 @@ mod tests {
         use crate::test_backend::{Data, Recovery, history, storage_settings};
         use std::sync::Arc;
         crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap()

@@ -71,12 +71,18 @@ impl Resource for Box<dyn Resource> {
 
 impl<R: Resource> Cleanup<R> {
     pub(crate) fn new(resource: R) -> Self {
-        Self { original: Arc::new(Mutex::new(Some(resource))), joining: AsyncMutex::new(Join::Ready) }
+        Self {
+            original: Arc::new(Mutex::new(Some(resource))),
+            joining: AsyncMutex::new(Join::Ready),
+        }
     }
 
     pub(crate) fn take(&self) -> Option<Owned<R>> {
         let resource = self.original.lock().expect("cleanup owner is healthy").take()?;
-        Some(Owned { resource: Some(resource), original: Arc::clone(&self.original) })
+        Some(Owned {
+            resource: Some(resource),
+            original: Arc::clone(&self.original),
+        })
     }
 
     pub(crate) async fn settle(&self) -> Outcome {
@@ -104,8 +110,12 @@ impl<R: Resource> Cleanup<R> {
             *joining = Join::Running(executor::task(future));
         }
         let Join::Running(task) = &mut *joining else { unreachable!("cleanup owns its join before waiting") };
-        let result =
-            task.await.unwrap_or_else(|source| Err(Arc::new(Error::TaskFailed { domain: "instance cleanup", source: Arc::new(source) })));
+        let result = task.await.unwrap_or_else(|source| {
+            Err(Arc::new(Error::TaskFailed {
+                domain: "instance cleanup",
+                source: Arc::new(source),
+            }))
+        });
         if result.is_err() {
             *joining = Join::Ready;
             return result;

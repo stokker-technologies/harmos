@@ -53,7 +53,11 @@ pub(super) struct Router {
 impl Router {
     pub(super) fn new(operations: crate::operations::Manager, settings: server::Settings) -> Result<Self, tonic::Status> {
         settings.validate()?;
-        Ok(Self { operations, settings, calls: server::Calls::new(settings.calls)? })
+        Ok(Self {
+            operations,
+            settings,
+            calls: server::Calls::new(settings.calls)?,
+        })
     }
 }
 

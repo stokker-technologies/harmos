@@ -80,7 +80,10 @@ fn benchmarks(c: &mut criterion::Criterion) {
 #[cfg(feature = "plugin-sidecar")]
 async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
     for _ in 0..8 {
-        fixture.runtime.streams.publish(native::Payload { sequence: *sequence, bytes: vec![(*sequence % 251) as u8; size] });
+        fixture.runtime.streams.publish(native::Payload {
+            sequence: *sequence,
+            bytes: vec![(*sequence % 251) as u8; size],
+        });
         *sequence += 1;
     }
     let acknowledged = fixture.acknowledged(*sequence).await;

@@ -155,9 +155,22 @@ impl Endpoint {
     fn start(&self, binding: GrpcBinding, payload: StreamItem<Vec<u8>>) -> Result<Pending, Status> {
         let output = binding.contract().output().is_some();
         let (invocation, streams) = binding
-            .submit_native(payload, WireStreamLimits { input: self.settings.input, output: self.settings.output })
+            .submit_native(
+                payload,
+                WireStreamLimits {
+                    input: self.settings.input,
+                    output: self.settings.output,
+                },
+            )
             .map_err(server::status)?;
-        Ok(Pending { invocation, streams, output, forward: None, response: None, settled: false })
+        Ok(Pending {
+            invocation,
+            streams,
+            output,
+            forward: None,
+            response: None,
+            settled: false,
+        })
     }
     async fn opening(&self, request: Request<Incoming>) -> Result<Pending, Status> {
         let binding = self.binding(&request);
@@ -197,7 +210,10 @@ impl tonic::server::ClientStreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec
     type Response = Output;
     type Future = tonic::codegen::BoxFuture<Response<Output>, Status>;
     fn call(&mut self, request: Request<Incoming>) -> Self::Future {
-        let endpoint = Self { binding: self.binding.clone(), settings: self.settings };
+        let endpoint = Self {
+            binding: self.binding.clone(),
+            settings: self.settings,
+        };
         Box::pin(async move { endpoint.opening(request).await?.response().await })
     }
 }
@@ -206,7 +222,10 @@ impl tonic::server::StreamingService<StreamItem<InputEnvelope<Vec<u8>, Vec<u8>>>
     type ResponseStream = OutputStream;
     type Future = tonic::codegen::BoxFuture<Response<OutputStream>, Status>;
     fn call(&mut self, request: Request<Incoming>) -> Self::Future {
-        let endpoint = Self { binding: self.binding.clone(), settings: self.settings };
+        let endpoint = Self {
+            binding: self.binding.clone(),
+            settings: self.settings,
+        };
         Box::pin(async move { Ok(Response::new(endpoint.opening(request).await?.output())) })
     }
 }

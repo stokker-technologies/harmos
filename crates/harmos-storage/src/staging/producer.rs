@@ -63,7 +63,10 @@ impl StorageFile {
                 let input = owned.as_ref().expect("unadmitted file input");
                 let total = file.length.checked_add(u64::try_from(input.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
                 if file.metadata.expected_length.is_some_and(|expected| total > expected) {
-                    return Err(Error::InvalidInput { field: "file length", reason: "input exceeds expected length" });
+                    return Err(Error::InvalidInput {
+                        field: "file length",
+                        reason: "input exceeds expected length",
+                    });
                 }
                 if input.is_empty() {
                     return Ok(Some(None));
@@ -115,7 +118,10 @@ impl StorageFile {
                     }
                     let total = file.length.checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?).ok_or_else(size_error)?;
                     if file.metadata.expected_length.is_some_and(|expected| total > expected) {
-                        return Err(Error::InvalidInput { field: "file length", reason: "input exceeds expected length" });
+                        return Err(Error::InvalidInput {
+                            field: "file length",
+                            reason: "input exceeds expected length",
+                        });
                     }
                     if bytes.is_empty() {
                         return Ok(Some(None));
@@ -197,7 +203,10 @@ impl StorageFile {
                         file.abandoned = true;
                         file.progress.lock().unwrap().closed = true;
                         self.manager.inner.notify();
-                        return Err(Error::InvalidInput { field: "file integrity", reason: "length or digest does not match" });
+                        return Err(Error::InvalidInput {
+                            field: "file integrity",
+                            reason: "length or digest does not match",
+                        });
                     }
                     if capacity {
                         file.context = crate::execution::Context::current();
@@ -224,7 +233,10 @@ impl StorageFile {
             let mut state = self.manager.inner.state.lock().unwrap();
             if let Some(file) = state.files.get_mut(&self.id) {
                 if matches!(file.command, Some(Command::Finish { target: Some(_), .. })) {
-                    return Err(Error::InvalidInput { field: "file abort", reason: "finish is already being reconciled" });
+                    return Err(Error::InvalidInput {
+                        field: "file abort",
+                        reason: "finish is already being reconciled",
+                    });
                 }
                 file.abandoned = true;
                 if let Some(session) = &mut file.session {

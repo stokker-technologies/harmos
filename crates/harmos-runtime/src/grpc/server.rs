@@ -202,7 +202,11 @@ where
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().unary(call, request).await
     })
 }
@@ -224,7 +228,11 @@ where
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().server_streaming(call, request).await
     })
 }
@@ -246,7 +254,11 @@ where
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().client_streaming(call, request).await
     })
 }
@@ -271,7 +283,11 @@ where
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
-        let call = Endpoint::<O> { authority, settings, operation: PhantomData };
+        let call = Endpoint::<O> {
+            authority,
+            settings,
+            operation: PhantomData,
+        };
         codec.server().streaming(call, request).await
     })
 }

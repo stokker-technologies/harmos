@@ -122,7 +122,11 @@ impl NamedManifest {
                 Ok(Definition::new(entry.id, source, callback)?)
             })
             .collect::<Result<_, Error>>()?;
-        Ok(Manifest { facility: self.facility, owner: self.owner, listeners })
+        Ok(Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            listeners,
+        })
     }
 }
 
@@ -135,7 +139,10 @@ pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str, provides: &
             continue;
         }
         if selected.is_some() {
-            return Err(Error::Duplicate { facility: facility.into(), owner: owner.into() });
+            return Err(Error::Duplicate {
+                facility: facility.into(),
+                owner: owner.into(),
+            });
         }
         if !contracts::valid_identity(&manifest.facility, &manifest.owner) || manifest.listeners.len() > LIMIT {
             return Err(Error::Inventory);

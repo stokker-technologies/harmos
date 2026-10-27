@@ -86,7 +86,12 @@ impl Bundle {
             if let Some(executable) = &mut executable {
                 executable.registrations.sort_by(|left, right| left.namespace.cmp(&right.namespace));
             }
-            files.push(File { path: source.path.to_owned(), size: source.bytes.len() as u64, sha256, executable });
+            files.push(File {
+                path: source.path.to_owned(),
+                size: source.bytes.len() as u64,
+                sha256,
+                executable,
+            });
         }
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let manifest = Manifest { schema: 1, identity, files };
@@ -114,7 +119,12 @@ impl Bundle {
                 declarations.insert(file.path.clone(), declaration);
             }
         }
-        Ok(Self { manifest, bytes: bytes.to_vec(), contents, declarations })
+        Ok(Self {
+            manifest,
+            bytes: bytes.to_vec(),
+            contents,
+            declarations,
+        })
     }
 
     pub fn manifest(&self) -> &Manifest {

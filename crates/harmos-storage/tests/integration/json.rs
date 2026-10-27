@@ -45,8 +45,14 @@ use harmos_storage::{query::RecordSelection, *};
 /* === Private Functions === */
 
 fn backend(root: &Path) -> JsonStorage {
-    let history = StoreHistory { store: Identifier::new("json-test").unwrap(), epoch: Identifier::new("first").unwrap() };
-    let settings = JsonStorageSettings { root: root.to_owned(), max_entry_bytes: NonZeroUsize::new(4096).unwrap() };
+    let history = StoreHistory {
+        store: Identifier::new("json-test").unwrap(),
+        epoch: Identifier::new("first").unwrap(),
+    };
+    let settings = JsonStorageSettings {
+        root: root.to_owned(),
+        max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
+    };
     JsonStorage::new(settings, history)
 }
 
@@ -93,8 +99,18 @@ async fn typed_replay() {
     assert_eq!(reopened.open().await.unwrap(), first.position);
     let memory = crate::manager::memory::read().await;
     let snapshot = reopened.open_snapshot(&first.position, memory.clone()).await.unwrap();
-    let selection = RecordSelection { schema: first.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
-    let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
+    let selection = RecordSelection {
+        schema: first.schema.clone(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
     assert_eq!(reopened.read_records(&snapshot, &selection, page, memory.clone()).await.unwrap(), vec![first]);
     reopened.release_snapshot(&snapshot).await.unwrap();
     assert!(reopened.read_records(&snapshot, &selection, page, memory.clone()).await.is_err());
@@ -146,8 +162,18 @@ async fn decode_requires_admission() {
     storage.write_records(StorageBatch::new(vec![row.clone()])).await.unwrap();
     let generous = crate::manager::memory::read().await;
     let snapshot = storage.open_snapshot(&row.position, generous.clone()).await.unwrap();
-    let selection = RecordSelection { schema: row.schema.clone(), scope: None, item: None, source_start: None, source_end: None };
-    let page = ScanPage { after: 0, rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4096).unwrap() };
+    let selection = RecordSelection {
+        schema: row.schema.clone(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
     let decoded = storage.read_records(&snapshot, &selection, page, generous.clone()).await.unwrap();
     assert_eq!(decoded, vec![row.clone()]);
     assert!(decoded.memory_size() <= generous.bytes());
@@ -179,7 +205,10 @@ async fn decode_requires_admission() {
     settings.budget.read_memory_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     settings.response.batch_bytes = NonZeroUsize::new(4096).unwrap();
     let admission = StorageManager::<()>::new(
-        StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+        StorageBackends {
+            primary: Arc::new(Data::<()>::new(history())),
+            state: Arc::new(Recovery::new(history())),
+        },
         settings,
     )
     .unwrap();

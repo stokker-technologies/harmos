@@ -187,7 +187,10 @@ pub trait StorageBackend: Send + Sync + 'static {
 impl ReadLimits {
     pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
         if rows > self.rows.get() || bytes > self.bytes.get() {
-            return Err(Error::InvalidInput { field: "read page", reason: "row or byte bound exceeded" });
+            return Err(Error::InvalidInput {
+                field: "read page",
+                reason: "row or byte bound exceeded",
+            });
         }
         Ok(())
     }
@@ -198,7 +201,12 @@ impl ReadLimits {
 /* === Private Functions === */
 
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
-    Box::pin(async move { Err(Error::InvalidInput { field, reason: "backend does not support this capability" }) })
+    Box::pin(async move {
+        Err(Error::InvalidInput {
+            field,
+            reason: "backend does not support this capability",
+        })
+    })
 }
 
 /* === Tests === */

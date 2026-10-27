@@ -167,7 +167,12 @@ impl Watching {
             }
         });
 
-        Self { child: Some(child), reader: Some(reader), events, log }
+        Self {
+            child: Some(child),
+            reader: Some(reader),
+            events,
+            log,
+        }
     }
 
     fn event(&self, expected: &str) -> Value {

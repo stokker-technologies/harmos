@@ -79,7 +79,10 @@ impl<C> StorageManager<C> {
             }
             reserve(state, mutation, fingerprint, std::mem::size_of::<MutationValue>(), 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
-            file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Abandon });
+            file.mutation = Some(Mutation {
+                id: mutation.clone(),
+                kind: Kind::Abandon,
+            });
             file.abandoned = true;
             file.session.as_mut().expect("managed producer").reason = "producer explicitly abandoned";
             file.context = crate::execution::Context::current();

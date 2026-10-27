@@ -77,7 +77,9 @@ impl FileReadEvent {
 
 impl FileReadBatch {
     pub(crate) fn retained(batch: FileBatch, memory: RetainedMemory) -> Self {
-        Self { owner: ReadBatch::retained(batch, memory) }
+        Self {
+            owner: ReadBatch::retained(batch, memory),
+        }
     }
 
     /// Moves a unique file batch through an admitted projection.

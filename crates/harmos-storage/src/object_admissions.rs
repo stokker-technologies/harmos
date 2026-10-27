@@ -56,7 +56,10 @@ impl<C> StorageManager<C> {
         self.admit_object_group(
             self.object_admission_bytes(),
             count,
-            Some(Mutation { id: mutation, fingerprint: hash.finalize().into() }),
+            Some(Mutation {
+                id: mutation,
+                fingerprint: hash.finalize().into(),
+            }),
             |group| {
                 for object in objects {
                     group.write_value(object)?;

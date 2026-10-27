@@ -70,13 +70,23 @@ impl harmos_domain::schema::Described for RecursiveDeclaration {
 fn typed_recursive_declaration() {
     let root = RecursiveDeclaration::DEFINITION;
     // Type Identity Survives Distinct Accessor Functions
-    let alias = Definition { fields: || RecursiveDeclaration::FIELDS, marker: || RecursiveDeclaration::MARKER, ..root };
+    let alias = Definition {
+        fields: || RecursiveDeclaration::FIELDS,
+        marker: || RecursiveDeclaration::MARKER,
+        ..root
+    };
     let declarations = declaration::markers(alias, &SchemaSettings::default()).unwrap();
     assert_eq!(declarations.len(), 1);
-    let conflicting = Definition { identity: std::any::TypeId::of::<()>, ..root };
+    let conflicting = Definition {
+        identity: std::any::TypeId::of::<()>,
+        ..root
+    };
     assert!(matches!(
         Schema::from_declaration(conflicting, &SchemaSettings::default()),
-        Err(Error::Field { reason: "schema definition name has multiple owners", .. })
+        Err(Error::Field {
+            reason: "schema definition name has multiple owners",
+            ..
+        })
     ));
     let schema = Schema::from_declaration(root, &SchemaSettings::default()).unwrap();
     let prepared = schema.prepare(&SchemaSettings::default()).unwrap();
@@ -108,7 +118,10 @@ fn typed_recursive_declaration() {
     let prost_reflect::Kind::Message(child) = descriptor.fields().next().unwrap().kind() else { unreachable!() };
     assert_eq!(child.full_name(), descriptor.full_name());
     let allowance = combined.prepare(&SchemaSettings::default()).unwrap().bytes;
-    let settings = SchemaSettings { preparation_bytes: NonZeroUsize::new(allowance).unwrap(), ..SchemaSettings::default() };
+    let settings = SchemaSettings {
+        preparation_bytes: NonZeroUsize::new(allowance).unwrap(),
+        ..SchemaSettings::default()
+    };
     assert!(harmos_packaging::proto::reflection::descriptor_root(&combined, definition, "harmos.direction", &settings).is_err());
 
     let markers = declaration::markers(root, &SchemaSettings::default()).unwrap();
@@ -130,7 +143,10 @@ fn typed_recursive_declaration() {
     assert_eq!(resolved_directions.definitions, combined.definitions);
     assert_eq!(resolved_directions.root, combined.root);
     assert!(combined.equivalent(definition, &resolved, resolved.root, &SchemaSettings::default()).unwrap());
-    let mut mutual = Schema { root: 0, definitions: vec![schema.definitions[0].clone(), schema.definitions[0].clone()] };
+    let mut mutual = Schema {
+        root: 0,
+        definitions: vec![schema.definitions[0].clone(), schema.definitions[0].clone()],
+    };
     mutual.definitions[0][0].kind = Kind::Message { definition: 1 };
     assert!(schema.equivalent(schema.root, &mutual, mutual.root, &SchemaSettings::default()).unwrap());
     mutual.definitions[1][0].tag = 2;
@@ -174,7 +190,9 @@ fn shared_checkpoint_schema() {
                         Kind::F64 => Kind::F64,
                         Kind::String => Kind::String,
                         Kind::Bytes => Kind::Bytes,
-                        Kind::Message { definition } => Kind::Message { definition: format!("fixture.{definition}") },
+                        Kind::Message { definition } => Kind::Message {
+                            definition: format!("fixture.{definition}"),
+                        },
                     },
                 })
                 .collect();
@@ -188,7 +206,10 @@ fn shared_checkpoint_schema() {
     assert_eq!(resolved_preparation.definitions, 164);
     assert_eq!(resolved_preparation.fields, 607);
     assert!(harmos_packaging::proto::reflection::descriptor_schema(&resolved, "checkpoint", &SchemaSettings::default()).is_ok());
-    let constrained = SchemaSettings { preparation_bytes: NonZeroUsize::new(1).unwrap(), ..SchemaSettings::default() };
+    let constrained = SchemaSettings {
+        preparation_bytes: NonZeroUsize::new(1).unwrap(),
+        ..SchemaSettings::default()
+    };
     assert!(matches!(declaration::Named::decode(encoded.iter().map(Vec::as_slice), &constrained), Err(Error::Budget)));
     let preparation = schema.prepare(&SchemaSettings::default()).unwrap();
     assert_eq!(preparation.definitions, 164);
@@ -222,9 +243,15 @@ fn shared_checkpoint_schema() {
     assert_eq!(expanded[schema.root], 5583);
     assert_eq!(depths[schema.root], 18);
 
-    let bounded = SchemaSettings { preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(), ..Default::default() };
+    let bounded = SchemaSettings {
+        preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(),
+        ..Default::default()
+    };
     assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
-    let bounded = SchemaSettings { preparation_work: NonZeroUsize::new(preparation.work - 1).unwrap(), ..Default::default() };
+    let bounded = SchemaSettings {
+        preparation_work: NonZeroUsize::new(preparation.work - 1).unwrap(),
+        ..Default::default()
+    };
     assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
 }
 

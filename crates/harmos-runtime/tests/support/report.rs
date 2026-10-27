@@ -98,7 +98,11 @@ pub fn capture(directory: Option<&Path>) -> Report {
     let name = thread.name().unwrap_or("system");
     let process = std::process::id();
     let story = tracing::dispatcher::with_default(&collector.dispatch, || tracing::debug_span!("system.story", story = name, process));
-    Report { guard: Some(Arc::clone(&collector.guard)), story: Some(story), dispatch: Some(collector.dispatch.clone()) }
+    Report {
+        guard: Some(Arc::clone(&collector.guard)),
+        story: Some(story),
+        dispatch: Some(collector.dispatch.clone()),
+    }
 }
 
 pub(crate) fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {

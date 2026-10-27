@@ -102,11 +102,18 @@ impl<'de> Visitor<'de> for StorageVisitor {
         formatter.write_str("bounded graph_v1 storage metadata")
     }
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> std::result::Result<Self::Value, A::Error> {
-        let mut input = Input { map, position: None, key: None, encoding: None };
+        let mut input = Input {
+            map,
+            position: None,
+            key: None,
+            encoding: None,
+        };
         // Forward Only The Graph Fields To The Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
-        let schema = crate::schema::graph::Seed { settings: &harmos_domain::config::SchemaSettings::default() }
-            .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
+        let schema = crate::schema::graph::Seed {
+            settings: &harmos_domain::config::SchemaSettings::default(),
+        }
+        .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
         let Encoding::GraphV1 = input.encoding.ok_or_else(|| A::Error::missing_field("encoding"))?;
         Ok(StorageSchema::new(
             input.position.ok_or_else(|| A::Error::missing_field("position"))?,
@@ -154,7 +161,10 @@ impl<'de, A: MapAccess<'de>> MapAccess<'de> for Input<A> {
 /* === Private Functions === */
 
 fn invalid() -> Error {
-    Error::InvalidInput { field: "storage schema", reason: "invalid shared schema preparation" }
+    Error::InvalidInput {
+        field: "storage schema",
+        reason: "invalid shared schema preparation",
+    }
 }
 
 /* === Tests === */

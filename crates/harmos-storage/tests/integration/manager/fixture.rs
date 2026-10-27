@@ -69,7 +69,14 @@ impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
+        let storage = StorageManager::new(
+            StorageBackends {
+                primary: data.clone(),
+                state: recovery.clone(),
+            },
+            config,
+        )
+        .unwrap();
         start(&storage).await;
         Self { storage, data, recovery }
     }
@@ -118,7 +125,14 @@ pub(crate) fn schema() -> SchemaKey {
 }
 
 pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordInput {
-    RecordInput { schema: schema.clone(), scope: None, item: item.clone(), source: None, source_time: None, payload: (payload).to_vec() }
+    RecordInput {
+        schema: schema.clone(),
+        scope: None,
+        item: item.clone(),
+        source: None,
+        source_time: None,
+        payload: (payload).to_vec(),
+    }
 }
 
 pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {

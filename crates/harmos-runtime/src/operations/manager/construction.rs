@@ -109,7 +109,10 @@ impl Manager {
                     },
                 )
             }))
-            .map_err(|_| Error::InvalidInput { field: "operation authorizer", reason: "authorization callback panicked" })??
+            .map_err(|_| Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization callback panicked",
+            })??
             .ok_or_else(denied)?;
             let selected_contract = match &selected {
                 crate::operations::authorization::Authorization::Full(contract) => contract,

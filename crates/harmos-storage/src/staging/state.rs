@@ -44,12 +44,18 @@ impl FileState {
             return None;
         }
         if self.session.is_none() {
-            return Some(Err(Error::InvalidInput { field: "file following", reason: "private transfer staging is not readable" }));
+            return Some(Err(Error::InvalidInput {
+                field: "file following",
+                reason: "private transfer staging is not readable",
+            }));
         }
         if let Some(source) = &self.progress.lock().unwrap().failure {
             return Some(Err(Error::Persistence { source: source.clone() }));
         }
-        Some(Ok(FileProgress { length: self.length, phase: FilePhase::Producing }))
+        Some(Ok(FileProgress {
+            length: self.length,
+            phase: FilePhase::Producing,
+        }))
     }
 
     pub(crate) fn bytes(&self) -> usize {
@@ -121,13 +127,24 @@ impl State {
             file.command = Some(Command::Abort);
         }
         let action = match file.command.as_mut()? {
-            Command::Create => {
-                FileAction::Create { id, metadata: file.metadata.clone(), staging: file.staging.clone(), resumable: file.session.is_some() }
-            }
-            Command::Resume { expected, next } => {
-                FileAction::Resume { id, staging: file.staging.clone(), expected: *expected, next: *next }
-            }
-            Command::Write(bytes) => FileAction::Write { id, staging: file.staging.clone(), offset: file.length, bytes: bytes.clone() },
+            Command::Create => FileAction::Create {
+                id,
+                metadata: file.metadata.clone(),
+                staging: file.staging.clone(),
+                resumable: file.session.is_some(),
+            },
+            Command::Resume { expected, next } => FileAction::Resume {
+                id,
+                staging: file.staging.clone(),
+                expected: *expected,
+                next: *next,
+            },
+            Command::Write(bytes) => FileAction::Write {
+                id,
+                staging: file.staging.clone(),
+                offset: file.length,
+                bytes: bytes.clone(),
+            },
             Command::Finish { target, sha256 } => {
                 if target.is_none() {
                     let Some(index) = self.next.checked_add(1) else {
@@ -148,10 +165,16 @@ impl State {
                     sha256: *sha256,
                 }
             }
-            Command::Abort if file.session.is_some() => {
-                FileAction::Abandon { id, staging: file.staging.clone(), extra: file.extra.clone() }
-            }
-            Command::Abort => FileAction::Abort { id, staging: file.staging.clone(), extra: file.extra.clone() },
+            Command::Abort if file.session.is_some() => FileAction::Abandon {
+                id,
+                staging: file.staging.clone(),
+                extra: file.extra.clone(),
+            },
+            Command::Abort => FileAction::Abort {
+                id,
+                staging: file.staging.clone(),
+                extra: file.extra.clone(),
+            },
         };
         file.in_flight = true;
         self.collect();
@@ -219,14 +242,19 @@ impl State {
                         _ => file.length,
                     };
                     crate::MutationValue::Producer(crate::FileProducer {
-                        session: FileSession { history: file.staging.history.clone(), id: file.staging.id.clone(), generation },
+                        session: FileSession {
+                            history: file.staging.history.clone(),
+                            id: file.staging.id.clone(),
+                            generation,
+                        },
                         length,
                     })
                 }
                 (FileCompleted::Finished(reference), Kind::Finish) => crate::MutationValue::Reference(reference.clone()),
-                (FileCompleted::Aborted, Kind::Abandon) => {
-                    crate::MutationValue::Progress(FileProgress { length: file.length, phase: FilePhase::Abandoned })
-                }
+                (FileCompleted::Aborted, Kind::Abandon) => crate::MutationValue::Progress(FileProgress {
+                    length: file.length,
+                    phase: FilePhase::Abandoned,
+                }),
                 _ => crate::MutationValue::Rejected,
             }
         });
@@ -298,7 +326,10 @@ mod tests {
 
     fn storage() -> crate::StorageManager {
         crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap()
@@ -318,7 +349,10 @@ mod tests {
         FileState {
             context: crate::execution::Context::current(),
             queued: Some(tracing::debug_span!("storage.file.queue")),
-            staging: StagedFile { history: history(), id: metadata.id.clone() },
+            staging: StagedFile {
+                history: history(),
+                id: metadata.id.clone(),
+            },
             metadata: Arc::new(metadata),
             session: None,
             mutation: None,

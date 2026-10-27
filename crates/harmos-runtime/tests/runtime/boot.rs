@@ -52,7 +52,11 @@ impl Registration<Editor> for Definitions {
             Ok(None)
         }
 
-        Catalog::Transactions { definitions: self.0, decode, inverses: Some(inverses) }
+        Catalog::Transactions {
+            definitions: self.0,
+            decode,
+            inverses: Some(inverses),
+        }
     }
 }
 
@@ -73,7 +77,12 @@ impl Source<Editor> for Replaying {
         let entries = std::mem::take(&mut self.recorded);
         self.resume = entries.last().map_or(Position::ORIGIN, |entry| entry.position);
 
-        Ok(Recovery { commits: Vec::new(), frontier: self.resume, entries, encoded: Vec::new() })
+        Ok(Recovery {
+            commits: Vec::new(),
+            frontier: self.resume,
+            entries,
+            encoded: Vec::new(),
+        })
     }
 }
 
@@ -90,7 +99,10 @@ fn alice() -> PrincipalId {
 }
 
 fn origin() -> Sheet {
-    Sheet { title: "origin".to_owned(), sealed: false }
+    Sheet {
+        title: "origin".to_owned(),
+        sealed: false,
+    }
 }
 
 fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) -> Envelope<Payload<Editor>> {
@@ -109,7 +121,12 @@ fn stored(position: u64, id: &str, link: Option<Link>, value: Recorded<Editor>) 
             "at": Timestamp::UNIX_EPOCH,
         }))
         .unwrap(),
-        payload: Payload { prepared: None, id: DefinitionId::new(id), version: 1, value },
+        payload: Payload {
+            prepared: None,
+            id: DefinitionId::new(id),
+            version: 1,
+            value,
+        },
     }
 }
 

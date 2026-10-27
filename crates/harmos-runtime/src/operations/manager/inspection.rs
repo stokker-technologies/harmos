@@ -53,7 +53,12 @@ impl Manager {
             None,
             &[],
             &Source::Host,
-            Submission { submitted, entry, cause: None, preparation: None },
+            Submission {
+                submitted,
+                entry,
+                cause: None,
+                preparation: None,
+            },
         )
     }
 
@@ -69,7 +74,10 @@ impl Manager {
         }
         let prefix = format!("/{name}/");
         if state.grpc_services.contains(name) || state.grpc.keys().any(|path| path.starts_with(&prefix)) {
-            return Err(Error::AlreadyRegistered { domain: "gRPC service", name: name.to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: "gRPC service",
+                name: name.to_owned(),
+            });
         }
         state.grpc_services.insert(name.to_owned());
         Ok(())
@@ -102,11 +110,10 @@ impl Manager {
         if state.closing {
             return Err(Error::Closing { domain: "operations" });
         }
-        let entry = state
-            .grpc
-            .get(path)
-            .and_then(Weak::upgrade)
-            .ok_or_else(|| Error::NotRegistered { domain: "gRPC method", name: path.to_owned() })?;
+        let entry = state.grpc.get(path).and_then(Weak::upgrade).ok_or_else(|| Error::NotRegistered {
+            domain: "gRPC method",
+            name: path.to_owned(),
+        })?;
         if !entry.active.load(Ordering::Acquire) {
             return Err(Error::Closing { domain: "operation" });
         }

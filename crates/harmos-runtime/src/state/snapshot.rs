@@ -79,7 +79,12 @@ impl<A: Application> Snapshots<A> {
     where
         A::State: Serialize + DeserializeOwned,
     {
-        Self { policy, encode: snapshot_codec::encode::<A>, decode: snapshot_codec::decode::<A>, last: AtomicU64::new(0) }
+        Self {
+            policy,
+            encode: snapshot_codec::encode::<A>,
+            decode: snapshot_codec::decode::<A>,
+            last: AtomicU64::new(0),
+        }
     }
 
     pub(crate) fn resumed(&self, position: Position) {
@@ -130,8 +135,13 @@ impl<A: Application> Snapshots<A> {
             let state = tracked.state.read().await;
             let tail = tracked.tail.read().await;
             self.last.store(position.0, Ordering::Relaxed);
-            let payload = catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &state, undos, &tail, receipts)))
-                .map_err(|_| Error::InvalidInput { field: "state snapshot", reason: "serializer panicked" })??;
+            let payload =
+                catch_unwind(AssertUnwindSafe(|| (self.encode)(&self.policy, &state, undos, &tail, receipts))).map_err(|_| {
+                    Error::InvalidInput {
+                        field: "state snapshot",
+                        reason: "serializer panicked",
+                    }
+                })??;
             permit.snapshot_payload(payload)?;
             permit.commit(position);
             Ok::<(), Error>(())

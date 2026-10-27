@@ -102,14 +102,20 @@ impl Manager {
                     state.host_provider(id, contract)
                 }
             } else {
-                state.owned(id, scope.owner()).ok_or_else(|| Error::NotRegistered { domain: "assigned operation", name: id.to_owned() })
+                state.owned(id, scope.owner()).ok_or_else(|| Error::NotRegistered {
+                    domain: "assigned operation",
+                    name: id.to_owned(),
+                })
             }
         };
         let mut peak = std::mem::size_of::<Vec<harmos_sdk::operations::AssignedOperation>>() + 20;
         for contract in contracts() {
             let entry = select(contract)?;
             if entry.contract.as_ref() != Some(contract) {
-                return Err(Error::InvalidInput { field: "operation assignment", reason: "provider differs from the frozen contract" });
+                return Err(Error::InvalidInput {
+                    field: "operation assignment",
+                    reason: "provider differs from the frozen contract",
+                });
             }
             let name =
                 entry.owner.as_str().len().checked_add(entry.id().len()).and_then(|length| length.checked_add(1)).ok_or_else(exhausted)?;
@@ -136,8 +142,10 @@ impl Manager {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        harmos_sdk::operations::AssignedOperation::encode(&assignments)
-            .map_err(|source| Error::OperationFailed { operation: "SDK assignments".into(), source: Arc::new(source) })
+        harmos_sdk::operations::AssignedOperation::encode(&assignments).map_err(|source| Error::OperationFailed {
+            operation: "SDK assignments".into(),
+            source: Arc::new(source),
+        })
     }
 
     // Capture Does Not Grant Readiness; Submission Rechecks The Exact Entry.

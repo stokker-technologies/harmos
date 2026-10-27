@@ -67,7 +67,11 @@ impl Transaction<Schematic> for ConnectPins {
         schematic
             .nets
             .entry(self.net)
-            .or_insert_with(|| Net { name: self.name.clone(), pins: BTreeSet::new(), route: Vec::new() })
+            .or_insert_with(|| Net {
+                name: self.name.clone(),
+                pins: BTreeSet::new(),
+                route: Vec::new(),
+            })
             .pins
             .extend(self.pins.iter().copied());
     }

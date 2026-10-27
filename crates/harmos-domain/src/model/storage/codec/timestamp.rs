@@ -64,14 +64,20 @@ impl Value for Time {
 
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<SystemTime, MessageError> {
         input.nested(|input| {
-            Wire { secs_since_epoch: input.value()?, nanos_since_epoch: input.value()?, before_epoch: input.value()? }
-                .timestamp()
-                .map_err(MessageError::borrowed)
+            Wire {
+                secs_since_epoch: input.value()?,
+                nanos_since_epoch: input.value()?,
+                before_epoch: input.value()?,
+            }
+            .timestamp()
+            .map_err(MessageError::borrowed)
         })
     }
 
     type Native = SystemTime;
-    const KIND: Kind = Kind::Message { definition: <Self as crate::schema::Described>::DEFINITION };
+    const KIND: Kind = Kind::Message {
+        definition: <Self as crate::schema::Described>::DEFINITION,
+    };
 }
 
 impl crate::schema::Described for Time {
@@ -83,9 +89,24 @@ impl crate::schema::Described for Time {
 }
 
 const FIELDS: &[Field] = &[
-    Field { name: Cow::Borrowed("secs_since_epoch"), tag: 1, kind: Kind::U64, cardinality: Cardinality::Required },
-    Field { name: Cow::Borrowed("nanos_since_epoch"), tag: 2, kind: Kind::U32, cardinality: Cardinality::Required },
-    Field { name: Cow::Borrowed("before_epoch"), tag: 3, kind: Kind::Bool, cardinality: Cardinality::Required },
+    Field {
+        name: Cow::Borrowed("secs_since_epoch"),
+        tag: 1,
+        kind: Kind::U64,
+        cardinality: Cardinality::Required,
+    },
+    Field {
+        name: Cow::Borrowed("nanos_since_epoch"),
+        tag: 2,
+        kind: Kind::U32,
+        cardinality: Cardinality::Required,
+    },
+    Field {
+        name: Cow::Borrowed("before_epoch"),
+        tag: 3,
+        kind: Kind::Bool,
+        cardinality: Cardinality::Required,
+    },
 ];
 
 /* === Public Functions === */

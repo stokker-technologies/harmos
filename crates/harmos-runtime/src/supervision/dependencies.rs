@@ -65,7 +65,10 @@ impl<K: Clone + Ord> Graph<K> {
         for (owner, prerequisites) in &dependencies {
             for dependency in prerequisites {
                 let Some(provider) = nodes.get(dependency) else {
-                    return Err(Invalid::Missing { owner: owner.clone(), dependency: dependency.clone() });
+                    return Err(Invalid::Missing {
+                        owner: owner.clone(),
+                        dependency: dependency.clone(),
+                    });
                 };
                 graph.add_edge(*provider, nodes[owner], ());
                 dependents.entry(dependency.clone()).or_default().insert(owner.clone());
@@ -97,7 +100,12 @@ impl<K: Clone + Ord> Graph<K> {
             dependencies.insert(owner.clone(), providers);
         }
         let ready = remaining.iter().filter(|(_, count)| **count == 0).map(|(owner, _)| owner.clone()).collect();
-        Retirement { dependencies, remaining, ready, running: BTreeSet::new() }
+        Retirement {
+            dependencies,
+            remaining,
+            ready,
+            running: BTreeSet::new(),
+        }
     }
 
     pub(crate) fn ordered(&self) -> &[K] {

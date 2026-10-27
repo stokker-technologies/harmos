@@ -78,12 +78,22 @@ impl EvidenceRecord {
             return Err(EvidenceError::Mismatched { kind: self.kind.clone(), named });
         }
 
-        serde_json::from_slice(&self.described)
-            .map_err(|error| EvidenceError::Malformed { kind: self.kind.clone(), cause: error.to_string() })
+        serde_json::from_slice(&self.described).map_err(|error| EvidenceError::Malformed {
+            kind: self.kind.clone(),
+            cause: error.to_string(),
+        })
     }
 
     pub(crate) fn new(kind: DefinitionId, version: u32, scope: String, key: String, length: u64, described: Vec<u8>) -> Self {
-        Self { kind, version, scope, key, length, finalized: None, described }
+        Self {
+            kind,
+            version,
+            scope,
+            key,
+            length,
+            finalized: None,
+            described,
+        }
     }
 
     pub(crate) fn folded(fact: &SystemFact, position: Position) -> Option<Self> {
@@ -118,7 +128,12 @@ impl EvidenceRecord {
         })
         .expect("the fixed evidence fact shape serializes");
 
-        SystemFact { source: FactSource::Work(SOURCE.to_owned()), name: FINALIZED.to_owned(), version: VERSION, payload }
+        SystemFact {
+            source: FactSource::Work(SOURCE.to_owned()),
+            name: FINALIZED.to_owned(),
+            version: VERSION,
+            payload,
+        }
     }
 }
 

@@ -119,7 +119,9 @@ pub(super) fn remove(path: &Path) -> io::Result<()> {
     }
     // SAFETY: ReOpenFile Returned A Fresh Owned Handle; File Closes It Once.
     let deletion = unsafe { File::from_raw_handle(deletion) };
-    let disposition = FILE_DISPOSITION_INFO_EX { Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS };
+    let disposition = FILE_DISPOSITION_INFO_EX {
+        Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
+    };
     // SAFETY: The Owned Handle And Initialized Fixed-Size Disposition Remain
     // Valid For This Synchronous Call. Unsupported POSIX Removal Is An Error.
     if unsafe {

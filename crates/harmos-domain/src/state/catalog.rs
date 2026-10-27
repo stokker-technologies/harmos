@@ -51,13 +51,20 @@ pub struct RecordDefinitions<R> {
 
 impl<S, T> Clone for TransactionDefinitions<S, T> {
     fn clone(&self) -> Self {
-        Self { definitions: self.definitions.clone(), decode: self.decode, inverses: self.inverses }
+        Self {
+            definitions: self.definitions.clone(),
+            decode: self.decode,
+            inverses: self.inverses,
+        }
     }
 }
 
 impl<R> Clone for RecordDefinitions<R> {
     fn clone(&self) -> Self {
-        Self { definitions: self.definitions.clone(), marker: std::marker::PhantomData }
+        Self {
+            definitions: self.definitions.clone(),
+            marker: std::marker::PhantomData,
+        }
     }
 }
 

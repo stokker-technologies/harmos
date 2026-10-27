@@ -64,7 +64,14 @@ impl Probe {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Backend::new(history()));
         Self {
-            storage: StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config()).unwrap(),
+            storage: StorageManager::new(
+                StorageBackends {
+                    primary: data.clone(),
+                    state: recovery.clone(),
+                },
+                config(),
+            )
+            .unwrap(),
             data,
             recovery,
             load_gate: None,
@@ -276,8 +283,14 @@ async fn reserved_service_refused() {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Backend::new(history()));
         let policy = config();
-        let storage: StorageManager =
-            StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, policy).unwrap();
+        let storage: StorageManager = StorageManager::new(
+            StorageBackends {
+                primary: data.clone(),
+                state: recovery.clone(),
+            },
+            policy,
+        )
+        .unwrap();
         let result = builder()
             .service(name, |_context: ServiceContext<Bank>| async {
                 Err::<(), std::io::Error>(std::io::Error::other("application service unexpectedly started"))
@@ -444,8 +457,13 @@ async fn deadline_awaits_cleanup() {
                 context.stopping().await;
                 gate.entered.notify_one();
                 gate.release.notified().await;
-                let receipt =
-                    context.state().commit(crate::storage::support::Deposit { account: crate::storage::support::HOUSE, amount: 1 }).await;
+                let receipt = context
+                    .state()
+                    .commit(crate::storage::support::Deposit {
+                        account: crate::storage::support::HOUSE,
+                        amount: 1,
+                    })
+                    .await;
                 committed.store(receipt.is_ok(), Ordering::SeqCst);
                 Ok::<(), std::io::Error>(())
             }

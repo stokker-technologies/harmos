@@ -45,7 +45,10 @@ impl<C> StorageManager<C> {
         let bytes = payloads.iter().try_fold(0usize, |bytes, payload| {
             bytes
                 .checked_add(recovery_resident_bytes(payload.capacity(), self.inner.recovery.history(), self.inner.primary.history())?)
-                .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+                .ok_or(Error::InvalidInput {
+                    field: "storage admission",
+                    reason: "size overflow",
+                })
         })?;
         let sequence = self
             .admit(Domain::Recovery, bytes, payloads.len(), |first| {
@@ -116,7 +119,10 @@ impl<C> StorageManager<C> {
             Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None).await.map_err(Refusal::into_error)?.retain();
         let status = self.status();
         if !status.recovery_saved.covers(through)? {
-            return Err(Error::InvalidInput { field: "recovery range", reason: "frontier is not durable" });
+            return Err(Error::InvalidInput {
+                field: "recovery range",
+                reason: "frontier is not durable",
+            });
         }
         let page = self
             .inner
@@ -142,7 +148,10 @@ impl<C> StorageManager<C> {
                 || !self.status().saved.covers(&snapshot.required_data)?
                 || encoded_size(snapshot)? > max_bytes.get())
         {
-            return Err(Error::InvalidInput { field: "recovery snapshot", reason: "invalid saved boundary or byte size" });
+            return Err(Error::InvalidInput {
+                field: "recovery snapshot",
+                reason: "invalid saved boundary or byte size",
+            });
         }
         Ok(snapshot.map(|snapshot| crate::ReadBatch::retained(snapshot, reservation)))
     }

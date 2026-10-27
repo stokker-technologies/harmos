@@ -55,7 +55,10 @@ struct Resources {
 fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>) {
     manager
         .register_service(
-            ServiceDefinition { id: "scoped".into(), policy: harmos_runtime::services::POLICY },
+            ServiceDefinition {
+                id: "scoped".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             |resources: Arc<Resources>| {
                 move |mut service: ServiceContext<Bank>| {
                     let resources = resources.clone();
@@ -265,7 +268,10 @@ async fn unregister_reserves_name() {
         ));
         assert!(matches!(
             manager.register_service(
-                ServiceDefinition { id: "scoped".into(), policy: harmos_runtime::services::POLICY },
+                ServiceDefinition {
+                    id: "scoped".into(),
+                    policy: harmos_runtime::services::POLICY
+                },
                 |_: Arc<Resources>| super::resident
             ),
             Err(Error::AlreadyRegistered { .. })
@@ -307,9 +313,13 @@ async fn shutdown_preserve_typed() {
     let runtime = assembly().runtime().await.unwrap();
     runtime
         .operations
-        .register_service(ServiceDefinition { id: "broken".into(), policy: harmos_runtime::services::POLICY }, |_: Arc<()>| {
-            |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) }
-        })
+        .register_service(
+            ServiceDefinition {
+                id: "broken".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
+            |_: Arc<()>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
+        )
         .unwrap();
     let lease = runtime.operations.submit_resident("broken").await.unwrap();
     let error = lease.ready().await.unwrap_err();
@@ -357,13 +367,22 @@ async fn unregister_drops_factory() {
     }
     let runtime = assembly().runtime().await.unwrap();
     let dropped = Arc::new(AtomicUsize::new(0));
-    let resource = Arc::new(Reentrant { manager: runtime.operations.clone(), dropped: dropped.clone() });
+    let resource = Arc::new(Reentrant {
+        manager: runtime.operations.clone(),
+        dropped: dropped.clone(),
+    });
     runtime
         .operations
-        .register_service(ServiceDefinition { id: "unused".into(), policy: harmos_runtime::services::POLICY }, move |_: Arc<()>| {
-            let _owner = resource.clone();
-            super::resident
-        })
+        .register_service(
+            ServiceDefinition {
+                id: "unused".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
+            move |_: Arc<()>| {
+                let _owner = resource.clone();
+                super::resident
+            },
+        )
         .unwrap();
     runtime.operations.unregister_resident("unused").await.unwrap();
     assert_eq!(dropped.load(SeqCst), 1);
@@ -390,16 +409,25 @@ async fn factory_panic_reported() {
     let runtime = assembly().runtime().await.unwrap();
     runtime
         .operations
-        .register_service(ServiceDefinition { id: "factory".into(), policy: harmos_runtime::services::POLICY }, |fail: Arc<bool>| {
-            assert!(!*fail, "factory initialization failed");
-            super::resident
-        })
+        .register_service(
+            ServiceDefinition {
+                id: "factory".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
+            |fail: Arc<bool>| {
+                assert!(!*fail, "factory initialization failed");
+                super::resident
+            },
+        )
         .unwrap();
     let lease = runtime.operations.submit_with_resources_at("factory", Arc::new(true)).await.unwrap();
     assert!(matches!(lease.ready().await, Err(Error::TaskFailed { .. })));
     assert!(matches!(
         runtime.operations.resident(&runtime.operations.resident_key(lease.id()).unwrap()).unwrap().health,
-        Some(ServiceStatus::Inactive { cause: harmos_runtime::services::ServiceExit::Panicked, .. })
+        Some(ServiceStatus::Inactive {
+            cause: harmos_runtime::services::ServiceExit::Panicked,
+            ..
+        })
     ));
     assert!(matches!(runtime.stop().await, Err(Error::TaskFailed { .. })));
 }

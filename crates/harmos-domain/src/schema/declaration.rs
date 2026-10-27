@@ -136,7 +136,13 @@ impl Name {
 
 impl Definition {
     pub const fn of<T: super::Described + ?Sized>() -> Self {
-        Self { name: T::NAME, default_variant: T::DEFAULT_VARIANT, identity: TypeId::of::<T>, fields: fields::<T>, marker: marker::<T> }
+        Self {
+            name: T::NAME,
+            default_variant: T::DEFAULT_VARIANT,
+            identity: TypeId::of::<T>,
+            fields: fields::<T>,
+            marker: marker::<T>,
+        }
     }
 }
 
@@ -150,8 +156,10 @@ impl Named {
             }
             // Flat JSON Input Bounds Parser Allocations Before Decoding Each Type.
             budget.charge(encoded.len().checked_mul(8).ok_or(Error::Budget)? + 4 * size_of::<Self>(), encoded.len() + 1)?;
-            let declaration: Self = serde_json::from_slice(encoded)
-                .map_err(|_| Error::Field { field: "schema fragment".into(), reason: "invalid schema metadata" })?;
+            let declaration: Self = serde_json::from_slice(encoded).map_err(|_| Error::Field {
+                field: "schema fragment".into(),
+                reason: "invalid schema metadata",
+            })?;
             declarations.push(declaration);
         }
         Ok(declarations)
@@ -229,7 +237,12 @@ impl Plan {
             for field in (declaration.fields)() {
                 self.charge(4 * size_of::<Field<usize>>() + field.name.len(), field.name.len() + 1)?;
                 let kind = field.kind.try_map(|definition| self.insert(definition))?;
-                fields.push(Field { name: field.name.to_string().into(), tag: field.tag, kind, cardinality: field.cardinality });
+                fields.push(Field {
+                    name: field.name.to_string().into(),
+                    tag: field.tag,
+                    kind,
+                    cardinality: field.cardinality,
+                });
             }
             definitions.push(fields);
             index += 1;
@@ -252,12 +265,18 @@ impl Plan {
     fn insert(&mut self, definition: Definition) -> Result<usize, Error> {
         self.charge(0, definition.name.len() + 1)?;
         if definition.name.is_empty() || definition.name.len() > MAX_NAME_BYTES || definition.name.chars().any(char::is_control) {
-            return Err(Error::Field { field: super::diagnostic_name(definition.name), reason: "invalid schema definition name" });
+            return Err(Error::Field {
+                field: super::diagnostic_name(definition.name),
+                reason: "invalid schema definition name",
+            });
         }
         if let Some(index) = self.indices.get(definition.name).copied() {
             let original = self.declarations[index];
             if (original.identity)() != (definition.identity)() {
-                return Err(Error::Field { field: definition.name.into(), reason: "schema definition name has multiple owners" });
+                return Err(Error::Field {
+                    field: definition.name.into(),
+                    reason: "schema definition name has multiple owners",
+                });
             }
             return Ok(index);
         }
@@ -380,7 +399,10 @@ fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &Sche
         let name = declaration.name.as_str();
         budget.charge(4 * size_of::<(&str, &Named)>() + name.len(), name.len() + 1)?;
         if name.is_empty() || name.len() > MAX_NAME_BYTES || name.chars().any(char::is_control) {
-            return Err(Error::Field { field: super::diagnostic_name(name), reason: "invalid schema definition name" });
+            return Err(Error::Field {
+                field: super::diagnostic_name(name),
+                reason: "invalid schema definition name",
+            });
         }
         // Charge The Already Decoded Input Alongside Output And Lookup Scratch.
         budget.charge(declaration.fields.capacity() * size_of::<Field<String>>(), 1)?;
@@ -393,11 +415,17 @@ fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &Sche
         if let Some(original) = dictionary.insert(name, declaration) {
             budget.charge(0, declaration.fields.len() + 1)?;
             if original != declaration {
-                return Err(Error::Field { field: name.into(), reason: "schema definition name has conflicting metadata" });
+                return Err(Error::Field {
+                    field: name.into(),
+                    reason: "schema definition name has conflicting metadata",
+                });
             }
         }
     }
-    let missing = |name: &str| Error::Field { field: super::diagnostic_name(name), reason: "schema definition is absent" };
+    let missing = |name: &str| Error::Field {
+        field: super::diagnostic_name(name),
+        reason: "schema definition is absent",
+    };
     let mut names = Vec::new();
     let mut indices = HashMap::new();
     let mut directions = Vec::new();
@@ -444,7 +472,12 @@ fn resolve_named(roots: &[(&str, &str)], declarations: &[Named], settings: &Sche
                 names.push(name);
                 Ok(index)
             })?;
-            fields.push(Field { name: field.name.clone(), tag: field.tag, kind, cardinality: field.cardinality });
+            fields.push(Field {
+                name: field.name.clone(),
+                tag: field.tag,
+                kind,
+                cardinality: field.cardinality,
+            });
         }
         definitions.push(fields);
         index += 1;

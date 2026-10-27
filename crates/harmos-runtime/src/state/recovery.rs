@@ -104,7 +104,10 @@ impl<A: Application> StateManager<A> {
             .await
             .map_err(Incompatible::unreadable)?;
         let through = reader.through().clone();
-        let mut after = RecoveryPosition { history: through.history.clone(), sequence: 0 };
+        let mut after = RecoveryPosition {
+            history: through.history.clone(),
+            sequence: 0,
+        };
         let mut undos = Undos::default();
         let mut receipts = HashMap::new();
         let mut retained = VecDeque::<Arc<Entry<Recorded<A>>>>::new();
@@ -135,7 +138,11 @@ impl<A: Application> StateManager<A> {
                 let frontier = group.entries.last().expect("validated group").position;
                 let first = group.entries.first().expect("validated group");
                 if let Some(key) = &first.metadata.request {
-                    let receipt = Receipt { position: first.position, frontier, correlation: first.metadata.correlation };
+                    let receipt = Receipt {
+                        position: first.position,
+                        frontier,
+                        correlation: first.metadata.correlation,
+                    };
                     if receipts.insert(key.clone(), receipt).is_some() {
                         return Err(Incompatible::unreadable("invalid or duplicate managed request key"));
                     }
@@ -161,7 +168,13 @@ impl<A: Application> StateManager<A> {
             }
         }
         let durable = reader.finish(state.position);
-        Ok(Recovered { state, undos, tail: retained.into(), durable, receipts })
+        Ok(Recovered {
+            state,
+            undos,
+            tail: retained.into(),
+            durable,
+            receipts,
+        })
     }
 }
 impl<P> Group<P> {
@@ -194,8 +207,25 @@ impl<P> Group<P> {
 pub(super) fn decode<A: Application>(
     envelope: Envelope<serde_json::Value>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
-    let Envelope { position, kind, id, version, metadata, payload } = envelope;
-    decode_json(Envelope { position, kind, id, version, metadata, payload: RecoveryJson::Value(payload) }, catalog)
+    let Envelope {
+        position,
+        kind,
+        id,
+        version,
+        metadata,
+        payload,
+    } = envelope;
+    decode_json(
+        Envelope {
+            position,
+            kind,
+            id,
+            version,
+            metadata,
+            payload: RecoveryJson::Value(payload),
+        },
+        catalog,
+    )
 }
 
 /* === Private Functions === */
@@ -203,14 +233,38 @@ pub(super) fn decode<A: Application>(
 fn decode_payload<A: Application>(
     envelope: Envelope<&RawValue>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
-    let Envelope { position, kind, id, version, metadata, payload } = envelope;
-    decode_json(Envelope { position, kind, id, version, metadata, payload: RecoveryJson::Raw(payload) }, catalog)
+    let Envelope {
+        position,
+        kind,
+        id,
+        version,
+        metadata,
+        payload,
+    } = envelope;
+    decode_json(
+        Envelope {
+            position,
+            kind,
+            id,
+            version,
+            metadata,
+            payload: RecoveryJson::Raw(payload),
+        },
+        catalog,
+    )
 }
 
 fn decode_json<A: Application>(
     envelope: Envelope<RecoveryJson<'_>>, catalog: &Dispatch<A, Payload<A>>,
 ) -> std::result::Result<Option<Envelope<Payload<A>>>, Incompatible> {
-    let Envelope { position, kind, id, version, metadata, payload } = envelope;
+    let Envelope {
+        position,
+        kind,
+        id,
+        version,
+        metadata,
+        payload,
+    } = envelope;
     let (value, payload) = match kind {
         Kind::Transaction => {
             let transaction = payload
@@ -240,7 +294,12 @@ fn decode_json<A: Application>(
         id: id.clone(),
         version,
         metadata,
-        payload: Payload { prepared: Some(prepared), id, version, value },
+        payload: Payload {
+            prepared: Some(prepared),
+            id,
+            version,
+            value,
+        },
     }))
 }
 

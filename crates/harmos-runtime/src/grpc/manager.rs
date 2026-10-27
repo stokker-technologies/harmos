@@ -91,7 +91,10 @@ impl GrpcManager {
         let mut state = self.state.lock().expect("gRPC configuration lock is healthy");
         state.configurable(self.host.attached())?;
         if state.services.contains(S::NAME) {
-            return Err(Error::AlreadyRegistered { domain: "gRPC service", name: S::NAME.to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: "gRPC service",
+                name: S::NAME.to_owned(),
+            });
         }
         self.operations.reserve_grpc_service(S::NAME)?;
         state.services.insert(S::NAME.to_owned());
@@ -108,8 +111,10 @@ impl GrpcManager {
 
     pub async fn attach(&self, settings: Settings) -> Result<Attached> {
         settings.validate()?;
-        let router = super::routing::Router::new(self.operations.clone(), settings.operations)
-            .map_err(|_| Error::InvalidInput { field: "gRPC operation settings", reason: "invalid transport bounds" })?;
+        let router = super::routing::Router::new(self.operations.clone(), settings.operations).map_err(|_| Error::InvalidInput {
+            field: "gRPC operation settings",
+            reason: "invalid transport bounds",
+        })?;
         let resources = {
             let state = self.state.lock().expect("gRPC configuration lock is healthy");
             if state.closed {
@@ -143,7 +148,11 @@ impl GrpcManager {
             Arc::new(listener::Resources::new(settings, routes.into(), state.middleware.clone()))
         };
         let (generation, address) = self.host.attach(resources).await?;
-        Ok(Attached { host: self.host.clone(), generation, address })
+        Ok(Attached {
+            host: self.host.clone(),
+            generation,
+            address,
+        })
     }
 
     pub fn methods(&self) -> Vec<crate::operations::GrpcMethod> {
@@ -197,7 +206,10 @@ impl Settings {
             || self.connections.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.calls_per_connection.get() > u32::MAX as usize
         {
-            return Err(Error::InvalidInput { field: "gRPC settings", reason: "timeouts and capacity must be positive supported bounds" });
+            return Err(Error::InvalidInput {
+                field: "gRPC settings",
+                reason: "timeouts and capacity must be positive supported bounds",
+            });
         }
         Ok(())
     }

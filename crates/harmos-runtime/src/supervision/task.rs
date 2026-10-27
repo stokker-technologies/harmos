@@ -62,7 +62,10 @@ impl<T: Send + Sync + 'static> Task<T> {
         F: Future<Output = T> + Send + 'static,
     {
         let task = executor::task(work(stopping.clone()));
-        Self { stopping, join: Mutex::new(Join::Running(task)) }
+        Self {
+            stopping,
+            join: Mutex::new(Join::Running(task)),
+        }
     }
 
     pub(crate) fn stop(&self) {

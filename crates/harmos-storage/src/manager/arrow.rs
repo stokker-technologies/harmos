@@ -75,15 +75,20 @@ impl<C> StorageManager<C> {
     pub async fn admit_arrow_objects(&self, _scope: Option<&Identifier>, batch: &crate::writes::DecodedBatch) -> Result<StorageCursor> {
         use crate::MemorySize;
         if batch.destination != batch.schema.id {
-            return Err(Error::InvalidInput { field: "object destination", reason: "destination differs from object schema" });
+            return Err(Error::InvalidInput {
+                field: "object destination",
+                reason: "destination differs from object schema",
+            });
         }
         let scratch = self.reserve_arrow_write(batch).await?;
         let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         let definition = (self.inner.object_definition)(&batch.schema)?;
         let graph = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
         let values = crate::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
-        let count =
-            std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput { field: "object batch", reason: "empty atomic batch" })?;
+        let count = std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput {
+            field: "object batch",
+            reason: "empty atomic batch",
+        })?;
         let metadata = graph
             .memory_size()
             .checked_mul(4)
@@ -110,10 +115,10 @@ impl<C> StorageManager<C> {
             })
             .await?;
         drop(scratch);
-        receipts
-            .last()
-            .map(|receipt| receipt.position.clone())
-            .ok_or(Error::InvalidInput { field: "object batch", reason: "accepted batch has no receipt" })
+        receipts.last().map(|receipt| receipt.position.clone()).ok_or(Error::InvalidInput {
+            field: "object batch",
+            reason: "accepted batch has no receipt",
+        })
     }
 
     #[tracing::instrument(name = "storage.manager.arrow.check_object_preconditions", level = "debug", skip_all)]
@@ -127,15 +132,18 @@ impl<C> StorageManager<C> {
             .column_by_name("_storage")
             .and_then(|array| array.as_any().downcast_ref::<arrow_array::StructArray>())
         else {
-            return Err(Error::InvalidInput { field: "object batch", reason: "missing object metadata" });
+            return Err(Error::InvalidInput {
+                field: "object batch",
+                reason: "missing object metadata",
+            });
         };
         let Some(expected) = metadata.column_by_name("expected_revision") else {
             return Ok(());
         };
-        let expected = expected
-            .as_any()
-            .downcast_ref::<arrow_array::UInt64Array>()
-            .ok_or(Error::InvalidInput { field: "object revision", reason: "expected_revision must be nullable UInt64" })?;
+        let expected = expected.as_any().downcast_ref::<arrow_array::UInt64Array>().ok_or(Error::InvalidInput {
+            field: "object revision",
+            reason: "expected_revision must be nullable UInt64",
+        })?;
         let held = Held::default();
         let snapshot = self.snapshot(&self.cursor_saved(), &held).await?;
         let page_bytes = self.inner.settings.scan_bytes();
@@ -159,7 +167,11 @@ impl<C> StorageManager<C> {
                 key: Some(value.item.clone()),
                 versions: crate::query::ObjectVersions::Latest,
             };
-            let page = crate::ScanPage { after: 0, rows: std::num::NonZeroUsize::MIN, bytes: page_bytes };
+            let page = crate::ScanPage {
+                after: 0,
+                rows: std::num::NonZeroUsize::MIN,
+                bytes: page_bytes,
+            };
             let page_memory = Reservation::wait(&self.inner, Pool::Read, &held, page_bytes.get().saturating_add(ENTRY_OVERHEAD), None)
                 .await
                 .map_err(Refusal::into_error)?
@@ -167,7 +179,10 @@ impl<C> StorageManager<C> {
             let (latest, _) = snapshot.scan::<crate::ObjectEntry>(&selection, page, page_memory.clone()).await?;
             let revision = latest.first().map_or(0, |entry| entry.version.revision().get());
             if revision != expected.value(row) {
-                return Err(Error::InvalidInput { field: "object revision", reason: "atomic batch revision precondition failed" });
+                return Err(Error::InvalidInput {
+                    field: "object revision",
+                    reason: "atomic batch revision precondition failed",
+                });
             }
         }
         Ok(())
@@ -177,7 +192,10 @@ impl<C> StorageManager<C> {
     pub(super) async fn reserve_arrow_write(&self, batch: &crate::writes::DecodedBatch) -> Result<Reservation> {
         use crate::MemorySize;
         if batch.data.as_record_batch().num_rows() == 0 {
-            return Err(Error::InvalidInput { field: "storage write", reason: "empty atomic batch" });
+            return Err(Error::InvalidInput {
+                field: "storage write",
+                reason: "empty atomic batch",
+            });
         }
         let bytes = batch.memory_size().checked_mul(8).ok_or(Error::ResourceExhausted { resource: "storage write conversion" })?;
         // The original arrays, conversion scratch and admitted native copy coexist.

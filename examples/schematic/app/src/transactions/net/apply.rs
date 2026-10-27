@@ -62,7 +62,10 @@ impl Transaction<Schematic> for ApplyRoute {
 
 impl Invert<Schematic> for ApplyRoute {
     fn invert(&self, before: &Schematic) -> Self {
-        Self { net: self.net, points: before.net(self.net).route.clone() }
+        Self {
+            net: self.net,
+            points: before.net(self.net).route.clone(),
+        }
     }
 }
 

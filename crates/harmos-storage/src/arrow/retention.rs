@@ -152,7 +152,10 @@ fn attach_data(data: ArrayData, owner: &Arc<Owner>) -> Result<ArrayData> {
 }
 
 fn attach_buffer(buffer: &Buffer, owner: &Arc<Owner>) -> Buffer {
-    let retained = Arc::new(BufferOwner { _buffer: buffer.clone(), _owner: Arc::clone(owner) });
+    let retained = Arc::new(BufferOwner {
+        _buffer: buffer.clone(),
+        _owner: Arc::clone(owner),
+    });
     let pointer = NonNull::new(buffer.as_ptr().cast_mut()).expect("Arrow buffer pointer is nonnull");
     // SAFETY: BufferOwner retains this exact immutable source Buffer, hence its
     // allocation, for the custom buffer's entire lifetime. The source pointer

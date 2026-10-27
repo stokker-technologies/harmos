@@ -138,7 +138,12 @@ impl<A: Application> Drop for Startup<A> {
 impl BootstrapCleanup {
     fn new() -> Self {
         let (status, _) = watch::channel(BootstrapStatus::Starting);
-        Self { shared: Arc::new(CleanupState { retained: Mutex::new(Retained { owner: None, failure: None }), status }) }
+        Self {
+            shared: Arc::new(CleanupState {
+                retained: Mutex::new(Retained { owner: None, failure: None }),
+                status,
+            }),
+        }
     }
 
     pub fn status(&self) -> BootstrapStatus {
@@ -272,7 +277,15 @@ impl<A: Application> Boot<A> {
             storage.claim_owner(identity.clone())?;
         }
 
-        Ok(Self { identity, storage: storage.cloned(), runtime: None, writer: None, state: None, armed: true, cleanup })
+        Ok(Self {
+            identity,
+            storage: storage.cloned(),
+            runtime: None,
+            writer: None,
+            state: None,
+            armed: true,
+            cleanup,
+        })
     }
 
     pub(super) async fn acquire(&self) -> Result<()> {

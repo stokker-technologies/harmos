@@ -90,7 +90,12 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         attributes.record(&mut Fields(&mut fields));
         let mut capture = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let parent = parent.and_then(|parent| capture.active.get(&parent).copied());
-        let span = CapturedSpan { name: attributes.metadata().name(), parent, closed: None, fields };
+        let span = CapturedSpan {
+            name: attributes.metadata().name(),
+            parent,
+            closed: None,
+            fields,
+        };
         capture.created += 1;
         let created = capture.created;
         capture.active.insert(id.into_u64(), created);
@@ -170,8 +175,13 @@ async fn storage_trace_handoffs() {
     f.data.control.flush_release.notify_one();
     f.storage.await_durable(&second).await.unwrap();
 
-    let selection =
-        harmos_storage::query::RecordSelection { schema: schema(), scope: None, item: None, source_start: None, source_end: None };
+    let selection = harmos_storage::query::RecordSelection {
+        schema: schema(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
     let request = tracing::dispatcher::with_default(&dispatch, || tracing::debug_span!("reader_request"));
     let mut reader = f
         .storage
@@ -664,7 +674,12 @@ async fn item_refuses_whole() {
 #[tokio::test]
 async fn schema_decoding_bounded() {
     let fields: Vec<_> = (1..=64)
-        .map(|tag| Field { name: Cow::Owned(format!("field-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
+        .map(|tag| Field {
+            name: Cow::Owned(format!("field-{tag}")),
+            tag,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required,
+        })
         .collect();
     let graph = Arc::new(harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] });
     let mut policy = config();
@@ -723,12 +738,24 @@ async fn schema_capacity_charged() {
 async fn schema_validation_reserves() {
     static CHILDREN: std::sync::LazyLock<Vec<Field>> = std::sync::LazyLock::new(|| {
         (1..=256)
-            .map(|tag| Field { name: Cow::Owned(format!("child-{tag}")), tag, kind: Kind::U64, cardinality: Cardinality::Required })
+            .map(|tag| Field {
+                name: Cow::Owned(format!("child-{tag}")),
+                tag,
+                kind: Kind::U64,
+                cardinality: Cardinality::Required,
+            })
             .collect()
     });
-    let fields =
-        [Field { name: Cow::Borrowed("parent"), tag: 1, kind: Kind::Message { definition: 1 }, cardinality: Cardinality::Required }];
-    let graph = harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields.to_vec(), CHILDREN.to_vec()] };
+    let fields = [Field {
+        name: Cow::Borrowed("parent"),
+        tag: 1,
+        kind: Kind::Message { definition: 1 },
+        cardinality: Cardinality::Required,
+    }];
+    let graph = harmos_storage::schema::graph::Schema {
+        root: 0,
+        definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
+    };
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
     let f = Fixture::new(policy.clone()).await;
@@ -755,10 +782,20 @@ async fn raw_reads_retained() {
     let f = Fixture::new(config()).await;
     let through = f.storage.write_recovery(vec![vec![7; 256]]).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
-    let after = harmos_storage::RecoveryPosition { history: through.history.clone(), sequence: 0 };
+    let after = harmos_storage::RecoveryPosition {
+        history: through.history.clone(),
+        sequence: 0,
+    };
     let page = f
         .storage
-        .read_recovery(&after, &through, harmos_storage::ReadLimits { rows: NonZeroUsize::MIN, bytes: NonZeroUsize::new(4096).unwrap() })
+        .read_recovery(
+            &after,
+            &through,
+            harmos_storage::ReadLimits {
+                rows: NonZeroUsize::MIN,
+                bytes: NonZeroUsize::new(4096).unwrap(),
+            },
+        )
         .await
         .unwrap();
     let alias = page.clone();
@@ -773,7 +810,11 @@ async fn raw_reads_retained() {
     assert_eq!(f.storage.status().read_bytes, 0);
 
     f.storage
-        .write_snapshot(harmos_storage::state::RecoverySnapshot { required_data: f.storage.cursor_saved(), through, payload: vec![8; 256] })
+        .write_snapshot(harmos_storage::state::RecoverySnapshot {
+            required_data: f.storage.cursor_saved(),
+            through,
+            payload: vec![8; 256],
+        })
         .await
         .unwrap();
     f.storage.flush_recovery().await.unwrap();
@@ -938,7 +979,10 @@ async fn filesystem_trace_lifetimes() {
     let range = ByteRange { offset: 0, limit: None };
     let mut reader = f
         .storage
-        .read_file(FileRead { source: FileSource::Local(path.clone()), range })
+        .read_file(FileRead {
+            source: FileSource::Local(path.clone()),
+            range,
+        })
         .instrument(request.clone())
         .with_subscriber(dispatch.clone())
         .await
@@ -979,7 +1023,10 @@ async fn filesystem_trace_lifetimes() {
     assert_eq!(digest.bytes_read, 15);
     let backend_root = tempfile::tempdir().unwrap();
     let backend = JsonStorage::new(
-        JsonStorageSettings { root: backend_root.path().to_owned(), max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap() },
+        JsonStorageSettings {
+            root: backend_root.path().to_owned(),
+            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        },
         super::history(),
     );
     async {

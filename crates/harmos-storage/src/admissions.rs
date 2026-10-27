@@ -66,7 +66,14 @@ impl<C> StorageManager<C> {
         for record in &records {
             hash_record(&mut hash, &record.borrowed());
         }
-        self.admit_records(records, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
+        self.admit_records(
+            records,
+            Some(Mutation {
+                id: mutation,
+                fingerprint: hash.finalize().into(),
+            }),
+        )
+        .await
     }
 
     #[tracing::instrument(name = "storage.admissions.write_stream_once", level = "debug", skip_all)]
@@ -85,7 +92,14 @@ impl<C> StorageManager<C> {
             hash.update(row.sequence.to_le_bytes());
             hash_record(&mut hash, &row.record.borrowed());
         }
-        self.admit_stream(rows, Some(Mutation { id: mutation, fingerprint: hash.finalize().into() })).await
+        self.admit_stream(
+            rows,
+            Some(Mutation {
+                id: mutation,
+                fingerprint: hash.finalize().into(),
+            }),
+        )
+        .await
     }
 }
 
@@ -114,7 +128,10 @@ fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Res
     hash.update((fields.len() as u64).to_le_bytes());
     for field in fields {
         if field.name.len() > crate::schema::MAX_NAME_BYTES {
-            return Err(Error::InvalidInput { field: "storage schema", reason: "field name exceeds limit" });
+            return Err(Error::InvalidInput {
+                field: "storage schema",
+                reason: "field name exceeds limit",
+            });
         }
         part(hash, field.name.as_bytes());
         hash.update(field.tag.to_le_bytes());
@@ -145,7 +162,10 @@ fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Res
 
 fn nonempty(count: usize) -> Result<()> {
     if count == 0 {
-        return Err(Error::InvalidInput { field: "storage mutation", reason: "write batch must not be empty" });
+        return Err(Error::InvalidInput {
+            field: "storage mutation",
+            reason: "write batch must not be empty",
+        });
     }
     Ok(())
 }

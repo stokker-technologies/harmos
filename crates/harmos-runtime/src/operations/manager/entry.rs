@@ -122,9 +122,10 @@ impl Entry {
                 use harmos_operations::lifecycle::Action;
                 return match action {
                     Action::Initialize if scope.is_closed() => Err(Error::Closing { domain: "SDK initialization" }),
-                    Action::Initialize if scope.has_committed() => {
-                        Err(Error::InvalidInput { field: "SDK initialization", reason: "generation is already committed" })
-                    }
+                    Action::Initialize if scope.has_committed() => Err(Error::InvalidInput {
+                        field: "SDK initialization",
+                        reason: "generation is already committed",
+                    }),
                     Action::Initialize | Action::Shutdown => Ok(()),
                 };
             }

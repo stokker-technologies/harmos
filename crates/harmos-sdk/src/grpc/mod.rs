@@ -115,7 +115,10 @@ mod tests {
 
     #[test]
     fn prepared_decode_bound() {
-        let value = Row { bytes: vec![37; 8192], label: "prepared".into() };
+        let value = Row {
+            bytes: vec![37; 8192],
+            label: "prepared".into(),
+        };
         let mut encoded = Vec::new();
         encode(&value, &mut encoded).unwrap();
         let prepared = prepare::<Row>(DecodeInput::new(&encoded)).unwrap();

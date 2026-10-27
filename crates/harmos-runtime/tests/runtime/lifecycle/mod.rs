@@ -54,7 +54,10 @@ struct Held {
 
 impl Default for Held {
     fn default() -> Self {
-        Self { entered: Arc::default(), release: Arc::new(Semaphore::new(0)) }
+        Self {
+            entered: Arc::default(),
+            release: Arc::new(Semaphore::new(0)),
+        }
     }
 }
 

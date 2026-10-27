@@ -63,7 +63,10 @@ impl<C> StorageManager<C> {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
             if state.files.values().any(|file| file.metadata.id == metadata.id) || state.deleting(&metadata.id) {
-                return Err(Error::AlreadyRegistered { domain: "storage file", name: metadata.id.to_string() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "storage file",
+                    name: metadata.id.to_string(),
+                });
             }
             if state.files.len() >= crate::storage::config::MAX_FILES.get() {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
@@ -79,7 +82,10 @@ impl<C> StorageManager<C> {
                     context: crate::execution::Context::current(),
                     queued: Some(tracing::debug_span!("storage.file.queue")),
                     metadata: Arc::new(metadata.clone()),
-                    staging: StagedFile { history: self.inner.primary.history().clone(), id: metadata.id.clone() },
+                    staging: StagedFile {
+                        history: self.inner.primary.history().clone(),
+                        id: metadata.id.clone(),
+                    },
                     session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),
                     mutation: Some(Mutation { id: mutation.clone(), kind: Kind::Create }),
                     extra: None,

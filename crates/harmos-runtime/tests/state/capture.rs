@@ -132,7 +132,10 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
         .register(Facts::catalog())
         .tail(tail)
         .require_capture(
-            CaptureLimits { pending_bytes: pending, max_group_bytes: max },
+            CaptureLimits {
+                pending_bytes: pending,
+                max_group_bytes: max,
+            },
             Consumer { offered, release: release.clone(), fail },
         )
         .unwrap()
@@ -279,7 +282,13 @@ async fn queued_groups_outlive() {
 async fn panic_fails_capture() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Facts::catalog())
-        .require_capture(CaptureLimits { pending_bytes: 4096, max_group_bytes: 4096 }, Panics)
+        .require_capture(
+            CaptureLimits {
+                pending_bytes: 4096,
+                max_group_bytes: 4096,
+            },
+            Panics,
+        )
         .unwrap()
         .runtime()
         .await

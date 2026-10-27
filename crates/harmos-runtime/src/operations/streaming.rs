@@ -42,18 +42,24 @@ pub type StreamPermit<'a, T> = portable::StreamPermit<'a, T>;
 impl From<portable::Error> for Error {
     fn from(error: portable::Error) -> Self {
         match error {
-            portable::Error::Settings => {
-                Self::InvalidInput { field: "operation stream limits", reason: "capacity exceeds the semaphore claim limit" }
-            }
+            portable::Error::Settings => Self::InvalidInput {
+                field: "operation stream limits",
+                reason: "capacity exceeds the semaphore claim limit",
+            },
             portable::Error::Capacity => Self::ResourceExhausted { resource: "operation stream bytes" },
-            portable::Error::Construction => {
-                Self::InvalidInput { field: "operation stream construction bound", reason: "constructed value exceeds its reserved bytes" }
-            }
+            portable::Error::Construction => Self::InvalidInput {
+                field: "operation stream construction bound",
+                reason: "constructed value exceeds its reserved bytes",
+            },
             portable::Error::Closed => Self::NotReady { domain: "operation stream input" },
-            portable::Error::Ownership => {
-                Self::InvalidInput { field: "operation stream payload", reason: "original owned payload cannot be moved into a request" }
-            }
-            portable::Error::Codec(source) => Self::TaskFailed { domain: "operation stream decode", source: Arc::new(source) },
+            portable::Error::Ownership => Self::InvalidInput {
+                field: "operation stream payload",
+                reason: "original owned payload cannot be moved into a request",
+            },
+            portable::Error::Codec(source) => Self::TaskFailed {
+                domain: "operation stream decode",
+                source: Arc::new(source),
+            },
         }
     }
 }

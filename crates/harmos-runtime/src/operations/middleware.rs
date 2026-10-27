@@ -117,7 +117,9 @@ impl Configuration {
     pub(super) fn register(&self, middleware: Arc<dyn Middleware>) -> Result<()> {
         let mut state = self.state.lock().expect("middleware configuration lock is healthy");
         if state.frozen {
-            return Err(Error::Closing { domain: "operation middleware configuration" });
+            return Err(Error::Closing {
+                domain: "operation middleware configuration",
+            });
         }
         state.entries.push(middleware);
         Ok(())
@@ -126,10 +128,15 @@ impl Configuration {
     pub(super) fn register_authorizer(&self, authorizer: Arc<dyn super::authorization::Authorizer>) -> Result<()> {
         let mut state = self.state.lock().expect("middleware configuration lock is healthy");
         if state.authorization_frozen {
-            return Err(Error::Closing { domain: "operation authorization configuration" });
+            return Err(Error::Closing {
+                domain: "operation authorization configuration",
+            });
         }
         if state.authorizer.is_some() {
-            return Err(Error::InvalidInput { field: "operation authorizer", reason: "authorization already has an owner" });
+            return Err(Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization already has an owner",
+            });
         }
         state.authorizer = Some(authorizer);
         Ok(())
@@ -154,7 +161,19 @@ impl Session {
         entries: Vec<Arc<dyn Middleware>>, operation: OperationDefinition, id: OperationInstanceId, generation: OperationGeneration,
         inherited: CallContext, context: Arc<OnceLock<CallContext>>, origin: super::caller::Origin,
     ) -> Self {
-        Self { call: Invocation { operation, id, generation, context: inherited, origin }, entries, entered: 0, observed: false, context }
+        Self {
+            call: Invocation {
+                operation,
+                id,
+                generation,
+                context: inherited,
+                origin,
+            },
+            entries,
+            entered: 0,
+            observed: false,
+            context,
+        }
     }
 
     pub(super) async fn enter(&mut self) -> Result<()> {
@@ -193,7 +212,10 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.observe(Observation { outcome: OperationOutcome::Unavailable, settled: false });
+        self.observe(Observation {
+            outcome: OperationOutcome::Unavailable,
+            settled: false,
+        });
     }
 }
 
@@ -204,7 +226,10 @@ impl Drop for Session {
 async fn guarded(mut future: Enter<'_>) -> Result<()> {
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(result) => result,
-        Err(_) => std::task::Poll::Ready(Err(Error::InvalidInput { field: "operation middleware", reason: "middleware entry panicked" })),
+        Err(_) => std::task::Poll::Ready(Err(Error::InvalidInput {
+            field: "operation middleware",
+            reason: "middleware entry panicked",
+        })),
     })
     .await
 }

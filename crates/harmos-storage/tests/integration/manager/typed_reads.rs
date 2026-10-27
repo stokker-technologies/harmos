@@ -50,9 +50,14 @@ use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, Stora
 
 async fn manager(settings: StorageSettings) -> (StorageManager<Objects>, Arc<Data<Objects>>) {
     let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let storage =
-        StorageManager::<Objects>::new(StorageBackends { primary: data.clone(), state: Arc::new(Recovery::new(history())) }, settings)
-            .unwrap();
+    let storage = StorageManager::<Objects>::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: Arc::new(Recovery::new(history())),
+        },
+        settings,
+    )
+    .unwrap();
     super::fixture::start(&storage).await;
     (storage, data)
 }
@@ -70,7 +75,13 @@ async fn write(storage: &StorageManager<Objects>, id: &str, label: &str) -> Obje
 }
 
 fn samples() -> RecordSelection {
-    RecordSelection { schema: waveforms::schema(), scope: None, item: None, source_start: None, source_end: None }
+    RecordSelection {
+        schema: waveforms::schema(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    }
 }
 
 async fn labels(storage: &StorageManager<Objects>, read: ObjectRead<'_, Experiment>) -> Vec<(String, ObjectReceipt)> {
@@ -79,7 +90,13 @@ async fn labels(storage: &StorageManager<Objects>, read: ObjectRead<'_, Experime
         .iter()
         .flat_map(|page| page.iter())
         .map(|revision| {
-            (revision.value.label.clone(), ObjectReceipt { position: revision.position.clone(), version: revision.version.clone() })
+            (
+                revision.value.label.clone(),
+                ObjectReceipt {
+                    position: revision.position.clone(),
+                    version: revision.version.clone(),
+                },
+            )
         })
         .collect()
 }
@@ -111,8 +128,15 @@ async fn typed_objects_page() {
     assert_eq!(keyed, [("one".into(), first.clone()), ("two".into(), second.clone())]);
 
     // An Earlier Saved Cursor Reads Its Own Image.
-    let earlier =
-        labels(&storage, ObjectRead::<Experiment> { at: first.position.clone(), key: None, versions: ObjectVersions::Revisions }).await;
+    let earlier = labels(
+        &storage,
+        ObjectRead::<Experiment> {
+            at: first.position.clone(),
+            key: None,
+            versions: ObjectVersions::Revisions,
+        },
+    )
+    .await;
     assert_eq!(earlier, [("one".into(), first)]);
 
     // Consumers Narrow Decoded Values Without Changing Stored Revision Identity.
@@ -132,7 +156,11 @@ async fn typed_records_page() {
     storage.write_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();
     let expected = waveforms::samples(1).into_iter().take(9).collect::<Vec<_>>();
-    let read = |after| RecordRead { at: storage.cursor_saved(), selection: samples(), after };
+    let read = |after| RecordRead {
+        at: storage.cursor_saved(),
+        selection: samples(),
+        after,
+    };
 
     let mut reader = storage.read_records::<Sample>(read(0)).await.unwrap();
     let mut pages = Vec::new();
@@ -175,8 +203,14 @@ async fn typed_owner_retained() {
     let inputs = waveforms::inputs(&waveforms::samples(1));
     storage.write_records(vec![inputs[0].record.clone()]).await.unwrap();
     storage.flush().await.unwrap();
-    let mut reader =
-        storage.read_records::<Sample>(RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 }).await.unwrap();
+    let mut reader = storage
+        .read_records::<Sample>(RecordRead {
+            at: storage.cursor_saved(),
+            selection: samples(),
+            after: 0,
+        })
+        .await
+        .unwrap();
     let page = reader.next().await.unwrap().unwrap();
     let alias = page.clone();
     let pointer = page.as_ptr();
@@ -200,13 +234,25 @@ async fn unwritten_schema_empty() {
     let (storage, _) = manager(paged()).await;
     write(&storage, "a", "one").await;
     let at = storage.cursor_saved();
-    let mut reader = storage.read_records::<Sample>(RecordRead { at: at.clone(), selection: samples(), after: 0 }).await.unwrap();
+    let mut reader = storage
+        .read_records::<Sample>(RecordRead {
+            at: at.clone(),
+            selection: samples(),
+            after: 0,
+        })
+        .await
+        .unwrap();
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
 
     // The Arrow Query Has No Schema To Answer, So It Still Refuses.
     let mut query = storage
-        .query(Query { at: at.clone(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
+        .query(Query {
+            at: at.clone(),
+            source: Source::Records(samples()),
+            transforms: Vec::new(),
+            slice: RowSlice::default(),
+        })
         .await
         .unwrap();
     assert!(query.next().await.is_err());
@@ -215,7 +261,11 @@ async fn unwritten_schema_empty() {
     let (storage, _) = manager(paged()).await;
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     storage.flush().await.unwrap();
-    let read = ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Revisions };
+    let read = ObjectRead::<Experiment> {
+        at: storage.cursor_saved(),
+        key: None,
+        versions: ObjectVersions::Revisions,
+    };
     let mut reader = storage.read_objects(read).await.unwrap();
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
@@ -230,14 +280,26 @@ async fn typed_budget_refuses() {
     write(&storage, "a", "one").await;
     let objects = async {
         storage
-            .read_objects(ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
+            .read_objects(ObjectRead::<Experiment> {
+                at: storage.cursor_saved(),
+                key: None,
+                versions: ObjectVersions::Latest,
+            })
             .await?
             .collect()
             .await
     };
     assert!(matches!(objects.await, Err(Error::ResourceExhausted { .. })));
     let records = async {
-        storage.read_records::<Sample>(RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 }).await?.collect().await
+        storage
+            .read_records::<Sample>(RecordRead {
+                at: storage.cursor_saved(),
+                selection: samples(),
+                after: 0,
+            })
+            .await?
+            .collect()
+            .await
     };
     assert!(matches!(records.await, Err(Error::ResourceExhausted { .. })));
     data.snapshots_released().await;
@@ -250,7 +312,11 @@ async fn typed_budget_refuses() {
     let (storage, data) = manager(settings).await;
     write(&storage, "large", &"x".repeat(16 * 1024)).await;
     let mut reader = storage
-        .read_objects(ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
+        .read_objects(ObjectRead::<Experiment> {
+            at: storage.cursor_saved(),
+            key: None,
+            versions: ObjectVersions::Latest,
+        })
         .await
         .unwrap();
     assert!(matches!(reader.next().await, Err(Error::ResourceExhausted { .. })));
@@ -305,7 +371,11 @@ async fn session_slots_refuse() {
     write(&storage, "a", "one").await;
     write(&storage, "b", "two").await;
     let session = storage.read_session();
-    let read = || ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest };
+    let read = || ObjectRead::<Experiment> {
+        at: storage.cursor_saved(),
+        key: None,
+        versions: ObjectVersions::Latest,
+    };
     let mut first = session.read_objects(read()).await.unwrap();
     let retained = first.next().await.unwrap().unwrap();
     let result = tokio::time::timeout(std::time::Duration::from_secs(1), session.read_objects(read())).await.unwrap();
@@ -333,7 +403,11 @@ async fn session_pressure_refuses() {
     write(&storage, "a", "one").await;
     let session = storage.read_session();
     let mut reader = session
-        .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
+        .read_objects::<Experiment>(ObjectRead {
+            at: storage.cursor_saved(),
+            key: None,
+            versions: ObjectVersions::Latest,
+        })
         .await
         .unwrap();
     let page = reader.next().await.unwrap().unwrap();
@@ -368,7 +442,11 @@ async fn session_collection_retains() {
     let session = storage.read_session();
     let mut collection = session.collection::<Vec<String>>().unwrap();
     let mut reader = session
-        .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
+        .read_objects::<Experiment>(ObjectRead {
+            at: storage.cursor_saved(),
+            key: None,
+            versions: ObjectVersions::Latest,
+        })
         .await
         .unwrap();
     while let Some(page) = reader.next().await.unwrap() {
@@ -443,7 +521,11 @@ async fn standalone_reader_queues() {
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     let (storage, data) = manager(settings).await;
     write(&storage, "a", "one").await;
-    let read = || ObjectRead::<Experiment> { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest };
+    let read = || ObjectRead::<Experiment> {
+        at: storage.cursor_saved(),
+        key: None,
+        versions: ObjectVersions::Latest,
+    };
     let first = storage.read_objects(read()).await.unwrap();
     let mut second = Box::pin(storage.read_objects(read()));
     assert!(super::fixture::pending(second.as_mut()).await);
@@ -515,7 +597,11 @@ async fn session_file_pressure() {
     storage.flush().await.unwrap();
     let session = storage.read_session();
     let mut typed = session
-        .read_objects::<Experiment>(ObjectRead { at: storage.cursor_saved(), key: None, versions: ObjectVersions::Latest })
+        .read_objects::<Experiment>(ObjectRead {
+            at: storage.cursor_saved(),
+            key: None,
+            versions: ObjectVersions::Latest,
+        })
         .await
         .unwrap();
     let page = typed.next().await.unwrap().unwrap();
@@ -553,7 +639,12 @@ async fn session_arrow_pressure() {
     storage.flush().await.unwrap();
     let session = storage.read_session();
     let mut query = session
-        .query(Query { at: storage.cursor_saved(), source: Source::Records(samples()), transforms: Vec::new(), slice: RowSlice::default() })
+        .query(Query {
+            at: storage.cursor_saved(),
+            source: Source::Records(samples()),
+            transforms: Vec::new(),
+            slice: RowSlice::default(),
+        })
         .await
         .unwrap();
     assert!(query.next().await.unwrap().is_some());
@@ -562,12 +653,22 @@ async fn session_arrow_pressure() {
         panic!("expected batch");
     };
     let projected = batch.try_map(0, |batch| Ok::<_, Error>(batch.num_rows())).unwrap();
-    let read = RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 };
+    let read = RecordRead {
+        at: storage.cursor_saved(),
+        selection: samples(),
+        after: 0,
+    };
     assert!(matches!(session.read_records::<Sample>(read).await, Err(Error::ResourceExhausted { resource: "active storage queries" })));
     drop(query);
     data.snapshots_released().await;
-    let mut records =
-        session.read_records::<Sample>(RecordRead { at: storage.cursor_saved(), selection: samples(), after: 0 }).await.unwrap();
+    let mut records = session
+        .read_records::<Sample>(RecordRead {
+            at: storage.cursor_saved(),
+            selection: samples(),
+            after: 0,
+        })
+        .await
+        .unwrap();
     let memory = session.try_memory(NonZeroUsize::MIN).unwrap();
     memory.try_grow_by(budget - storage.status().read_bytes).unwrap();
     let result = tokio::time::timeout(std::time::Duration::from_secs(1), records.next()).await.unwrap();
@@ -611,7 +712,10 @@ async fn receipt_claim_preserves() {
         window: storage.mutation_window().unwrap().id,
         key: harmos_storage::Identifier::new("receipts").unwrap(),
     };
-    let value = Experiment { id: "once".into(), label: "replayed".into() };
+    let value = Experiment {
+        id: "once".into(),
+        label: "replayed".into(),
+    };
     let object = harmos_storage::ObjectValue {
         schema: harmos_domain::model::storage::catalog::object_schema::<Experiment>().unwrap(),
         item: harmos_storage::ObjectKey::new("once", NonZeroUsize::new(128).unwrap()).unwrap(),

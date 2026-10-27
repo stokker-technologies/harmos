@@ -332,7 +332,10 @@ mod tests {
 
     fn budget() -> crate::StorageManager {
         crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap()

@@ -152,7 +152,11 @@ impl<C> ObjectGroup<'_, C> {
         let version = ObjectVersionToken::new(position.clone());
         self.used += bytes;
         self.schemas.push(descriptor);
-        self.objects.push(ObjectEntry { position: position.clone(), version: version.clone(), value });
+        self.objects.push(ObjectEntry {
+            position: position.clone(),
+            version: version.clone(),
+            value,
+        });
         self.receipts.push(ObjectReceipt { position, version });
         Ok(())
     }
@@ -196,7 +200,11 @@ impl<C: ObjectCatalog> crate::ReadSession<C> {
     {
         let schema = object_schema::<T>()?;
         let budget = self.manager.inner.settings.scan_bytes();
-        let point = ObjectPoint { schema: schema.id.clone(), item: object_key(key, budget)?, version };
+        let point = ObjectPoint {
+            schema: schema.id.clone(),
+            item: object_key(key, budget)?,
+            version,
+        };
         let saved = self.manager.cursor_saved();
         if let ObjectVersion::Exact(version) = &point.version {
             version.history().check(&saved.history)?;
@@ -231,7 +239,11 @@ impl<C: ObjectCatalog> crate::ReadSession<C> {
             }
         };
         let value = decode_admitted::<T>(&object.value, &schema)?;
-        let revision = ObjectRevision { value, position: object.position, version: object.version };
+        let revision = ObjectRevision {
+            value,
+            position: object.position,
+            version: object.version,
+        };
         let bytes = revision.memory_size().saturating_add(ENTRY_OVERHEAD);
         charge.grow_to(bytes).await.map_err(Refusal::into_error)?;
         charge.shrink_to(bytes)?;
@@ -334,7 +346,10 @@ impl<C> StorageManager<C> {
         let mut receipts = Vec::with_capacity(count.get());
         for index in 0..count.get() {
             let position = self.position(first + (index * 2) as u64);
-            receipts.push(ObjectReceipt { version: ObjectVersionToken::new(position.clone()), position });
+            receipts.push(ObjectReceipt {
+                version: ObjectVersionToken::new(position.clone()),
+                position,
+            });
         }
         Ok(receipts)
     }
@@ -362,11 +377,17 @@ mod tests {
         store.push_str("producer-store");
         let mut epoch = String::with_capacity(4096);
         epoch.push_str("producer-epoch");
-        let history = crate::StoreHistory { store: crate::Identifier::new(store).unwrap(), epoch: crate::Identifier::new(epoch).unwrap() };
+        let history = crate::StoreHistory {
+            store: crate::Identifier::new(store).unwrap(),
+            epoch: crate::Identifier::new(epoch).unwrap(),
+        };
         let recovery = Recovery::new(history.clone());
         let expected = history.clone();
         let storage = StorageManager::<()>::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history)), state: Arc::new(recovery) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history)),
+                state: Arc::new(recovery),
+            },
             storage_settings(),
         )
         .unwrap();
@@ -376,7 +397,10 @@ mod tests {
             let mut receipts = Vec::with_capacity(count);
             for index in 0..count {
                 let position = storage.position(index as u64 + 1);
-                receipts.push(ObjectReceipt { version: ObjectVersionToken::new(position.clone()), position });
+                receipts.push(ObjectReceipt {
+                    version: ObjectVersionToken::new(position.clone()),
+                    position,
+                });
             }
             assert_eq!(receipts.capacity(), count);
             assert_eq!(receipts.memory_size(), bound);

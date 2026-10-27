@@ -87,9 +87,24 @@ pub fn definition() -> harmos_domain::schema::graph::Schema {
     harmos_domain::schema::graph::Schema {
         root: 0,
         definitions: vec![vec![
-            Field { name: "phase".into(), tag: 1, kind: Kind::U32, cardinality: Cardinality::Required },
-            Field { name: "ordinal".into(), tag: 2, kind: Kind::U64, cardinality: Cardinality::Required },
-            Field { name: "value".into(), tag: 3, kind: Kind::F64, cardinality: Cardinality::Required },
+            Field {
+                name: "phase".into(),
+                tag: 1,
+                kind: Kind::U32,
+                cardinality: Cardinality::Required,
+            },
+            Field {
+                name: "ordinal".into(),
+                tag: 2,
+                kind: Kind::U64,
+                cardinality: Cardinality::Required,
+            },
+            Field {
+                name: "value".into(),
+                tag: 3,
+                kind: Kind::F64,
+                cardinality: Cardinality::Required,
+            },
         ]],
     }
 }
@@ -99,7 +114,11 @@ pub fn samples(periods: usize) -> Vec<Sample> {
         .flat_map(|ordinal| {
             (0..3).map(move |phase| {
                 let angle = TAU * ordinal as f64 / SAMPLES_PER_PERIOD as f64 - TAU * phase as f64 / 3.0;
-                Sample { phase, ordinal: ordinal as u64, value: AMPLITUDE * angle.sin() }
+                Sample {
+                    phase,
+                    ordinal: ordinal as u64,
+                    value: AMPLITUDE * angle.sin(),
+                }
             })
         })
         .collect()

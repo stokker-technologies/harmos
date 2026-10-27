@@ -46,20 +46,32 @@ pub struct ReadSession<C = ()> {
 
 impl<C> Clone for ReadSession<C> {
     fn clone(&self) -> Self {
-        Self { manager: self.manager.clone(), held: self.held.clone(), queued: self.queued }
+        Self {
+            manager: self.manager.clone(),
+            held: self.held.clone(),
+            queued: self.queued,
+        }
     }
 }
 
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.read_session.new", level = "trace", skip_all)]
     pub fn read_session(&self) -> ReadSession<C> {
-        ReadSession { manager: self.clone(), held: Held::default(), queued: false }
+        ReadSession {
+            manager: self.clone(),
+            held: Held::default(),
+            queued: false,
+        }
     }
 }
 
 impl<C> ReadSession<C> {
     pub(crate) fn standalone(manager: &StorageManager<C>) -> Self {
-        Self { manager: manager.clone(), held: Held::default(), queued: true }
+        Self {
+            manager: manager.clone(),
+            held: Held::default(),
+            queued: true,
+        }
     }
 
     /// Admits mutable metadata capacity in this session without waiting.

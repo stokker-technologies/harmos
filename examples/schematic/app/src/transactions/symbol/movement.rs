@@ -58,7 +58,10 @@ impl Transaction<Schematic> for MoveSymbol {
 
 impl Invert<Schematic> for MoveSymbol {
     fn invert(&self, before: &Schematic) -> Self {
-        Self { symbol: self.symbol, to: before.symbol(self.symbol).position }
+        Self {
+            symbol: self.symbol,
+            to: before.symbol(self.symbol).position,
+        }
     }
 }
 

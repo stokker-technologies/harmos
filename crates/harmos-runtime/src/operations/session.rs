@@ -331,9 +331,16 @@ fn upload<O: crate::operations::OperationDeclaration>(
 ) -> Result<Upload<O>> {
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
-    let ends = Arc::new(Ends { input: AtomicBool::new(false), output: AtomicBool::new(true) });
+    let ends = Arc::new(Ends {
+        input: AtomicBool::new(false),
+        output: AtomicBool::new(true),
+    });
     Ok(Session {
-        input: SessionInput { sender: Some(sender), ends: ends.clone(), control: instance.control.clone() },
+        input: SessionInput {
+            sender: Some(sender),
+            ends: ends.clone(),
+            control: instance.control.clone(),
+        },
         output: (),
         completion: Completion { instance, ends, delivered: false },
     })
@@ -347,10 +354,17 @@ fn download<O: crate::operations::OperationDeclaration>(
 ) -> Result<Download<O>> {
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
-    let ends = Arc::new(Ends { input: AtomicBool::new(true), output: AtomicBool::new(false) });
+    let ends = Arc::new(Ends {
+        input: AtomicBool::new(true),
+        output: AtomicBool::new(false),
+    });
     Ok(Session {
         input: (),
-        output: SessionOutput { receiver, ends: ends.clone(), control: instance.control.clone() },
+        output: SessionOutput {
+            receiver,
+            ends: ends.clone(),
+            control: instance.control.clone(),
+        },
         completion: Completion { instance, ends, delivered: false },
     })
 }
@@ -367,10 +381,21 @@ fn exchange<O: crate::operations::OperationDeclaration>(
     let (sender, input) = stream(input)?;
     let (output, receiver) = stream(output)?;
     let instance = submit(request, (input, output))?;
-    let ends = Arc::new(Ends { input: AtomicBool::new(false), output: AtomicBool::new(false) });
+    let ends = Arc::new(Ends {
+        input: AtomicBool::new(false),
+        output: AtomicBool::new(false),
+    });
     Ok(Session {
-        input: SessionInput { sender: Some(sender), ends: ends.clone(), control: instance.control.clone() },
-        output: SessionOutput { receiver, ends: ends.clone(), control: instance.control.clone() },
+        input: SessionInput {
+            sender: Some(sender),
+            ends: ends.clone(),
+            control: instance.control.clone(),
+        },
+        output: SessionOutput {
+            receiver,
+            ends: ends.clone(),
+            control: instance.control.clone(),
+        },
         completion: Completion { instance, ends, delivered: false },
     })
 }

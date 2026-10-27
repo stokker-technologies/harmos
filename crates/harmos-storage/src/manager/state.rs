@@ -37,17 +37,29 @@ use super::*;
 impl State {
     pub(crate) fn data_target(&self, through: &StorageCursor) -> Result<Target> {
         if !self.status.accepted.covers(through)? {
-            return Err(Error::InvalidInput { field: "storage cursor", reason: "cursor is ahead of admission" });
+            return Err(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "cursor is ahead of admission",
+            });
         }
         if self.status.saved.covers(through)? {
-            return Ok(Target { index: self.data_flushed, sequence: self.status.saved.sequence });
+            return Ok(Target {
+                index: self.data_flushed,
+                sequence: self.status.saved.sequence,
+            });
         }
         let entry = self
             .queue
             .iter()
             .find(|entry| entry.operation.domain() == Domain::Data && entry.operation.sequence() >= through.sequence)
-            .ok_or(Error::InvalidInput { field: "storage cursor", reason: "admitted cursor has no pending owner" })?;
-        Ok(Target { index: entry.index, sequence: entry.operation.sequence() })
+            .ok_or(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "admitted cursor has no pending owner",
+            })?;
+        Ok(Target {
+            index: entry.index,
+            sequence: entry.operation.sequence(),
+        })
     }
 
     pub(crate) fn collect(&mut self) {

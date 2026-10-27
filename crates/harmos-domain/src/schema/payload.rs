@@ -111,7 +111,10 @@ impl Validator {
         if root >= self.definitions.len() {
             return Err(graph::Error::Reference { definition: root });
         }
-        Ok(Self { root, definitions: Arc::clone(&self.definitions) })
+        Ok(Self {
+            root,
+            definitions: Arc::clone(&self.definitions),
+        })
     }
     pub fn construction_memory_bytes(schema: &graph::Schema, settings: &SchemaSettings) -> Result<usize, graph::Error> {
         schema
@@ -186,7 +189,10 @@ impl Validator {
                     .collect::<Box<[_]>>()
             })
             .collect::<Box<[_]>>();
-        Ok(Self { root: schema.root, definitions: definitions.into() })
+        Ok(Self {
+            root: schema.root,
+            definitions: definitions.into(),
+        })
     }
     fn read<'schema, 'payload>(
         &'schema self, definition: usize, input: &mut PostcardReader<'payload>, path: &mut Vec<PathElement<'schema>>,

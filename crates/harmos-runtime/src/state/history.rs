@@ -270,7 +270,12 @@ impl<A: Application> Undos<A> {
                 self.entries.retain(|_, entry| entry.principal != *principal || entry.undone.is_none());
                 self.entries.insert(
                     position,
-                    Undoable { principal: principal.clone(), forward: Arc::clone(forward), inverse: inverse.map(Arc::new), undone: None },
+                    Undoable {
+                        principal: principal.clone(),
+                        forward: Arc::clone(forward),
+                        inverse: inverse.map(Arc::new),
+                        undone: None,
+                    },
                 );
             }
         }
@@ -300,7 +305,10 @@ impl<A: Application> Undos<A> {
     }
 
     pub(crate) fn reversals(&self, principal: &PrincipalId, focus: &Focus<A>) -> Reversals {
-        Reversals { undoable: self.undoable(principal, focus).is_some(), redoable: self.redoable(principal, focus).is_some() }
+        Reversals {
+            undoable: self.undoable(principal, focus).is_some(),
+            redoable: self.redoable(principal, focus).is_some(),
+        }
     }
 }
 
@@ -312,7 +320,11 @@ impl<A: Application> Default for Undos<A> {
 
 impl<A: Application> Tail<A> {
     pub(crate) fn new(origin: Position, capacity: usize) -> Self {
-        Self { entries: VecDeque::new(), capacity: capacity.max(1), floor: origin }
+        Self {
+            entries: VecDeque::new(),
+            capacity: capacity.max(1),
+            floor: origin,
+        }
     }
 
     pub(crate) fn recovered(frontier: Position, capacity: usize, entries: Vec<Arc<Entry<Recorded<A>>>>) -> Self {
@@ -321,7 +333,11 @@ impl<A: Application> Tail<A> {
         }
         let floor = entries.first().map_or(frontier, |entry| Position(entry.position.0.saturating_sub(1)));
 
-        Self { entries: entries.into(), capacity: capacity.max(1), floor }
+        Self {
+            entries: entries.into(),
+            capacity: capacity.max(1),
+            floor,
+        }
     }
 
     pub(crate) fn push_group(&mut self, entries: Vec<Entry<Recorded<A>>>) -> Vec<Arc<Entry<Recorded<A>>>> {
@@ -365,7 +381,12 @@ impl<A: Application> Tail<A> {
             frontier = page.reaches;
             for entry in page.entries {
                 if let Some(value) = entry.value.select::<X>() {
-                    found.push(Entry { prepared: None, position: entry.position, metadata: entry.metadata.clone(), value });
+                    found.push(Entry {
+                        prepared: None,
+                        position: entry.position,
+                        metadata: entry.metadata.clone(),
+                        value,
+                    });
                 }
             }
         }

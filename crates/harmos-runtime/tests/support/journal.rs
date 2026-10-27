@@ -174,7 +174,14 @@ impl<A: Wire> Journal<A> {
             (id, version, payload)
         };
 
-        Ok(Envelope { position: entry.position, kind: entry.value.kind(), id, version, metadata: entry.metadata.clone(), payload })
+        Ok(Envelope {
+            position: entry.position,
+            kind: entry.value.kind(),
+            id,
+            version,
+            metadata: entry.metadata.clone(),
+            payload,
+        })
     }
 
     fn persist(&mut self) {
@@ -382,7 +389,14 @@ impl<A: Wire> Source<A> for Journal<A> {
 
 impl<A: Application> Snapshot<A> {
     pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
-        Self { replica: origin, taken: at, durable: at, complete: at, halted: false, write: Box::new(write) }
+        Self {
+            replica: origin,
+            taken: at,
+            durable: at,
+            complete: at,
+            halted: false,
+            write: Box::new(write),
+        }
     }
 }
 
@@ -473,7 +487,12 @@ fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Inco
     if member.kind == Kind::Record {
         match SystemFact::restore(&member.id, member.version, &member.payload) {
             Ok(Some(fact)) => {
-                let payload = Payload { prepared: None, id: member.id.clone(), version: member.version, value: Recorded::System(fact) };
+                let payload = Payload {
+                    prepared: None,
+                    id: member.id.clone(),
+                    version: member.version,
+                    value: Recorded::System(fact),
+                };
                 return Ok(Some(envelope(member, payload)));
             }
             Ok(None) => {}
@@ -491,13 +510,24 @@ fn decoded<A: Wire>(member: Member) -> Result<Option<Envelope<Payload<A>>>, Inco
         }
         (Kind::Transaction, Err(refusal)) => return Err(unreadable(&refusal)),
     };
-    payload.prepared = Some(Prepared { id: member.id.clone(), version: member.version, payload: member.payload.clone() });
+    payload.prepared = Some(Prepared {
+        id: member.id.clone(),
+        version: member.version,
+        payload: member.payload.clone(),
+    });
 
     Ok(Some(envelope(member, payload)))
 }
 
 fn envelope<P>(member: Member, payload: P) -> Envelope<P> {
-    Envelope { position: member.position, kind: member.kind, id: member.id, version: member.version, metadata: member.metadata, payload }
+    Envelope {
+        position: member.position,
+        kind: member.kind,
+        id: member.id,
+        version: member.version,
+        metadata: member.metadata,
+        payload,
+    }
 }
 
 /* === Tests === */

@@ -116,7 +116,10 @@ impl<C> RecoveryReader<'_, C> {
             if let Some(snapshot) = &snapshot
                 && (!self.through.covers(&snapshot.through)? || encoded_size(snapshot)? > bound.get())
             {
-                return Err(Error::InvalidInput { field: "state snapshot", reason: "invalid managed snapshot boundary or size" });
+                return Err(Error::InvalidInput {
+                    field: "state snapshot",
+                    reason: "invalid managed snapshot boundary or size",
+                });
             }
             if let Some(snapshot) = &snapshot {
                 self.storage.check_state_dependency(&snapshot.required_data)?;
@@ -152,7 +155,9 @@ impl<C> RecoveryReader<'_, C> {
         let mut state = self.storage.inner.state.lock().unwrap();
         state.collect();
         if bytes > self.storage.inner.settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes) {
-            return Err(Error::ResourceExhausted { resource: "retained recovery read memory" });
+            return Err(Error::ResourceExhausted {
+                resource: "retained recovery read memory",
+            });
         }
         state.scratch_bytes += bytes;
         state.collect();

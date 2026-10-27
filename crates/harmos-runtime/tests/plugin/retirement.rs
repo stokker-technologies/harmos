@@ -125,7 +125,10 @@ async fn failure_retains_causes() {
     let mut manager = session();
     let mut host = Host {
         fail_start: Some("client".into()),
-        control: Arc::new(Mutex::new(Control { fail_stop: Some("client".into()), ..Control::default() })),
+        control: Arc::new(Mutex::new(Control {
+            fail_stop: Some("client".into()),
+            ..Control::default()
+        })),
         ..Host::new().await
     };
     let error = manager.initialize(&mut host).await.unwrap_err();
@@ -133,7 +136,14 @@ async fn failure_retains_causes() {
         panic!("expected initialization failure with cleanup");
     };
     assert_eq!(artifact, "client");
-    assert!(matches!(source, Error::Backend { operation: "initialize plugin", kind: harmos_runtime::BackendFailure::Permanent, .. }));
+    assert!(matches!(
+        source,
+        Error::Backend {
+            operation: "initialize plugin",
+            kind: harmos_runtime::BackendFailure::Permanent,
+            ..
+        }
+    ));
     assert_eq!(cleanup.len(), 1);
     assert_eq!(cleanup[0].artifact, "client");
     let Error::TaskFailed { source, .. } = &cleanup[0].error else {

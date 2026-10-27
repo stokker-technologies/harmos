@@ -314,7 +314,11 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
                 return Err(failure(BackendFailure::Conflict));
             }
-            let release = Release { schema: schema.clone(), item: item.clone(), through: through.clone() };
+            let release = Release {
+                schema: schema.clone(),
+                item: item.clone(),
+                through: through.clone(),
+            };
             upsert_release(&mut self.object_releases.lock().unwrap(), release);
             Ok(())
         })
@@ -515,7 +519,10 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn save_production(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             if checkpoint.len() != 1 {
-                return Err(harmos_storage::Error::InvalidInput { field: "file checkpoint", reason: "requires exactly one checkpoint" });
+                return Err(harmos_storage::Error::InvalidInput {
+                    field: "file checkpoint",
+                    reason: "requires exactly one checkpoint",
+                });
             }
             self.fixture_save_production(&checkpoint.as_slice()[0]).await
         })
@@ -575,8 +582,11 @@ impl<C: ObjectCatalog> Data<C> {
     ) -> StorageFuture<'a, StorageCursor> {
         Box::pin(async move {
             let values = batch.as_slice();
-            let through =
-                position(values.last().ok_or(Error::InvalidInput { field: "controlled write", reason: "typed batch is empty" })?).clone();
+            let through = position(values.last().ok_or(Error::InvalidInput {
+                field: "controlled write",
+                reason: "typed batch is empty",
+            })?)
+            .clone();
             for value in values {
                 self.history.check(&position(value).history)?;
             }
@@ -677,7 +687,10 @@ impl StateBackend for Recovery {
                 *self.control.retained_snapshot.lock().unwrap() = Some(snapshot.clone());
             }
             let [snapshot] = snapshot.as_slice() else {
-                return Err(Error::InvalidInput { field: "state snapshot", reason: "requires exactly one snapshot" });
+                return Err(Error::InvalidInput {
+                    field: "state snapshot",
+                    reason: "requires exactly one snapshot",
+                });
             };
             self.control.write([snapshot.through.sequence]).await?;
             *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
@@ -717,7 +730,10 @@ impl StateBackend for Recovery {
                 entries.push(entry.clone());
             }
             let last = entries.last().map_or(after.sequence, |e| e.position.sequence);
-            Ok(RecoveryPage { entries, next: (last < through.sequence).then(|| self.at(last)) })
+            Ok(RecoveryPage {
+                entries,
+                next: (last < through.sequence).then(|| self.at(last)),
+            })
         })
     }
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
@@ -742,7 +758,10 @@ impl StateBackend for Recovery {
 /* === Public Functions === */
 
 pub fn history() -> StoreHistory {
-    StoreHistory { store: Identifier::new("test-store").unwrap(), epoch: Identifier::new("test-epoch").unwrap() }
+    StoreHistory {
+        store: Identifier::new("test-store").unwrap(),
+        epoch: Identifier::new("test-epoch").unwrap(),
+    }
 }
 
 /* === Private Functions === */

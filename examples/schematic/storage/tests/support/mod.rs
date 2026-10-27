@@ -258,7 +258,11 @@ impl Registration<Bank> for Definitions {
             Ok(None)
         }
 
-        Catalog::Transactions { definitions: self.0, decode, inverses: Some(Change::__harmos_inverses) }
+        Catalog::Transactions {
+            definitions: self.0,
+            decode,
+            inverses: Some(Change::__harmos_inverses),
+        }
     }
 }
 

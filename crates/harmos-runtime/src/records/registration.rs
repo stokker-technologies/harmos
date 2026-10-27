@@ -119,7 +119,10 @@ impl Registry {
 
     pub(super) fn reserve(self: &Arc<Self>, owner: &str, schema: SchemaKey, graph: Arc<Schema>) -> Result<Pending> {
         if !harmos_domain::artifact_subset(owner) || owner.len() > NAME_BYTES || schema.id.as_str().len() > NAME_BYTES {
-            return Err(Error::InvalidInput { field: "record schema", reason: "invalid or oversized identity" });
+            return Err(Error::InvalidInput {
+                field: "record schema",
+                reason: "invalid or oversized identity",
+            });
         }
         let settings = harmos_domain::config::SchemaSettings::default();
         graph.preparation(&settings).map_err(|_| limit())?;
@@ -137,10 +140,16 @@ impl Registry {
                         committed: true,
                     });
                 }
-                return Err(Error::AlreadyRegistered { domain: "record schema", name: key.0.clone() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "record schema",
+                    name: key.0.clone(),
+                });
             }
             if state.definitions.values().any(|entry| entry.definition.schema.id == schema.id && entry.definition.owner != owner) {
-                return Err(Error::AlreadyRegistered { domain: "record schema owner", name: schema.id.as_str().to_owned() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "record schema owner",
+                    name: schema.id.as_str().to_owned(),
+                });
             }
         }
         let destination = [
@@ -155,29 +164,51 @@ impl Registry {
         .into_iter()
         .try_fold(0usize, usize::checked_add)
         .ok_or_else(limit)?;
-        let compilation = Validator::construction_memory_bytes(&graph, &settings)
-            .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
+        let compilation = Validator::construction_memory_bytes(&graph, &settings).map_err(|source| Error::RecordSchema {
+            source: crate::schema::Error::Graph(source),
+        })?;
         let construction_bytes = destination.checked_add(compilation).ok_or_else(limit)?;
         let mut construction = Construction::new(self, construction_bytes)?;
         // Compile Outside The Registry Lock Under The Original Shared Budget
-        let validation = Validator::from_schema(&graph, &settings)
-            .map_err(|source| Error::RecordSchema { source: crate::schema::Error::Graph(source) })?;
+        let validation = Validator::from_schema(&graph, &settings).map_err(|source| Error::RecordSchema {
+            source: crate::schema::Error::Graph(source),
+        })?;
         let bytes = destination.checked_add(validation.memory_size()).ok_or_else(limit)?;
         if bytes > construction_bytes {
             return Err(limit());
         }
         let key = (schema.id.as_str().to_owned(), schema.version.get());
-        let definition = Arc::new(Definition { owner: owner.to_owned(), schema: schema.clone(), graph, validation });
+        let definition = Arc::new(Definition {
+            owner: owner.to_owned(),
+            schema: schema.clone(),
+            graph,
+            validation,
+        });
         let mut state = self.state.lock().expect("record schema registry poisoned");
         if state.definitions.contains_key(&key) {
             return Err(Error::AlreadyRegistered { domain: "record schema", name: key.0 });
         }
         if state.definitions.values().any(|entry| entry.definition.schema.id == schema.id && entry.definition.owner != owner) {
-            return Err(Error::AlreadyRegistered { domain: "record schema owner", name: key.0 });
+            return Err(Error::AlreadyRegistered {
+                domain: "record schema owner",
+                name: key.0,
+            });
         }
         construction.transfer(&mut state, bytes);
-        state.definitions.insert(key.clone(), Entry { definition: Arc::clone(&definition), bytes, ready: false });
-        Ok(Pending { registry: Arc::clone(self), key, definition, committed: false })
+        state.definitions.insert(
+            key.clone(),
+            Entry {
+                definition: Arc::clone(&definition),
+                bytes,
+                ready: false,
+            },
+        );
+        Ok(Pending {
+            registry: Arc::clone(self),
+            key,
+            definition,
+            committed: false,
+        })
     }
 
     pub(super) fn definition(&self, schema: &SchemaKey) -> Option<Arc<Definition>> {

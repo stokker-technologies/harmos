@@ -102,7 +102,10 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         }
     }
     let mut files = Vec::new();
-    let mut service = ServiceDescriptorProto { name: Some(name.into()), ..Default::default() };
+    let mut service = ServiceDescriptorProto {
+        name: Some(name.into()),
+        ..Default::default()
+    };
     let mut file = FileDescriptorProto {
         name: Some(format!("{}/{name}.proto", package.replace('.', "/"))),
         package: Some(package.into()),
@@ -178,7 +181,10 @@ fn envelope(file: &mut FileDescriptorProto, name: &str, alternatives: [(&str, St
     file.message_type.push(DescriptorProto {
         name: Some(name.into()),
         field: fields,
-        oneof_decl: vec![OneofDescriptorProto { name: Some("value".into()), ..Default::default() }],
+        oneof_decl: vec![OneofDescriptorProto {
+            name: Some("value".into()),
+            ..Default::default()
+        }],
         ..Default::default()
     });
     format!(".{}.{name}", file.package.as_deref().expect("service package is explicit"))

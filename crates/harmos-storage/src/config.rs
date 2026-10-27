@@ -115,7 +115,10 @@ impl StorageSettings {
         if self.request.max_active_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
             || self.request.max_pending_queries.get() > tokio::sync::Semaphore::MAX_PERMITS
         {
-            return Err(crate::Error::InvalidInput { field: "storage query admission", reason: "query counts exceed semaphore capacity" });
+            return Err(crate::Error::InvalidInput {
+                field: "storage query admission",
+                reason: "query counts exceed semaphore capacity",
+            });
         }
         if self.response.batch_bytes.get() > self.budget.read_memory_bytes.get() / 2 {
             return Err(crate::Error::InvalidInput {
@@ -165,7 +168,9 @@ mod tests {
                 max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
                 event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
             },
-            budget: StorageBudget { read_memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            budget: StorageBudget {
+                read_memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
             request: StorageRequestSettings {
                 max_pending_queries: NonZeroUsize::new(64).unwrap(),
                 max_active_queries: NonZeroUsize::new(4).unwrap(),

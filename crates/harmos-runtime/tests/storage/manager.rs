@@ -195,7 +195,10 @@ async fn follow_tails_production() {
     let mut producer = f.storage.produce_file(metadata("growing")).await.unwrap();
     producer.write_all((b"first").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
+    let identity = StagedFile {
+        history: token.history.clone(),
+        id: token.id.clone(),
+    };
     let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     let max = NonZeroUsize::new(3).unwrap();
     assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes(), b"fir");
@@ -239,7 +242,10 @@ async fn follow_ends_abandoned() {
     let mut producer = f.storage.produce_file(metadata("partial-reader")).await.unwrap();
     producer.write_all((b"partial").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
+    let identity = StagedFile {
+        history: token.history.clone(),
+        id: token.id.clone(),
+    };
     let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     producer.abort().await.unwrap();
     let max = NonZeroUsize::new(100).unwrap();
@@ -263,7 +269,10 @@ async fn cancelled_follow_offset() {
     let mut producer = f.storage.produce_file(metadata("cancel-reader")).await.unwrap();
     producer.write_all((b"first").to_vec()).await.unwrap();
     let token = producer.session().unwrap();
-    let identity = StagedFile { history: token.history.clone(), id: token.id.clone() };
+    let identity = StagedFile {
+        history: token.history.clone(),
+        id: token.id.clone(),
+    };
     let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
     f.data.control.block_read.store(true, Ordering::SeqCst);
     {
@@ -289,7 +298,10 @@ async fn private_files_hidden() {
     let f = Fixture::new(config()).await;
     let mut private = f.storage.create_file(metadata("private")).await.unwrap();
     private.write_all((b"private bytes").to_vec()).await.unwrap();
-    let identity = StagedFile { history: f.storage.cursor_accepted().history, id: Identifier::new("private").unwrap() };
+    let identity = StagedFile {
+        history: f.storage.cursor_accepted().history,
+        id: Identifier::new("private").unwrap(),
+    };
     assert!(f.storage.follow_production(&identity, 0).await.is_err());
     assert!(f.storage.file_progress(&identity).await.is_err());
     private.abort().await.unwrap();

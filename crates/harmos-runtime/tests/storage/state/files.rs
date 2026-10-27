@@ -51,12 +51,20 @@ async fn checkpoint_survives_reopen() {
     let required_data = StorageCursor { history: history.clone(), sequence: 0 };
     assert_eq!(backend.open().await.unwrap(), at(0));
     let entries = (1..=3)
-        .map(|sequence| RecoveryEntry { position: at(sequence), required_data: required_data.clone(), payload: vec![sequence as u8] })
+        .map(|sequence| RecoveryEntry {
+            position: at(sequence),
+            required_data: required_data.clone(),
+            payload: vec![sequence as u8],
+        })
         .collect::<Vec<_>>();
     backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
     assert_eq!(backend.flush(&at(3)).await.unwrap(), at(3));
     backend.write_entries(harmos_storage::StorageBatch::new(entries.clone())).await.unwrap();
-    let snapshot = RecoverySnapshot { through: at(2), required_data, payload: b"checkpoint".to_vec() };
+    let snapshot = RecoverySnapshot {
+        through: at(2),
+        required_data,
+        payload: b"checkpoint".to_vec(),
+    };
     backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot.clone()])).await.unwrap();
     backend.close().await.unwrap();
 
@@ -71,12 +79,18 @@ async fn checkpoint_survives_reopen() {
         reopened.read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap(), memory.clone()).await.unwrap(),
         Some(snapshot.clone())
     );
-    let through = RecoveryPosition { history: snapshot.through.history.clone(), sequence: 3 };
+    let through = RecoveryPosition {
+        history: snapshot.through.history.clone(),
+        sequence: 3,
+    };
     let page = reopened
         .read_entries(
             &snapshot.through,
             &through,
-            ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
             memory.clone(),
         )
         .await
@@ -144,7 +158,10 @@ async fn state_root_exclusive() {
         .read_entries(
             &after,
             &position,
-            ReadLimits { rows: std::num::NonZeroUsize::new(64).unwrap(), bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap() },
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
             memory.clone(),
         )
         .await

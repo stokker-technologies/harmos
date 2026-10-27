@@ -111,7 +111,10 @@ where
         if let Err(source) = closed {
             let failure = Arc::new(failed(source));
             activation.retain(Retained(activity), Arc::clone(&failure));
-            return Err(Error::TaskFailed { domain: "native observer cleanup", source: failure });
+            return Err(Error::TaskFailed {
+                domain: "native observer cleanup",
+                source: failure,
+            });
         }
         match interrupted {
             None => Ok(()),
@@ -125,7 +128,10 @@ where
 /* === Private Functions === */
 
 fn failed(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    Error::TaskFailed { domain: "native observer", source: Arc::new(source) }
+    Error::TaskFailed {
+        domain: "native observer",
+        source: Arc::new(source),
+    }
 }
 
 /* === Tests === */

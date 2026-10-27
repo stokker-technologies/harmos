@@ -242,7 +242,11 @@ impl WireStreams {
             epoch = Some(next);
             true
         });
-        Ok(Attempt { streams: self.clone(), epoch: epoch.ok_or(ServingError::StreamPhase)?, ended: false })
+        Ok(Attempt {
+            streams: self.clone(),
+            epoch: epoch.ok_or(ServingError::StreamPhase)?,
+            ended: false,
+        })
     }
 
     pub(crate) fn close(&self) {

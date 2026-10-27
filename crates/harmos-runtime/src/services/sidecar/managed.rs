@@ -158,9 +158,10 @@ where
     ) -> Result<()> {
         if let Err(error) = self.host.start(definition, router, authority, &mut self.backend).await {
             return match self.host.exit.take() {
-                Some(Err(source)) => {
-                    Err(Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(std::io::Error::other(source)) })
-                }
+                Some(Err(source)) => Err(Error::OperationFailed {
+                    operation: definition.id.clone(),
+                    source: Arc::new(std::io::Error::other(source)),
+                }),
                 Some(Ok(())) => Err(Error::NotReady { domain: "native startup exited" }),
                 None => Err(error),
             };
@@ -206,7 +207,10 @@ where
     ) -> Result<Self> {
         let owners: BTreeMap<_, _> = definitions.definitions().map(|definition| (definition.id.clone(), definition.kind())).collect();
         if owners.is_empty() || owners.values().any(|kind| *kind != crate::plugin::PluginKind::Sidecar) {
-            return Err(Error::InvalidInput { field: "managed native graph", reason: "graph must contain native sidecar definitions" });
+            return Err(Error::InvalidInput {
+                field: "managed native graph",
+                reason: "graph must contain native sidecar definitions",
+            });
         }
         let mut attachments = BTreeMap::new();
         for resident in residents {
@@ -220,7 +224,10 @@ where
             attachments.insert(owner, resident);
         }
         if attachments.len() != owners.len() {
-            return Err(Error::InvalidInput { field: "managed native graph", reason: "every frozen sidecar owner requires an attachment" });
+            return Err(Error::InvalidInput {
+                field: "managed native graph",
+                reason: "every frozen sidecar owner requires an attachment",
+            });
         }
         let manager = PluginManager::new(definitions)?;
         Ok(Self {
@@ -560,11 +567,17 @@ fn verify_local_artifact<S>(_: &S, definition: &PluginDefinition) -> Result<()> 
     if matches!(&definition.artifact, PluginArtifact::LocalSidecar { .. }) {
         return Ok(());
     }
-    Err(Error::InvalidInput { field: "managed native artifact", reason: "process artifacts require an executable-backed constructor" })
+    Err(Error::InvalidInput {
+        field: "managed native artifact",
+        reason: "process artifacts require an executable-backed constructor",
+    })
 }
 
 fn verify_executable_inputs(executable: &Executable, definition: &PluginDefinition) -> Result<()> {
-    let PluginArtifact::Sidecar { path, arguments, directory, environment, .. } = &definition.artifact else {
+    let PluginArtifact::Sidecar {
+        path, arguments, directory, environment, ..
+    } = &definition.artifact
+    else {
         return Err(Error::InvalidInput {
             field: "managed native artifact",
             reason: "executable attachment requires a frozen process artifact",
@@ -587,7 +600,10 @@ fn verify_executable_inputs(executable: &Executable, definition: &PluginDefiniti
 fn verify_executable_artifact(executable: &Executable, definition: &PluginDefinition) -> Result<()> {
     verify_executable_inputs(executable, definition)?;
     let PluginArtifact::Sidecar { sha256, .. } = &definition.artifact else { unreachable!() };
-    let io_error = |source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(std::io::Error::other(source)) };
+    let io_error = |source| Error::OperationFailed {
+        operation: definition.id.clone(),
+        source: Arc::new(std::io::Error::other(source)),
+    };
     let mut file = std::fs::File::open(executable.path()).map_err(io_error)?;
     let mut digest = Sha256::new();
     let mut buffer = [0u8; 8192];
@@ -600,13 +616,19 @@ fn verify_executable_artifact(executable: &Executable, definition: &PluginDefini
     }
     let actual: [u8; 32] = digest.finalize().into();
     if actual != *sha256 {
-        return Err(Error::InvalidInput { field: "managed native artifact", reason: "the inspected executable changed before activation" });
+        return Err(Error::InvalidInput {
+            field: "managed native artifact",
+            reason: "the inspected executable changed before activation",
+        });
     }
     Ok(())
 }
 
 fn physical_cleanup(message: String) -> Error {
-    Error::TaskFailed { domain: "native physical cleanup", source: Arc::new(ManagedError::Physical(message)) }
+    Error::TaskFailed {
+        domain: "native physical cleanup",
+        source: Arc::new(ManagedError::Physical(message)),
+    }
 }
 
 async fn drive<A, S, H, T>(

@@ -177,7 +177,16 @@ impl WireCommand {
     pub fn prepare_encoded_len(
         invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: usize,
     ) -> Result<usize, WireCodecError> {
-        payload_size(Envelope::Prepare { invocation, operation, fingerprint, generation, payload: &[] }, payload)
+        payload_size(
+            Envelope::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload: &[],
+            },
+            payload,
+        )
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
@@ -186,19 +195,50 @@ impl WireCommand {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::Prepare { invocation, operation, fingerprint, generation, payload } => {
-                Self::Prepare { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
-            }
-            Envelope::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
-                Self::PrepareGrpc { invocation, operation: operation.to_owned(), fingerprint, generation, payload: payload.to_vec() }
-            }
+            Envelope::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => Self::Prepare {
+                invocation,
+                operation: operation.to_owned(),
+                fingerprint,
+                generation,
+                payload: payload.to_vec(),
+            },
+            Envelope::PrepareGrpc {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => Self::PrepareGrpc {
+                invocation,
+                operation: operation.to_owned(),
+                fingerprint,
+                generation,
+                payload: payload.to_vec(),
+            },
             Envelope::Initialize { invocation, context } => Self::Initialize { invocation, context },
-            Envelope::Attempt { invocation, context, values } => Self::Attempt { invocation, context, values: owned(values)? },
+            Envelope::Attempt { invocation, context, values } => Self::Attempt {
+                invocation,
+                context,
+                values: owned(values)?,
+            },
             Envelope::Finalize { invocation } => Self::Finalize { invocation },
-            Envelope::StreamAttempt { invocation, epoch, context, values } => {
-                Self::StreamAttempt { invocation, epoch, context, values: owned(values)? }
-            }
-            Envelope::StreamSend { invocation, epoch, payload } => Self::StreamSend { invocation, epoch, payload: payload.to_vec() },
+            Envelope::StreamAttempt { invocation, epoch, context, values } => Self::StreamAttempt {
+                invocation,
+                epoch,
+                context,
+                values: owned(values)?,
+            },
+            Envelope::StreamSend { invocation, epoch, payload } => Self::StreamSend {
+                invocation,
+                epoch,
+                payload: payload.to_vec(),
+            },
             Envelope::StreamFinish { invocation, epoch } => Self::StreamFinish { invocation, epoch },
             Envelope::StreamReceive { invocation, epoch } => Self::StreamReceive { invocation, epoch },
             _ => return Err(WireCodecError::Kind),
@@ -207,20 +247,52 @@ impl WireCommand {
 
     fn envelope(&self) -> Envelope<'_> {
         match self {
-            Self::Prepare { invocation, operation, fingerprint, generation, payload } => {
-                Envelope::Prepare { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
-            }
-            Self::PrepareGrpc { invocation, operation, fingerprint, generation, payload } => {
-                Envelope::PrepareGrpc { invocation: *invocation, operation, fingerprint: *fingerprint, generation: *generation, payload }
-            }
-            Self::Initialize { invocation, context } => Envelope::Initialize { invocation: *invocation, context: *context },
-            Self::Attempt { invocation, context, values } => {
-                Envelope::Attempt { invocation: *invocation, context: *context, values: borrowed(values) }
-            }
-            Self::StreamAttempt { invocation, epoch, context, values } => {
-                Envelope::StreamAttempt { invocation: *invocation, epoch: *epoch, context: *context, values: borrowed(values) }
-            }
-            Self::StreamSend { invocation, epoch, payload } => Envelope::StreamSend { invocation: *invocation, epoch: *epoch, payload },
+            Self::Prepare {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => Envelope::Prepare {
+                invocation: *invocation,
+                operation,
+                fingerprint: *fingerprint,
+                generation: *generation,
+                payload,
+            },
+            Self::PrepareGrpc {
+                invocation,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+            } => Envelope::PrepareGrpc {
+                invocation: *invocation,
+                operation,
+                fingerprint: *fingerprint,
+                generation: *generation,
+                payload,
+            },
+            Self::Initialize { invocation, context } => Envelope::Initialize {
+                invocation: *invocation,
+                context: *context,
+            },
+            Self::Attempt { invocation, context, values } => Envelope::Attempt {
+                invocation: *invocation,
+                context: *context,
+                values: borrowed(values),
+            },
+            Self::StreamAttempt { invocation, epoch, context, values } => Envelope::StreamAttempt {
+                invocation: *invocation,
+                epoch: *epoch,
+                context: *context,
+                values: borrowed(values),
+            },
+            Self::StreamSend { invocation, epoch, payload } => Envelope::StreamSend {
+                invocation: *invocation,
+                epoch: *epoch,
+                payload,
+            },
             Self::StreamFinish { invocation, epoch } => Envelope::StreamFinish { invocation: *invocation, epoch: *epoch },
             Self::StreamReceive { invocation, epoch } => Envelope::StreamReceive { invocation: *invocation, epoch: *epoch },
             Self::Finalize { invocation } => Envelope::Finalize { invocation: *invocation },
@@ -237,9 +309,15 @@ impl WireAnswer {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
         let envelope = match self {
             Self::Ready { payload } => Envelope::Ready { payload },
-            Self::Stream { epoch, transferred, payload: Some(payload) } => {
-                Envelope::StreamItem { epoch: *epoch, transferred: *transferred, payload }
-            }
+            Self::Stream {
+                epoch,
+                transferred,
+                payload: Some(payload),
+            } => Envelope::StreamItem {
+                epoch: *epoch,
+                transferred: *transferred,
+                payload,
+            },
             Self::Stream { epoch, transferred, payload: None } => Envelope::StreamEnd { epoch: *epoch, transferred: *transferred },
             Self::Failed { failure } => Envelope::Failed { failure: failure.clone() },
         };
@@ -248,7 +326,11 @@ impl WireAnswer {
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         Ok(match decode(bytes)? {
-            Envelope::StreamItem { epoch, transferred, payload } => Self::Stream { epoch, transferred, payload: Some(payload.to_vec()) },
+            Envelope::StreamItem { epoch, transferred, payload } => Self::Stream {
+                epoch,
+                transferred,
+                payload: Some(payload.to_vec()),
+            },
             Envelope::StreamEnd { epoch, transferred } => Self::Stream { epoch, transferred, payload: None },
             Envelope::Ready { payload } => Self::Ready { payload: payload.to_vec() },
             Envelope::Failed { failure } => Self::Failed { failure },
@@ -307,25 +389,36 @@ impl WireChildCall {
 
 impl WireChildControl {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
-        encode(Envelope::ChildControl { context: self.context, instance: self.instance, action: self.action })
+        encode(Envelope::ChildControl {
+            context: self.context,
+            instance: self.instance,
+            action: self.action,
+        })
     }
 }
 
 impl WireChild {
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
         let child = match decode(bytes)? {
-            Envelope::Child { context, generation_context, values, operation, fingerprint, generation, payload, submit } => {
-                Self::Call(WireChildCall {
-                    context,
-                    generation_context,
-                    values: owned(values)?,
-                    operation: operation.to_owned(),
-                    fingerprint,
-                    generation,
-                    payload: payload.to_vec(),
-                    submit,
-                })
-            }
+            Envelope::Child {
+                context,
+                generation_context,
+                values,
+                operation,
+                fingerprint,
+                generation,
+                payload,
+                submit,
+            } => Self::Call(WireChildCall {
+                context,
+                generation_context,
+                values: owned(values)?,
+                operation: operation.to_owned(),
+                fingerprint,
+                generation,
+                payload: payload.to_vec(),
+                submit,
+            }),
             Envelope::ChildControl { context, instance, action } => Self::Control(WireChildControl { context, instance, action }),
             _ => return Err(WireCodecError::Kind),
         };
@@ -366,7 +459,13 @@ fn owned(values: Vec<Value<'_>>) -> Result<Vec<super::super::CallValue>, WireCod
     if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
         return Err(WireCodecError::Oversized);
     }
-    Ok(values.into_iter().map(|value| super::super::CallValue { key: value.key.to_owned(), payload: value.payload.to_vec() }).collect())
+    Ok(values
+        .into_iter()
+        .map(|value| super::super::CallValue {
+            key: value.key.to_owned(),
+            payload: value.payload.to_vec(),
+        })
+        .collect())
 }
 
 fn encode(envelope: Envelope<'_>) -> Result<Vec<u8>, WireCodecError> {
@@ -416,8 +515,13 @@ mod tests {
             let invocation = ids[index % ids.len()];
             let payload = vec![255; size];
             let expected = WireCommand::prepare_encoded_len(invocation, &operation, [255; 32], invocation, size).unwrap();
-            let command =
-                WireCommand::Prepare { invocation, operation, fingerprint: [255; 32], generation: invocation, payload: payload.clone() };
+            let command = WireCommand::Prepare {
+                invocation,
+                operation,
+                fingerprint: [255; 32],
+                generation: invocation,
+                payload: payload.clone(),
+            };
             assert_eq!(command.encode().unwrap().len(), expected);
             let expected = WireAnswer::ready_encoded_len(size).unwrap();
             assert_eq!(WireAnswer::Ready { payload }.encode().unwrap().len(), expected);
@@ -443,10 +547,21 @@ mod tests {
 
     #[test]
     fn child_values_count() {
-        let mut maximal: Vec<_> =
-            (0..PORTABLE_VALUES).map(|index| CallValue { key: format!("k{index:02}"), payload: Vec::new() }).collect();
+        let mut maximal: Vec<_> = (0..PORTABLE_VALUES)
+            .map(|index| CallValue {
+                key: format!("k{index:02}"),
+                payload: Vec::new(),
+            })
+            .collect();
         maximal[0].payload = vec![255; PORTABLE_BYTES - PORTABLE_VALUES * 3];
-        for values in [Vec::new(), vec![CallValue { key: "測定".into(), payload: vec![255; 128] }], maximal] {
+        for values in [
+            Vec::new(),
+            vec![CallValue {
+                key: "測定".into(),
+                payload: vec![255; 128],
+            }],
+            maximal,
+        ] {
             for generation in [false, true] {
                 for submit in [false, true] {
                     let expected = WireChildCall::payload_encoded_len("op.λ", u64::MAX, 16384, generation, &values).unwrap();
@@ -469,9 +584,17 @@ mod tests {
     #[test]
     fn child_validation_matches() {
         let invalid = [
-            vec![CallValue { key: "key".into(), payload: vec![0; PORTABLE_BYTES] }],
+            vec![CallValue {
+                key: "key".into(),
+                payload: vec![0; PORTABLE_BYTES],
+            }],
             vec![CallValue { key: "same".into(), payload: Vec::new() }; 2],
-            (0..=PORTABLE_VALUES).map(|index| CallValue { key: index.to_string(), payload: Vec::new() }).collect(),
+            (0..=PORTABLE_VALUES)
+                .map(|index| CallValue {
+                    key: index.to_string(),
+                    payload: Vec::new(),
+                })
+                .collect(),
         ];
         for values in invalid {
             assert!(WireChildCall::payload_encoded_len("op", u64::MAX, 0, false, &values).is_err());

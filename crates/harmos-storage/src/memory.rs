@@ -66,7 +66,15 @@ pub(super) enum Shortfall {
 
 impl MemoryBank {
     pub(super) fn new(reservation: Reservation) -> Self {
-        Self { state: Arc::new(Mutex::new(BankState { requested: reservation.bytes(), reservation, used: 0, retained: 0, refusal: None })) }
+        Self {
+            state: Arc::new(Mutex::new(BankState {
+                requested: reservation.bytes(),
+                reservation,
+                used: 0,
+                retained: 0,
+                refusal: None,
+            })),
+        }
     }
 
     #[tracing::instrument(name = "storage.memory.admit", level = "debug", skip_all)]

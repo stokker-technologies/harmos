@@ -140,7 +140,13 @@ impl NetName {
             return Self::verbatim(text);
         };
 
-        member.parse().map_or_else(|_| Self::verbatim(text), |member| Self { base: base.to_owned(), member: Some(member) })
+        member.parse().map_or_else(
+            |_| Self::verbatim(text),
+            |member| Self {
+                base: base.to_owned(),
+                member: Some(member),
+            },
+        )
     }
 
     pub fn verbatim(text: impl Into<String>) -> Self {

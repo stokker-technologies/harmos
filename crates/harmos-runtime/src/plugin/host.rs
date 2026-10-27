@@ -188,7 +188,11 @@ impl<A: Application> PluginHost<A> {
         }));
         let (commands, incoming) = mpsc::channel(COMMANDS);
         let driving = Driving::default();
-        let lifecycle = Lifecycle { driving: driving.clone(), operations: operations.clone(), sources: BTreeMap::new() };
+        let lifecycle = Lifecycle {
+            driving: driving.clone(),
+            operations: operations.clone(),
+            sources: BTreeMap::new(),
+        };
         let snapshots = statuses.clone();
         let stop_requests = tokio::sync::watch::channel(None).0;
         let interrupts = stop_requests.subscribe();
@@ -258,7 +262,10 @@ impl<A: Application> PluginHost<A> {
                 Err(error) => Some(Err(error)),
             })
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|source| Error::OperationFailed { operation: definition.id.clone(), source: Arc::new(source) })?;
+            .map_err(|source| Error::OperationFailed {
+                operation: definition.id.clone(),
+                source: Arc::new(source),
+            })?;
         let bind: Bind = Arc::new(move |bindings| bindings.register(registration.clone()));
         self.embedded_catalog(definition, declarations, contracts, bind, restart, replace).await
     }
@@ -275,7 +282,10 @@ impl<A: Application> PluginHost<A> {
         }
         if !definition.contributions.operations.is_empty() {
             harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
-                Error::InvalidInput { field: "embedded plugin catalog", reason: "the catalog differs from the supplied definition" }
+                Error::InvalidInput {
+                    field: "embedded plugin catalog",
+                    reason: "the catalog differs from the supplied definition",
+                }
             })?;
         }
         contracts.sort_by(|a, b| a.operation().id.cmp(&b.operation().id));
@@ -293,7 +303,12 @@ impl<A: Application> PluginHost<A> {
         definition.contributions.wire_contracts = contracts;
         let operations = self.shared.operations.clone();
         let factory: Factory = Arc::new(move || {
-            Ok(Box::new(Embedded { operations: operations.clone(), bind: bind.clone(), registration: None, endpoint: None }))
+            Ok(Box::new(Embedded {
+                operations: operations.clone(),
+                bind: bind.clone(),
+                registration: None,
+                endpoint: None,
+            }))
         });
         self.register(definition, factory, BTreeSet::new(), restart, replace).await
     }
@@ -307,7 +322,14 @@ impl<A: Application> PluginHost<A> {
         let (reply, outcome) = oneshot::channel();
         self.shared
             .commands
-            .send(Command::Register { definition: Box::new(definition), grants, factory, restart, replace, reply })
+            .send(Command::Register {
+                definition: Box::new(definition),
+                grants,
+                factory,
+                restart,
+                replace,
+                reply,
+            })
             .await
             .map_err(|_| closing())?;
         outcome.await.map_err(|_| closing())?
@@ -359,7 +381,10 @@ impl<A: Application> PluginHost<A> {
         match settled.as_ref() {
             Ok(()) => Ok(()),
             Err(_) if retry => self.shared.cleanup.retry().await,
-            Err(source) => Err(Error::TaskFailed { domain: "plugin shutdown", source: source.clone() }),
+            Err(source) => Err(Error::TaskFailed {
+                domain: "plugin shutdown",
+                source: source.clone(),
+            }),
         }
     }
 
@@ -378,8 +403,10 @@ impl PluginLifecycle for Lifecycle {
 
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
         for (consumer, required) in candidate.host_requirements() {
-            let source =
-                self.sources.get(&consumer.id).ok_or(Error::NotRegistered { domain: "plugin backend", name: consumer.id.clone() })?;
+            let source = self.sources.get(&consumer.id).ok_or(Error::NotRegistered {
+                domain: "plugin backend",
+                name: consumer.id.clone(),
+            })?;
             if !source.grants.contains(&required.contract.operation().id) {
                 return Err(Error::InvalidInput {
                     field: "plugin host permission",
@@ -391,9 +418,14 @@ impl PluginLifecycle for Lifecycle {
     }
 
     fn prepare(&mut self, definition: &PluginDefinition) -> Result<Backends> {
-        let source =
-            self.sources.get(&definition.id).ok_or(Error::NotRegistered { domain: "plugin backend", name: definition.id.clone() })?;
-        let driver: Driver = Box::new(Progressing { driver: (source.factory)()?, driving: self.driving.clone() });
+        let source = self.sources.get(&definition.id).ok_or(Error::NotRegistered {
+            domain: "plugin backend",
+            name: definition.id.clone(),
+        })?;
+        let driver: Driver = Box::new(Progressing {
+            driver: (source.factory)()?,
+            driving: self.driving.clone(),
+        });
         Ok(match definition.kind() {
             super::PluginKind::Guest => PluginBackend::Guest(driver),
             super::PluginKind::Sidecar => PluginBackend::Sidecar(driver),
@@ -612,7 +644,10 @@ async fn run(
                 }
                 let result = async {
                     if !registry.dependents(&id)?.is_empty() {
-                        return Err(Error::InvalidInput { field: "plugin removal", reason: "registered dependents must be removed first" });
+                        return Err(Error::InvalidInput {
+                            field: "plugin removal",
+                            reason: "registered dependents must be removed first",
+                        });
                     }
                     registry.cancel_retry(&id);
                     let candidate = PluginDefinitions::new(registry.definitions().filter(|definition| definition.id != id).cloned(), [])?;
@@ -638,7 +673,14 @@ async fn run(
                 interrupts.borrow_and_update();
                 let _ = reply.send(result);
             }
-            Command::Register { definition, grants, factory, restart, replace, mut reply } => {
+            Command::Register {
+                definition,
+                grants,
+                factory,
+                restart,
+                replace,
+                mut reply,
+            } => {
                 if reply.is_closed() {
                     continue;
                 }
@@ -646,10 +688,16 @@ async fn run(
                 let result = async {
                     let exists = registry.definition(&definition.id).is_some();
                     if exists && !replace {
-                        return Err(Error::AlreadyRegistered { domain: "plugin", name: definition.id.clone() });
+                        return Err(Error::AlreadyRegistered {
+                            domain: "plugin",
+                            name: definition.id.clone(),
+                        });
                     }
                     if replace && !exists {
-                        return Err(Error::NotRegistered { domain: "plugin", name: definition.id.clone() });
+                        return Err(Error::NotRegistered {
+                            domain: "plugin",
+                            name: definition.id.clone(),
+                        });
                     }
                     let definitions = registry
                         .definitions()
@@ -665,7 +713,10 @@ async fn run(
                             &lifecycle
                                 .sources
                                 .get(&consumer.id)
-                                .ok_or(Error::NotRegistered { domain: "plugin backend", name: consumer.id.clone() })?
+                                .ok_or(Error::NotRegistered {
+                                    domain: "plugin backend",
+                                    name: consumer.id.clone(),
+                                })?
                                 .grants
                         };
                         if !allowed.contains(&required.contract.operation().id) {
@@ -740,7 +791,9 @@ async fn run(
                     }
                     Initialization::Cancelled => {
                         let result = registry.cancel_initialization(&previous).await;
-                        let _ = reply.send(result.and(Err(Error::NotReady { domain: "plugin initialization cancelled" })));
+                        let _ = reply.send(result.and(Err(Error::NotReady {
+                            domain: "plugin initialization cancelled",
+                        })));
                     }
                     Initialization::Closing => break,
                 }

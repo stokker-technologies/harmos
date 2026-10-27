@@ -52,7 +52,10 @@ pub fn storage_settings() -> StorageSettings {
             max_active_file_operations: nz(1),
             max_pending_write_bytes: nz(16 * 1024 * 1024),
         },
-        response: StorageResponseSettings { batch_rows: nz(64), batch_bytes: nz(64 * 1024) },
+        response: StorageResponseSettings {
+            batch_rows: nz(64),
+            batch_bytes: nz(64 * 1024),
+        },
     }
 }
 /* === Private Functions === */

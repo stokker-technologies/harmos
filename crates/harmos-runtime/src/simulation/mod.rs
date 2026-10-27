@@ -163,7 +163,12 @@ impl ServiceProbe {
 
 impl<A: Application> Configuration<A> {
     pub(crate) fn new() -> Self {
-        Self { assembly: Assembly::new(), services: BTreeMap::new(), inverses: None, entropy_seed: 0 }
+        Self {
+            assembly: Assembly::new(),
+            services: BTreeMap::new(),
+            inverses: None,
+            entropy_seed: 0,
+        }
     }
 
     pub(crate) fn register<C>(&mut self, catalog: C)
@@ -223,7 +228,10 @@ impl<A: Application> Configuration<A> {
             builder.service_with(
                 name.clone(),
                 policy,
-                ScriptedResident { control: Arc::clone(&control), resident: resident.lock().unwrap().clone() },
+                ScriptedResident {
+                    control: Arc::clone(&control),
+                    resident: resident.lock().unwrap().clone(),
+                },
             )
         });
     }
@@ -472,7 +480,11 @@ impl<A: Application> Assembly<A> {
 
 impl ServiceControl {
     fn new() -> Self {
-        Self { faults: broadcast::channel(32).0, attempts: AtomicUsize::new(0), exits: Mutex::new(Vec::new()) }
+        Self {
+            faults: broadcast::channel(32).0,
+            attempts: AtomicUsize::new(0),
+            exits: Mutex::new(Vec::new()),
+        }
     }
 
     fn exited(&self, exit: String) {
@@ -514,11 +526,20 @@ where
 
 impl<A: Application> Memory<A> {
     fn new() -> Self {
-        Self { shared: Arc::new(MemoryState { entries: Mutex::new(Vec::new()), identities: Mutex::new(BTreeMap::new()) }) }
+        Self {
+            shared: Arc::new(MemoryState {
+                entries: Mutex::new(Vec::new()),
+                identities: Mutex::new(BTreeMap::new()),
+            }),
+        }
     }
 
     fn source(&self, strict: bool) -> MemorySource<A> {
-        MemorySource { shared: Arc::clone(&self.shared), resume: Position::ORIGIN, strict }
+        MemorySource {
+            shared: Arc::clone(&self.shared),
+            resume: Position::ORIGIN,
+            strict,
+        }
     }
 
     fn applied(&self, anchor: Position) -> Vec<(Position, Arc<A::Transaction>)> {
@@ -615,7 +636,12 @@ where
             .map(|entry| stored(entry, &identities, self.strict))
             .collect::<Result<Vec<_>, _>>()?;
         self.resume = entries.last().map_or(Position::ORIGIN, |entry| entry.position);
-        Ok(Recovery { commits: Vec::new(), frontier: self.resume, entries, encoded: Vec::new() })
+        Ok(Recovery {
+            commits: Vec::new(),
+            frontier: self.resume,
+            entries,
+            encoded: Vec::new(),
+        })
     }
 }
 
@@ -655,7 +681,12 @@ where
         id: id.clone(),
         version,
         metadata: entry.metadata.clone(),
-        payload: Payload { prepared: entry.prepared.clone(), id, version, value },
+        payload: Payload {
+            prepared: entry.prepared.clone(),
+            id,
+            version,
+            value,
+        },
     })
 }
 

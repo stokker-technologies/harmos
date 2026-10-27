@@ -73,7 +73,12 @@ impl<A: Application> JsonlStreams<A> {
         std::fs::create_dir_all(&directory)?;
         heal(&directory)?;
 
-        Ok(Self { cursor: read_checkpoint(&directory)?, directory, selections: Vec::new(), faulted: false })
+        Ok(Self {
+            cursor: read_checkpoint(&directory)?,
+            directory,
+            selections: Vec::new(),
+            faulted: false,
+        })
     }
 
     pub fn select<S: Stream<A>>(mut self) -> Self {
@@ -153,7 +158,13 @@ impl<A: Application> StreamConsumer<A> for JsonlStreams<A> {
 
 impl<A: Application> Selection<A> {
     fn of<S: Stream<A>>() -> Self {
-        Self { definition: S::definition(), encode: encode::<A, S>, writer: None, pending_gap: 0, application: PhantomData }
+        Self {
+            definition: S::definition(),
+            encode: encode::<A, S>,
+            writer: None,
+            pending_gap: 0,
+            application: PhantomData,
+        }
     }
 
     fn write(&mut self, directory: &Path, rows: &[Map<String, Value>]) -> io::Result<()> {

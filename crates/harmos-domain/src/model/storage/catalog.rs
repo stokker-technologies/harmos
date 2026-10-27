@@ -261,7 +261,10 @@ pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey)
     if &value.schema != schema {
         return Err(invalid("object schema does not match the requested type"));
     }
-    let decoded = T::decode(&value.payload).map_err(|error| Error::Corrupt { operation: "decode object", source: error })?;
+    let decoded = T::decode(&value.payload).map_err(|error| Error::Corrupt {
+        operation: "decode object",
+        source: error,
+    })?;
     decoded.validate()?;
     let mut key = KeyMatch { expected: value.item.as_str(), offset: 0 };
     fmt::write(&mut key, format_args!("{}", decoded.key())).map_err(|_| invalid("decoded object identity differs from stored key"))?;
@@ -289,7 +292,10 @@ fn verify_admitted<T: StoredObject>(value: &ObjectValue, payload: NonZeroUsize, 
     if std::mem::size_of::<T>() > native {
         return Err(verification_limit());
     }
-    let required = T::decoding_memory(&value.payload).map_err(|error| Error::Corrupt { operation: "preflight object", source: error })?;
+    let required = T::decoding_memory(&value.payload).map_err(|error| Error::Corrupt {
+        operation: "preflight object",
+        source: error,
+    })?;
     if required > native {
         return Err(verification_limit());
     }

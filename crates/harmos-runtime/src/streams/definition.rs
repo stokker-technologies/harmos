@@ -257,7 +257,11 @@ impl Table {
         }
         rows.sort_unstable_by_key(|(cursor, ..)| *cursor);
 
-        Delivery { rows, reaches: Cursor(reaches), incomplete }
+        Delivery {
+            rows,
+            reaches: Cursor(reaches),
+            incomplete,
+        }
     }
 
     pub(crate) fn frontier(&self) -> Cursor {

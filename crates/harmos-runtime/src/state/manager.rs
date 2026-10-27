@@ -179,7 +179,13 @@ impl<A: Application> StateManager<A> {
         &self, value: Recorded<A>, prepared: Prepared, permit: tokio::sync::OwnedSemaphorePermit,
     ) -> Result<Receipt, Error> {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Record { value, prepared, preparation: permit, context: self.context.clone(), reply };
+        let request = Request::Record {
+            value,
+            prepared,
+            preparation: permit,
+            context: self.context.clone(),
+            reply,
+        };
 
         let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
         let permit = match waiting.await {
@@ -225,10 +231,14 @@ impl<A: Application> StateManager<A> {
                 Ok(entries) => entries
                     .into_iter()
                     .filter_map(|entry| {
-                        entry
-                            .value
-                            .select::<X>()
-                            .map(|value| Ok(Entry { prepared: None, position: entry.position, metadata: entry.metadata, value }))
+                        entry.value.select::<X>().map(|value| {
+                            Ok(Entry {
+                                prepared: None,
+                                position: entry.position,
+                                metadata: entry.metadata,
+                                value,
+                            })
+                        })
                     })
                     .collect::<Vec<_>>()
                     .into_iter(),
@@ -323,7 +333,13 @@ impl<A: Application> StateManager<A> {
     #[tracing::instrument(target = "harmos::state", name = "state.revert", level = "debug", skip_all)]
     async fn revert(&self, principal: PrincipalId, focus: Focus<A>, direction: Direction) -> Result<Receipt, Error<TransactionError<A>>> {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Revert { principal, focus, direction, context: self.context.clone(), reply };
+        let request = Request::Revert {
+            principal,
+            focus,
+            direction,
+            context: self.context.clone(),
+            reply,
+        };
 
         let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
         let permit = match waiting.await {
@@ -375,7 +391,12 @@ impl<A: Application> StateManager<A> {
         E: From<TransactionError<A>>,
     {
         let (reply, answer) = oneshot::channel();
-        let request = Request::Commit { transaction, key, context: self.context.clone(), reply };
+        let request = Request::Commit {
+            transaction,
+            key,
+            context: self.context.clone(),
+            reply,
+        };
 
         let waiting = self.writer.reserve().instrument(tracing::debug_span!(target: "harmos::state", "state.admission_wait"));
         let permit = match waiting.await {

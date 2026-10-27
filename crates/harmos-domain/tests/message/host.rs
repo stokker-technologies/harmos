@@ -149,7 +149,10 @@ fn batch_rows_follow() {
         following: deltas
             .iter()
             .zip(2_u8..)
-            .map(|(&published_delta_micros, payload)| FollowingRow { payload: vec![payload], published_delta_micros })
+            .map(|(&published_delta_micros, payload)| FollowingRow {
+                payload: vec![payload],
+                published_delta_micros,
+            })
             .collect(),
         ..Publish::default()
     };
@@ -161,15 +164,24 @@ fn batch_rows_follow() {
         following: deltas
             .iter()
             .zip(2_u8..)
-            .map(|(&published_delta_micros, payload)| BatchedRow { payload: vec![payload], published_delta_micros })
+            .map(|(&published_delta_micros, payload)| BatchedRow {
+                payload: vec![payload],
+                published_delta_micros,
+            })
             .collect(),
     };
     let bytes = prost::Message::encode_to_vec(&oracle);
     assert_eq!(crate::encode(&value), bytes);
     assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
     // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
-    let steady = FollowingRow { payload: vec![0], published_delta_micros: Some(1_000) };
-    let oracle = BatchedRow { payload: vec![0], published_delta_micros: Some(1_000) };
+    let steady = FollowingRow {
+        payload: vec![0],
+        published_delta_micros: Some(1_000),
+    };
+    let oracle = BatchedRow {
+        payload: vec![0],
+        published_delta_micros: Some(1_000),
+    };
     assert_eq!(crate::encode(&steady), prost::Message::encode_to_vec(&oracle));
     assert_eq!(crate::encode(&steady).len(), 6);
     roundtrip(value);

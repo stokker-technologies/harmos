@@ -76,10 +76,20 @@ enum Records {
 
 impl Store {
     fn new() -> Self {
-        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
+        Self {
+            data: Arc::new(Data::new(history())),
+            recovery: Arc::new(Recovery::new(history())),
+        }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {
-        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config).unwrap()
+        StorageManager::new(
+            StorageBackends {
+                primary: self.data.clone(),
+                state: self.recovery.clone(),
+            },
+            config,
+        )
+        .unwrap()
     }
     fn snapshot(&self) -> RecoverySnapshot {
         self.recovery.snapshot.lock().unwrap().clone().unwrap()
@@ -119,11 +129,18 @@ impl harmos_runtime::state::Transaction<i64> for Add {
 /* === Private Functions === */
 
 fn limits() -> ReadLimits {
-    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() }
+    ReadLimits {
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+    }
 }
 
 fn policy(every: u64) -> SnapshotPolicy {
-    SnapshotPolicy { schema: schema(), every: NonZeroU64::new(every).unwrap(), max_bytes: NonZeroUsize::new(64 * 1024).unwrap() }
+    SnapshotPolicy {
+        schema: schema(),
+        every: NonZeroU64::new(every).unwrap(),
+        max_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+    }
 }
 
 fn builder(policy: SnapshotPolicy) -> Builder<Bank> {
@@ -230,7 +247,12 @@ async fn snapshot_keeps_tail() {
     let store = Store::new();
     let build = |snapshots| {
         Runtime::<Model>::builder(0, ()).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
-            harmos_runtime::config::ManagedStorageSettings { replay: limits(), capture: limits(), snapshots, journal_tail: 1 },
+            harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots,
+                journal_tail: 1,
+            },
         )
     };
     let storage = store.manager(config());

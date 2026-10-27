@@ -130,7 +130,11 @@ impl<A: Application> StreamManager<A> {
                     definition,
                     window,
                     publisher: Mutex::new(Arc::downgrade(&active)),
-                    staged: Some(Staged { scope: scope.clone(), previous, activation: Arc::downgrade(&activation) }),
+                    staged: Some(Staged {
+                        scope: scope.clone(),
+                        previous,
+                        activation: Arc::downgrade(&activation),
+                    }),
                 });
                 revisions.insert(wired.definition.version(), wired.clone());
                 leases.push(Arc::new(PublicationLease {
@@ -147,7 +151,12 @@ impl<A: Application> StreamManager<A> {
                 }));
             }
             activation.retain_leases(leases);
-            StreamRegistration { table: self.windows.clone(), scope: scope.clone(), bound: false, activation }
+            StreamRegistration {
+                table: self.windows.clone(),
+                scope: scope.clone(),
+                bound: false,
+                activation,
+            }
         };
 
         for lease in registration.leases() {

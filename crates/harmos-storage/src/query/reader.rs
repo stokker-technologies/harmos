@@ -231,7 +231,9 @@ impl QueryReader {
         let future = async {
             if self.failed || self.inflight {
                 self.fail();
-                return Err(Error::NotReady { domain: "failed or interrupted storage query" });
+                return Err(Error::NotReady {
+                    domain: "failed or interrupted storage query",
+                });
             }
             self.inflight = true;
             let result = self.advance().await;
@@ -249,7 +251,10 @@ impl QueryReader {
         if !self.exhausted || self.failed || self.inflight {
             return Err(Error::NotReady { domain: "storage query completion" });
         }
-        Ok(QueryCompletion { at: self.query.at.clone(), rows: self.delivered })
+        Ok(QueryCompletion {
+            at: self.query.at.clone(),
+            rows: self.delivered,
+        })
     }
 
     fn fail(&mut self) {
@@ -369,7 +374,11 @@ impl QueryReader {
     async fn page_attempt(&mut self, bank: &MemoryBank) -> Result<()> {
         // Charge The Raw Page Before Backend I/O.
         let scan_bytes = self.inner.settings.scan_bytes();
-        let page = ScanPage { after: self.after, rows: self.rows, bytes: scan_bytes };
+        let page = ScanPage {
+            after: self.after,
+            rows: self.rows,
+            bytes: scan_bytes,
+        };
         let mut raw = bank.scope();
         raw.claim(self.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(scan_bytes.get()))?;
         let snapshot = self.snapshot.as_ref().expect("running query owns its snapshot");
@@ -505,9 +514,10 @@ impl Rows {
 pub(crate) async fn schema_at(
     inner: &Arc<Inner>, held: &Held, snapshot: &Snapshot, key: &SchemaKey,
 ) -> Result<(StorageSchema, RetainedMemory)> {
-    find_schema(inner, held, snapshot, key)
-        .await?
-        .ok_or(Error::InvalidInput { field: "storage schema", reason: "schema is unavailable at requested cursor" })
+    find_schema(inner, held, snapshot, key).await?.ok_or(Error::InvalidInput {
+        field: "storage schema",
+        reason: "schema is unavailable at requested cursor",
+    })
 }
 
 #[tracing::instrument(name = "storage.query.reader.find_schema", level = "trace", skip_all)]
@@ -522,7 +532,11 @@ pub(crate) async fn find_schema(
         let attempt = async {
             let mut raw = bank.scope();
             raw.claim(scan_bytes.get().saturating_add(ENTRY_OVERHEAD))?;
-            let page = ScanPage { after: 0, rows: NonZeroUsize::MIN, bytes: scan_bytes };
+            let page = ScanPage {
+                after: 0,
+                rows: NonZeroUsize::MIN,
+                bytes: scan_bytes,
+            };
             let raw_memory = raw.retain();
             let (mut schemas, _) = snapshot.scan::<StorageSchema>(&selection, page, raw_memory.clone()).await?;
             let Some(schema) = schemas.pop() else {

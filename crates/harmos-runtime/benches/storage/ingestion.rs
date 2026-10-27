@@ -157,10 +157,17 @@ fn records(kind: &str, schema: &SchemaKey, after: usize, count: usize) -> Vec<Re
     let mut bytes = 0;
     for sequence in after..count.min(after + BATCH_ROWS) {
         let payload = if kind == "samples" {
-            let sample = waveforms::Sample { phase: 0, ordinal: sequence as u64, value: sequence as f64 * 0.000001 };
+            let sample = waveforms::Sample {
+                phase: 0,
+                ordinal: sequence as u64,
+                value: sequence as f64 * 0.000001,
+            };
             sample.encode()
         } else {
-            let record = Record { sequence: sequence as u64, payload: vec![0x5a; 256] };
+            let record = Record {
+                sequence: sequence as u64,
+                payload: vec![0x5a; 256],
+            };
             record.encode()
         };
         let input = RecordInput {
@@ -199,7 +206,10 @@ fn record_definition() -> harmos_runtime::schema::graph::Schema {
 }
 
 async fn read(fixture: &Fixture, kind: &str, schema: &SchemaKey, count: usize) -> Duration {
-    let limits = ReadLimits { rows: super::nonzero(BATCH_ROWS), bytes: super::nonzero(BATCH_BYTES) };
+    let limits = ReadLimits {
+        rows: super::nonzero(BATCH_ROWS),
+        bytes: super::nonzero(BATCH_BYTES),
+    };
     let mut after = 0;
     let mut checked = 0usize;
     let mut elapsed = Duration::ZERO;
@@ -235,7 +245,13 @@ async fn read(fixture: &Fixture, kind: &str, schema: &SchemaKey, count: usize) -
             }
         }
     } else {
-        let selection = RecordSelection { schema: schema.clone(), scope: None, item: None, source_start: None, source_end: None };
+        let selection = RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        };
         loop {
             let started = Instant::now();
             let page = fixture.storage.page::<StoredRecord>(&selection, after, limits).await.unwrap();

@@ -63,7 +63,10 @@ impl Credit {
     }
 
     fn with_window(window: usize) -> Arc<Self> {
-        Arc::new(Self { permits: Arc::new(Semaphore::new(window)), ledger: Mutex::new(Ledger::default()) })
+        Arc::new(Self {
+            permits: Arc::new(Semaphore::new(window)),
+            ledger: Mutex::new(Ledger::default()),
+        })
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "sidecar.credit.reserve", level = "trace", skip_all)]

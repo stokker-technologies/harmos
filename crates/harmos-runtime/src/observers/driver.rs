@@ -70,7 +70,9 @@ impl<B: ObserverBackend> Runner for Backend<B> {
     }
 
     fn spawn(self: Arc<Self>, start: Start) -> (Task<Outcome>, Arc<dyn Settlement>) {
-        let Start { resources, lifecycle, stopping, report, .. } = start;
+        let Start {
+            resources, lifecycle, stopping, report, ..
+        } = start;
         let children = Arc::new(ChildSettlement {
             pending: Mutex::new(Vec::new()),
             lifecycle,
@@ -106,7 +108,10 @@ impl<B: ObserverBackend> Runner for Backend<B> {
                     completion.backend_returned.store(true, Ordering::Release);
                     outcome.map_err(Arc::new)
                 }
-                Err(source) => Err(Arc::new(Error::TaskFailed { domain: "observer backend", source: Arc::new(source) })),
+                Err(source) => Err(Arc::new(Error::TaskFailed {
+                    domain: "observer backend",
+                    source: Arc::new(source),
+                })),
             };
             *completion.outcome.lock().expect("observer outcome is healthy") = Some(outcome.clone());
             if !completion.backend_returned.load(Ordering::Acquire) {

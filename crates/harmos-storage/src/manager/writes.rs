@@ -44,9 +44,11 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_schema(
         &self, key: SchemaKey, schema: Arc<crate::schema::graph::Schema>, mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
-        let scratch = schema
-            .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid message field budget" })?;
+        let scratch =
+            schema.validation_memory_bytes(&harmos_domain::config::SchemaSettings::default()).map_err(|_| Error::InvalidInput {
+                field: "storage schema",
+                reason: "invalid message field budget",
+            })?;
         let mutation = mutation.map(|id| crate::admissions::schema_mutation(id, &key, &schema)).transpose()?;
         // Replay Completed Admission Before Scratch Pressure Or Later I/O Errors.
         // Admission Rechecks The Same Ledger After Every Suspension.
@@ -63,9 +65,10 @@ impl<C> StorageManager<C> {
             }
         }
         let scratch = self.reserve_scratch(scratch).await?;
-        schema
-            .prepare(&harmos_domain::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid message fields" })?;
+        schema.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| Error::InvalidInput {
+            field: "storage schema",
+            reason: "invalid message fields",
+        })?;
         drop(scratch);
         let bytes = StorageSchema::resident_bytes(&key, &schema, self.inner.primary.history())?;
         let sequence = self
@@ -148,9 +151,10 @@ impl<C> StorageManager<C> {
             return Ok(self.status().accepted);
         }
         let bytes = records.iter().try_fold(0usize, |bytes, record| {
-            bytes
-                .checked_add(record.resident_bytes(self.inner.primary.history())?)
-                .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+            bytes.checked_add(record.resident_bytes(self.inner.primary.history())?).ok_or(Error::InvalidInput {
+                field: "storage admission",
+                reason: "size overflow",
+            })
         })?;
         let sequence = self
             .admit_mutation(Domain::Data, bytes, records.len(), mutation, false, |first| {
@@ -177,7 +181,10 @@ impl<C> StorageManager<C> {
                 .checked_add(row.record.resident_bytes(self.inner.primary.history())?)
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>()))
                 .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
-                .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+                .ok_or(Error::InvalidInput {
+                    field: "storage admission",
+                    reason: "size overflow",
+                })
         })?;
         let sequence = self
             .admit_mutation(Domain::Data, bytes, rows.len(), mutation, true, |first| {

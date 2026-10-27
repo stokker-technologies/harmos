@@ -62,7 +62,11 @@ impl From<Timestamp> for Wire {
             Err(error) => (error.duration(), true),
         };
 
-        Self { secs_since_epoch: duration.as_secs(), nanos_since_epoch: duration.subsec_nanos(), before_epoch }
+        Self {
+            secs_since_epoch: duration.as_secs(),
+            nanos_since_epoch: duration.subsec_nanos(),
+            before_epoch,
+        }
     }
 }
 

@@ -80,10 +80,16 @@ pub trait ObserverBackend: Send + Sync + 'static {
 
 pub(crate) fn validate(definition: &ObserverDefinition) -> Result<()> {
     if definition.id.trim().is_empty() || definition.id.chars().any(char::is_control) {
-        return Err(Error::InvalidInput { field: "observer identity", reason: "must be nonempty and contain no control characters" });
+        return Err(Error::InvalidInput {
+            field: "observer identity",
+            reason: "must be nonempty and contain no control characters",
+        });
     }
     if definition.interval.is_zero() {
-        return Err(Error::InvalidInput { field: "observer interval", reason: "must be positive" });
+        return Err(Error::InvalidInput {
+            field: "observer interval",
+            reason: "must be positive",
+        });
     }
     let mut names = BTreeSet::new();
     for stream in &definition.streams {

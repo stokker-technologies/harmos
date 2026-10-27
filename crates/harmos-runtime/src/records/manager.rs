@@ -62,7 +62,10 @@ impl<A: Application> RecordManager<A> {
         let pending = self.schemas.reserve(owner, schema.clone(), graph.into())?;
         let id = crate::DefinitionId::new(schema.id.as_str());
         if !matches!(self.catalog.has_record(&id, schema.version.get()), Ok(false)) {
-            return Err(Error::AlreadyRegistered { domain: "native record schema", name: schema.id.as_str().to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: "native record schema",
+                name: schema.id.as_str().to_owned(),
+            });
         }
         if !pending.is_committed()
             && let Some(storage) = &self.schemas.storage
@@ -87,7 +90,9 @@ impl<A: Application> RecordManager<A> {
         let prepared = Prepared::typed_record(&record).map_err(Error::Preparation)?;
         let declared = self.catalog.has_record(&prepared.id, prepared.version).map_err(|source| Error::RecordDeclaration { source })?;
         if !declared {
-            return Err(Error::RecordDeclaration { source: crate::state::DecodeError::UnknownDefinition { id: prepared.id } });
+            return Err(Error::RecordDeclaration {
+                source: crate::state::DecodeError::UnknownDefinition { id: prepared.id },
+            });
         }
         self.state.append_prepared(Recorded::Record(record), prepared, preparation).await
     }

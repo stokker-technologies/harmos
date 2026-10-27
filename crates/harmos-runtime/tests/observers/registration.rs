@@ -143,7 +143,12 @@ async fn reservations_release_backends() {
     let manager = &runtime.operations;
     let resources = Arc::new(());
     let dropped = Arc::new(AtomicBool::new(false));
-    let backend = || ReentrantBackend(Reentrant { manager: manager.clone(), dropped: dropped.clone() });
+    let backend = || {
+        ReentrantBackend(Reentrant {
+            manager: manager.clone(),
+            dropped: dropped.clone(),
+        })
+    };
     drop(manager.stage_observers(&resources, [backend()]).unwrap());
     assert!(dropped.swap(false, Ordering::SeqCst));
     manager.stage_observers(&resources, [backend()]).unwrap().commit().unwrap();

@@ -104,15 +104,26 @@ async fn pressure_reloads_page() {
                     terms: vec![Term {
                         field: "payload.phase".into(),
                         negate: false,
-                        condition: Condition::Compare { op: Compare::Eq, value: ScalarValue::Unsigned(0) },
+                        condition: Condition::Compare {
+                            op: Compare::Eq,
+                            value: ScalarValue::Unsigned(0),
+                        },
                     }],
                 }],
             }),
             Transform::Aggregate(Aggregate {
                 groups: vec![],
                 measures: vec![
-                    Measure { field: "payload.value".into(), statistic: harmos_domain::Aggregate::Count, name: "count".into() },
-                    Measure { field: "payload.value".into(), statistic: harmos_domain::Aggregate::Rms, name: "rms".into() },
+                    Measure {
+                        field: "payload.value".into(),
+                        statistic: harmos_domain::Aggregate::Count,
+                        name: "count".into(),
+                    },
+                    Measure {
+                        field: "payload.value".into(),
+                        statistic: harmos_domain::Aggregate::Rms,
+                        name: "rms".into(),
+                    },
                 ],
             }),
         ],
@@ -180,7 +191,10 @@ async fn cancelled_advance_poisons() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: Arc::new(JsonStorage::new(
-                JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+                JsonStorageSettings {
+                    root: directory.path().to_path_buf(),
+                    max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+                },
                 history(),
             )),
             state: Arc::new(harmos_storage::state::file::FileBackend::new(directory.path().join("state"), history(), state_settings())),
@@ -278,7 +292,13 @@ async fn settlement_preserves_readers() {
         .storage
         .read_records::<waveforms::Sample>(RecordRead {
             at: saved,
-            selection: RecordSelection { schema: waveforms::schema(), scope: None, item: None, source_start: None, source_end: None },
+            selection: RecordSelection {
+                schema: waveforms::schema(),
+                scope: None,
+                item: None,
+                source_start: None,
+                source_end: None,
+            },
             after: 0,
         })
         .await

@@ -56,7 +56,9 @@ struct Retained {
 impl Calls {
     pub fn new(limit: NonZeroUsize) -> Result<Self, Status> {
         Self::validate(limit)?;
-        Ok(Self { slots: Arc::new(Semaphore::new(limit.get())) })
+        Ok(Self {
+            slots: Arc::new(Semaphore::new(limit.get())),
+        })
     }
 
     pub(super) fn validate(limit: NonZeroUsize) -> Result<(), Status> {

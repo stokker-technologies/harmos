@@ -141,7 +141,11 @@ impl RecordInput {
 
 impl StreamInput {
     pub fn borrowed(&self) -> StreamWrite<'_> {
-        StreamWrite { record: self.record.borrowed(), stream: &self.stream, sequence: self.sequence }
+        StreamWrite {
+            record: self.record.borrowed(),
+            stream: &self.stream,
+            sequence: self.sequence,
+        }
     }
 }
 

@@ -188,7 +188,10 @@ pub(super) fn encode<A: Application>(
 where
     A::State: Serialize,
 {
-    let mut out = Bounded { bytes: Vec::new(), limit: policy.max_bytes.get() };
+    let mut out = Bounded {
+        bytes: Vec::new(),
+        limit: policy.max_bytes.get(),
+    };
     let mut serializer = serde_json::Serializer::new(&mut out);
     let result = (|| {
         let mut value = serializer.serialize_struct("Snapshot", 7)?;
@@ -228,7 +231,15 @@ where
         previous = entry.position;
         let forward = transaction(&entry.forward, catalog)?;
         let inverse = entry.inverse.as_ref().map(|value| transaction(value, catalog)).transpose()?;
-        entries.insert(entry.position, UndoEntry { principal: entry.principal, forward, inverse, undone: entry.undone });
+        entries.insert(
+            entry.position,
+            UndoEntry {
+                principal: entry.principal,
+                forward,
+                inverse,
+                undone: entry.undone,
+            },
+        );
     }
     let mut receipts = HashMap::new();
     for (key, receipt) in snapshot.receipts {
@@ -268,7 +279,15 @@ where
         }
     }
     trim(&mut tail, tail_limit);
-    Ok(Restored { state: At { value: snapshot.state, position: snapshot.position }, undos: Undos { entries }, receipts, tail })
+    Ok(Restored {
+        state: At {
+            value: snapshot.state,
+            position: snapshot.position,
+        },
+        undos: Undos { entries },
+        receipts,
+        tail,
+    })
 }
 
 /* === Private Functions === */
@@ -287,9 +306,15 @@ fn invalid() -> Incompatible {
 // Only The Bounded Writer Fails With I/O, So Every Other Error Is The State Refusing To Serialize.
 fn encoding_failure(error: serde_json::Error) -> Error {
     if error.is_io() {
-        return Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" };
+        return Error::InvalidInput {
+            field: "state snapshot",
+            reason: "cannot encode within payload limit",
+        };
     }
-    Error::TaskFailed { domain: "state snapshot encoding", source: Arc::new(error) }
+    Error::TaskFailed {
+        domain: "state snapshot encoding",
+        source: Arc::new(error),
+    }
 }
 
 fn trim<A: Application>(tail: &mut VecDeque<Arc<Entry<Recorded<A>>>>, limit: usize) {
@@ -327,7 +352,13 @@ mod tests {
     fn limit_refusal_named() {
         let mut out = Bounded { bytes: Vec::new(), limit: 4 };
         let error = encoding_failure(serde_json::to_writer(&mut out, "longer than four").unwrap_err());
-        assert!(matches!(error, Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" }));
+        assert!(matches!(
+            error,
+            Error::InvalidInput {
+                field: "state snapshot",
+                reason: "cannot encode within payload limit"
+            }
+        ));
     }
 
     #[test]

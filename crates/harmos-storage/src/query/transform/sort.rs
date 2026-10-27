@@ -132,12 +132,23 @@ mod tests {
     fn sort_keeps_ties() {
         // Sort Keeps Stable Ties Before Projection Selects The Original Row Order.
         let original = batch();
-        let sorted = Transform::Sort(Sort { keys: vec![SortKey { field: FieldPath::from("key"), descending: false, nulls_first: false }] })
-            .apply(&original, &mut || Ok(()))
-            .unwrap();
-        let projected = Transform::Project(Project { fields: vec![Projection { field: FieldPath::from("row"), name: "selected".into() }] })
-            .apply(&sorted, &mut || Ok(()))
-            .unwrap();
+        let sorted = Transform::Sort(Sort {
+            keys: vec![SortKey {
+                field: FieldPath::from("key"),
+                descending: false,
+                nulls_first: false,
+            }],
+        })
+        .apply(&original, &mut || Ok(()))
+        .unwrap();
+        let projected = Transform::Project(Project {
+            fields: vec![Projection {
+                field: FieldPath::from("row"),
+                name: "selected".into(),
+            }],
+        })
+        .apply(&sorted, &mut || Ok(()))
+        .unwrap();
         let values = projected.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
         assert_eq!(values.values().as_ref(), &[1, 2, 0, 3]);
     }

@@ -71,7 +71,9 @@ impl ProjectExecution for Project {
             // A nested projection must propagate parent Struct validity.
             let mut array = Arc::clone(projected.field.array(input)?);
             for depth in 1..projected.field.fields.len() {
-                let parent = FieldPath { fields: projected.field.fields[..depth].to_vec() };
+                let parent = FieldPath {
+                    fields: projected.field.fields[..depth].to_vec(),
+                };
                 let parent = parent.array(input)?;
                 if let Some(nulls) = parent.nulls() {
                     let combined = arrow_buffer::NullBuffer::union(array.nulls(), Some(nulls));

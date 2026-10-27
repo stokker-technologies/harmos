@@ -219,7 +219,10 @@ impl<C: ObjectCatalog> Data<C> {
             let _io = self.file_io.lock().unwrap();
             self.history.check(&file.history)?;
             if let Some((reference, _)) = self.blobs.lock().unwrap().values().find(|(reference, _)| reference.metadata.id == file.id) {
-                return Ok(FileProgress { length: reference.length, phase: FilePhase::Finished });
+                return Ok(FileProgress {
+                    length: reference.length,
+                    phase: FilePhase::Finished,
+                });
             }
             if !self.resumable_files.lock().unwrap().contains(file.id.as_str()) {
                 return Err(failure(BackendFailure::Permanent));
@@ -345,7 +348,10 @@ impl<C: ObjectCatalog> Data<C> {
             if self.control.create_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |value| value.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));
             }
-            Ok(StagedFile { history: self.history.clone(), id: metadata.id.clone() })
+            Ok(StagedFile {
+                history: self.history.clone(),
+                id: metadata.id.clone(),
+            })
         })
     }
 
@@ -427,7 +433,12 @@ impl<C: ObjectCatalog> Data<C> {
             // A Failed Integrity Check Must Retain The Last Recoverable Prefix.
             let (metadata, bytes) = staged.remove(staging.id.as_str()).expect("verified staging");
             self.saved_productions.lock().unwrap().remove(staging.id.as_str());
-            let reference = FileReference { position: position.clone(), metadata, length, sha256 };
+            let reference = FileReference {
+                position: position.clone(),
+                metadata,
+                length,
+                sha256,
+            };
             self.blobs.lock().unwrap().insert(staging.id.to_string(), (reference.clone(), bytes));
             if self.control.finish_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));

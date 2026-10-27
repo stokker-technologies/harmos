@@ -77,7 +77,11 @@ impl HistogramExecution for Histogram {
     }
 
     fn start(&self, input: &Schema) -> Result<Bins> {
-        Ok(Bins { schema: Arc::new(self.output_schema(input)?), plan: self.clone(), counts: vec![0; self.edges.len() + 1] })
+        Ok(Bins {
+            schema: Arc::new(self.output_schema(input)?),
+            plan: self.clone(),
+            counts: vec![0; self.edges.len() + 1],
+        })
     }
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {

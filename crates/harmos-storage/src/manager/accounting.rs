@@ -36,18 +36,27 @@ use super::*;
 
 impl<C> StorageManager<C> {
     pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
-        StorageCursor { history: self.inner.primary.history().clone(), sequence }
+        StorageCursor {
+            history: self.inner.primary.history().clone(),
+            sequence,
+        }
     }
 
     pub(super) fn recovery_position(&self, sequence: u64) -> RecoveryPosition {
-        RecoveryPosition { history: self.inner.recovery.history().clone(), sequence }
+        RecoveryPosition {
+            history: self.inner.recovery.history().clone(),
+            sequence,
+        }
     }
 
     pub(crate) fn charge<T: Serialize + ?Sized>(&self, value: &T, entries: usize) -> Result<usize> {
         encoded_size(value)?
             .checked_add(encoded_size(self.inner.primary.history())?.saturating_mul(entries))
             .and_then(|bytes| bytes.checked_add(entries.checked_mul(ENTRY_OVERHEAD)?))
-            .ok_or(Error::InvalidInput { field: "storage admission", reason: "size overflow" })
+            .ok_or(Error::InvalidInput {
+                field: "storage admission",
+                reason: "size overflow",
+            })
     }
 
     #[tracing::instrument(name = "storage.manager.accounting.reserve_scratch", level = "debug", skip_all)]

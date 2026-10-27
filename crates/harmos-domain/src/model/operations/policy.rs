@@ -99,7 +99,10 @@ pub enum PolicyError {
 impl OperationPolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
         if self.timeout.is_zero() || self.attempt_timeout.is_zero() {
-            return Err(PolicyError::Deadline { timeout: self.timeout, attempt_timeout: self.attempt_timeout });
+            return Err(PolicyError::Deadline {
+                timeout: self.timeout,
+                attempt_timeout: self.attempt_timeout,
+            });
         }
 
         self.retries.validate()

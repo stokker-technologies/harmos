@@ -119,34 +119,59 @@ impl RecoveryPage {
         mut encoded_bytes: impl FnMut(&RecoveryEntry) -> usize,
     ) -> Result<()> {
         if !through.covers(after)? {
-            return Err(Error::InvalidInput { field: "recovery range", reason: "start exceeds fixed frontier" });
+            return Err(Error::InvalidInput {
+                field: "recovery range",
+                reason: "start exceeds fixed frontier",
+            });
         }
         let mut previous = after.sequence;
         let mut bytes = 0usize;
 
         for entry in &self.entries {
             after.history.check(&entry.position.history)?;
-            let expected = previous.checked_add(1).ok_or(Error::InvalidInput { field: "recovery page", reason: "position overflow" })?;
+            let expected = previous.checked_add(1).ok_or(Error::InvalidInput {
+                field: "recovery page",
+                reason: "position overflow",
+            })?;
             if entry.position.sequence < expected {
-                return Err(Error::InvalidInput { field: "recovery page", reason: "duplicate or reversed position" });
+                return Err(Error::InvalidInput {
+                    field: "recovery page",
+                    reason: "duplicate or reversed position",
+                });
             }
             if entry.position.sequence > expected {
-                return Err(Error::Gap { requested: expected, available: entry.position.sequence });
+                return Err(Error::Gap {
+                    requested: expected,
+                    available: entry.position.sequence,
+                });
             }
             if entry.position.sequence > through.sequence {
-                return Err(Error::InvalidInput { field: "recovery page", reason: "entry exceeds fixed frontier" });
+                return Err(Error::InvalidInput {
+                    field: "recovery page",
+                    reason: "entry exceeds fixed frontier",
+                });
             }
-            bytes = bytes
-                .checked_add(encoded_bytes(entry))
-                .ok_or(Error::InvalidInput { field: "recovery page", reason: "encoded size overflow" })?;
+            bytes = bytes.checked_add(encoded_bytes(entry)).ok_or(Error::InvalidInput {
+                field: "recovery page",
+                reason: "encoded size overflow",
+            })?;
             previous = entry.position.sequence;
         }
         limits.check(self.entries.len(), bytes)?;
 
-        let expected_next =
-            if previous < through.sequence { Some(RecoveryPosition { history: after.history.clone(), sequence: previous }) } else { None };
+        let expected_next = if previous < through.sequence {
+            Some(RecoveryPosition {
+                history: after.history.clone(),
+                sequence: previous,
+            })
+        } else {
+            None
+        };
         if self.next != expected_next || (self.entries.is_empty() && expected_next.is_some()) {
-            return Err(Error::InvalidInput { field: "recovery page", reason: "missing progress or invalid continuation" });
+            return Err(Error::InvalidInput {
+                field: "recovery page",
+                reason: "missing progress or invalid continuation",
+            });
         }
 
         Ok(())

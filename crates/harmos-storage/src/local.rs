@@ -88,12 +88,18 @@ impl LocalReader {
                                 return Err(Error::ResourceExhausted { resource: "local file path memory" });
                             }
                             if !fs::symlink_metadata(&path).map_err(io_error)?.is_file() {
-                                return Err(Error::InvalidInput { field: "local file", reason: "source is not a regular file" });
+                                return Err(Error::InvalidInput {
+                                    field: "local file",
+                                    reason: "source is not a regular file",
+                                });
                             }
                             let file = fs::File::open(&path).map_err(io_error)?;
                             let description = file.metadata().map_err(io_error)?;
                             if !description.is_file() {
-                                return Err(Error::InvalidInput { field: "local file", reason: "source is not a regular file" });
+                                return Err(Error::InvalidInput {
+                                    field: "local file",
+                                    reason: "source is not a regular file",
+                                });
                             }
                             let end = range.end(description.len())?;
                             let identity = same_file::Handle::from_file(file.try_clone().map_err(io_error)?).map_err(io_error)?;
@@ -132,7 +138,10 @@ impl LocalReader {
 
     pub(crate) fn start(&mut self, offset: u64) -> Result<()> {
         if offset > self.end {
-            return Err(Error::InvalidInput { field: "file offset", reason: "offset exceeds file length" });
+            return Err(Error::InvalidInput {
+                field: "file offset",
+                reason: "offset exceeds file length",
+            });
         }
         self.offset = offset;
         Ok(())
@@ -160,7 +169,10 @@ impl LocalReader {
                                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                                 Err(error) => return Err(io_error(error)),
                                 Ok(metadata) if !metadata.is_file() => {
-                                    return Err(Error::InvalidInput { field: "local file", reason: "source is not a regular file" });
+                                    return Err(Error::InvalidInput {
+                                        field: "local file",
+                                        reason: "source is not a regular file",
+                                    });
                                 }
                                 Ok(_) => {}
                             }
@@ -261,7 +273,11 @@ impl LocalReader {
 
 impl Stamp {
     fn of(metadata: &Metadata) -> Result<Self> {
-        Ok(Self { length: metadata.len(), modified: metadata.modified().map_err(io_error)?, created: metadata.created().ok() })
+        Ok(Self {
+            length: metadata.len(),
+            modified: metadata.modified().map_err(io_error)?,
+            created: metadata.created().ok(),
+        })
     }
 }
 
@@ -284,7 +300,10 @@ pub(crate) fn validate_local_path(path: &Path) -> Result<PathBuf> {
         }
         let metadata = fs::symlink_metadata(&checked).map_err(io_error)?;
         if linked(&metadata) {
-            return Err(Error::InvalidInput { field: "local path", reason: "symbolic link traversal is forbidden" });
+            return Err(Error::InvalidInput {
+                field: "local path",
+                reason: "symbolic link traversal is forbidden",
+            });
         }
     }
     Ok(checked)

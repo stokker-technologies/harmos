@@ -163,7 +163,11 @@ impl Files {
             let checkpoint = public.then(|| {
                 FileCheckpoint::new(
                     metadata.clone(),
-                    FileSession { history: self.history.clone(), id: metadata.id.clone(), generation },
+                    FileSession {
+                        history: self.history.clone(),
+                        id: metadata.id.clone(),
+                        generation,
+                    },
                     0,
                     &Sha256::new(),
                 )
@@ -186,7 +190,10 @@ impl Files {
             format::sync_directory(&self.root.join("staging"))?;
             self.save(key, &production)?;
         }
-        Ok(StagedFile { history: self.history.clone(), id: metadata.id })
+        Ok(StagedFile {
+            history: self.history.clone(),
+            id: metadata.id,
+        })
     }
 
     pub fn write(&self, key: &str, offset: u64, bytes: &[u8]) -> Result<()> {
@@ -230,7 +237,12 @@ impl Files {
             return Err(format::invalid("file position is zero"));
         }
         let mut production = self.load(key)?;
-        let reference = FileReference { position, metadata: production.metadata.clone(), length, sha256 };
+        let reference = FileReference {
+            position,
+            metadata: production.metadata.clone(),
+            length,
+            sha256,
+        };
         if production.phase == FilePhase::Abandoned
             || production.finish.as_ref().is_some_and(|prior| prior != &reference)
             || reference.metadata.expected_length.is_some_and(|expected| expected != length)

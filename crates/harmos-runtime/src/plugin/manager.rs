@@ -289,7 +289,10 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             return Err(Error::NotReady { domain: "plugin retirement" });
         }
         if !candidate.rebuilt.is_empty() {
-            return Err(Error::InvalidInput { field: "plugin registration", reason: "replacement generations require reload" });
+            return Err(Error::InvalidInput {
+                field: "plugin registration",
+                reason: "replacement generations require reload",
+            });
         }
         let definitions = by_id(&candidate.graph);
         for (id, original) in &self.definitions {
@@ -383,7 +386,10 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
     ) -> Result<()> {
         self.resume_retirement().await?;
         self.resolve()?;
-        let candidate = PluginDefinitions { graph: self.graph.clone(), rebuilt: BTreeSet::new() };
+        let candidate = PluginDefinitions {
+            graph: self.graph.clone(),
+            rebuilt: BTreeSet::new(),
+        };
         let mut plan = self.plan_reload(candidate)?;
         plan.impact.select(selected);
         self.transition(plan, FailureScope::Instance, lifecycle).await
@@ -605,13 +611,21 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             }
         }
         let impact = self.graph.reload(candidate.graph.clone(), changed).map_err(PluginFailure::Plan)?;
-        Ok(PluginReloadPlan { manager: self.identity, revision: self.revision, candidate, impact })
+        Ok(PluginReloadPlan {
+            manager: self.identity,
+            revision: self.revision,
+            candidate,
+            impact,
+        })
     }
 
     pub async fn initialize<L: PluginLifecycle<Guest = G, Sidecar = S, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
         self.resume_retirement().await?;
         self.resolve()?;
-        let candidate = PluginDefinitions { graph: self.graph.clone(), rebuilt: BTreeSet::new() };
+        let candidate = PluginDefinitions {
+            graph: self.graph.clone(),
+            rebuilt: BTreeSet::new(),
+        };
         let plan = self.plan_reload(candidate)?;
         self.transition(plan, FailureScope::Instance, lifecycle).await
     }
@@ -634,10 +648,17 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         &mut self, plan: PluginReloadPlan, failure_scope: FailureScope, lifecycle: &mut L,
     ) -> Result<()> {
         if plan.manager != self.identity {
-            return Err(Error::InvalidInput { field: "plugin reload plan", reason: "plan belongs to another manager" });
+            return Err(Error::InvalidInput {
+                field: "plugin reload plan",
+                reason: "plan belongs to another manager",
+            });
         }
         if plan.revision != self.revision {
-            return Err(PluginFailure::StalePlan { expected: plan.revision, actual: self.revision }.into());
+            return Err(PluginFailure::StalePlan {
+                expected: plan.revision,
+                actual: self.revision,
+            }
+            .into());
         }
         lifecycle.preflight(&plan.candidate)?;
         if plan.stopping().is_empty() && plan.starting().is_empty() {
@@ -714,7 +735,12 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
                 let cleanup = self.stop(&stopping).await;
                 self.failed.insert(definition.id.clone());
                 self.notify(&definition.id, PluginEventKind::Failed);
-                return Err(PluginFailure::Start { artifact: definition.id.clone(), source, cleanup }.into());
+                return Err(PluginFailure::Start {
+                    artifact: definition.id.clone(),
+                    source,
+                    cleanup,
+                }
+                .into());
             }
         }
         Ok(())
@@ -757,7 +783,10 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
                 let instance = self.instances.get_mut(&definition.id).expect("tracked before backend preparation");
                 instance.backend = Some(backend);
                 if kind != definition.kind() {
-                    Err(Error::InvalidInput { field: "plugin backend", reason: "backend kind does not match its definition" })
+                    Err(Error::InvalidInput {
+                        field: "plugin backend",
+                        reason: "backend kind does not match its definition",
+                    })
                 } else {
                     lifecycle
                         .start(
@@ -844,7 +873,11 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             revision: self.revision,
             outcomes: outcomes.clone(),
         };
-        self.retirement = Some(retirement::Wait { cleanup: Arc::new(Cleanup::new(driver)), selected, outcomes });
+        self.retirement = Some(retirement::Wait {
+            cleanup: Arc::new(Cleanup::new(driver)),
+            selected,
+            outcomes,
+        });
         self.join_retirement().await
     }
 
@@ -864,7 +897,10 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             for (id, _) in &retained.selected {
                 failures.push(PluginCleanupFailure {
                     artifact: id.clone(),
-                    error: Error::TaskFailed { domain: "plugin retirement", source: source.clone() },
+                    error: Error::TaskFailed {
+                        domain: "plugin retirement",
+                        source: source.clone(),
+                    },
                 });
             }
             return failures;
@@ -886,7 +922,10 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
                     self.cancel_retry(&id);
                     self.last_failures.insert(id.clone(), format!("plugin cleanup: {}", harmos_domain::failure::Report(source.as_ref())));
                     self.failed.insert(id.clone());
-                    failures.push(PluginCleanupFailure { artifact: id, error: Error::TaskFailed { domain: "plugin cleanup", source } });
+                    failures.push(PluginCleanupFailure {
+                        artifact: id,
+                        error: Error::TaskFailed { domain: "plugin cleanup", source },
+                    });
                 }
             }
         }
@@ -912,7 +951,13 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
         if let Some(observer) = &self.observer {
             observer(id, self.status(id));
         }
-        let _ = self.events.send(PluginEvent::Changed { id: id.to_owned(), generation, state, revision: self.revision, kind });
+        let _ = self.events.send(PluginEvent::Changed {
+            id: id.to_owned(),
+            generation,
+            state,
+            revision: self.revision,
+            kind,
+        });
     }
 }
 
@@ -997,7 +1042,12 @@ fn retain_backend<G: Send + 'static, S: Send + 'static, E: Send + 'static>(insta
     if instance.cleanup.is_none()
         && let Some(backend) = instance.backend.take()
     {
-        let original = Retiring { definition: instance.definition.clone(), scope: instance.scope.clone(), backend, stop: instance.stop };
+        let original = Retiring {
+            definition: instance.definition.clone(),
+            scope: instance.scope.clone(),
+            backend,
+            stop: instance.stop,
+        };
         let resource: Box<dyn Resource> = Box::new(original);
         instance.cleanup = Some(Arc::new(Cleanup::new(resource)));
     }
@@ -1007,7 +1057,11 @@ fn stop_backend<'a, L: PluginLifecycle>(
     definition: &'a PluginDefinition, scope: &'a PluginScope, backend: &'a mut PluginBackend<L::Guest, L::Sidecar, L::Embedded>,
 ) -> Finalize<'a> {
     Box::pin(async move {
-        let authority = PluginLifecycleAuthority { scope, phase: PluginLifecyclePhase::Shutdown, backend_kind: backend.kind() };
+        let authority = PluginLifecycleAuthority {
+            scope,
+            phase: PluginLifecyclePhase::Shutdown,
+            backend_kind: backend.kind(),
+        };
         L::stop(definition, &authority, backend).await.map_err(Arc::new)
     })
 }

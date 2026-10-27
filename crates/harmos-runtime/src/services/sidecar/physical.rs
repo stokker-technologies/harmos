@@ -127,7 +127,10 @@ impl Wake for Signals {
 
 impl<A: Application, S, H> Clone for Polling<A, S, H> {
     fn clone(&self) -> Self {
-        Self { original: self.original.clone(), marker: std::marker::PhantomData }
+        Self {
+            original: self.original.clone(),
+            marker: std::marker::PhantomData,
+        }
     }
 }
 
@@ -182,13 +185,20 @@ where
         let number = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let definition = ServiceDefinition {
             id: format!("harmos.sidecar.{}.{number}", resident.attach.owner()),
-            policy: crate::ServicePolicy { restart: RestartPolicy::Never, ..crate::services::POLICY },
+            policy: crate::ServicePolicy {
+                restart: RestartPolicy::Never,
+                ..crate::services::POLICY
+            },
         };
         let (outcome, mut finished) = watch::channel(None);
         let (end, ending) = watch::channel(false);
         // Clear The Previous Attempt's Refusal Before The New Task Is Scheduled.
         resident.calls.begin();
-        let connection = Connection { supervised: resident, outcome, end: ending };
+        let connection = Connection {
+            supervised: resident,
+            outcome,
+            end: ending,
+        };
         let lease = operations.start_service::<A>(Once::new(definition, connection), true, false)?;
         let running: Running = Box::pin(async move {
             match finished.wait_for(Option::is_some).await {
@@ -215,7 +225,10 @@ where
     }
 
     pub(super) fn polling(&self) -> Polling<A, S, H> {
-        Polling { original: Arc::downgrade(&self.original), marker: std::marker::PhantomData }
+        Polling {
+            original: Arc::downgrade(&self.original),
+            marker: std::marker::PhantomData,
+        }
     }
 
     fn signals(&self, context: &Context<'_>) -> Arc<Signals> {
@@ -371,13 +384,20 @@ where
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical::<A, S, H> { original, marker: std::marker::PhantomData };
+        let mut physical = Physical::<A, S, H> {
+            original,
+            marker: std::marker::PhantomData,
+        };
         if physical.is_running() { physical.poll(context) } else { Poll::Pending }
     }
 
     pub(super) fn retry_ending(&self) {
         if let Some(original) = self.original.upgrade() {
-            Physical::<A, S, H> { original, marker: std::marker::PhantomData }.retry_ending();
+            Physical::<A, S, H> {
+                original,
+                marker: std::marker::PhantomData,
+            }
+            .retry_ending();
         }
     }
 
@@ -385,7 +405,10 @@ where
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical::<A, S, H> { original, marker: std::marker::PhantomData };
+        let mut physical = Physical::<A, S, H> {
+            original,
+            marker: std::marker::PhantomData,
+        };
         if physical.is_running() || physical.original.lock().unwrap_or_else(|error| error.into_inner()).settled {
             return Poll::Pending;
         }

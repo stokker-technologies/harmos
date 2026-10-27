@@ -191,7 +191,11 @@ impl Artifacts {
         }
         DescriptorPool::from_file_descriptor_set(set.clone()).map_err(super::DescriptorError::from)?;
         let sources = files.into_iter().map(|(name, file)| Ok((name, source(&file)?))).collect::<Result<_, ExportError>>()?;
-        Ok(Self { files: sources, descriptors: set.encode_to_vec(), contracts: metadata })
+        Ok(Self {
+            files: sources,
+            descriptors: set.encode_to_vec(),
+            contracts: metadata,
+        })
     }
 
     // Read And Revalidate An Exact Export Without Executing Its Producer.

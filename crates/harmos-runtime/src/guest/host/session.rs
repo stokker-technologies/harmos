@@ -210,7 +210,12 @@ impl<A: Application> Session<A> {
             failure: Mutex::new(None),
         });
         guest.store.data_mut().session = Some(Arc::downgrade(&endpoint));
-        let owned = Owned { guest: Some(guest), endpoint: Arc::clone(&endpoint), ended, loans: Arc::new(Mutex::new(BTreeMap::new())) };
+        let owned = Owned {
+            guest: Some(guest),
+            endpoint: Arc::clone(&endpoint),
+            ended,
+            loans: Arc::new(Mutex::new(BTreeMap::new())),
+        };
         let (stopping, stopped) = watch::channel(false);
         let running = executor::task(async move {
             let mut owned = owned;
@@ -238,7 +243,15 @@ impl<A: Application> Session<A> {
             };
             (owned, result)
         });
-        Self { endpoint, stopping, running: Some(running), ending: None, instance: None, closing: false, _application: PhantomData }
+        Self {
+            endpoint,
+            stopping,
+            running: Some(running),
+            ending: None,
+            instance: None,
+            closing: false,
+            _application: PhantomData,
+        }
     }
 
     pub(super) fn endpoint(&self) -> Arc<Endpoint> {
@@ -523,7 +536,10 @@ impl<A: Application> Owned<A> {
 /* === Private Functions === */
 
 fn unavailable() -> Error {
-    Error::Unavailable { method: "operate".to_owned(), discarded: "the original guest store is unavailable".to_owned() }
+    Error::Unavailable {
+        method: "operate".to_owned(),
+        discarded: "the original guest store is unavailable".to_owned(),
+    }
 }
 
 /* === Tests === */

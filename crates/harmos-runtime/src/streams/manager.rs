@@ -119,11 +119,22 @@ impl<A: Application> StreamFeed<A> {
 
 impl<A: Application> StreamManager<A> {
     pub(crate) fn wired(windows: Table, applied: watch::Receiver<Position>, tier: Tier) -> Self {
-        Self { windows: Arc::new(windows), applied, tier, closed: Arc::new(AtomicBool::new(false)), marker: PhantomData }
+        Self {
+            windows: Arc::new(windows),
+            applied,
+            tier,
+            closed: Arc::new(AtomicBool::new(false)),
+            marker: PhantomData,
+        }
     }
 
     pub fn follow(&self, resume: Cursor) -> StreamFeed<A> {
-        StreamFeed { streams: self.clone(), changed: self.delivery(), cursor: resume, intake: self.windows.ingest.engage(resume.0) }
+        StreamFeed {
+            streams: self.clone(),
+            changed: self.delivery(),
+            cursor: resume,
+            intake: self.windows.ingest.engage(resume.0),
+        }
     }
 
     pub fn frontier(&self) -> Cursor {
@@ -168,7 +179,12 @@ impl<A: Application> StreamManager<A> {
     }
 
     pub fn seal<S: Stream<A>>(&self) -> Seal<S> {
-        Seal { definition: self.stream::<S>().definition.clone(), tier: self.tier.clone(), track: Vec::new(), marker: PhantomData }
+        Seal {
+            definition: self.stream::<S>().definition.clone(),
+            tier: self.tier.clone(),
+            track: Vec::new(),
+            marker: PhantomData,
+        }
     }
 
     pub fn watch<S: Stream<A>>(&self) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin + use<S, A> {
@@ -203,7 +219,12 @@ impl<A: Application> StreamManager<A> {
     pub(crate) fn batch(&self, resume: Cursor) -> Batch<A> {
         let delivery = self.windows.recorded_after(resume);
 
-        Batch { rows: delivery.rows, incomplete: delivery.incomplete, reaches: delivery.reaches, application: PhantomData }
+        Batch {
+            rows: delivery.rows,
+            incomplete: delivery.incomplete,
+            reaches: delivery.reaches,
+            application: PhantomData,
+        }
     }
 
     pub(crate) fn declared(&self) -> Vec<Arc<Wired>> {
@@ -254,7 +275,17 @@ impl<S: Clone + Send + 'static> Query<S> {
     }
 
     async fn answer(self) -> Result<std::vec::IntoIter<At<S>>, BeneathWindow> {
-        let Self { window, definition, tier, start, end, as_of, partition, retained_only, .. } = self;
+        let Self {
+            window,
+            definition,
+            tier,
+            start,
+            end,
+            as_of,
+            partition,
+            retained_only,
+            ..
+        } = self;
         let retained = if retained_only { window.snapshot_scope(start, end, as_of, false) } else { window.snapshot(start, end, as_of) };
         let mut rows = Vec::new();
 
@@ -280,7 +311,10 @@ impl<S: Clone + Send + 'static> Query<S> {
 
 impl<S: Clone + Send + Tracked + 'static> Query<S> {
     pub fn track<K: Prefix<S::Track>>(mut self, track: K) -> Self {
-        self.partition = Some(Partition { labels: track.labels(), matches: Box::new(move |row: &S| track.selects(&row.track())) });
+        self.partition = Some(Partition {
+            labels: track.labels(),
+            matches: Box::new(move |row: &S| track.selects(&row.track())),
+        });
         self
     }
 }

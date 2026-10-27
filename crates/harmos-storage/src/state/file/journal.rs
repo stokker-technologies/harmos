@@ -75,7 +75,10 @@ impl StateLog {
         let mut file = files.journal()?;
         let created = file.metadata().map_err(io)?.len() == 0;
         if created {
-            let header = Header { version: VERSION, after: RecoveryPosition { history: history.clone(), sequence: 0 } };
+            let header = Header {
+                version: VERSION,
+                after: RecoveryPosition { history: history.clone(), sequence: 0 },
+            };
             format::write(&mut file, &header, HEADER_BYTES)?;
             file.sync_all().map_err(io)?;
             files.sync_directory()?;
@@ -119,7 +122,16 @@ impl StateLog {
         if saved < base {
             return Err(corrupt("state journal does not reach checkpoint"));
         }
-        Ok(Self { files, file, poisoned: false, history, saved, base, entry_bytes, checkpoint_bytes })
+        Ok(Self {
+            files,
+            file,
+            poisoned: false,
+            history,
+            saved,
+            base,
+            entry_bytes,
+            checkpoint_bytes,
+        })
     }
 
     #[tracing::instrument(name = "storage.state.file.check", level = "debug", skip_all)]
@@ -132,7 +144,10 @@ impl StateLog {
 
     #[tracing::instrument(name = "storage.state.file.position", level = "debug", skip_all)]
     pub(super) fn position(&self) -> RecoveryPosition {
-        RecoveryPosition { history: self.history.clone(), sequence: self.saved }
+        RecoveryPosition {
+            history: self.history.clone(),
+            sequence: self.saved,
+        }
     }
 
     #[tracing::instrument(name = "storage.state.file.snapshot", level = "debug", skip_all)]
@@ -157,7 +172,10 @@ impl StateLog {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
         if after.sequence < self.base {
-            return Err(Error::Gap { requested: after.sequence, available: self.base });
+            return Err(Error::Gap {
+                requested: after.sequence,
+                available: self.base,
+            });
         }
         if after.sequence > through.sequence || through.sequence > self.saved {
             return Err(invalid("state read range is outside retained history"));
@@ -204,7 +222,10 @@ impl StateLog {
             last = entry.position.sequence;
             entries.push(entry);
         }
-        let next = (last < through.sequence).then(|| RecoveryPosition { history: self.history.clone(), sequence: last });
+        let next = (last < through.sequence).then(|| RecoveryPosition {
+            history: self.history.clone(),
+            sequence: last,
+        });
         let page = RecoveryPage { entries, next };
         page.check(after, through, limits, |entry| crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX))?;
         Ok(page)
@@ -291,7 +312,14 @@ impl StateLog {
         let history = self.history.clone();
         let maximum = self.entry_bytes;
         let replaced = self.files.replace_journal(|writer| {
-            format::write(writer, &Header { version: VERSION, after: snapshot.through.clone() }, HEADER_BYTES)?;
+            format::write(
+                writer,
+                &Header {
+                    version: VERSION,
+                    after: snapshot.through.clone(),
+                },
+                HEADER_BYTES,
+            )?;
             loop {
                 match format::read::<RecoveryEntry>(&mut reader, maximum)? {
                     Read::End => break,

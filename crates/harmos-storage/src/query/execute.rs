@@ -103,7 +103,17 @@ impl Plan {
                 (transforms, stage, suffix)
             }
         };
-        Ok(Self { input, output: Arc::new(schema), prefix, stage, suffix, slice, skipped: 0, emitted: 0, retained: Vec::new() })
+        Ok(Self {
+            input,
+            output: Arc::new(schema),
+            prefix,
+            stage,
+            suffix,
+            slice,
+            skipped: 0,
+            emitted: 0,
+            retained: Vec::new(),
+        })
     }
 
     pub(super) fn output_schema(&self) -> Arc<Schema> {

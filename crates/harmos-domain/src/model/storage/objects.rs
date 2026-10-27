@@ -160,7 +160,10 @@ impl ObjectVersionToken {
     }
 
     pub fn new(position: StorageCursor) -> Self {
-        Self { history: position.history, revision: NonZeroU64::new(position.sequence).expect("admission positions are nonzero") }
+        Self {
+            history: position.history,
+            revision: NonZeroU64::new(position.sequence).expect("admission positions are nonzero"),
+        }
     }
 
     pub fn check_position(&self, position: &StorageCursor) -> Result<()> {
@@ -172,14 +175,32 @@ impl ObjectVersionToken {
     }
 }
 
-crate::postcard_product!(ObjectVersionToken { history: StoreHistory, revision: NonZeroU64 });
+crate::postcard_product!(ObjectVersionToken {
+    history: StoreHistory,
+    revision: NonZeroU64
+});
 
 impl Described for ObjectVersionToken {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectVersionToken));
     const FIELDS: &'static [Field] = &[
-        Field { name: Cow::Borrowed("store"), tag: 1, kind: Kind::String, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("epoch"), tag: 2, kind: Kind::String, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("revision"), tag: 3, kind: Kind::U64, cardinality: Cardinality::Required },
+        Field {
+            name: Cow::Borrowed("store"),
+            tag: 1,
+            kind: Kind::String,
+            cardinality: Cardinality::Required,
+        },
+        Field {
+            name: Cow::Borrowed("epoch"),
+            tag: 2,
+            kind: Kind::String,
+            cardinality: Cardinality::Required,
+        },
+        Field {
+            name: Cow::Borrowed("revision"),
+            tag: 3,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required,
+        },
     ];
 
     const MARKER: &'static [u8] = &crate::schema::declaration::encode::<

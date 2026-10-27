@@ -67,7 +67,11 @@ pub(super) struct Pool {
 
 impl Pool {
     pub(super) fn new() -> Self {
-        Self { bytes: Arc::new(Semaphore::new(RETAINED_BYTES)), rows: Arc::new(Semaphore::new(RETAINED_ROWS)), admission: Mutex::new(()) }
+        Self {
+            bytes: Arc::new(Semaphore::new(RETAINED_BYTES)),
+            rows: Arc::new(Semaphore::new(RETAINED_ROWS)),
+            admission: Mutex::new(()),
+        }
     }
 
     pub(super) fn retain(

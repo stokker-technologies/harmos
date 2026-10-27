@@ -56,11 +56,20 @@ pub fn contract(id: &str, schema: &super::graph::Schema, codec: &str) -> Result<
         let Some(field) = root.fields().iter().find(|field| field.name == name) else {
             return Ok(None);
         };
-        let value = root.message(field)?.ok_or_else(|| Error::Field { field: name.to_owned(), reason: "expected a message direction" })?;
+        let value = root.message(field)?.ok_or_else(|| Error::Field {
+            field: name.to_owned(),
+            reason: "expected a message direction",
+        })?;
         fingerprint(value, codec).map(Some)
     };
-    let request = direction("request")?.ok_or_else(|| Error::Field { field: "request".into(), reason: "missing request" })?;
-    let response = direction("response")?.ok_or_else(|| Error::Field { field: "response".into(), reason: "missing response" })?;
+    let request = direction("request")?.ok_or_else(|| Error::Field {
+        field: "request".into(),
+        reason: "missing request",
+    })?;
+    let response = direction("response")?.ok_or_else(|| Error::Field {
+        field: "response".into(),
+        reason: "missing response",
+    })?;
     Ok(operation(id, request, response, direction("input")?, direction("output")?))
 }
 
@@ -149,11 +158,29 @@ mod tests {
     #[test]
     fn recursive_graph_vector() {
         let first = vec![
-            Field { name: "child".into(), tag: 1, kind: Kind::Message { definition: 1 }, cardinality: Cardinality::Optional },
-            Field { name: "again".into(), tag: 2, kind: Kind::Message { definition: 1 }, cardinality: Cardinality::Required },
+            Field {
+                name: "child".into(),
+                tag: 1,
+                kind: Kind::Message { definition: 1 },
+                cardinality: Cardinality::Optional,
+            },
+            Field {
+                name: "again".into(),
+                tag: 2,
+                kind: Kind::Message { definition: 1 },
+                cardinality: Cardinality::Required,
+            },
         ];
-        let second = vec![Field { name: "back".into(), tag: 1, kind: Kind::Message { definition: 0 }, cardinality: Cardinality::Optional }];
-        let schema = Schema { root: 0, definitions: vec![first, second] };
+        let second = vec![Field {
+            name: "back".into(),
+            tag: 1,
+            kind: Kind::Message { definition: 0 },
+            cardinality: Cardinality::Optional,
+        }];
+        let schema = Schema {
+            root: 0,
+            definitions: vec![first, second],
+        };
         let expected = fingerprint(schema.root().unwrap(), "harmos.postcard.v1").unwrap();
         assert_eq!(expected.to_string(), "c3dc086aeed6d067ea637e8648be9a969ce4ba40f4b6bd648e785dd06f6523fb");
         let mut reordered = schema.clone();

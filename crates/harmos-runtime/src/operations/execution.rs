@@ -117,7 +117,14 @@ impl<O> Prepared<O> {
         let cause = Arc::new(Error::Closing { domain: "preparation driver" });
         let (owner, _, diagnostic) = self.body.retain(outcome, cause);
         control.complete(Outcome::Unavailable);
-        control.retain(Retained { owner, _permit: None, _admission: admission }, diagnostic);
+        control.retain(
+            Retained {
+                owner,
+                _permit: None,
+                _admission: admission,
+            },
+            diagnostic,
+        );
     }
 }
 
@@ -127,8 +134,17 @@ impl<O> Prepared<O> {
 pub(super) async fn execute<O: Send + 'static>(
     instances: Arc<Instances>, mut prepared: Prepared<O>, execution: Execution, cause: Option<Position>,
 ) -> Result<O> {
-    let Execution { admission, submitted, mut cancelled, instance, queue } = execution;
-    let budget = Budget { submitted, timeout: prepared.policy.timeout };
+    let Execution {
+        admission,
+        submitted,
+        mut cancelled,
+        instance,
+        queue,
+    } = execution;
+    let budget = Budget {
+        submitted,
+        timeout: prepared.policy.timeout,
+    };
     let mut middleware = prepared.middleware.take();
     let mut refusal = prepared.refusal.take();
     if refusal.is_none()
@@ -170,10 +186,20 @@ pub(super) async fn execute<O: Send + 'static>(
         };
         instance.complete(logical.as_ref().map_or(Outcome::Succeeded, failure_outcome));
         let (owner, failure, diagnostic) = prepared.body.retain(logical, Arc::new(cleanup));
-        instance.retain(Retained { owner, _permit: permit, _admission: admission }, diagnostic);
+        instance.retain(
+            Retained {
+                owner,
+                _permit: permit,
+                _admission: admission,
+            },
+            diagnostic,
+        );
         let failure = failure.unwrap_or_else(|| Refusal::Unavailable.into());
         if let Some(session) = &mut middleware {
-            session.observe(super::middleware::Observation { outcome: failure_outcome(&failure), settled: false });
+            session.observe(super::middleware::Observation {
+                outcome: failure_outcome(&failure),
+                settled: false,
+            });
         }
         return Err(failure);
     }

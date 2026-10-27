@@ -58,7 +58,10 @@ impl<C: ObjectCatalog> Data<C> {
             let lost_objects_through = self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
             // Pruned Revisions No Longer Reconstruct An Older Image.
             if at.sequence < lost_objects_through {
-                return Err(Error::Gap { requested: at.sequence, available: lost_objects_through });
+                return Err(Error::Gap {
+                    requested: at.sequence,
+                    available: lost_objects_through,
+                });
             }
             let snapshot = Snapshot {
                 lost_objects_through,
@@ -114,7 +117,10 @@ impl<C: ObjectCatalog> Data<C> {
             let image = self.image(snapshot)?;
             // Complete Revision History Cannot Begin Before Pruned Revisions.
             if selection.versions == ObjectVersions::Revisions && page.after < image.lost_objects_through {
-                return Err(Error::Gap { requested: page.after + 1, available: image.lost_objects_through + 1 });
+                return Err(Error::Gap {
+                    requested: page.after + 1,
+                    available: image.lost_objects_through + 1,
+                });
             }
             let selected = |object: &ObjectEntry| {
                 selection.schema.as_ref().is_none_or(|schema| schema == &object.value.schema)

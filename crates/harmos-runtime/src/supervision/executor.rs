@@ -59,7 +59,11 @@ pub(crate) trait InContext: std::future::Future + Sized {
 
 impl SpanContext {
     pub(crate) fn new(span: tracing::Span, queued: tracing::Span) -> Self {
-        Self { span, dispatcher: tracing::dispatcher::get_default(Clone::clone), queued: Some(queued) }
+        Self {
+            span,
+            dispatcher: tracing::dispatcher::get_default(Clone::clone),
+            queued: Some(queued),
+        }
     }
 
     pub(crate) fn predecessor(&self) -> Option<tracing::Id> {

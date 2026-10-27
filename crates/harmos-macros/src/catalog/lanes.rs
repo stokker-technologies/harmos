@@ -208,7 +208,11 @@ fn declarations(catalog: &ItemEnum) -> Result<Vec<Declared>, Error> {
             return Err(Error::new(second.span(), "a lane declares one capacity"));
         }
 
-        lanes.push(Declared { name: variant.ident.clone(), capacity, default: fallback.is_some() });
+        lanes.push(Declared {
+            name: variant.ident.clone(),
+            capacity,
+            default: fallback.is_some(),
+        });
     }
 
     if lanes.is_empty() {

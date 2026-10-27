@@ -299,7 +299,11 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
             assert!(!S::STREAMS.iter().any(|entry| entry.id == key.name()), "demand keys must differ from publication identities");
         }
 
-        Self { entry: <Inventory<H> as harmos_domain::catalog::Member<S>>::ENTRY, open: Activity::open::<S, H>, context: None }
+        Self {
+            entry: <Inventory<H> as harmos_domain::catalog::Member<S>>::ENTRY,
+            open: Activity::open::<S, H>,
+            context: None,
+        }
     }
 
     pub fn with_context<T: Send + Sync + 'static>(mut self, factory: impl Fn(&H) -> T + Send + Sync + 'static) -> Self {
@@ -350,7 +354,14 @@ impl Activity {
             );
             ObserverError::BindingPanicked
         })?;
-        let bound = Bound::<S, H> { identity, resources, host, extension, observer: None, stopped: false };
+        let bound = Bound::<S, H> {
+            identity,
+            resources,
+            host,
+            extension,
+            observer: None,
+            stopped: false,
+        };
         Ok(Self { identity, body: Box::new(bound) })
     }
 

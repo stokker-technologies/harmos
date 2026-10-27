@@ -39,7 +39,9 @@ use crate::signal::{Error, Result};
 pub fn fft_in_place(real: &mut [f64], imag: &mut [f64], mut check: impl FnMut() -> bool) -> Result<()> {
     let length = real.len();
     if !length.is_power_of_two() || length != imag.len() || real.iter().chain(imag.iter()).any(|value| !value.is_finite()) {
-        return Err(Error::InvalidInput { reason: "FFT requires equal finite power-of-two buffers" });
+        return Err(Error::InvalidInput {
+            reason: "FFT requires equal finite power-of-two buffers",
+        });
     }
     let mut reversed = 0;
     for index in 1..length {

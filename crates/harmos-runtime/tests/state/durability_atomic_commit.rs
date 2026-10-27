@@ -162,7 +162,11 @@ impl Transaction<State> for Add {
             let _ = out.push(Foreign);
         }
         for ordinal in 0..self.count {
-            let _ = out.push(Observed { before: state.balance, amount: self.amount, ordinal });
+            let _ = out.push(Observed {
+                before: state.balance,
+                amount: self.amount,
+                ordinal,
+            });
         }
     }
     fn apply(&self, state: &mut State) {
@@ -211,9 +215,14 @@ impl Wire for Model {
         kind: harmos_runtime::state::Kind, id: &harmos_runtime::DefinitionId, version: u32, payload: D,
     ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos_runtime::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|value| {
-                harmos_runtime::storage::Payload { prepared: None, id: id.clone(), version, value: Recorded::Transaction(Arc::new(value)) }
-            }),
+            harmos_runtime::state::Kind::Transaction => {
+                Changes::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Transaction(Arc::new(value)),
+                })
+            }
             harmos_runtime::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
                 prepared: None,
                 id: id.clone(),
@@ -229,7 +238,12 @@ impl Wire for Model {
 /* === Private Functions === */
 
 fn add(amount: i64, count: usize, mode: u8) -> Add {
-    Add { amount, count, mode, encodings: Arc::default() }
+    Add {
+        amount,
+        count,
+        mode,
+        encodings: Arc::default(),
+    }
 }
 
 async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
@@ -410,7 +424,10 @@ async fn contract_refuses_apply() {
     let runtime = Runtime::<Model>::builder(State::default(), ())
         .register(Changes::catalog())
         .require_capture(
-            harmos_runtime::state::CaptureLimits { pending_bytes: 4096, max_group_bytes: 4096 },
+            harmos_runtime::state::CaptureLimits {
+                pending_bytes: 4096,
+                max_group_bytes: 4096,
+            },
             Capture(Arc::clone(&captures)),
         )
         .unwrap()

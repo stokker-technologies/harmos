@@ -123,7 +123,10 @@ impl EvidenceError {
 
 impl Declaration {
     pub(crate) fn new(vault: impl Vault, kinds: impl IntoIterator<Item = (DefinitionId, u32)>) -> Self {
-        Self { vault: Arc::new(vault), kinds: kinds.into_iter().collect() }
+        Self {
+            vault: Arc::new(vault),
+            kinds: kinds.into_iter().collect(),
+        }
     }
 }
 
@@ -152,7 +155,13 @@ impl<A: Application> Evidence<A> {
         }
 
         Ok(Self {
-            inner: Some(Arc::new(Inner { state, vault, kinds: frozen, drafts: Mutex::new(BTreeMap::new()), kept: Mutex::new(kept) })),
+            inner: Some(Arc::new(Inner {
+                state,
+                vault,
+                kinds: frozen,
+                drafts: Mutex::new(BTreeMap::new()),
+                kept: Mutex::new(kept),
+            })),
         })
     }
 
@@ -192,7 +201,12 @@ impl<A: Application> Evidence<A> {
             }
         };
 
-        Ok(Excerpt { requested: offset, offset: offset.min(length), bytes, length })
+        Ok(Excerpt {
+            requested: offset,
+            offset: offset.min(length),
+            bytes,
+            length,
+        })
     }
 
     pub fn list(&self, scope: &str) -> Vec<EvidenceRecord> {
@@ -286,8 +300,10 @@ impl<A: Application> Evidence<A> {
         let inner = self.inner()?;
         let kind = inner.declared::<K>()?;
         let version = inner.kinds[&kind];
-        let described =
-            serde_json::to_vec(&details).map_err(|error| EvidenceError::Malformed { kind: kind.clone(), cause: error.to_string() })?;
+        let described = serde_json::to_vec(&details).map_err(|error| EvidenceError::Malformed {
+            kind: kind.clone(),
+            cause: error.to_string(),
+        })?;
         if inner.draft(&kind, &scope, &key).is_some() || inner.is_kept(&kind, &scope, &key) {
             return Err(EvidenceError::Conflict { kind, scope, key });
         }
@@ -298,7 +314,16 @@ impl<A: Application> Evidence<A> {
             false => None,
         };
         let open = Arc::new(Open::new(
-            Staged { kind: kind.clone(), version, scope: scope.clone(), key: key.clone(), name, described, external, length },
+            Staged {
+                kind: kind.clone(),
+                version,
+                scope: scope.clone(),
+                key: key.clone(),
+                name,
+                described,
+                external,
+                length,
+            },
             Arc::clone(&inner.vault),
         ));
         inner.drafts.lock().expect("the evidence index is healthy").entry(scope).or_default().insert((kind, key), Arc::clone(&open));
@@ -379,7 +404,10 @@ impl<A: Application> Inner<A> {
             .await
             .map_err(|_| EvidenceError::Unavailable)?;
         self.state.wait_until_stored(receipt.position).await;
-        record.finalized = Some(At { value: digest, position: receipt.position });
+        record.finalized = Some(At {
+            value: digest,
+            position: receipt.position,
+        });
 
         // Visible before removed: the fact is already history, so the
         // evidence enters the finalized index before its draft leaves the

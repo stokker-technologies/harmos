@@ -55,7 +55,12 @@ impl Fixture {
             .runtime_with_storage(&storage)
             .await
             .unwrap();
-        Self { settings, _directory: directory, storage, runtime }
+        Self {
+            settings,
+            _directory: directory,
+            storage,
+            runtime,
+        }
     }
 
     pub async fn finish(self) {
@@ -72,7 +77,9 @@ pub fn settings() -> StorageSettings {
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
             event_capacity: std::num::NonZeroUsize::new(1024).unwrap(),
         },
-        budget: StorageBudget { read_memory_bytes: super::nonzero(128 * 1024 * 1024) },
+        budget: StorageBudget {
+            read_memory_bytes: super::nonzero(128 * 1024 * 1024),
+        },
         request: StorageRequestSettings {
             max_active_queries: super::nonzero(4),
             max_active_file_operations: super::nonzero(4),
@@ -80,7 +87,10 @@ pub fn settings() -> StorageSettings {
             max_pending_write_batches: super::nonzero(256),
             max_pending_write_bytes: super::nonzero(64 * 1024 * 1024),
         },
-        response: StorageResponseSettings { batch_rows: super::nonzero(4096), batch_bytes: super::nonzero(1024 * 1024) },
+        response: StorageResponseSettings {
+            batch_rows: super::nonzero(4096),
+            batch_bytes: super::nonzero(1024 * 1024),
+        },
     }
 }
 
@@ -89,7 +99,10 @@ pub fn backends(root: &std::path::Path) -> StorageBackends {
         store: harmos_runtime::Identifier::new("benchmark-store").unwrap(),
         epoch: harmos_runtime::Identifier::new("benchmark-epoch").unwrap(),
     };
-    let settings = JsonStorageSettings { root: root.to_owned(), max_entry_bytes: super::nonzero(16 * 1024 * 1024) };
+    let settings = JsonStorageSettings {
+        root: root.to_owned(),
+        max_entry_bytes: super::nonzero(16 * 1024 * 1024),
+    };
     JsonStorage::new(settings, history).into_backends(harmos_storage::state::StorageStateSettings {
         max_entry_bytes: super::nonzero(16 * 1024 * 1024),
         max_checkpoint_bytes: super::nonzero(64 * 1024 * 1024),

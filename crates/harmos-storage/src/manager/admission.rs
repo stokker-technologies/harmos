@@ -49,7 +49,10 @@ impl<C> StorageManager<C> {
     ) -> Result<u64> {
         let result = async {
             if mutation.is_some() && !self.inner.primary.supports_mutation_receipts() {
-                return Err(Error::InvalidInput { field: "storage mutation", reason: "backend does not support mutation receipts" });
+                return Err(Error::InvalidInput {
+                    field: "storage mutation",
+                    reason: "backend does not support mutation receipts",
+                });
             }
             // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
             let _class = if measurement {
@@ -135,7 +138,10 @@ impl<C> StorageManager<C> {
             if let Operation::Snapshot(snapshot) = &operation
                 && (snapshot.len() != 1 || snapshot.as_slice()[0].through.sequence > sequence)
             {
-                return Err(Error::InvalidInput { field: "recovery snapshot", reason: "snapshot is ahead of admitted transitions" });
+                return Err(Error::InvalidInput {
+                    field: "recovery snapshot",
+                    reason: "snapshot is ahead of admitted transitions",
+                });
             }
             let bytes = match &operation {
                 Operation::ObjectGroup { bytes: retained, .. } => *retained,

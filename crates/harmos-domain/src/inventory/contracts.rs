@@ -238,7 +238,12 @@ impl NamedManifest {
         let requires = self
             .requires
             .into_iter()
-            .map(|entry| Ok(Required { contract: entry.contract.resolve(declarations, settings)?, grants: entry.grants }))
+            .map(|entry| {
+                Ok(Required {
+                    contract: entry.contract.resolve(declarations, settings)?,
+                    grants: entry.grants,
+                })
+            })
             .collect::<Result<_, Error>>()?;
         let resolve = |entry: NamedLifecycle| -> Result<lifecycle::Descriptor, Error> {
             if entry.identity != "harmos.operation.v1" {
@@ -248,7 +253,13 @@ impl NamedManifest {
         };
         let [initialize, shutdown] = self.lifecycle;
         let lifecycle = [resolve(initialize)?, resolve(shutdown)?];
-        let manifest = Manifest { facility: self.facility, owner: self.owner, provides, requires, lifecycle };
+        let manifest = Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            provides,
+            requires,
+            lifecycle,
+        };
         validate(&manifest)?;
         Ok(manifest)
     }
@@ -277,7 +288,10 @@ impl Required {
     pub fn from_tree(entries: &[Node<Requirement>]) -> Result<Vec<Self>, crate::operations::ContractError> {
         let mut required = Vec::with_capacity(crate::catalog::count(entries));
         crate::catalog::try_for_each(entries, |entry| {
-            required.push(Self { contract: entry.declaration.contract()?, grants: entry.grants.to_vec() });
+            required.push(Self {
+                contract: entry.declaration.contract()?,
+                grants: entry.grants.to_vec(),
+            });
             Ok::<(), crate::operations::ContractError>(())
         })?;
         Ok(required)
@@ -325,9 +339,15 @@ pub fn decode(fragment: &[u8]) -> Result<Manifest, Error> {
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Manifest, Error> {
     let mut matching = manifests.into_iter().filter(|value| value.facility == facility && value.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing { facility: facility.to_owned(), owner: owner.to_owned() })?;
+    let manifest = matching.next().ok_or_else(|| Error::Missing {
+        facility: facility.to_owned(),
+        owner: owner.to_owned(),
+    })?;
     if matching.next().is_some() {
-        return Err(Error::Duplicate { facility: facility.to_owned(), owner: owner.to_owned() });
+        return Err(Error::Duplicate {
+            facility: facility.to_owned(),
+            owner: owner.to_owned(),
+        });
     }
     validate(&manifest)?;
     Ok(manifest)
@@ -346,7 +366,10 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
         for contract in contracts {
             contract.operation().validate()?;
             if !ids.insert(&contract.operation().id) {
-                return Err(Error::OperationDuplicate { direction, id: contract.operation().id.to_string() });
+                return Err(Error::OperationDuplicate {
+                    direction,
+                    id: contract.operation().id.to_string(),
+                });
             }
         }
     }
@@ -362,7 +385,9 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
                 || grant.scope().is_none_or(|scope| scope.is_empty() || scope.len() > GRANT_LIMIT)
                 || !seen.insert(grant)
             {
-                return Err(Error::Grant { id: required.contract.operation().id.to_string() });
+                return Err(Error::Grant {
+                    id: required.contract.operation().id.to_string(),
+                });
             }
         }
     }

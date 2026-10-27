@@ -84,7 +84,10 @@ impl StorageSchema {
 /* === Private Functions === */
 
 fn size_error() -> Error {
-    Error::InvalidInput { field: "storage schema", reason: "size overflow" }
+    Error::InvalidInput {
+        field: "storage schema",
+        reason: "size overflow",
+    }
 }
 
 /* === Tests === */

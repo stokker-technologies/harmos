@@ -444,7 +444,13 @@ fn finish_build(
     for (path, bytes) in components {
         publish(&path, &bytes)?;
     }
-    Ok(Build { backend, profile, target, artifacts, schemas })
+    Ok(Build {
+        backend,
+        profile,
+        target,
+        artifacts,
+        schemas,
+    })
 }
 
 /* === Private Functions === */
@@ -543,7 +549,11 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
             .map(|(path, bytes)| Source {
                 path,
                 bytes,
-                executable: (path == &executable).then(|| Executable { facility, target: target.to_owned(), registrations: Vec::new() }),
+                executable: (path == &executable).then(|| Executable {
+                    facility,
+                    target: target.to_owned(),
+                    registrations: Vec::new(),
+                }),
             })
             .collect();
         let identity = Identity {

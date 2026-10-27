@@ -116,7 +116,11 @@ impl<C: ObjectCatalog> crate::ReadSession<C> {
     {
         let schema = object_schema::<T>()?;
         let key = read.key.map(|key| object_key(key, self.manager.inner.settings.scan_bytes())).transpose()?;
-        let selection = ObjectSelection { schema: Some(schema.clone()), key, versions: read.versions };
+        let selection = ObjectSelection {
+            schema: Some(schema.clone()),
+            key,
+            versions: read.versions,
+        };
         let pages = Pages::open(&self.manager, &self.held, self.queued, read.at, selection).await?;
         Ok(ObjectReader { pages, schema, _value: PhantomData })
     }
@@ -255,7 +259,9 @@ impl<E: Entry> Pages<E> {
         let future = async {
             if self.failed || self.inflight {
                 self.fail();
-                return Err(Error::NotReady { domain: "failed or interrupted typed storage read" });
+                return Err(Error::NotReady {
+                    domain: "failed or interrupted typed storage read",
+                });
             }
             self.inflight = true;
             let result = self.advance(&memory, &build).await;
@@ -308,7 +314,11 @@ impl<E: Entry> Pages<E> {
         &mut self, bank: &MemoryBank, memory: &impl Fn(&E) -> Result<usize>, build: &impl Fn(E) -> Result<V>,
     ) -> Result<Option<ReadBatch<Vec<V>>>> {
         let bytes = self.inner.settings.scan_bytes().min(self.inner.settings.response.batch_bytes);
-        let page = ScanPage { after: self.after, rows: self.rows, bytes };
+        let page = ScanPage {
+            after: self.after,
+            rows: self.rows,
+            bytes,
+        };
         let mut raw = bank.scope();
         raw.claim(self.rows.get().saturating_mul(ENTRY_OVERHEAD).saturating_add(bytes.get()))?;
         let snapshot = self.snapshot.as_ref().expect("running reader owns its snapshot");

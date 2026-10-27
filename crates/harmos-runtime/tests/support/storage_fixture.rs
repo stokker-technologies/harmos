@@ -60,7 +60,14 @@ impl Fixture {
             .unwrap();
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, config).unwrap();
+        let storage = StorageManager::new(
+            StorageBackends {
+                primary: data.clone(),
+                state: recovery.clone(),
+            },
+            config,
+        )
+        .unwrap();
         storage.start(&runtime).await.unwrap();
         Self { runtime, storage, data, recovery }
     }
@@ -96,7 +103,14 @@ pub(crate) fn schema() -> SchemaKey {
 }
 
 pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordInput {
-    RecordInput { schema: schema.clone(), scope: None, item: item.clone(), source: None, source_time: None, payload: (payload).to_vec() }
+    RecordInput {
+        schema: schema.clone(),
+        scope: None,
+        item: item.clone(),
+        source: None,
+        source_time: None,
+        payload: (payload).to_vec(),
+    }
 }
 
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {

@@ -122,7 +122,13 @@ impl AggregateExecution for Aggregate {
 
     fn start(&self, input: &Schema) -> Result<Groups> {
         let schema = Arc::new(self.output_schema(input)?);
-        let mut groups = Groups { plan: self.clone(), schema, groups: Vec::new(), capture: 0, retained: 0 };
+        let mut groups = Groups {
+            plan: self.clone(),
+            schema,
+            groups: Vec::new(),
+            capture: 0,
+            retained: 0,
+        };
         // An ungrouped reduction always yields its identity row, even for no input.
         if self.groups.is_empty() {
             groups.retained = group_bound(self, &[])?;
@@ -253,7 +259,10 @@ fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
 }
 
 fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
-    Group { keys, accumulators: plan.measures.iter().map(|measure| Accumulator::new(Agg::Of(measure.statistic))).collect() }
+    Group {
+        keys,
+        accumulators: plan.measures.iter().map(|measure| Accumulator::new(Agg::Of(measure.statistic))).collect(),
+    }
 }
 
 fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {

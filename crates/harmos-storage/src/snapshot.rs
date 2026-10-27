@@ -89,7 +89,10 @@ impl<C> StorageManager<C> {
                 let mut state = self.inner.state.lock().unwrap();
                 super::capacity::admitting(&state, super::capacity::Pool::Read)?;
                 if !state.status.saved.covers(at)? {
-                    return Err(Error::InvalidInput { field: "query cursor", reason: "cursor exceeds the durable storage frontier" });
+                    return Err(Error::InvalidInput {
+                        field: "query cursor",
+                        reason: "cursor exceeds the durable storage frontier",
+                    });
                 }
                 state.snapshots.insert(
                     id,
@@ -105,7 +108,11 @@ impl<C> StorageManager<C> {
                 );
             }
             // The Guard Exists Before Waiting, So Cancellation Releases Registration.
-            let mut guard = Snapshot { inner: Arc::clone(&self.inner), id, backend: BackendSnapshot { at: at.clone(), token: Vec::new() } };
+            let mut guard = Snapshot {
+                inner: Arc::clone(&self.inner),
+                id,
+                backend: BackendSnapshot { at: at.clone(), token: Vec::new() },
+            };
             self.inner.notify();
             let opened = self
                 .inner

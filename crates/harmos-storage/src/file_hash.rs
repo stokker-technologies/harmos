@@ -45,7 +45,12 @@ impl<C> StorageManager<C> {
         let span = context.sync(|| tracing::debug_span!("storage.file.hash_file", outcome = "cancelled"));
         context
             .result(span, async {
-                let mut reader = self.read_file(FileRead { source: request.source, range: request.range }).await?;
+                let mut reader = self
+                    .read_file(FileRead {
+                        source: request.source,
+                        range: request.range,
+                    })
+                    .await?;
                 let mut hash = Sha256::new();
                 let local = reader.is_local();
                 while let Some(batch) = reader.next().await? {
@@ -54,7 +59,10 @@ impl<C> StorageManager<C> {
                     }
                 }
                 let completion = reader.completion()?;
-                Ok(reader.stored_hash()?.unwrap_or_else(|| FileHash { bytes_read: completion.bytes, sha256: hash.finalize().into() }))
+                Ok(reader.stored_hash()?.unwrap_or_else(|| FileHash {
+                    bytes_read: completion.bytes,
+                    sha256: hash.finalize().into(),
+                }))
             })
             .await
     }

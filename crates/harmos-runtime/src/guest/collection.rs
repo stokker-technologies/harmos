@@ -95,11 +95,13 @@ pub fn validate(mut entries: Vec<Registration>) -> Result<Vec<Registration>, Err
 }
 
 pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
-    let runtime = Runtime::<Collection>::builder((), ())
-        .runtime()
-        .await
-        .map_err(|error| Error::Guest { message: format!("catalog runtime could not start: {error}") })?;
-    let mut cleanup = Cleanup { runtime: Some(runtime), executor: tokio::runtime::Handle::current() };
+    let runtime = Runtime::<Collection>::builder((), ()).runtime().await.map_err(|error| Error::Guest {
+        message: format!("catalog runtime could not start: {error}"),
+    })?;
+    let mut cleanup = Cleanup {
+        runtime: Some(runtime),
+        executor: tokio::runtime::Handle::current(),
+    };
     let result = async {
         let host = Host::new(cleanup.runtime.as_ref().expect("runtime is owned until cleanup"))?;
         let guest =

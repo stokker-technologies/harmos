@@ -62,7 +62,14 @@ async fn dormant() -> Fixture {
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     let settings = config();
-    let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery.clone() }, settings).unwrap();
+    let storage = StorageManager::new(
+        StorageBackends {
+            primary: data.clone(),
+            state: recovery.clone(),
+        },
+        settings,
+    )
+    .unwrap();
     Fixture { runtime, storage, data, recovery }
 }
 
@@ -107,7 +114,10 @@ async fn producers_flush_storage() {
     f.runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "final-evidence".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "final-evidence".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             move |_: Arc<()>| {
                 let storage = storage.clone();
                 let started = started.clone();

@@ -71,7 +71,9 @@ impl<C> StorageManager<C> {
         }
         state.read_bytes += bytes;
         state.collect();
-        Ok(Some(FileSave { snapshot: snapshot.retained(Reservation::charged(&self.inner, Pool::Read, bytes).retain()) }))
+        Ok(Some(FileSave {
+            snapshot: snapshot.retained(Reservation::charged(&self.inner, Pool::Read, bytes).retain()),
+        }))
     }
 
     // The Caller Holds Lifecycle Ownership Across Backend Access.
@@ -91,7 +93,10 @@ impl<C> StorageManager<C> {
         // Reserve Before Asking The Backend To Allocate Its Complete Bounded Set.
         let capacity = self.inner.settings.budget.read_memory_bytes.get();
         let bytes = capacity / 2;
-        let limits = ReadLimits { rows: crate::storage::config::MAX_FILES, bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)? };
+        let limits = ReadLimits {
+            rows: crate::storage::config::MAX_FILES,
+            bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
+        };
         let reservation = {
             let mut state = self.inner.state.lock().unwrap();
             state.collect();
@@ -106,7 +111,10 @@ impl<C> StorageManager<C> {
         let checkpoints =
             self.inner.bounded("primary.recover_productions", self.inner.primary.recover_productions(limits, memory.clone())).await?;
         if checkpoints.len() > limits.rows.get() || checkpoints.memory_size() > bytes {
-            return Err(Error::InvalidInput { field: "file recovery", reason: "backend exceeded recovery bounds" });
+            return Err(Error::InvalidInput {
+                field: "file recovery",
+                reason: "backend exceeded recovery bounds",
+            });
         }
         let write_bytes = checkpoints.iter().try_fold(0usize, |total, checkpoint| {
             let (_, bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
@@ -131,7 +139,10 @@ impl<C> StorageManager<C> {
             self.inner.primary.history().check(&checkpoint.session.history)?;
             let hash = checkpoint.restore_hash()?;
             if !names.insert(checkpoint.session.id.clone()) {
-                return Err(Error::InvalidInput { field: "file recovery", reason: "duplicate file identity" });
+                return Err(Error::InvalidInput {
+                    field: "file recovery",
+                    reason: "duplicate file identity",
+                });
             }
             let (reference_bytes, base_bytes) = file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
             total = total.checked_add(base_bytes).ok_or_else(size_error)?;
@@ -151,7 +162,10 @@ impl<C> StorageManager<C> {
                 context: crate::execution::Context::current(),
                 queued: Some(tracing::debug_span!("storage.file.queue")),
                 metadata: Arc::new(checkpoint.metadata),
-                staging: StagedFile { history: checkpoint.session.history, id: checkpoint.session.id },
+                staging: StagedFile {
+                    history: checkpoint.session.history,
+                    id: checkpoint.session.id,
+                },
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
                     crate::storage::config::FILE_SESSION_TIMEOUT,
@@ -175,7 +189,10 @@ impl<C> StorageManager<C> {
         {
             let mut state = self.inner.state.lock().unwrap();
             if !state.files.is_empty() {
-                return Err(Error::AlreadyRegistered { domain: "file recovery", name: "active productions".into() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "file recovery",
+                    name: "active productions".into(),
+                });
             }
             state.scratch_bytes -= write_reservation.disown();
             state.files = restored;
@@ -232,11 +249,18 @@ impl State {
         let mut sources = Vec::with_capacity(count);
         for file in self.files.values().filter(selected) {
             let queued = file.context.sync(|| tracing::debug_span!("storage.file.checkpoint.queue", file = %file.staging.id));
-            sources.push(CheckpointSource { context: file.context.clone(), queued: std::sync::Mutex::new(Some(queued)) });
+            sources.push(CheckpointSource {
+                context: file.context.clone(),
+                queued: std::sync::Mutex::new(Some(queued)),
+            });
             let session = file.session.as_ref().expect("selected session");
             checkpoints.push(FileCheckpoint::new(
                 (*file.metadata).clone(),
-                FileSession { history: file.staging.history.clone(), id: file.staging.id.clone(), generation: session.generation },
+                FileSession {
+                    history: file.staging.history.clone(),
+                    id: file.staging.id.clone(),
+                    generation: session.generation,
+                },
                 file.length,
                 &file.hash,
             ));
@@ -244,7 +268,10 @@ impl State {
         let receipts = self.receipts.snapshot(through);
         for receipt in &receipts {
             let span = tracing::debug_span!("storage.receipt.checkpoint.queue", mutation = %receipt.mutation.key, window = %receipt.mutation.window);
-            sources.push(CheckpointSource { context: crate::execution::Context::current(), queued: std::sync::Mutex::new(Some(span)) });
+            sources.push(CheckpointSource {
+                context: crate::execution::Context::current(),
+                queued: std::sync::Mutex::new(Some(span)),
+            });
         }
         self.collect();
         Ok((

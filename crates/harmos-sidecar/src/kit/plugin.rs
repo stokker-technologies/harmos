@@ -76,13 +76,21 @@ impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
         if declaration.sections != P::CONTRIBUTIONS {
             return Err(std::io::Error::other("contribution sections differ from authored selection"));
         }
-        Ok(Self { declaration, capacity, _plugin: PhantomData })
+        Ok(Self {
+            declaration,
+            capacity,
+            _plugin: PhantomData,
+        })
     }
 }
 
 impl<P> Clone for PluginNative<P> {
     fn clone(&self) -> Self {
-        Self { declaration: self.declaration.clone(), capacity: self.capacity, _plugin: PhantomData }
+        Self {
+            declaration: self.declaration.clone(),
+            capacity: self.capacity,
+            _plugin: PhantomData,
+        }
     }
 }
 
@@ -193,7 +201,11 @@ where
                 }),
             })
         }),
-        catalog: PluginCatalog { registrations, operations: definitions, observers: native.declaration.observers.clone() },
+        catalog: PluginCatalog {
+            registrations,
+            operations: definitions,
+            observers: native.declaration.observers.clone(),
+        },
     })
 }
 

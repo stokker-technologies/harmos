@@ -59,12 +59,30 @@ macro_rules! context_shape {
         }
     };
 }
-context_shape!(RecordContext, &[Field { name: Cow::Borrowed("position"), tag: 1, kind: Kind::U64, cardinality: Cardinality::Required }]);
+context_shape!(
+    RecordContext,
+    &[Field {
+        name: Cow::Borrowed("position"),
+        tag: 1,
+        kind: Kind::U64,
+        cardinality: Cardinality::Required
+    }]
+);
 context_shape!(
     StreamContext,
     &[
-        Field { name: Cow::Borrowed("sequence"), tag: 1, kind: Kind::U64, cardinality: Cardinality::Required },
-        Field { name: Cow::Borrowed("missed"), tag: 2, kind: Kind::U64, cardinality: Cardinality::Required },
+        Field {
+            name: Cow::Borrowed("sequence"),
+            tag: 1,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required
+        },
+        Field {
+            name: Cow::Borrowed("missed"),
+            tag: 2,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required
+        },
     ]
 );
 context_shape!(DeliveryContext, CONTEXT_FIELDS);
@@ -144,7 +162,10 @@ where
     L::Row: Clone,
 {
     fn clone(&self) -> Self {
-        Self { context: self.context, row: self.row.clone() }
+        Self {
+            context: self.context,
+            row: self.row.clone(),
+        }
     }
 }
 
@@ -228,7 +249,10 @@ impl PostcardValue for Context {
         input.nested(|input| {
             let context = match input.value::<u32>()? {
                 0 => Self::Record { position: Position(input.value()?) },
-                1 => Self::Stream { sequence: input.value()?, missed: input.value()? },
+                1 => Self::Stream {
+                    sequence: input.value()?,
+                    missed: input.value()?,
+                },
                 _ => return Err(MessageError::borrowed("unknown listener source context")),
             };
             context.validate().map_err(|_| MessageError::borrowed("invalid listener source context"))?;
@@ -259,7 +283,9 @@ impl<L: Listener> Described for Delivery<L> {
         Field {
             name: Cow::Borrowed("row"),
             tag: 2,
-            kind: Kind::Message { definition: <L::Row as Described>::DEFINITION },
+            kind: Kind::Message {
+                definition: <L::Row as Described>::DEFINITION,
+            },
             cardinality: Cardinality::Required,
         },
     ];

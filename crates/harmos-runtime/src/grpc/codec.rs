@@ -126,7 +126,11 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> Codec<W, D, E> {
 
     pub fn new(decode: DecodeSettings, encode: EncodeSettings) -> Result<Self, Status> {
         encode.validate()?;
-        Ok(Self { decoder: Decoder::new(decode)?, encode, response: PhantomData })
+        Ok(Self {
+            decoder: Decoder::new(decode)?,
+            encode,
+            response: PhantomData,
+        })
     }
 }
 impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Codec for Codec<W, D, E> {
@@ -135,7 +139,11 @@ impl<W: Wire<D>, D: MemorySize + Send + 'static, E: Encode<W>> tonic::codec::Cod
     type Encoder = Encoder<W, E>;
     type Decoder = Decoder<W, D>;
     fn encoder(&mut self) -> Self::Encoder {
-        Encoder { settings: self.encode, scratch: Vec::new(), response: PhantomData }
+        Encoder {
+            settings: self.encode,
+            scratch: Vec::new(),
+            response: PhantomData,
+        }
     }
 
     fn decoder(&mut self) -> Self::Decoder {

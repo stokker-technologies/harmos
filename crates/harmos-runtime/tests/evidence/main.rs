@@ -176,7 +176,10 @@ impl Vault for Interrupted {
 
 impl Counted {
     fn new(inner: Directory) -> Self {
-        Self { inner: inner.watching(Duration::from_millis(5)), looks: watch::Sender::new(0) }
+        Self {
+            inner: inner.watching(Duration::from_millis(5)),
+            looks: watch::Sender::new(0),
+        }
     }
 
     fn looks(&self) -> watch::Receiver<usize> {
@@ -250,7 +253,10 @@ impl Resident<Bank> for Idle {
 /* === Private Functions === */
 
 fn upload() -> Upload {
-    Upload { filename: "camera-3.mp4".to_owned(), content_type: "video/mp4".to_owned() }
+    Upload {
+        filename: "camera-3.mp4".to_owned(),
+        content_type: "video/mp4".to_owned(),
+    }
 }
 
 fn scratch(name: &str) -> Arc<tempfile::TempDir> {

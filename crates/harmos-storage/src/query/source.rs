@@ -588,7 +588,12 @@ mod tests {
         let settings = harmos_domain::config::SchemaSettings::default();
         let graph = graph::Schema::from_declaration(Accounted::DEFINITION, &settings).unwrap();
         let validator = schema::Validator::from_schema(&graph, &settings).unwrap();
-        let row = Accounted { value: 1, optional: None, samples: vec![1, 2], detail: Detail { label: "x".into() } };
+        let row = Accounted {
+            value: 1,
+            optional: None,
+            samples: vec![1, 2],
+            detail: Detail { label: "x".into() },
+        };
         (validator, row.encode())
     }
 

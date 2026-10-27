@@ -155,7 +155,10 @@ fn closed() -> Error {
 }
 
 fn size_error() -> Error {
-    Error::InvalidInput { field: "file admission", reason: "size or position overflow" }
+    Error::InvalidInput {
+        field: "file admission",
+        reason: "size or position overflow",
+    }
 }
 
 fn admission(state: &State) -> Result<()> {

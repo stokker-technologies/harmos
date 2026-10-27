@@ -299,13 +299,19 @@ impl Drop for Pending {
 
 impl<C> Clone for StorageManager<C> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), catalog: PhantomData }
+        Self {
+            inner: self.inner.clone(),
+            catalog: PhantomData,
+        }
     }
 }
 
 impl<C> StorageManager<C> {
     pub fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager { inner: self.inner.clone(), catalog: PhantomData }
+        StorageManager {
+            inner: self.inner.clone(),
+            catalog: PhantomData,
+        }
     }
 }
 

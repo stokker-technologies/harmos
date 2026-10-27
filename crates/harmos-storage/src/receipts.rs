@@ -137,7 +137,11 @@ impl Receipts {
             self.deadline = now + retention;
             self.expires_at = SystemTime::now().checked_add(retention).ok_or_else(expired)?;
         }
-        Ok(MutationWindow { history: history.clone(), id: self.window.clone(), expires_at: self.expires_at })
+        Ok(MutationWindow {
+            history: history.clone(),
+            id: self.window.clone(),
+            expires_at: self.expires_at,
+        })
     }
 
     pub(super) fn lookup(&self, id: &MutationId, fingerprint: &[u8; 32], completion: Option<&Completion>) -> Result<ReceiptState> {
@@ -150,7 +154,10 @@ impl Receipts {
             }
             if entry.fingerprint != *fingerprint {
                 tracing::error!(window = %id.window, mutation = %id.key, reason = "identity reused with different request", "storage mutation rejected");
-                return Err(Error::InvalidInput { field: "storage mutation", reason: "identity reused with different request" });
+                return Err(Error::InvalidInput {
+                    field: "storage mutation",
+                    reason: "identity reused with different request",
+                });
             }
             return Ok(match &entry.value {
                 Some(value) => ReceiptState::Complete(value.clone()),
@@ -171,7 +178,10 @@ impl Receipts {
     pub(super) fn insert(&mut self, id: &MutationId, fingerprint: [u8; 32], outcome_bytes: usize) -> Result<()> {
         self.purge(self.execution.now());
         if !matches!(self.lookup(id, &fingerprint, None)?, ReceiptState::Missing) {
-            return Err(Error::AlreadyRegistered { domain: "storage mutation", name: id.key.to_string() });
+            return Err(Error::AlreadyRegistered {
+                domain: "storage mutation",
+                name: id.key.to_string(),
+            });
         }
         let bytes = charge(id, outcome_bytes)?;
         while self.bytes.saturating_add(LEDGER_BASE).saturating_add(bytes) > self.bound.get() {
@@ -180,7 +190,14 @@ impl Receipts {
         self.order.push_back(id.clone());
         self.entries.insert(
             id.clone(),
-            Entry { fingerprint, deadline: self.deadline, expires_at: self.expires_at, value: None, bytes, completion: Arc::new(()) },
+            Entry {
+                fingerprint,
+                deadline: self.deadline,
+                expires_at: self.expires_at,
+                value: None,
+                bytes,
+                completion: Arc::new(()),
+            },
         );
         self.bytes += bytes;
         Ok(())
@@ -188,7 +205,12 @@ impl Receipts {
 
     pub(super) fn prepared(&self, id: &MutationId, value: MutationValue) -> MutationReceipt {
         let entry = self.entries.get(id).expect("admitted receipt");
-        MutationReceipt { mutation: id.clone(), fingerprint: entry.fingerprint, expires_at: entry.expires_at, value }
+        MutationReceipt {
+            mutation: id.clone(),
+            fingerprint: entry.fingerprint,
+            expires_at: entry.expires_at,
+            value,
+        }
     }
 
     pub(super) fn complete(&mut self, id: &MutationId, value: MutationValue) {
@@ -273,7 +295,10 @@ impl Receipts {
             };
             order.push_back(receipt.mutation.clone());
             if restored.insert(receipt.mutation, entry).is_some() {
-                return Err(Error::InvalidInput { field: "mutation recovery", reason: "duplicate receipt identity" });
+                return Err(Error::InvalidInput {
+                    field: "mutation recovery",
+                    reason: "duplicate receipt identity",
+                });
             }
         }
         self.entries = restored;
@@ -313,7 +338,10 @@ impl<C> StorageManager<C> {
         let receipts =
             self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits, memory.clone())).await?;
         if receipts.len() > limits.rows.get() || receipts.memory_size() > bytes {
-            return Err(Error::InvalidInput { field: "mutation recovery", reason: "backend exceeded recovery bounds" });
+            return Err(Error::InvalidInput {
+                field: "mutation recovery",
+                reason: "backend exceeded recovery bounds",
+            });
         }
         for receipt in &receipts {
             if let MutationValue::Deleted(file) = &receipt.value {
@@ -322,22 +350,29 @@ impl<C> StorageManager<C> {
             if let MutationValue::Cursor(cursor) = &receipt.value {
                 let state = self.inner.state.lock().unwrap();
                 if !state.status.saved.covers(cursor)? {
-                    return Err(Error::InvalidInput { field: "mutation recovery", reason: "receipt exceeds saved data frontier" });
+                    return Err(Error::InvalidInput {
+                        field: "mutation recovery",
+                        reason: "receipt exceeds saved data frontier",
+                    });
                 }
             }
             if let MutationValue::Producer(producer) = &receipt.value {
                 self.inner.primary.history().check(&producer.session.history)?;
                 if producer.session.generation == 0 {
-                    return Err(Error::InvalidInput { field: "mutation recovery", reason: "zero producer generation" });
+                    return Err(Error::InvalidInput {
+                        field: "mutation recovery",
+                        reason: "zero producer generation",
+                    });
                 }
             }
         }
         for receipt in &receipts {
             if let MutationValue::Reference(reference) = &receipt.value {
                 self.inner.primary.history().check(&reference.position.history)?;
-                reference
-                    .check_native()
-                    .map_err(|_| Error::InvalidInput { field: "mutation recovery", reason: "invalid completed file reference" })?;
+                reference.check_native().map_err(|_| Error::InvalidInput {
+                    field: "mutation recovery",
+                    reason: "invalid completed file reference",
+                })?;
             }
         }
         let mut state = self.inner.state.lock().unwrap();
@@ -366,7 +401,10 @@ impl<C> StorageManager<C> {
 
     pub fn mutation_window(&self) -> Result<MutationWindow> {
         if !self.inner.primary.supports_mutation_receipts() {
-            return Err(Error::InvalidInput { field: "storage mutations", reason: "backend does not support mutation receipts" });
+            return Err(Error::InvalidInput {
+                field: "storage mutations",
+                reason: "backend does not support mutation receipts",
+            });
         }
         let mut state = self.inner.state.lock().unwrap();
         if !state.ready || state.status.closing {
@@ -440,10 +478,15 @@ impl MemorySize for MutationReceipt {
 
 fn epoch() -> Result<Identifier> {
     let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes)
-        .map_err(|source| Error::OperationFailed { operation: "storage retry window".into(), source: Arc::new(source) })?;
+    getrandom::fill(&mut bytes).map_err(|source| Error::OperationFailed {
+        operation: "storage retry window".into(),
+        source: Arc::new(source),
+    })?;
     let name = bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-    Identifier::new(name).map_err(|_| Error::InvalidInput { field: "storage retry window", reason: "invalid generated identity" })
+    Identifier::new(name).map_err(|_| Error::InvalidInput {
+        field: "storage retry window",
+        reason: "invalid generated identity",
+    })
 }
 
 // One Entry's Amortized Share: Std B-Tree Nodes Below The Root Hold At Least Five
@@ -472,13 +515,19 @@ const fn max(left: usize, right: usize) -> usize {
 }
 
 fn rejected() -> Error {
-    Error::InvalidInput { field: "file mutation", reason: "owned production ended without the requested result" }
+    Error::InvalidInput {
+        field: "file mutation",
+        reason: "owned production ended without the requested result",
+    }
 }
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "storage mutation receipts" }
 }
 fn expired() -> Error {
-    Error::InvalidInput { field: "storage mutation", reason: "retry window expired or unknown; reconcile state before issuing new work" }
+    Error::InvalidInput {
+        field: "storage mutation",
+        reason: "retry window expired or unknown; reconcile state before issuing new work",
+    }
 }
 
 /* === Tests === */

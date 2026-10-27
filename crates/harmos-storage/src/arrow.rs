@@ -168,7 +168,11 @@ impl ArrowSchema {
         let result: Result<Self> = (|| {
             ipc::preflight(&bytes, false)?;
             let (schema, _) = ipc::decode(&bytes, false)?;
-            Ok(Self { schema, ipc: Arc::new(bytes), retention: None })
+            Ok(Self {
+                schema,
+                ipc: Arc::new(bytes),
+                retention: None,
+            })
         })();
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
@@ -182,15 +186,23 @@ impl ArrowBatch {
             validate_schema(batch.schema().as_ref())?;
             let encoded = ipc::encode(batch.schema().as_ref(), Some(&batch))?;
             let resident = retention::resident_bytes(&batch)?;
-            Ok(Self { batch, ipc: Arc::new(encoded), resident, retention: None })
+            Ok(Self {
+                batch,
+                ipc: Arc::new(encoded),
+                resident,
+                retention: None,
+            })
         })();
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
     }
 
     pub(crate) fn retain(mut self, reservation: RetainedMemory) -> Result<Self> {
-        let owner =
-            Arc::new(retention::Owner { _reservation: reservation.clone(), _encoded: Arc::clone(&self.ipc), _schema: self.batch.schema() });
+        let owner = Arc::new(retention::Owner {
+            _reservation: reservation.clone(),
+            _encoded: Arc::clone(&self.ipc),
+            _schema: self.batch.schema(),
+        });
         self.batch = retention::attach(&self.batch, owner)?;
         self.retention = Some(Retained(reservation));
         Ok(self)
@@ -251,7 +263,12 @@ impl ArrowBatch {
             let (_, batch) = ipc::decode(&bytes, true)?;
             let batch = batch.ok_or_else(|| invalid("missing Arrow record batch"))?;
             let resident = retention::resident_bytes(&batch)?;
-            Ok(Self { batch, ipc: Arc::new(bytes), resident, retention: None })
+            Ok(Self {
+                batch,
+                ipc: Arc::new(bytes),
+                resident,
+                retention: None,
+            })
         })();
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
@@ -371,7 +388,11 @@ pub(crate) fn new_resident_bytes(batch: &RecordBatch, input: &[&RecordBatch]) ->
 }
 
 pub(crate) fn retain_native(batch: RecordBatch, reservation: RetainedMemory) -> Result<RecordBatch> {
-    let owner = Arc::new(retention::Owner { _reservation: reservation, _encoded: Arc::new(Vec::new()), _schema: batch.schema() });
+    let owner = Arc::new(retention::Owner {
+        _reservation: reservation,
+        _encoded: Arc::new(Vec::new()),
+        _schema: batch.schema(),
+    });
     retention::attach(&batch, owner)
 }
 
@@ -438,7 +459,10 @@ mod tests {
         use crate::capacity::{Held, Pool, Reservation};
         use crate::test_backend::{Data, Recovery, history, storage_settings};
         let storage = crate::StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap();
@@ -516,7 +540,10 @@ mod tests {
         let (storage, batch) = admitted(16_384);
         let alias = batch.clone();
         let result = batch.try_map(64, |_| -> crate::Result<()> {
-            Err(crate::Error::InvalidInput { field: "projection", reason: "injected conversion failure" })
+            Err(crate::Error::InvalidInput {
+                field: "projection",
+                reason: "injected conversion failure",
+            })
         });
         assert!(result.is_err());
         assert!(storage.status().read_bytes > 16_384);

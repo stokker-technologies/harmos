@@ -270,7 +270,14 @@ impl PublicationLease {
     }
 
     pub fn publish(&self, payload: Vec<u8>, missed: u64) -> Result<(), StreamPublicationError> {
-        self.publish_row(PublicationRow { payload, published_unix_micros: None, context: None }, missed)
+        self.publish_row(
+            PublicationRow {
+                payload,
+                published_unix_micros: None,
+                context: None,
+            },
+            missed,
+        )
     }
 
     pub fn publish_row(&self, row: PublicationRow, missed: u64) -> Result<(), StreamPublicationError> {

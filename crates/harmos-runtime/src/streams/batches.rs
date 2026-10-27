@@ -177,7 +177,12 @@ impl Feed {
     pub(crate) fn following<S>(self: &Arc<Self>, held: Holding) -> Batches<S> {
         let bell = self.bell.subscribe();
         let next = self.ring.lock().expect("summary ring is healthy").next;
-        Batches { cursor: Some(Cursor { feed: Arc::clone(self), bell, next }), next: None, marker: PhantomData, _held: held }
+        Batches {
+            cursor: Some(Cursor { feed: Arc::clone(self), bell, next }),
+            next: None,
+            marker: PhantomData,
+            _held: held,
+        }
     }
 }
 
@@ -189,7 +194,14 @@ impl State {
             count: 0,
             missed: 0,
             fields: vec![Accumulator::default(); definition.fields().len()],
-            feed: Arc::new(Feed { ring: Mutex::new(Retained { rows: VecDeque::with_capacity(64), next: 0, closed: false }), bell }),
+            feed: Arc::new(Feed {
+                ring: Mutex::new(Retained {
+                    rows: VecDeque::with_capacity(64),
+                    next: 0,
+                    closed: false,
+                }),
+                bell,
+            }),
             closed: false,
         }
     }
@@ -277,7 +289,12 @@ impl Accumulator {
                 .into_iter()
                 .any(|statistic| !statistic.is_some_and(f64::is_finite));
         let statistics = (!running.is_empty() && !overflow).then_some(running);
-        Measurement { field, statistics, invalid: self.invalid, overflow }
+        Measurement {
+            field,
+            statistics,
+            invalid: self.invalid,
+            overflow,
+        }
     }
 }
 

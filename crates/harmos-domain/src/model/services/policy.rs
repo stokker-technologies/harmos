@@ -54,7 +54,10 @@ pub enum RestartPolicy {
 impl ServicePolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
         if self.stop_timeout.is_zero() {
-            return Err(PolicyError::Deadline { timeout: self.stop_timeout, attempt_timeout: self.stop_timeout });
+            return Err(PolicyError::Deadline {
+                timeout: self.stop_timeout,
+                attempt_timeout: self.stop_timeout,
+            });
         }
         self.restart.validate()
     }
@@ -94,12 +97,28 @@ mod tests {
     #[test]
     fn service_credit_and_backoff() {
         let delay = Duration::from_millis(10);
-        let backoff = Backoff::Exponential { initial: delay, maximum: delay * 4, jitter: Jitter::None };
-        let restart = RestartPolicy::OnFailure { credit: 2, sustained_health: Duration::from_secs(1), backoff };
+        let backoff = Backoff::Exponential {
+            initial: delay,
+            maximum: delay * 4,
+            jitter: Jitter::None,
+        };
+        let restart = RestartPolicy::OnFailure {
+            credit: 2,
+            sustained_health: Duration::from_secs(1),
+            backoff,
+        };
         assert_eq!(restart.credit(), 2);
         assert!(ServicePolicy { stop_timeout: delay, restart }.validate().is_ok());
         assert!(ServicePolicy { stop_timeout: Duration::ZERO, restart }.validate().is_err());
-        assert!(RestartPolicy::OnFailure { credit: 0, sustained_health: delay, backoff }.validate().is_err());
+        assert!(
+            RestartPolicy::OnFailure {
+                credit: 0,
+                sustained_health: delay,
+                backoff
+            }
+            .validate()
+            .is_err()
+        );
         assert_eq!(backoff.delay(0, 0).unwrap(), delay);
         assert_eq!(backoff.delay(usize::MAX, 0).unwrap(), delay * 4);
     }

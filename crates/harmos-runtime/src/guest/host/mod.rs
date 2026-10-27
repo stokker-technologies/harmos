@@ -222,8 +222,10 @@ impl<A: Application> Host<A> {
             return Err(Error::Oversized { limit: self.max_component });
         }
         let declaration = Declaration::inspect(bytes, Facility::Guest)?;
-        let component = Component::new(&self.engine, bytes)
-            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
+        let component = Component::new(&self.engine, bytes).map_err(|source| Error::Component {
+            id: declaration.id.clone(),
+            message: source.to_string(),
+        })?;
         let mut linker: Linker<Bridge<A>> = Linker::new(&self.engine);
         linker
             .instance("harmos:guest/operation-context@1.0.0")
@@ -274,12 +276,18 @@ impl<A: Application> Host<A> {
                     })
                 })
             })
-            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
-        let component = linker
-            .instantiate_pre(&component)
-            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
-        let sdk = sdk::PluginIndices::new(&component)
-            .map_err(|source| Error::Component { id: declaration.id.clone(), message: source.to_string() })?;
+            .map_err(|source| Error::Component {
+                id: declaration.id.clone(),
+                message: source.to_string(),
+            })?;
+        let component = linker.instantiate_pre(&component).map_err(|source| Error::Component {
+            id: declaration.id.clone(),
+            message: source.to_string(),
+        })?;
+        let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {
+            id: declaration.id.clone(),
+            message: source.to_string(),
+        })?;
         Ok(Loaded {
             sha256: Sha256::digest(bytes).into(),
             declaration,
@@ -297,8 +305,10 @@ impl<A: Application> Host<A> {
 impl<A: Application> Loaded<A> {
     pub(crate) fn duplicate(&self) -> Result<Self, Error> {
         let component = self.component.clone();
-        let sdk = sdk::PluginIndices::new(&component)
-            .map_err(|source| Error::Component { id: self.declaration.id.clone(), message: source.to_string() })?;
+        let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {
+            id: self.declaration.id.clone(),
+            message: source.to_string(),
+        })?;
         Ok(Self {
             sha256: self.sha256,
             declaration: self.declaration.clone(),
@@ -354,12 +364,23 @@ impl<A: Application> Loaded<A> {
         let registrations = match collected {
             Ok(Ok(registrations)) => Ok(registrations
                 .into_iter()
-                .map(|entry| Registration { namespace: entry.namespace, schema: entry.schema, payload: entry.payload })
+                .map(|entry| Registration {
+                    namespace: entry.namespace,
+                    schema: entry.schema,
+                    payload: entry.payload,
+                })
                 .collect()),
             Ok(Err(message)) => Err(Error::Refused { message }),
             Err(source) => Err(Error::Guest { message: format!("{source:#}") }),
         }?;
-        Ok(Registered { store, sdk, registrations, routing: None, epochs: self.epochs, fuel: self.fuel })
+        Ok(Registered {
+            store,
+            sdk,
+            registrations,
+            routing: None,
+            epochs: self.epochs,
+            fuel: self.fuel,
+        })
     }
 }
 
@@ -384,7 +405,9 @@ impl<A: Application> Registered<A> {
         })?;
         let manifest = &self.store.data().declaration.contracts;
         if scope.lifecycle() != Some(&manifest.lifecycle) {
-            return Err(Error::Guest { message: "guest SDK pair differs from the original frozen generation".to_owned() });
+            return Err(Error::Guest {
+                message: "guest SDK pair differs from the original frozen generation".to_owned(),
+            });
         }
         scope.validate_operations(self.store.data().declaration.operations.iter())?;
         scope.validate_wire_contracts(manifest.provides.iter())?;
@@ -398,7 +421,14 @@ impl<A: Application> Registered<A> {
             .into());
         }
         self.store.data_mut().activate().await?;
-        Active { store: self.store, sdk: self.sdk, routing: self.routing, _epochs: self.epochs, fuel: self.fuel }.serve()
+        Active {
+            store: self.store,
+            sdk: self.sdk,
+            routing: self.routing,
+            _epochs: self.epochs,
+            fuel: self.fuel,
+        }
+        .serve()
     }
 }
 
@@ -422,12 +452,18 @@ impl<A: Application> Bridge<A> {
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
         let failure = harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
-        sdk::capabilities::Refusal { code: code.to_owned(), failure: failure.encode() }
+        sdk::capabilities::Refusal {
+            code: code.to_owned(),
+            failure: failure.encode(),
+        }
     }
 
     // A host refusal crosses into the guest with its failure unchanged.
     fn forwarded(refusal: &OperationRefusal) -> sdk::capabilities::Refusal {
-        sdk::capabilities::Refusal { code: refusal.code().to_string(), failure: refusal.failure().encode() }
+        sdk::capabilities::Refusal {
+            code: refusal.code().to_string(),
+            failure: refusal.failure().encode(),
+        }
     }
 }
 

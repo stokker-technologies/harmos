@@ -50,7 +50,16 @@ pub struct Snapshot<A: Application> {
 
 impl<A: Application> Snapshot<A> {
     pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
-        Self { replica: origin, taken: at, durable: at, every: 1, since: 0, complete: at, halted: false, write: Box::new(write) }
+        Self {
+            replica: origin,
+            taken: at,
+            durable: at,
+            every: 1,
+            since: 0,
+            complete: at,
+            halted: false,
+            write: Box::new(write),
+        }
     }
 
     pub fn every(mut self, entries: u64) -> Self {

@@ -94,9 +94,18 @@ impl<C> StorageManager<C> {
             let saved = state.status.saved.clone();
             let accepted = state.status.accepted.clone();
             if requested > accepted.sequence {
-                return Err(Error::InvalidInput { field: "storage follow", reason: "start exceeds accepted boundary" });
+                return Err(Error::InvalidInput {
+                    field: "storage follow",
+                    reason: "start exceeds accepted boundary",
+                });
             }
-            state.followers.insert(id, Following { after: saved.sequence.max(after), failure: None });
+            state.followers.insert(
+                id,
+                Following {
+                    after: saved.sequence.max(after),
+                    failure: None,
+                },
+            );
             (saved, accepted)
         };
         let mut follower = Follower {
@@ -166,7 +175,11 @@ impl<T: Entry> Follower<T> {
         let bytes = self.inner.settings.scan_bytes();
         let reservation =
             Reservation::wait(&self.inner, Pool::Read, &self.held, page_charge(bytes), None).await.map_err(Refusal::into_error)?.retain();
-        let page = ScanPage { after: self.after, rows: SCAN_ROWS, bytes };
+        let page = ScanPage {
+            after: self.after,
+            rows: SCAN_ROWS,
+            bytes,
+        };
         let (entries, encoded) = snapshot.scan::<T>(&self.selection, page, reservation.clone()).await?;
         let Some(last) = entries.last() else {
             self.history = None;
@@ -267,8 +280,10 @@ impl State {
         let mut changed = false;
         for following in self.followers.values_mut() {
             if following.retains() && following.after < through {
-                following.failure =
-                    Some(Failure::Gap { requested: following.after.saturating_add(1), available: through.saturating_add(1) });
+                following.failure = Some(Failure::Gap {
+                    requested: following.after.saturating_add(1),
+                    available: through.saturating_add(1),
+                });
                 changed = true;
             }
         }

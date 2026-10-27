@@ -135,7 +135,14 @@ fn boxed_codec_parity() {
     // Both Representations Decode Default, Repeated And Segmented Fields.
     let encoded = crate::encode(&plain);
     let mut duplicate = encoded.clone();
-    duplicate.extend(crate::encode(&plain::Holder { row: Leaf { value: 0, payload: vec![4], label: "second".into() }, count: 9 }));
+    duplicate.extend(crate::encode(&plain::Holder {
+        row: Leaf {
+            value: 0,
+            payload: vec![4],
+            label: "second".into(),
+        },
+        count: 9,
+    }));
     let segmented = segmented();
     for bytes in [&[][..], &encoded[..], &duplicate[..], &segmented[..]] {
         let decoded = agree::<plain::Holder, heap::Holder>(bytes, 1).unwrap();
@@ -200,20 +207,34 @@ fn boxed_refuses_malformed() {
 /* === Private Functions === */
 
 fn holders() -> (plain::Holder, heap::Holder) {
-    let row = Leaf { value: 7, payload: vec![1, 2, 255], label: "first".into() };
+    let row = Leaf {
+        value: 7,
+        payload: vec![1, 2, 255],
+        label: "first".into(),
+    };
     let boxed = heap::Holder { row: Box::new(row.clone()), count: 3 };
     let plain = plain::Holder { row, count: 3 };
     (plain, boxed)
 }
 
 fn choices() -> Vec<(plain::Choice, heap::Choice)> {
-    let row = Leaf { value: u64::MAX, payload: vec![0, 128], label: "variant".into() };
+    let row = Leaf {
+        value: u64::MAX,
+        payload: vec![0, 128],
+        label: "variant".into(),
+    };
     vec![
         (plain::Choice::Empty, heap::Choice::Empty),
         (plain::Choice::Tuple(row.clone(), 5), heap::Choice::Tuple(Box::new(row.clone()), 5)),
         (
-            plain::Choice::Named { row: row.clone(), note: Some("noted".into()) },
-            heap::Choice::Named { row: Box::new(row), note: Some("noted".into()) },
+            plain::Choice::Named {
+                row: row.clone(),
+                note: Some("noted".into()),
+            },
+            heap::Choice::Named {
+                row: Box::new(row),
+                note: Some("noted".into()),
+            },
         ),
     ]
 }

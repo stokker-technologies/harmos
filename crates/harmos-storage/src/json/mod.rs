@@ -66,12 +66,20 @@ pub struct JsonStorage {
 impl JsonStorage {
     pub fn new(settings: JsonStorageSettings, history: StoreHistory) -> Self {
         let files = Files::new(settings.root.clone(), history.clone(), settings.max_entry_bytes.get());
-        Self { settings, history, owner: Arc::new(Mutex::new(None)), files: Arc::new(files) }
+        Self {
+            settings,
+            history,
+            owner: Arc::new(Mutex::new(None)),
+            files: Arc::new(files),
+        }
     }
 
     pub fn into_backends(self, settings: state::StorageStateSettings) -> StorageBackends {
         let state = state::file::FileBackend::new(self.settings.root.join("state"), self.history.clone(), settings);
-        StorageBackends { primary: Arc::new(self), state: Arc::new(state) }
+        StorageBackends {
+            primary: Arc::new(self),
+            state: Arc::new(state),
+        }
     }
 
     async fn call<T: Send + 'static>(&self, action: impl FnOnce(&mut Log) -> Result<T> + Send + 'static) -> Result<T> {
@@ -424,7 +432,10 @@ impl StorageBackend for JsonStorage {
                         let base = file.memory_size().saturating_mul(2).saturating_add(crate::manager::ENTRY_OVERHEAD);
                         memory.try_grow_to(base)?;
                         let reference = file.clone();
-                        let file = StagedFile { history: reference.position.history.clone(), id: reference.metadata.id.clone() };
+                        let file = StagedFile {
+                            history: reference.position.history.clone(),
+                            id: reference.metadata.id.clone(),
+                        };
                         let scratch = memory.clone();
                         self.file_read(file, memory, move |files, key| files.read(key, offset, maximum, Some(&reference), &scratch, base))
                             .await
@@ -541,7 +552,10 @@ impl StorageBackend for JsonStorage {
                         let [value] = checkpoint.as_slice() else {
                             return Err(format::invalid("checkpoint requires one value"));
                         };
-                        let file = StagedFile { history: value.session.history.clone(), id: value.session.id.clone() };
+                        let file = StagedFile {
+                            history: value.session.history.clone(),
+                            id: value.session.id.clone(),
+                        };
                         self.file(file, move |files, key| files.checkpoint(key, &checkpoint.as_slice()[0])).await
                     }
                 })

@@ -96,7 +96,11 @@ struct Budget {
 
 impl Budget {
     fn new() -> Self {
-        Self { bytes: size_of::<Schema>(), work: 0, settings: SchemaSettings::default() }
+        Self {
+            bytes: size_of::<Schema>(),
+            work: 0,
+            settings: SchemaSettings::default(),
+        }
     }
 
     fn charge(&mut self, bytes: usize, work: usize) -> Result<()> {
@@ -149,7 +153,9 @@ impl Node<'_> {
             6 => Kind::F64,
             7 => Kind::String,
             8 => Kind::Bytes,
-            9 => Kind::Message { definition: self.definition.ok_or_else(invalid)? },
+            9 => Kind::Message {
+                definition: self.definition.ok_or_else(invalid)?,
+            },
             _ => return Err(invalid()),
         };
         let cardinality = match self.cardinality {
@@ -159,7 +165,12 @@ impl Node<'_> {
             3 => Cardinality::Variant,
             _ => return Err(invalid()),
         };
-        Ok(Field { name: self.name.to_owned().into(), tag: self.tag, kind, cardinality })
+        Ok(Field {
+            name: self.name.to_owned().into(),
+            tag: self.tag,
+            kind,
+            cardinality,
+        })
     }
 }
 
@@ -183,7 +194,13 @@ impl<'a> From<&'a Field> for Node<'a> {
             Cardinality::Repeated => 2,
             Cardinality::Variant => 3,
         };
-        Self { name: &field.name, tag: field.tag, kind, cardinality, definition }
+        Self {
+            name: &field.name,
+            tag: field.tag,
+            kind,
+            cardinality,
+            definition,
+        }
     }
 }
 
@@ -286,7 +303,12 @@ impl PostcardValue for Schema {
 /* === Private Functions === */
 
 const fn described(name: &'static str, tag: u32, kind: declaration::Kind, cardinality: Cardinality) -> Field<Definition> {
-    Field { name: Cow::Borrowed(name), tag, kind, cardinality }
+    Field {
+        name: Cow::Borrowed(name),
+        tag,
+        kind,
+        cardinality,
+    }
 }
 
 fn postcard_node<'a>(input: &mut PostcardReader<'a>) -> Result<Node<'a>> {

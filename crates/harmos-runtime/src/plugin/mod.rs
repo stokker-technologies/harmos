@@ -137,7 +137,11 @@ impl PluginGraph {
                 None
             };
             if let Some(reason) = reason {
-                return Err(Error::ProviderSelection { artifact: selection.consumer, operation: selection.operation.to_string(), reason });
+                return Err(Error::ProviderSelection {
+                    artifact: selection.consumer,
+                    operation: selection.operation.to_string(),
+                    reason,
+                });
             }
             choices.insert(key, selection.provider);
         }
@@ -149,7 +153,10 @@ impl PluginGraph {
             if declared.contains_key(&id) {
                 return Err(Error::Duplicate { id });
             }
-            artifact.validate().map_err(|source| Error::Definition { artifact: id.clone(), source: Box::new(source) })?;
+            artifact.validate().map_err(|source| Error::Definition {
+                artifact: id.clone(),
+                source: Box::new(source),
+            })?;
             for operation in &artifact.contributions.operations {
                 let providers = operations.entry(operation.id.clone()).or_default();
                 providers.push(id.clone());
@@ -167,9 +174,10 @@ impl PluginGraph {
         for artifact in declared.values() {
             let mut edges = BTreeSet::new();
             for requirement in &artifact.requires {
-                let dependency = declared
-                    .get(&requirement.id)
-                    .ok_or_else(|| Error::Missing { artifact: artifact.id.clone(), dependency: requirement.id.clone() })?;
+                let dependency = declared.get(&requirement.id).ok_or_else(|| Error::Missing {
+                    artifact: artifact.id.clone(),
+                    dependency: requirement.id.clone(),
+                })?;
                 if !requirement.version.matches(&dependency.version) {
                     return Err(Error::Incompatible {
                         artifact: artifact.id.clone(),
@@ -211,7 +219,10 @@ impl PluginGraph {
                         });
                         let first = compatible.next();
                         if compatible.next().is_some() {
-                            return Err(Error::AmbiguousOperation { artifact: artifact.id.clone(), operation: operation.id.to_string() });
+                            return Err(Error::AmbiguousOperation {
+                                artifact: artifact.id.clone(),
+                                operation: operation.id.to_string(),
+                            });
                         }
                         first.unwrap_or(&providers[0])
                     };

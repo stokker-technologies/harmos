@@ -110,7 +110,12 @@ pub(crate) trait Recovering<A: Application>: Attached<A> {
 
 impl<A: Application> Default for Recovery<A> {
     fn default() -> Self {
-        Self { commits: Vec::new(), frontier: Position::ORIGIN, entries: Vec::new(), encoded: Vec::new() }
+        Self {
+            commits: Vec::new(),
+            frontier: Position::ORIGIN,
+            entries: Vec::new(),
+            encoded: Vec::new(),
+        }
     }
 }
 

@@ -76,7 +76,10 @@ impl<C> StorageManager<C> {
 
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
         if !self.cursor_saved().covers(required)? {
-            return Err(Error::InvalidInput { field: "state evidence dependency", reason: "required primary evidence is not durable" });
+            return Err(Error::InvalidInput {
+                field: "state evidence dependency",
+                reason: "required primary evidence is not durable",
+            });
         }
         Ok(())
     }
@@ -91,7 +94,13 @@ impl<C> StorageManager<C> {
         while let Error::Persistence { source } = cause {
             cause = source.as_ref();
         }
-        if !matches!(cause, Error::Backend { kind: crate::BackendFailure::Transient, .. }) {
+        if !matches!(
+            cause,
+            Error::Backend {
+                kind: crate::BackendFailure::Transient,
+                ..
+            }
+        ) {
             return false;
         }
         state.status.failure = None;
@@ -123,7 +132,10 @@ impl<C> StorageManager<C> {
     pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
         self.inner.primary.history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
-            return Err(Error::InvalidInput { field: "object retention", reason: "release exceeds durable frontier" });
+            return Err(Error::InvalidInput {
+                field: "object retention",
+                reason: "release exceeds durable frontier",
+            });
         }
         self.inner.bounded("primary.release_object_history", self.inner.primary.release_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
@@ -145,7 +157,10 @@ mod tests {
 
     fn storage() -> StorageManager {
         StorageManager::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             storage_settings(),
         )
         .unwrap()

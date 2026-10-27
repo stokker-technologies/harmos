@@ -271,7 +271,11 @@ fn entry(selection: &DirectorySelection, path: &Path) -> Result<Option<Directory
         return Ok(None);
     }
     crate::local::validate_local_path(path)?;
-    Ok(Some(DirectoryEntry { path: relative, directory: metadata.is_dir(), length: if metadata.is_file() { metadata.len() } else { 0 } }))
+    Ok(Some(DirectoryEntry {
+        path: relative,
+        directory: metadata.is_dir(),
+        length: if metadata.is_file() { metadata.len() } else { 0 },
+    }))
 }
 
 fn events(selection: &DirectorySelection, event: Event) -> Result<Vec<DirectoryEvent>> {
@@ -365,7 +369,13 @@ mod tests {
         };
         let renamed =
             Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both))).add_path(root.join("before")).add_path(root.join("after"));
-        assert_eq!(events(&selection, renamed).unwrap(), vec![DirectoryEvent::Renamed { from: "before".into(), to: "after".into() }]);
+        assert_eq!(
+            events(&selection, renamed).unwrap(),
+            vec![DirectoryEvent::Renamed {
+                from: "before".into(),
+                to: "after".into()
+            }]
+        );
         assert_eq!(events(&selection, Event::new(EventKind::Other)).unwrap(), vec![DirectoryEvent::RescanRequired]);
     }
 }

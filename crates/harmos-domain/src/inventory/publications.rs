@@ -154,10 +154,14 @@ impl NamedManifest {
             .streams
             .into_iter()
             .map(|stream| {
-                let row = Schema::from_named(&stream.row, declarations, settings)
-                    .map_err(|source| Error::Fields { id: stream.id.clone(), source: source.into() })?;
-                let row =
-                    super::retain_schema(row, settings).map_err(|source| Error::Fields { id: stream.id.clone(), source: source.into() })?;
+                let row = Schema::from_named(&stream.row, declarations, settings).map_err(|source| Error::Fields {
+                    id: stream.id.clone(),
+                    source: source.into(),
+                })?;
+                let row = super::retain_schema(row, settings).map_err(|source| Error::Fields {
+                    id: stream.id.clone(),
+                    source: source.into(),
+                })?;
                 let stream = StreamDeclaration {
                     metadata: stream.metadata,
                     row_metadata: stream.row_metadata,
@@ -170,7 +174,11 @@ impl NamedManifest {
                 Ok(stream)
             })
             .collect::<Result<_, Error>>()?;
-        Ok(Manifest { facility: self.facility, owner: self.owner, streams })
+        Ok(Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            streams,
+        })
     }
 }
 
@@ -205,7 +213,14 @@ impl Entry {
 /* === Public Functions === */
 
 pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry; N] {
-    let mut merged = [Entry { id: "", metadata_json: "", row_metadata_json: "[]", schema: 0, window: 0, row: Definition::of::<()>() }; N];
+    let mut merged = [Entry {
+        id: "",
+        metadata_json: "",
+        row_metadata_json: "[]",
+        schema: 0,
+        window: 0,
+        row: Definition::of::<()>(),
+    }; N];
     let mut index = 0;
     while index < named.len() {
         merged[index] = named[index];
@@ -256,9 +271,15 @@ pub const fn require_subset(outputs: &[&[Entry]], grants: &[Entry]) {
 
 pub fn select(manifests: Vec<Manifest>, facility: &str, owner: &str) -> Result<Vec<StreamDeclaration>, Error> {
     let mut matching = manifests.into_iter().filter(|m| m.facility == facility && m.owner == owner);
-    let manifest = matching.next().ok_or_else(|| Error::Missing { facility: facility.into(), owner: owner.into() })?;
+    let manifest = matching.next().ok_or_else(|| Error::Missing {
+        facility: facility.into(),
+        owner: owner.into(),
+    })?;
     if matching.next().is_some() {
-        return Err(Error::Duplicate { facility: facility.into(), owner: owner.into() });
+        return Err(Error::Duplicate {
+            facility: facility.into(),
+            owner: owner.into(),
+        });
     }
     let mut streams = BTreeMap::new();
     for stream in manifest.streams {
@@ -278,19 +299,25 @@ pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Resul
             let id = crate::Identifier::new(entry.id).map_err(|_| Error::InvalidId { id: entry.id.to_owned() })?;
             crate::Metadata::new(id, entry.id, None)
         } else {
-            serde_json::from_str(entry.metadata_json)
-                .map_err(|source| Error::Metadata { id: entry.id.to_owned(), reason: source.to_string() })?
+            serde_json::from_str(entry.metadata_json).map_err(|source| Error::Metadata {
+                id: entry.id.to_owned(),
+                reason: source.to_string(),
+            })?
         };
-        let row_metadata = serde_json::from_str(entry.row_metadata_json)
-            .map_err(|source| Error::Metadata { id: entry.id.to_owned(), reason: source.to_string() })?;
+        let row_metadata = serde_json::from_str(entry.row_metadata_json).map_err(|source| Error::Metadata {
+            id: entry.id.to_owned(),
+            reason: source.to_string(),
+        })?;
         let stream = StreamDeclaration {
             metadata,
             row_metadata,
             id: entry.id.to_owned(),
             schema: entry.schema,
             window: entry.window,
-            row: Schema::from_declaration(entry.row, &SchemaSettings::default())
-                .map_err(|source| Error::Fields { id: entry.id.to_owned(), source: source.into() })?,
+            row: Schema::from_declaration(entry.row, &SchemaSettings::default()).map_err(|source| Error::Fields {
+                id: entry.id.to_owned(),
+                source: source.into(),
+            })?,
         };
         validate(&stream)?;
         if authored.insert(entry.id, stream).is_some() {
@@ -321,9 +348,15 @@ pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
         return Err(Error::ZeroWindow { id: stream.id.clone() });
     }
     if stream.metadata.identifier.as_str() != stream.id {
-        return Err(Error::Metadata { id: stream.id.clone(), reason: "identifier differs from stream identity".into() });
+        return Err(Error::Metadata {
+            id: stream.id.clone(),
+            reason: "identifier differs from stream identity".into(),
+        });
     }
-    stream.row.prepare(&SchemaSettings::default()).map_err(|source| Error::Fields { id: stream.id.clone(), source: source.into() })?;
+    stream.row.prepare(&SchemaSettings::default()).map_err(|source| Error::Fields {
+        id: stream.id.clone(),
+        source: source.into(),
+    })?;
     let mut described = std::collections::BTreeSet::new();
     for field in &stream.row_metadata {
         let name = field.metadata.identifier.as_str();

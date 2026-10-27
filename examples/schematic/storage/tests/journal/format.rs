@@ -194,13 +194,20 @@ fn contract_scenario() {
                     builder
                         .recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
                         .attach(Jsonl::<Bank>::open(&mirror).expect("a fresh mirror"))
-                        .attach(Witnesses { seen: Arc::clone(&witnesses), resume: Position::ORIGIN })
+                        .attach(Witnesses {
+                            seen: Arc::clone(&witnesses),
+                            resume: Position::ORIGIN,
+                        })
                 })
                 .await;
 
                 assert_eq!(
                     ledger(&recovered).await,
-                    Ledger { balance: 3, applications: 3, payouts: Vec::new() },
+                    Ledger {
+                        balance: 3,
+                        applications: 3,
+                        payouts: Vec::new()
+                    },
                     "every golden entry decodes and applies through the current shape"
                 );
                 assert_eq!(recovered.state.applied(), Position(4));

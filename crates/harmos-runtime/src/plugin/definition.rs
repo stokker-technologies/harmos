@@ -190,7 +190,9 @@ impl PluginArtifact {
                 }
                 Ok(())
             }
-            Self::Sidecar { path, arguments, directory, environment, .. } => {
+            Self::Sidecar {
+                path, arguments, directory, environment, ..
+            } => {
                 if !path.is_absolute() || path.as_os_str().as_encoded_bytes().contains(&0) {
                     return Err(invalid("artifact path", "path must be absolute and contain no NUL"));
                 }
@@ -331,16 +333,27 @@ impl PluginDefinition {
         let mut namespaces = BTreeSet::new();
         for registration in &self.contributions.registrations {
             if !artifact_subset(&registration.namespace) {
-                return Err(RegistrationError::InvalidNamespace { namespace: registration.namespace.clone() }.into());
+                return Err(RegistrationError::InvalidNamespace {
+                    namespace: registration.namespace.clone(),
+                }
+                .into());
             }
             if registration.schema == 0 {
-                return Err(RegistrationError::ZeroSchema { namespace: registration.namespace.clone() }.into());
+                return Err(RegistrationError::ZeroSchema {
+                    namespace: registration.namespace.clone(),
+                }
+                .into());
             }
             if !namespaces.insert(&registration.namespace) {
-                return Err(RegistrationError::DuplicateNamespace { namespace: registration.namespace.clone() }.into());
+                return Err(RegistrationError::DuplicateNamespace {
+                    namespace: registration.namespace.clone(),
+                }
+                .into());
             }
-            harmos_domain::validate_config(&registration.payload)
-                .map_err(|source| PluginDefinitionError::RegistrationPayload { namespace: registration.namespace.clone(), source })?;
+            harmos_domain::validate_config(&registration.payload).map_err(|source| PluginDefinitionError::RegistrationPayload {
+                namespace: registration.namespace.clone(),
+                source,
+            })?;
         }
 
         self.contributions.streams.sort_by(|a, b| a.id.cmp(&b.id));

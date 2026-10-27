@@ -60,10 +60,20 @@ struct Gate {
 
 impl Store {
     fn new() -> Self {
-        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
+        Self {
+            data: Arc::new(Data::new(history())),
+            recovery: Arc::new(Recovery::new(history())),
+        }
     }
     fn manager(&self) -> StorageManager {
-        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config()).unwrap()
+        StorageManager::new(
+            StorageBackends {
+                primary: self.data.clone(),
+                state: self.recovery.clone(),
+            },
+            config(),
+        )
+        .unwrap()
     }
     async fn seed(&self) {
         let storage = self.manager();
@@ -100,11 +110,17 @@ fn builder() -> Builder<Bank> {
 }
 
 fn limits() -> ReadLimits {
-    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() }
+    ReadLimits {
+        rows: NonZeroUsize::new(1).unwrap(),
+        bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+    }
 }
 
 fn failure() -> Error {
-    Error::InvalidInput { field: "reconciliation", reason: "controlled failure" }
+    Error::InvalidInput {
+        field: "reconciliation",
+        reason: "controlled failure",
+    }
 }
 
 async fn restore(
@@ -126,7 +142,10 @@ async fn restore(
                 source_end: None,
             }),
             transforms: vec![Transform::Project(Project {
-                fields: vec![Projection { field: "payload.value".into(), name: "value".into() }],
+                fields: vec![Projection {
+                    field: "payload.value".into(),
+                    name: "value".into(),
+                }],
             })],
             slice: RowSlice::default(),
         })

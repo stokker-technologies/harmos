@@ -65,7 +65,11 @@ impl Driving {
         let mut transports = self.transports.lock().expect("plugin transport owner is healthy");
         assert!(!transports.contains_key(&key), "plugin generation has one physical transport");
         transports.insert(key.clone(), poller.clone());
-        Lease { transports: self.transports.clone(), key, poller }
+        Lease {
+            transports: self.transports.clone(),
+            key,
+            poller,
+        }
     }
 
     pub(crate) fn tick(&self, context: &mut Context<'_>) {

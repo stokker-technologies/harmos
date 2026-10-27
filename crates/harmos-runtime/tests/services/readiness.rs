@@ -258,7 +258,10 @@ async fn activated_service_starting() {
     runtime
         .operations
         .register_service(
-            harmos_runtime::services::ServiceDefinition { id: "tenant".into(), policy: harmos_runtime::services::POLICY },
+            harmos_runtime::services::ServiceDefinition {
+                id: "tenant".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
             |_: Arc<()>| {
                 |context: harmos_runtime::services::ServiceContext<Bank>| async move {
                     let mut context = context;

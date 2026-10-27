@@ -59,7 +59,10 @@ impl Transaction<Schematic> for RenameNet {
 
 impl Invert<Schematic> for RenameNet {
     fn invert(&self, before: &Schematic) -> Self {
-        Self { net: self.net, to: before.net(self.net).name.clone() }
+        Self {
+            net: self.net,
+            to: before.net(self.net).name.clone(),
+        }
     }
 }
 

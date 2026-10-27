@@ -413,7 +413,11 @@ fn closing(attribute: TokenStream) -> Result<Closing, Error> {
         }
     }
 
-    Ok(Closing { state, error, harmos: HarmosPath::resolve(harmos_path) })
+    Ok(Closing {
+        state,
+        error,
+        harmos: HarmosPath::resolve(harmos_path),
+    })
 }
 
 fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
@@ -430,7 +434,10 @@ fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
         let [field] = &fields.unnamed.iter().collect::<Vec<_>>()[..] else {
             return Err(Error::new(variant.span(), "a catalog variant wraps exactly one definition type"));
         };
-        members.push(Member { name: variant.ident.clone(), definition: field.ty.clone() });
+        members.push(Member {
+            name: variant.ident.clone(),
+            definition: field.ty.clone(),
+        });
     }
 
     if members.is_empty() {

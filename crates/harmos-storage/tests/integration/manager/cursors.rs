@@ -50,7 +50,10 @@ async fn foreign_cursor_refused() {
     foreign = first.clone();
     foreign.history.epoch = Identifier::new("other-epoch").unwrap();
     assert!(matches!(f.storage.flush_until(&foreign).await, Err(Error::Domain(harmos_domain::Error::DifferentHistory))));
-    let future = StorageCursor { sequence: first.sequence + 1, ..first.clone() };
+    let future = StorageCursor {
+        sequence: first.sequence + 1,
+        ..first.clone()
+    };
     assert!(matches!(f.storage.flush_until(&future).await, Err(Error::InvalidInput { field: "storage cursor", .. })));
     assert!(f.data.control.writes.lock().unwrap().is_empty());
     assert_eq!(f.storage.cursor_accepted(), first);

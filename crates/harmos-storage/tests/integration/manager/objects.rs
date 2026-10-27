@@ -182,15 +182,23 @@ fn limit() -> NonZeroUsize {
 }
 
 fn document(status: &str) -> Document {
-    Document { id: "document-1".into(), status: status.into() }
+    Document {
+        id: "document-1".into(),
+        status: status.into(),
+    }
 }
 
 #[tokio::test]
 async fn numeric_keys_roundtrip() {
     let primary = Arc::new(Data::<NumericObjects>::with_catalog(history()));
-    let storage =
-        StorageManager::<NumericObjects>::new(StorageBackends { primary, state: Arc::new(Recovery::new(history())) }, storage_settings())
-            .unwrap();
+    let storage = StorageManager::<NumericObjects>::new(
+        StorageBackends {
+            primary,
+            state: Arc::new(Recovery::new(history())),
+        },
+        storage_settings(),
+    )
+    .unwrap();
     super::fixture::start(&storage).await;
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
@@ -228,7 +236,10 @@ fn updates_keep_identity() {
 
 #[test]
 fn decode_requires_version() {
-    let old = LegacyDocument { id: "document-1".into(), status: "archived".into() };
+    let old = LegacyDocument {
+        id: "document-1".into(),
+        status: "archived".into(),
+    };
     let value = Objects::encode(&old, limit()).unwrap();
     Objects::validate_value(&value, limit()).unwrap();
     assert_eq!(Objects::decode::<LegacyDocument>(&value, limit()).unwrap(), old);
@@ -277,8 +288,13 @@ fn payload_limit_bounds() {
 fn ambiguous_catalog_refused() {
     let primary = Arc::new(Data::<Ambiguous>::with_catalog(history()));
     let recovery = Arc::new(Recovery::new(history()));
-    let result =
-        StorageManager::<Ambiguous>::new(StorageBackends { primary: primary.clone(), state: recovery.clone() }, storage_settings());
+    let result = StorageManager::<Ambiguous>::new(
+        StorageBackends {
+            primary: primary.clone(),
+            state: recovery.clone(),
+        },
+        storage_settings(),
+    );
     assert!(
         matches!(&result, Err(harmos_storage::Error::Domain(harmos_domain::Error::InvalidInput { field: "object catalog", .. }))),
         "{:?}",

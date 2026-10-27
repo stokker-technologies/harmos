@@ -56,9 +56,10 @@ pub struct SchemaInfo {
 impl SchemaInput {
     pub fn new(key: SchemaKey, graph: impl Into<Arc<Schema>>) -> Result<Self> {
         let graph = graph.into();
-        graph
-            .prepare(&crate::config::SchemaSettings::default())
-            .map_err(|_| Error::InvalidInput { field: "storage schema", reason: "invalid finite schema graph" })?;
+        graph.prepare(&crate::config::SchemaSettings::default()).map_err(|_| Error::InvalidInput {
+            field: "storage schema",
+            reason: "invalid finite schema graph",
+        })?;
         Ok(Self { key, graph })
     }
 

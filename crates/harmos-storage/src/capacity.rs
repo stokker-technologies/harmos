@@ -177,13 +177,25 @@ impl From<Refusal> for Error {
 
 impl Reservation {
     pub(super) fn empty(inner: &Arc<Inner>, pool: Pool, held: &Held) -> Self {
-        Self { inner: Arc::clone(inner), pool, bytes: 0, held: held.clone(), lifecycle: false }
+        Self {
+            inner: Arc::clone(inner),
+            pool,
+            bytes: 0,
+            held: held.clone(),
+            lifecycle: false,
+        }
     }
 
     pub(super) fn charged(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Self { inner: Arc::clone(inner), pool, bytes, held, lifecycle: false }
+        Self {
+            inner: Arc::clone(inner),
+            pool,
+            bytes,
+            held,
+            lifecycle: false,
+        }
     }
 
     pub(super) fn charged_lifecycle(inner: &Arc<Inner>, pool: Pool, bytes: usize) -> Self {
@@ -200,7 +212,13 @@ impl Reservation {
         drop(state);
         let held = Held::default();
         held.0.fetch_add(bytes, Ordering::SeqCst);
-        Ok(Self { inner: Arc::clone(inner), pool, bytes, held, lifecycle: true })
+        Ok(Self {
+            inner: Arc::clone(inner),
+            pool,
+            bytes,
+            held,
+            lifecycle: true,
+        })
     }
 
     pub(super) fn try_new(inner: &Arc<Inner>, pool: Pool, held: &Held, bytes: usize) -> std::result::Result<Self, Refusal> {
@@ -301,7 +319,13 @@ impl Reservation {
     pub(super) fn split(&mut self, bytes: usize) -> Self {
         assert!(bytes <= self.bytes, "split exceeds reservation");
         self.bytes -= bytes;
-        Self { inner: Arc::clone(&self.inner), pool: self.pool, bytes, held: self.held.clone(), lifecycle: self.lifecycle }
+        Self {
+            inner: Arc::clone(&self.inner),
+            pool: self.pool,
+            bytes,
+            held: self.held.clone(),
+            lifecycle: self.lifecycle,
+        }
     }
 
     pub(super) fn retain(self) -> RetainedMemory {
@@ -374,7 +398,12 @@ impl Waiting {
         let id = growers.next;
         growers.next += 1;
         growers.waiting.insert(id, Grower { held: held.clone(), need });
-        Some(Self { inner: Arc::clone(inner), pool, id, active: true })
+        Some(Self {
+            inner: Arc::clone(inner),
+            pool,
+            id,
+            active: true,
+        })
     }
 
     // Admission And Departure Share The State Lock: A Running Owner Must Never
@@ -475,7 +504,10 @@ mod tests {
         settings.budget.read_memory_bytes = NonZeroUsize::new(100).unwrap();
         settings.response.batch_bytes = NonZeroUsize::new(40).unwrap();
         let storage = crate::StorageManager::<()>::new(
-            crate::StorageBackends { primary: Arc::new(Data::<()>::new(history())), state: Arc::new(Recovery::new(history())) },
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
             settings,
         )
         .unwrap();

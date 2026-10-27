@@ -55,7 +55,10 @@ fn benchmarks(c: &mut criterion::Criterion) {
     let mut codec = c.benchmark_group("streams/native_codec");
     codec.sample_size(20);
     for size in [64 * 1024, 1024 * 1024] {
-        let row = Payload { sequence: 1, bytes: (0..size).map(|index| (index % 251) as u8).collect() };
+        let row = Payload {
+            sequence: 1,
+            bytes: (0..size).map(|index| (index % 251) as u8).collect(),
+        };
         let payload = row.encode();
         let command = harmos_sdk::operations::WireCommand::Prepare {
             invocation: u64::MAX,

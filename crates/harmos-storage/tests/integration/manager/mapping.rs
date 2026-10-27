@@ -71,7 +71,10 @@ impl Mapped {
         // Start Storage Over A Real Journal And File State Root.
         let directory = tempfile::tempdir().unwrap();
         let data = JsonStorage::new(
-            JsonStorageSettings { root: directory.path().to_path_buf(), max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap() },
+            JsonStorageSettings {
+                root: directory.path().to_path_buf(),
+                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+            },
             history(),
         );
         let backends = data.into_backends(state_settings());
@@ -79,8 +82,11 @@ impl Mapped {
         super::fixture::start(&storage).await;
 
         // Declare The Schema And Save One Record Per Payload.
-        let schema =
-            SchemaKey { id: Identifier::new(id).unwrap(), version: NonZeroU32::MIN, payload_encoding: PayloadEncoding::PostcardV1 };
+        let schema = SchemaKey {
+            id: Identifier::new(id).unwrap(),
+            version: NonZeroU32::MIN,
+            payload_encoding: PayloadEncoding::PostcardV1,
+        };
         let graph =
             harmos_domain::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_domain::config::SchemaSettings::default())
                 .unwrap();
@@ -100,7 +106,12 @@ impl Mapped {
                 .unwrap();
         }
         let at = storage.flush().await.unwrap();
-        Self { _directory: directory, storage, schema, at }
+        Self {
+            _directory: directory,
+            storage,
+            schema,
+            at,
+        }
     }
 
     fn query(&self, item: Option<&str>) -> Query {
@@ -133,8 +144,16 @@ impl Mapped {
 
 fn payloads() -> [Payload; 2] {
     [
-        Payload { label: None, values: vec![0.0, -1.0, 2.0], event: Event::Reading(-7) },
-        Payload { label: Some("second".into()), values: vec![], event: Event::Empty },
+        Payload {
+            label: None,
+            values: vec![0.0, -1.0, 2.0],
+            event: Event::Reading(-7),
+        },
+        Payload {
+            label: Some("second".into()),
+            values: vec![],
+            event: Event::Empty,
+        },
     ]
 }
 

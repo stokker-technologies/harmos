@@ -84,7 +84,12 @@ impl<A: Application> RecordManager<A> {
         if after > self.state.applied() {
             return Err(Error::FrontierAhead);
         }
-        let mut bindings = PluginListenerBindings { records: self, scope, operations, entries: Vec::new() };
+        let mut bindings = PluginListenerBindings {
+            records: self,
+            scope,
+            operations,
+            entries: Vec::new(),
+        };
         configure(&mut bindings)?;
         let expected = scope.listeners().iter().filter(|listener| matches!(listener.source(), Source::Record { .. })).count();
         if bindings.entries.len() != expected {
@@ -94,16 +99,24 @@ impl<A: Application> RecordManager<A> {
             });
         }
         if expected == 0 {
-            return Ok(PluginListenerRegistration { registry: Arc::clone(&self.schemas), listening: None });
+            return Ok(PluginListenerRegistration {
+                registry: Arc::clone(&self.schemas),
+                listening: None,
+            });
         }
         bindings.entries.sort_by_key(|entry| entry.ordinal);
         let mut registry = self.schemas.listeners.lock().expect("record listener registry poisoned");
         registry.retain(|_, listening| !listening.delivery.cleaned());
         if registry.contains_key(scope.owner()) {
-            return Err(Error::AlreadyRegistered { domain: "record listeners", name: scope.owner().to_owned() });
+            return Err(Error::AlreadyRegistered {
+                domain: "record listeners",
+                name: scope.owner().to_owned(),
+            });
         }
         if registry.len() >= REGISTRATIONS {
-            return Err(Error::ResourceExhausted { resource: "record listener registrations" });
+            return Err(Error::ResourceExhausted {
+                resource: "record listener registrations",
+            });
         }
         let frontier = Arc::new(AtomicU64::new(after.0));
         let delivery = Listener::spawn(scope, {
@@ -115,7 +128,10 @@ impl<A: Application> RecordManager<A> {
         let listening = Arc::new(Listening { delivery, frontier });
         registry.insert(scope.owner().to_owned(), Arc::clone(&listening));
         drop(registry);
-        let mut registration = PluginListenerRegistration { registry: Arc::clone(&self.schemas), listening: Some(listening) };
+        let mut registration = PluginListenerRegistration {
+            registry: Arc::clone(&self.schemas),
+            listening: Some(listening),
+        };
         // The Receipt Is Retained Before Publishing Its Readiness Contribution.
         if let Err(error) = scope.bind_record_listeners() {
             registration.stop();
@@ -168,7 +184,10 @@ impl<A: Application> PluginListenerBindings<'_, A> {
     {
         let (id, version) = R::definition();
         if !self.records.catalog.has_record(&id, version).map_err(|source| Error::RecordDeclaration { source })? {
-            return Err(Error::NotRegistered { domain: "native listener record", name: id.to_string() });
+            return Err(Error::NotRegistered {
+                domain: "native listener record",
+                name: id.to_string(),
+            });
         }
         let mut selected = false;
         for (ordinal, listener) in self.scope.listeners().iter().enumerate() {
@@ -191,7 +210,10 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 });
             }
             if self.entries.iter().any(|entry| entry.ordinal == ordinal) {
-                return Err(Error::AlreadyRegistered { domain: "record listener source", name: listener.id().to_string() });
+                return Err(Error::AlreadyRegistered {
+                    domain: "record listener source",
+                    name: listener.id().to_string(),
+                });
             }
             self.entries.push(Binding {
                 ordinal,
@@ -201,7 +223,10 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             selected = true;
         }
         if !selected {
-            return Err(Error::NotRegistered { domain: "record listener source", name: id.to_string() });
+            return Err(Error::NotRegistered {
+                domain: "record listener source",
+                name: id.to_string(),
+            });
         }
         Ok(())
     }
@@ -277,8 +302,10 @@ where
             reason: "projection differs from the original native catalog member",
         });
     }
-    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row)
-        .map_err(|source| Error::OperationFailed { operation: callback.contract().operation().id.to_string(), source: Arc::new(source) })?;
+    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
+        operation: callback.contract().operation().id.to_string(),
+        source: Arc::new(source),
+    })?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "record callback encoding" })?;
     callback
         .submit_with(bytes, |budget| {

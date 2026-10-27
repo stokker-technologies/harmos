@@ -104,7 +104,13 @@ impl DirectoryReader {
         }
         .await
         .map_err(join_error)??;
-        Ok(Self { context: crate::execution::Context::current(), inner, state: Arc::new(Mutex::new(scan)), pending: None, cancelled })
+        Ok(Self {
+            context: crate::execution::Context::current(),
+            inner,
+            state: Arc::new(Mutex::new(scan)),
+            pending: None,
+            cancelled,
+        })
     }
 
     pub async fn next(&mut self) -> Result<Option<ReadBatch<DirectoryEntry>>> {
@@ -194,7 +200,11 @@ impl Scan {
                 continue;
             }
             self.entries += 1;
-            let entry = DirectoryEntry { path, directory: metadata.is_dir(), length: if metadata.is_file() { metadata.len() } else { 0 } };
+            let entry = DirectoryEntry {
+                path,
+                directory: metadata.is_dir(),
+                length: if metadata.is_file() { metadata.len() } else { 0 },
+            };
             return Ok(Some((entry, memory)));
         }
     }

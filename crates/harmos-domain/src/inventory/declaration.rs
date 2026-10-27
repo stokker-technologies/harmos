@@ -243,7 +243,19 @@ impl Declaration {
                 (Vec::new(), CarrierSection::Guest)
             }
         };
-        Ok(Self { id, version, description, config, operations, contracts, listeners, streams, observers, sections, carrier })
+        Ok(Self {
+            id,
+            version,
+            description,
+            config,
+            operations,
+            contracts,
+            listeners,
+            streams,
+            observers,
+            sections,
+            carrier,
+        })
     }
 
     pub fn section(&self, namespace: &str) -> Option<&Section> {

@@ -69,8 +69,10 @@ impl<C> StorageManager<C> {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            let outcome =
-                MutationValue::Producer(FileProducer { session: FileSession { generation: next, ..token.clone() }, length: file.length });
+            let outcome = MutationValue::Producer(FileProducer {
+                session: FileSession { generation: next, ..token.clone() },
+                length: file.length,
+            });
             reserve(state, mutation, fingerprint, outcome.memory_size(), 0, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Resume });

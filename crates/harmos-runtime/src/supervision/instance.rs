@@ -341,7 +341,10 @@ impl Instance {
     #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn depend_on(self: &Arc<Self>, provider: &Arc<Self>, retirement: bool) -> crate::Result<()> {
         if Arc::ptr_eq(self, provider) {
-            return Err(Error::InvalidInput { field: "physical provider", reason: "an instance cannot retain itself" });
+            return Err(Error::InvalidInput {
+                field: "physical provider",
+                reason: "an instance cannot retain itself",
+            });
         }
         let mut providers = self.providers.lock().expect("instance providers are healthy");
         if providers.iter().any(|held| Arc::ptr_eq(&held.provider, provider)) {

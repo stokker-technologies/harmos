@@ -186,7 +186,10 @@ impl Log {
     }
 
     pub fn cursor(&self) -> StorageCursor {
-        StorageCursor { history: self.history.clone(), sequence: self.saved }
+        StorageCursor {
+            history: self.history.clone(),
+            sequence: self.saved,
+        }
     }
 
     pub fn snapshot(&mut self, at: StorageCursor) -> Result<BackendSnapshot> {
@@ -195,7 +198,10 @@ impl Log {
             return Err(format::invalid("snapshot exceeds saved frontier"));
         }
         if at.sequence < self.pruned_through {
-            return Err(crate::Error::Gap { requested: at.sequence, available: self.pruned_through });
+            return Err(crate::Error::Gap {
+                requested: at.sequence,
+                available: self.pruned_through,
+            });
         }
         let mut token = vec![0; 16];
         getrandom::fill(&mut token)
@@ -481,7 +487,11 @@ impl Row for ObjectEntry {
         serde_json::from_slice(bytes).map_err(format::json)
     }
     fn identity(&self) -> Option<StoredIdentity> {
-        Some(StoredIdentity::Object { schema: self.value.schema.clone(), key: self.value.item.clone(), first: self.position.clone() })
+        Some(StoredIdentity::Object {
+            schema: self.value.schema.clone(),
+            key: self.value.item.clone(),
+            first: self.position.clone(),
+        })
     }
     fn same_identity(&self, identity: &StoredIdentity) -> bool {
         matches!(identity, StoredIdentity::Object {schema,key,..} if schema == &self.value.schema && key == &self.value.item)
@@ -506,7 +516,12 @@ impl Row for FileReference {
 
 impl<'a> Read<'a> {
     pub(super) fn new(memory: &'a RetainedMemory, base: usize) -> Self {
-        Self { memory, base, retained: Cell::new(0), admitted: Cell::new(memory.bytes()) }
+        Self {
+            memory,
+            base,
+            retained: Cell::new(0),
+            admitted: Cell::new(memory.bytes()),
+        }
     }
 
     pub(super) fn admit(&self, bytes: usize) -> Result<usize> {

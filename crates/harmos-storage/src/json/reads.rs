@@ -117,7 +117,10 @@ impl Log {
         let generation = self.pin(snapshot)?;
         let reclaimed = self.pruned.iter().any(|(position, pruned)| *pruned <= generation && *position > page.after);
         if selection.versions == ObjectVersions::Revisions && reclaimed {
-            return Err(crate::Error::Gap { requested: page.after + 1, available: self.pruned_through + 1 });
+            return Err(crate::Error::Gap {
+                requested: page.after + 1,
+                available: self.pruned_through + 1,
+            });
         }
         let read = Read::new(memory, base);
         self.scan_read(snapshot.at.sequence, generation, page, &read, |row: &ObjectEntry, live| {
@@ -236,7 +239,10 @@ impl Log {
         for sequence in remove {
             positions.insert(sequence, generation);
         }
-        let pruning = Pruning { through: self.pruned_through.max(through.sequence), positions };
+        let pruning = Pruning {
+            through: self.pruned_through.max(through.sequence),
+            positions,
+        };
         format::store(&self.root.join("pruned.json"), &pruning, self.maximum)?;
         self.pruned = pruning.positions;
         self.pruned_through = pruning.through;
