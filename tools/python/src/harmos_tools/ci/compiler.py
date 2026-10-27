@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:30ee338d94f1a792b811e63041d5b719eee190446a7845d4957138a8f591ba28
+# Rendered by stkr project update from templates/python/ci/compiler.py; sha256:df0c3d5bc4e66942f699f705be263d38f85d73bb7d06509116642afe5a88d35c
 # ***
 #
 # Harmos
@@ -125,12 +125,15 @@ def _execute(
     write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
     samples: dict[str, str] = {}
     tail: collections.deque[str] = collections.deque(maxlen=TAIL)
-    diagnostics = os.environ.get("STKR_SCCACHE_DIAGNOSTICS") == "1"
+    # Native Debug Re-Runs (RUNNER_DEBUG) Or The Explicit Switch Add The Arguments Of Every Missed Compilation.
+    diagnostics = "1" in (os.environ.get("STKR_SCCACHE_DIAGNOSTICS"), os.environ.get("RUNNER_DEBUG"))
+    keys: dict[str, str] = {}
+    arguments: dict[str, str] = {}
     server_environment = environment | {
         "SCCACHE_START_SERVER": "1",
         "SCCACHE_NO_DAEMON": "1",
         "SCCACHE_SERVER_PORT": "0",
-        "SCCACHE_LOG": "warn,sccache::server=debug" + (",sccache::compiler::compiler=debug" if diagnostics else ""),
+        "SCCACHE_LOG": "warn,sccache::server=debug,sccache::compiler::compiler=debug",
         "SCCACHE_IDLE_TIMEOUT": "0",
     }
     # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
@@ -155,8 +158,21 @@ def _execute(
                     endpoint.put(match[1])
                 if re.search(r"\b(WARN|ERROR)\b", line[:80]):
                     tail.append(line.rstrip())
-                if diagnostics and re.search(r"\]: (Cache (hit|miss|none|recache) in |Hash key: |get_cached_or_compile: )", line):
-                    print("sccache diagnostics: " + _redact(line.rstrip()), flush=True)
+                # Each Miss Prints Its Output And Hash Key, So Keys That Change Between Runs Of One Tree Are Visible.
+                compilation = re.search(r"\[([^\]]+)\]: (Hash key: (\S+)|get_cached_or_compile: (.*)|Cache (miss|hit|none) in )", line)
+                if compilation is None:
+                    continue
+                output, key, command, outcome = compilation[1], compilation[3], compilation[4], compilation[5]
+                if key:
+                    keys[output] = key
+                elif command:
+                    arguments[output] = command.rstrip()
+                else:
+                    key, command = keys.pop(output, "unavailable"), arguments.pop(output, "unavailable")
+                    if outcome == "miss":
+                        print(f"sccache miss: {output} key={key}", flush=True)
+                        if diagnostics:
+                            print("sccache miss arguments: " + _redact(command), flush=True)
             if endpoint.empty():
                 endpoint.put("")
 
