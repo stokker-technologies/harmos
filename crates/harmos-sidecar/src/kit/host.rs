@@ -428,7 +428,7 @@ impl Supervisor {
     // its stamp; each following row carries its delta from its predecessor,
     // and a stamp no delta can express starts the next call. A call carries
     // at most one window of rows, so the host never evicts its own rows.
-    fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
+    pub(super) fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self, rows: &[Vec<u8>], stamps: &[Option<i64>], context: Option<&str>, empty_envelope: usize,
         send: impl FnOnce(harmos_domain::operations::streams::Publish) -> Result<(), E>,
     ) -> Result<usize, E> {

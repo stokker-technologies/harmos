@@ -73,13 +73,19 @@ impl From<PublishError> for harmos_domain::Refusal {
 
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
-        Self { supervisor: self.supervisor.clone(), _plugin: PhantomData }
+        Self {
+            supervisor: self.supervisor.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
 impl Supervisor {
     pub fn publisher<P: Declared>(&self) -> Publisher<P> {
-        Publisher { supervisor: self.clone(), _plugin: PhantomData }
+        Publisher {
+            supervisor: self.clone(),
+            _plugin: PhantomData,
+        }
     }
 }
 
@@ -105,7 +111,13 @@ impl<P: Declared> Publisher<P> {
     }
 
     pub fn batch<S: StreamSpec>(&self) -> Batch<S> {
-        Batch { payloads: Vec::new(), stamps: Vec::new(), latest: None, clock: self.supervisor.clock(), stream: PhantomData }
+        Batch {
+            payloads: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: self.supervisor.clock(),
+            stream: PhantomData,
+        }
     }
 
     pub async fn publish_batch_on<S: StreamSpec>(&self, batch: &Batch<S>) -> Result<(), PublishError> {
@@ -233,7 +245,13 @@ mod tests {
 
     #[test]
     fn clock_never_regresses() {
-        let mut batch = Batch::<Samples> { payloads: Vec::new(), stamps: Vec::new(), latest: None, clock: || None, stream: PhantomData };
+        let mut batch = Batch::<Samples> {
+            payloads: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: || None,
+            stream: PhantomData,
+        };
         batch.push(0);
         batch.clock = || Some(100);
         batch.push(1);
@@ -269,5 +287,62 @@ mod tests {
         batch.clock = || Some(80);
         batch.push(3);
         assert_eq!(batch.stamps, [Some(100), Some(90), Some(95), Some(100)]);
+    }
+
+    #[test]
+    fn publication_never_reencodes_rows() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Counted(Arc<AtomicUsize>);
+        impl Message for Counted {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                7_u8.encode_to_vec()
+            }
+            fn encoded_len(&self) -> usize {
+                panic!("publication must size retained bytes");
+            }
+            fn decode(_: &[u8]) -> Result<Self, harmos_domain::MessageError> {
+                panic!("publication must forward retained bytes");
+            }
+        }
+        struct Stream;
+        impl StreamSpec for Stream {
+            type Row = Counted;
+            const ID: &'static str = "batch.once";
+            const VERSION: u32 = 1;
+            const WINDOW: usize = 8;
+        }
+
+        let encodes = Arc::new(AtomicUsize::new(0));
+        let mut batch = Batch::<Stream> {
+            payloads: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: || None,
+            stream: PhantomData,
+        };
+        batch.push_at(Counted(Arc::clone(&encodes)), 100);
+        batch.push_encoded_at(8_u8.encode_to_vec(), 90);
+
+        let (outgoing, _receiver) = tokio::sync::mpsc::channel(1);
+        let host = super::Supervisor::new(outgoing, || None);
+        let taken = host
+            .with_publication::<Stream, super::CallError>(batch.payloads(), &batch.stamps, Some("scope"), 0, |request| {
+                let wire = request.encode_to_vec();
+                let received = harmos_domain::operations::streams::Publish::decode(&wire).unwrap();
+                assert_eq!(received.payload, [7]);
+                assert_eq!(received.following[0].payload, [8]);
+                assert_eq!(received.published_unix_micros, Some(100));
+                assert_eq!(received.following[0].published_delta_micros, Some(-10));
+                assert_eq!(received.context.as_deref(), Some("scope"));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(taken, 2);
+        assert_eq!(encodes.load(Ordering::Relaxed), 1);
     }
 }
