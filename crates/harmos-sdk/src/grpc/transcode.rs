@@ -801,8 +801,12 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        assert_eq!(tags.len(), Wide::FIELDS.len());
-        assert!(tags.windows(2).all(|pair| pair[0] < pair[1]));
+        let mut expected = Wide::FIELDS
+            .iter()
+            .flat_map(|field| std::iter::repeat_n(field.tag, if field.name == "echo" { value.echo.len() } else { 1 }))
+            .collect::<Vec<_>>();
+        expected.sort_unstable();
+        assert_eq!(tags, expected);
     }
 
     #[test]
