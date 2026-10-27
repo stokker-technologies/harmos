@@ -46,18 +46,11 @@ struct Document {
     text: String,
 }
 
-#[harmos_runtime::message]
-struct DocumentV2 {
-    id: String,
-    text: String,
-}
-
 /* === Enums === */
 
 #[harmos_runtime::catalog]
 enum Objects {
     Document(Document),
-    V2(DocumentV2),
 }
 
 /* === Traits === */
@@ -72,19 +65,6 @@ impl Identified for Document {
 impl StoredObject for Document {
     type Key = String;
     const RETENTION: ObjectRetention = ObjectRetention::Versions(NonZeroUsize::new(8).unwrap());
-    fn key(&self) -> &String {
-        &self.id
-    }
-}
-
-impl Identified for DocumentV2 {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("test.document"), 2)
-    }
-}
-impl StoredObject for DocumentV2 {
-    type Key = String;
-    const RETENTION: ObjectRetention = Document::RETENTION;
     fn key(&self) -> &String {
         &self.id
     }

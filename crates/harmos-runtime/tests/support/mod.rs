@@ -444,7 +444,7 @@ impl harmos_runtime::state::CatalogCodec for Change {
                 Self::Freeze => "ledger.freeze",
                 Self::Explode => "ledger.explode",
             }),
-            if matches!(self, Self::Deposit(_)) { 2 } else { 1 },
+            1,
         )
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

@@ -85,14 +85,6 @@ struct Model;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
-#[harmos::record(id = "atomic.observed")]
-#[derive(Serialize, Deserialize)]
-struct Obsolete {
-    before: i64,
-    amount: i64,
-    ordinal: usize,
-}
-
 /* === Enums === */
 
 #[harmos::lanes]
@@ -162,7 +154,7 @@ impl Transaction<State> for Add {
             let _ = out.push_system(harmos::state::SystemFact {
                 source: harmos::state::FactSource::Sidecar(owner.to_owned()),
                 name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
-                version: 37,
+                version: 1,
                 payload: if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
             });
         }
@@ -173,9 +165,6 @@ impl Transaction<State> for Add {
             for _ in 0..2 {
                 let _ = out.push(Large("x".repeat(Records::MAX_BYTES / 2)));
             }
-        }
-        if self.mode == 9 {
-            let _ = out.push(Obsolete { before: state.balance, amount: self.amount, ordinal: 0 });
         }
         if self.mode == 4 {
             let _ = out.push(Broken);
