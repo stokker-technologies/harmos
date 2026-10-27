@@ -135,5 +135,6 @@ Harmos uses the same separation: `harmos-domain` owns shared portable models,
 `harmos-operations` owns the 30 vertical built-in operation files and concern
 catalogs, and `harmos-runtime` supplies SDK-defined dependency handles and
 storage engines. `harmos` exposes them through `builtins`. Execution is gated
-by the operations crate's `runtime` feature; portable consumers need neither
-SDK nor storage execution dependencies.
+by the operations crate's `runtime` feature. Carrier kits use its `lifecycle`
+subset for SDK plugin controls without host storage dependencies. Portable
+consumers need neither SDK nor storage execution dependencies.

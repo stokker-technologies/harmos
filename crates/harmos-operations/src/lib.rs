@@ -22,7 +22,7 @@ pub mod streams;
 #[cfg(feature = "runtime")]
 pub use error::Error;
 pub use harmos_domain::*;
-#[cfg(feature = "runtime")]
+#[cfg(feature = "lifecycle")]
 pub use harmos_sdk::{Dependencies, DependencyError, Operation, OperationContext, RegistrationBatch, Response};
 pub use host::Host;
 pub use lifecycle::Lifecycle;

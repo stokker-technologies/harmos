@@ -190,6 +190,8 @@ impl<O: OperationDeclaration, L: Lane, E: EndpointSet> Invocation<O, L, E> {
 - [x] 1.31 Extract all storage operations with erased engine dependencies and SDK grant authority; remove the old portable and runtime trees, migrate registration callers and compile all consumers.
 - [x] 1.32 Extract initialization and shutdown control declarations/messages with their runtime bodies; retain SDK plugin state ownership and reserved-contract validation without a dependency cycle.
 
+- [x] 1.33 Isolate SDK plugin lifecycle execution from host storage dependencies in carrier feature graphs; runtime continues to enable all 30 built-ins. Portable dependency isolation, native lifecycle behavior and all-feature runtime compilation pass; the guest core has no browser imports. Component collection is part of 1.26.
+
 ### Local Validation
 
 - [ ] 1.26 Verify the completed extraction and clean break with targeted dependency/feature and behavior checks, then run `mise run check` followed by the full `mise run test` lanes serially, repairing failures. Commit coherent local milestones; do not push. Leave delivery section 2 open.

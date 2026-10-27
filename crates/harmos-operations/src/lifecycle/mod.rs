@@ -19,6 +19,8 @@ mod watch;
 
 pub use cancel::{Cancel, CancelRequest};
 pub use harmos_domain::model::operations::lifecycle::*;
+#[cfg(feature = "lifecycle")]
+pub use initialize::ControlError;
 pub use initialize::{Initialize, InitializeRequest};
 pub use shutdown::{Shutdown, ShutdownRequest};
 pub use status::{InstanceState, Status, StatusRequest};
@@ -54,7 +56,7 @@ pub enum Lifecycle {
     Watch(Watch),
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(feature = "lifecycle")]
 pub fn bind<P: harmos_sdk::Plugin>(
     owner: std::sync::Arc<harmos_sdk::plugin::Owner<P>>, table: &harmos_sdk::plugin::Table,
 ) -> Result<(), harmos_sdk::plugin::Error<P>> {

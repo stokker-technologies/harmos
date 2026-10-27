@@ -111,3 +111,7 @@ routing IDs once as `owner.local_id`. Registration validates a whole batch;
 withdrawal rejects new calls and awaits cleanup. Failed cleanup retains the
 closing owner; another `unregister` resumes it. Re-registration allocates a fresh
 generation, fencing stale frames.
+
+Built-in carrier kits enable `harmos-operations/lifecycle` for SDK initialization
+and shutdown. The full `runtime` feature includes this subset plus host and
+storage execution; consumer operation authoring keeps its `runtime` convention.

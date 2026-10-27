@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:af37168f08cc17d3c832dac78e296c2de03712883cf61089e74ddc9688740e8e -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/references/operations.md; sha256:1f5c139b48aabeae2c9bae2560f9e5861e5dafedbf0d2d31bda284411db79c5e -->
 
 # Operations
 
@@ -113,3 +113,7 @@ routing IDs once as `owner.local_id`. Registration validates a whole batch;
 withdrawal rejects new calls and awaits cleanup. Failed cleanup retains the
 closing owner; another `unregister` resumes it. Re-registration allocates a fresh
 generation, fencing stale frames.
+
+Built-in carrier kits enable `harmos-operations/lifecycle` for SDK initialization
+and shutdown. The full `runtime` feature includes this subset plus host and
+storage execution; consumer operation authoring keeps its `runtime` convention.

@@ -17,7 +17,8 @@ version = { workspace = true }
 
 [features]
 default = []
-runtime = ["dep:harmos-sdk", "dep:thiserror", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:serde_json", "dep:tracing"]
+lifecycle = ["dep:harmos-sdk", "dep:thiserror"]
+runtime = ["lifecycle", "dep:tokio", "dep:harmos-storage", "dep:serde", "dep:serde_json", "dep:tracing"]
 
 # === Dependencies === #
 

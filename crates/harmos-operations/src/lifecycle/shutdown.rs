@@ -28,7 +28,7 @@ pub struct ShutdownRequest {}
 
 #[harmos::operation(harmos_path = crate, id = "harmos_shutdown", request = ShutdownRequest, response = (), policy = super::POLICY, infer_request)]
 pub struct Shutdown {
-    #[cfg(feature = "runtime")]
+    #[cfg(feature = "lifecycle")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
 
@@ -52,11 +52,11 @@ impl MemorySize for ShutdownRequest {
     }
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(feature = "lifecycle")]
 impl crate::Operation for Shutdown {
     type Request = ShutdownRequest;
     type Response = ();
-    type Error = crate::Error;
+    type Error = super::ControlError;
     type Endpoints = ();
     async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
         let access = context.dependency::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
@@ -66,11 +66,11 @@ impl crate::Operation for Shutdown {
         &mut self, context: crate::OperationContext, request: &mut ShutdownRequest, _: &mut (),
     ) -> Result<crate::Response<()>, Self::Error> {
         let _ = &request;
-        self.instance.run(context, &[], &[], &[]).await.map_err(crate::Error::Access)?;
+        self.instance.run(context, &[], &[], &[]).await.map_err(super::ControlError::Access)?;
         Ok(().into())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.instance.cleanup().await.map_err(crate::Error::Access)
+        self.instance.cleanup().await.map_err(super::ControlError::Access)
     }
 }
 

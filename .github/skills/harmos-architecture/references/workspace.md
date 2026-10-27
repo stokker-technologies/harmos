@@ -1,4 +1,4 @@
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:ee4d21f0106012f8f1147f223cc9b27b5143f564b74369d363c21d040d73432c -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/references/workspace.md; sha256:470a87b92beef5de89fe24d43114644a1eb9d9ff4d20ed6ba4b5b78dc0260a63 -->
 
 # Consumer Workspace
 
@@ -137,5 +137,6 @@ Harmos uses the same separation: `harmos-domain` owns shared portable models,
 `harmos-operations` owns the 30 vertical built-in operation files and concern
 catalogs, and `harmos-runtime` supplies SDK-defined dependency handles and
 storage engines. `harmos` exposes them through `builtins`. Execution is gated
-by the operations crate's `runtime` feature; portable consumers need neither
-SDK nor storage execution dependencies.
+by the operations crate's `runtime` feature. Carrier kits use its `lifecycle`
+subset for SDK plugin controls without host storage dependencies. Portable
+consumers need neither SDK nor storage execution dependencies.

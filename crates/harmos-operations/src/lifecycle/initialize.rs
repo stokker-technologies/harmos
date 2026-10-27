@@ -32,11 +32,20 @@ pub struct InitializeRequest {
 
 #[harmos::operation(harmos_path = crate, id = "harmos_initialize", request = InitializeRequest, response = (), policy = super::POLICY, infer_request)]
 pub struct Initialize {
-    #[cfg(feature = "runtime")]
+    #[cfg(feature = "lifecycle")]
     instance: Box<dyn harmos_sdk::operations::lifecycle::LifecycleInstance>,
 }
 
 /* === Enums === */
+
+#[cfg(feature = "lifecycle")]
+#[derive(Debug, thiserror::Error)]
+pub enum ControlError {
+    #[error(transparent)]
+    Dependency(#[from] harmos_sdk::DependencyError),
+    #[error("plugin lifecycle access failed: {0}")]
+    Access(#[source] harmos_sdk::operations::access::AccessError),
+}
 
 /* === Traits === */
 
@@ -59,11 +68,11 @@ impl MemorySize for InitializeRequest {
     }
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(feature = "lifecycle")]
 impl crate::Operation for Initialize {
     type Request = InitializeRequest;
     type Response = ();
-    type Error = crate::Error;
+    type Error = super::ControlError;
     type Endpoints = ();
     async fn initialize(context: crate::OperationContext) -> Result<Self, Self::Error> {
         let access = context.dependency::<harmos_sdk::operations::lifecycle::LifecycleAccess>()?;
@@ -76,11 +85,11 @@ impl crate::Operation for Initialize {
         self.instance
             .run(context, &request.config_json, &request.generation_context, &request.assignments)
             .await
-            .map_err(crate::Error::Access)?;
+            .map_err(super::ControlError::Access)?;
         Ok(().into())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.instance.cleanup().await.map_err(crate::Error::Access)
+        self.instance.cleanup().await.map_err(super::ControlError::Access)
     }
 }
 
