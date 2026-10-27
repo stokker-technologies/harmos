@@ -1,3 +1,4 @@
+# Rendered by stkr project update from templates/python/format/__init__.py; sha256:d5b622ca233524ae3563a601cccc29f6092b330b66badb72b838dd5f4f051e31
 # ***
 #
 # Harmos
@@ -6,8 +7,7 @@
 #
 # ***
 
-
-"""Format Maintained Repository Sources"""
+"""Format Maintained Source Files"""
 
 # === Imports === #
 
@@ -18,7 +18,6 @@
 # Local Imports
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
