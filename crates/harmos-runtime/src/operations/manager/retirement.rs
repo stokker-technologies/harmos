@@ -115,6 +115,7 @@ impl Manager {
         self.release_settled(entries, true);
     }
 
+    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
     fn release_settled(&self, entries: &[Arc<Entry>], preserve_explicit: bool) {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         for entry in entries {
