@@ -92,3 +92,6 @@ impl Operation for Cancel {
   operations register through `RegistrationBatch::operation`, without eager inherent registration bodies.
 - Sandbox request mutation is discarded between attempts; shared retry state belongs to declared resources. Per-handler authored
   initialization and cleanup probes are removed; plugin lifecycle and carrier settlement remain distinct.
+
+- Sandbox development/test builds optimize schema processing, JSON decoding and SHA-256 fingerprinting so full metadata validation
+  fits the unchanged Wasm fuel budget; schema and JSON settings match the schematic guest.

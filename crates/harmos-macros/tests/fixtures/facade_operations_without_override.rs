@@ -78,7 +78,7 @@ impl facade::__harmos::builtins::lifecycle::Policy for Guest {
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
 
-#[facade::plugin(id = "alias", context = facade::__harmos::guest::Context, config = String,
+#[facade::plugin(id = "alias", context = facade::__harmos::guest::kit::Context, config = String,
     streams(self::rows::Reading), provides = Operations, requires = ())]
 impl ProductPlugin for Guest {}
 

@@ -516,7 +516,7 @@ mod unified_plugins {
     impl harmos_runtime::Plugin for Guest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos_runtime::guest::Context;
+        type Context = harmos_runtime::guest::kit::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -651,7 +651,7 @@ mod unified_plugins {
     impl harmos_runtime::Plugin for ListeningGuest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos_runtime::guest::Context;
+        type Context = harmos_runtime::guest::kit::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())

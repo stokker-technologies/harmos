@@ -424,7 +424,7 @@ pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes)
                 dependencies
             })
             .implementation::<harmos_operations::streams::Publish, Publish>(),
-            lane.clone(),
+            lane,
         ))
         .await
         .unwrap();

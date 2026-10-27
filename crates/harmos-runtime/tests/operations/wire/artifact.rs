@@ -64,13 +64,13 @@ inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, 
 inert_plugin!(ExplicitEmptyNative, "explicit-empty-native", harmos_runtime::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::Context, Operations);
+inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::kit::Context, Operations);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::Context, ());
+inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::kit::Context, ());
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::Context, ());
+inert_plugin!(ExplicitEmptyGuest, "explicit-empty-guest", harmos_runtime::guest::kit::Context, ());
 
 /* === Type Aliases === */
 
